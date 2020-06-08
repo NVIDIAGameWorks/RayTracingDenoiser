@@ -1,0 +1,90 @@
+{
+  "FileVersion": 2,
+  "Items": [
+    {
+      "Command": "API",
+      "Items": [
+        {
+          "Command": "--api=D3D11"
+        },
+        {
+          "Command": "--api=D3D12"
+        },
+        {
+          "Command": "--api=VULKAN"
+        }
+      ]
+    },
+    {
+      "Command": "RESOLUTION",
+      "Items": [
+        {
+          "Command": "--width=800 --height=600"
+        },
+        {
+          "Command": "--width=1280 --height=720"
+        },
+        {
+          "Command": "--width=1920 --height=1080"
+        },
+        {
+          "Command": "--width=2560 --height=1440"
+        },
+        {
+          "Command": "--width=3440 --height=1440"
+        },
+        {
+          "Command": "--width=3840 --height=2160"
+        }
+      ]
+    },
+    {
+      "Command": "VSYNC",
+      "Items": [
+        {
+          "Command": "--swapInterval=0"
+        },
+        {
+          "Command": "--swapInterval=1"
+        }
+      ]
+    },
+    {
+      "Command": "OTHER",
+      "Items": [
+        {
+          "Command": "--debugAPI"
+        },
+        {
+          "Command": "--debugNRI"
+        },
+        {
+          "Command": "--ignoreDPI"
+        },
+        {
+          "Command": "--testMode"
+        },
+        {
+          "Command": "--frameNum=9999999"
+        }
+      ]
+    },
+    {
+      "Command": "SCENES",
+      "Items": [
+        {
+          "Command": "--scene=ShaderBalls/ShaderBalls.obj"
+        },
+        {
+          "Command": "--scene=Bistro/BistroInterior.fbx"
+        },
+        {
+          "Command": "--scene=Bistro/BistroExterior.fbx"
+        },
+        {
+          "Command": "--scene=ZeroDay/MEASURE_SEVEN/MEASURE_SEVEN.fbx"
+        }
+      ]
+    }
+  ]
+}
