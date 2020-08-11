@@ -138,29 +138,28 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // History weight
     float4 pack = gIn_InternalData[ pixelPos ];
-    float4 internalData = UnpackSpecInternalData( pack );
-    float modifiedRoughness = internalData.w;
-    float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, internalData.z, motionLength, pack.w, modifiedRoughness );
+    float4 normalAndRoughness = UnpackNormalAndRoughness( STL::Packing::UintToRgba( temp.y, 8, 8, 8, 8 ) );
+    float roughness = normalAndRoughness.w;
+    float parallax = pack.w;
+    float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, accumSpeed, motionLength, parallax, roughness );
 
     // Sample history (surface motion)
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
     float4 history = BicubicFilterNoCorners( gIn_History, gLinearClamp, pixelPosPrev, gInvScreenSize );
-    float4 colorMin = m1 - sigma * temporalAccumulationParams.y;
-    float4 colorMax = m1 + sigma * temporalAccumulationParams.y;
 
     // Sample history (virtual motion)
     float3 Xprev = X + motionVector * float( gWorldSpaceMotion != 0 ); // TODO: no object motion for 2D MVs...
-    float hitDist = GetHitDistance( input.w, abs( centerZ ), gScalingParams, modifiedRoughness );
+    float hitDist = GetHitDistance( input.w, centerZ, gScalingParams, roughness );
     float3 V = STL::Geometry::RotateVector( gViewToWorld, normalize( Xv ) );
-    float3 Xvirtual = Xprev + V * hitDist * ( 1.0 - modifiedRoughness );
+    float3 Xvirtual = Xprev + V * hitDist * ( 1.0 - roughness );
     float4 clipVirtualPrev = STL::Geometry::ProjectiveTransform( gWorldToClipPrev, Xvirtual );
     float2 pixelUvVirtualPrev = ( clipVirtualPrev.xy / clipVirtualPrev.w ) * float2( 0.5, -0.5 ) + 0.5;
     float2 pixelPosVirtualPrev = saturate( pixelUvVirtualPrev ) * gScreenSize;
     float4 historyNew = BicubicFilterNoCorners( gIn_History, gLinearClamp, pixelPosVirtualPrev, gInvScreenSize );
 
     // Mix histories
-    float fade = STL::Packing::UintToRgba( temp.y, 8, 8, 8, 8 ).w;
-    history = lerp( history, historyNew, fade );
+    float virtualMotionAmount = pack.z;
+    history = lerp( history, historyNew, virtualMotionAmount );
 
     // Antilag
     float antiLag = 1.0;
@@ -179,6 +178,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     }
 
     // Clamp history and combine with the current frame
+    float4 colorMin = m1 - sigma * temporalAccumulationParams.y;
+    float4 colorMax = m1 + sigma * temporalAccumulationParams.y;
     history = clamp( history, colorMin, colorMax );
 
     float historyWeight = TS_MAX_HISTORY_WEIGHT * antiLag;
@@ -189,6 +190,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float2 rnd = STL::Rng::GetFloat2( );
     float dither = 1.0 + ( rnd.x * 2.0 - 1.0 ) * DITHERING_AMPLITUDE;
     result *= dither;
+
+    // Get rid of possible negative values
+    result.xyz = _NRD_YCoCgToLinear( result.xyz );
+    result.w = max( result.w, 0.0 );
+    result.xyz = _NRD_LinearToYCoCg( result.xyz );
 
     // Debug
     #if( SHOW_ACCUM_SPEED == 1 )

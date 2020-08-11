@@ -173,16 +173,22 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float dither = 1.0 + ( rnd.x * 2.0 - 1.0 ) * DITHERING_AMPLITUDE;
     result *= dither;
 
+    // Get rid of possible negative values
+    float4 resultRgb;
+    resultRgb.xyz = _NRD_YCoCgToLinear( result.xyz );
+    resultRgb.w = max( result.w, 0.0 );
+
+    result = resultRgb;
+    result.xyz = _NRD_LinearToYCoCg( resultRgb.xyz );
+
     // Output
     gOut_Signal[ pixelPos ] = result;
 
-    result.xyz = _NRD_YCoCgToLinear( result.xyz );
-
     #if( SHOW_ACCUM_SPEED == 1 )
-        result.w = saturate( accumSpeed / MAX_ACCUM_FRAME_NUM );
+        resultRgb.w = saturate( accumSpeed / MAX_ACCUM_FRAME_NUM );
     #elif( SHOW_ANTILAG == 1 )
-        result.w = antiLag;
+        resultRgb.w = antiLag;
     #endif
 
-    gOut_SignalCopy[ pixelPos ] = result;
+    gOut_SignalCopy[ pixelPos ] = resultRgb;
 }

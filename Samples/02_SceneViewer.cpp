@@ -324,7 +324,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     NRI_ABORT_ON_FALSE(isLoaded);
 
     // Camera
-    m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, false, true);
+    m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, false);
 
     const uint32_t textureNum = (uint32_t)m_Scene.textures.size();
     const uint32_t materialNum = (uint32_t)m_Scene.materials.size();

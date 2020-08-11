@@ -67,7 +67,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
     // Accumulations speeds
     float4 pack = gIn_InternalData[ pixelPos ];
-    float4 internalData = UnpackSpecInternalData( pack );
+    float3 internalData = UnpackSpecInternalData( pack, roughness );
     float normAccumSpeed = saturate( internalData.x * STL::Math::PositiveRcp( internalData.y ) );
     float nonLinearAccumSpeed = 1.0 / ( 1.0 + internalData.x );
 
@@ -75,13 +75,12 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float3 centerPos = STL::Geometry::ReconstructViewPosition( sampleUv, gFrustum, centerZ, gIsOrtho );
     float4 final = gIn_Signal[ pixelPos ];
     float centerNormHitDist = final.w;
-    centerZ = abs( centerZ );
 
     // Blur radius
     float hitDist = GetHitDistance( final.w, centerZ, gScalingParams, roughness );
     float radius = GetBlurRadius( gBlurRadius, roughness, hitDist, centerPos, nonLinearAccumSpeed );
     radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gTrimmingParams );
-    float worldRadius = radius * gUnproject * lerp( centerZ, 1.0, abs( gIsOrtho ) );
+    float worldRadius = PixelRadiusToWorld( radius, centerZ, gUnproject, gIsOrtho );
 
     // Tangent basis
     float3 Tv, Bv;
@@ -100,7 +99,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float2 sum = 1.0;
 
     float geometryWeightParams = GetGeometryWeightParams( gMetersToUnits, centerZ );
-    float2 normalWeightParams = GetNormalWeightParams( true, roughness, internalData.z, normAccumSpeed );
+    float2 normalWeightParams = GetNormalWeightParams( roughness, internalData.z, normAccumSpeed );
     float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( roughness, centerNormHitDist );
 

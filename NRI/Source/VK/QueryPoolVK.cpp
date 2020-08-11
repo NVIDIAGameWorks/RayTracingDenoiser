@@ -31,12 +31,13 @@ QueryPoolVK::~QueryPoolVK()
 Result QueryPoolVK::Create(const QueryPoolDesc& queryPoolDesc)
 {
     m_OwnsNativeObjects = true;
+    m_Type = GetQueryType(queryPoolDesc.queryType);
 
     const VkQueryPoolCreateInfo poolInfo = {
         VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
         nullptr,
         (VkQueryPoolCreateFlags)0,
-        GetQueryType(queryPoolDesc.queryType),
+        m_Type,
         queryPoolDesc.capacity,
         GetQueryPipelineStatisticsFlags(queryPoolDesc.pipelineStatsMask)
     };

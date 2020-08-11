@@ -28,6 +28,7 @@ struct CameraDesc
     float farZ = 10000.0f;
     float orthoRange = 0.0f;
     bool isProjectionReversed = false;
+    bool isLeftHanded = true;
     bool isCustomMatrixSet = false;
     float4x4 customMatrix = float4x4::identity;
 };
@@ -36,7 +37,7 @@ class Camera
 {
 public:
     void Update(const CameraDesc& desc, uint32_t frameIndex);
-    void Initialize(const float3& position, const float3& lookAt, bool isRelative = false, bool isLeftHanded = false);
+    void Initialize(const float3& position, const float3& lookAt, bool isRelative = false);
 
     inline const float3 GetRelative(const double3& origin) const
     {
@@ -77,5 +78,4 @@ public:
     float m_IsOrtho = 0.0f;
 private:
     bool m_IsRelative = false;
-    bool m_IsLeftHanded = false;
 };

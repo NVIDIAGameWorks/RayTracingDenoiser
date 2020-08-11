@@ -64,7 +64,6 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float3 centerPos = STL::Geometry::ReconstructViewPosition( sampleUv, gFrustum, centerZ, gIsOrtho );
     float4 final = gIn_Signal[ pixelPos ];
     float centerNormHitDist = final.w;
-    centerZ = abs( centerZ );
 
     // Normal and roughness
     float4 normalAndRoughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
@@ -76,7 +75,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float hitDist = GetHitDistance( final.w, centerZ, gScalingParams, roughness );
     float radius = SPEC_PRE_BLUR_RADIUS_SCALE * GetBlurRadius( gBlurRadius, roughness, hitDist, centerPos, 1.0 );
     radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gTrimmingParams );
-    float worldRadius = radius * gUnproject * lerp( centerZ, 1.0, abs( gIsOrtho ) );
+    float worldRadius = PixelRadiusToWorld( radius, centerZ, gUnproject, gIsOrtho );
 
     // Tangent basis
     float3 Tv, Bv;
@@ -95,7 +94,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float2 sum = 1.0;
 
     float geometryWeightParams = GetGeometryWeightParams( gMetersToUnits, centerZ );
-    float2 normalWeightParams = GetNormalWeightParams( true, roughness );
+    float2 normalWeightParams = GetNormalWeightParams( roughness );
     float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( roughness, centerNormHitDist );
 
@@ -110,11 +109,11 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
         // Checkerboard handling - needed only in passes before temporal accumulation since signal reconstruction is there
         #if( CHECKERBOARD_SUPPORT == 1 )
-            if( gCheckerboard != 0 && all( saturate( uv ) == uv ) )
+            if( gCheckerboard != CHECKERBOARD_OFF && all( saturate( uv ) == uv ) )
             {
                 uint2 pos = uint2( STL::Filtering::GetNearestFilter( uv, gScreenSize ).origin );
-                bool isNotSpecular = STL::Sequence::CheckerBoard( pos, gFrameIndex ) != 0;
-                uv.x += checkerboardOffset * float( isNotSpecular );
+                bool isNoData = STL::Sequence::CheckerBoard( pos, gFrameIndex ) == gCheckerboard;
+                uv.x += checkerboardOffset * float( isNoData );
                 checkerboardOffset = -checkerboardOffset;
             }
         #endif

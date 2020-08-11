@@ -126,7 +126,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float2 motion = pixelUvPrev - pixelUv;
     float motionLength = length( motion );
     float historyWeight = lerp( TAA_MAX_HISTORY_WEIGHT, TAA_MIN_HISTORY_WEIGHT, saturate( motionLength / TAA_MOTION_MAX_REUSE ) );
-    historyWeight *= gTaa * float( isInScreen );
+    historyWeight *= float( gMipBias != 0.0 && isInScreen );
 
     // Mix with history
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;

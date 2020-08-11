@@ -21,9 +21,9 @@ Special thanks:
 #include <cstdint>
 
 #define NRD_VERSION_MAJOR 1
-#define NRD_VERSION_MINOR 6
-#define NRD_VERSION_BUILD 5
-#define NRD_VERSION_DATE "25 June 2020"
+#define NRD_VERSION_MINOR 7
+#define NRD_VERSION_BUILD 2
+#define NRD_VERSION_DATE "8 August 2020"
 #define NRD_CALL __fastcall
 
 #ifndef NRD_API

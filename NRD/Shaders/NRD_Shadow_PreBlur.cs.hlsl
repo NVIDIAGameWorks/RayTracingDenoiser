@@ -84,7 +84,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Position
     float3 centerPos = STL::Geometry::ReconstructViewPosition( sampleUv, gFrustum, centerZ, gIsOrtho );
-    centerZ = abs( centerZ );
 
     // Normal
     float4 normalAndRoughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
@@ -124,7 +123,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float innerShadowFix = lerp( 0.5, 1.0, final.x );
     float worldRadius = final.y * gBlurRadius * innerShadowFix;
 
-    float unprojectZ = gUnproject * lerp( centerZ, 1.0, abs( gIsOrtho ) );
+    float unprojectZ = PixelRadiusToWorld( 1.0, centerZ, gUnproject, gIsOrtho );
     float pixelRadius = worldRadius * STL::Math::PositiveRcp( unprojectZ );
     pixelRadius = min( pixelRadius, SHADOW_MAX_PIXEL_RADIUS );
     worldRadius = pixelRadius * unprojectZ;

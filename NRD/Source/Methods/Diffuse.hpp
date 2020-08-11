@@ -187,6 +187,7 @@ void DenoiserImpl::UpdateMethod_Diffuse(const MethodData& methodData)
     float frameTime = Max(m_Timer.GetSmoothedElapsedTime(), 1.0f) * 0.001f;
     float invFrameTime = 1.0f / frameTime;
     float disocclusionThreshold = settings.disocclusionThreshold;
+    uint32_t remappedCheckerboard = ( uint32_t(settings.checkerboardMode) + 2 ) % 3;
     bool useAntilag = !m_CommonSettings.forceReferenceAccumulation && settings.antilagSettings.enable;
 
     if (m_CommonSettings.forceReferenceAccumulation)
@@ -212,7 +213,7 @@ void DenoiserImpl::UpdateMethod_Diffuse(const MethodData& methodData)
     AddFloat(data, denoisingRadius);
     AddFloat(data, m_CommonSettings.denoisingRange);
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, settings.checkerboard ? 1 : 0);
+    AddUint(data, remappedCheckerboard);
     AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
 
@@ -231,7 +232,7 @@ void DenoiserImpl::UpdateMethod_Diffuse(const MethodData& methodData)
     AddFloat(data, disocclusionThreshold );
     AddFloat(data, maxAccumulatedFrameNum);
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, settings.checkerboard ? 1 : 0);
+    AddUint(data, remappedCheckerboard);
     AddUint(data, m_CommonSettings.worldSpaceMotion ? 1 : 0);
     AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);

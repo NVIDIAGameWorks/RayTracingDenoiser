@@ -13,6 +13,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <vector>
 #include <algorithm>
 #include <filesystem>
+#include <time.h>
 
 #define FOLDER_DATA L"_Data"
 #define FOLDER_BUILD L"_Build"
@@ -193,4 +194,10 @@ void main()
 
     if( compiled != shaders.size() )
         printf("ERROR: %I64u/%I64u shaders compiled!\n", compiled, shaders.size());
+    else
+        printf("SUCCESS!\n");
+
+    time_t t = time(nullptr);
+    tm tm = *localtime(&t);
+    printf("TIMESTAMP: %d-%02d-%02d %02d:%02d:%02d\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 }

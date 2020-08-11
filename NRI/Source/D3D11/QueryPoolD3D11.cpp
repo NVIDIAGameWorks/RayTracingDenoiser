@@ -52,18 +52,14 @@ void QueryPoolD3D11::BeginQuery(const VersionedContext& context, uint32_t offset
 {
     ID3D11Query* query = m_Pool[offset];
 
-    if (m_Type == QueryType::TIMESTAMP)
-        context->End(query);
-    else
-        context->Begin(query);
+    context->Begin(query);
 }
 
 void QueryPoolD3D11::EndQuery(const VersionedContext& context, uint32_t offset)
 {
     ID3D11Query* query = m_Pool[offset];
 
-    if (m_Type != QueryType::TIMESTAMP)
-        context->End(query);
+    context->End(query);
 }
 
 void QueryPoolD3D11::GetData(uint8_t* dstMemory, const VersionedContext& immediateContext, uint32_t offset, uint32_t num) const

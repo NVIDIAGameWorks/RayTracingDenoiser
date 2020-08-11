@@ -3,7 +3,7 @@
 :: =================================================================================================================================================================================
 :: SETTINGS
 
-set VK_SDK_PATH="C:\VulkanSDK\1.2.135.0"
+set VK_SDK_PATH=%VULKAN_SDK%
 set WIN_SDK_PATH="C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\"
 set DATA_FOLDER=_Data
 set TARGET_VS=%1
@@ -12,7 +12,7 @@ if "%1"=="" set TARGET_VS="vs2017"
 :: =================================================================================================================================================================================
 :: CHECK FOR SDKs
 
-if NOT exist %VK_SDK_PATH% call :ErrorOccured "Please, install Vulkan SDK v1.2.135 (or modify this file to use another location of version)"
+if NOT exist %VK_SDK_PATH% call :ErrorOccured "Please, install Vulkan SDK"
 if NOT exist %WIN_SDK_PATH% call :ErrorOccured "Please, install Windows SDK v10.0.19041.0 (or modify this file to use another location of version)"
 
 :: =================================================================================================================================================================================
@@ -50,7 +50,6 @@ copy "ProjectBase\.args" "_Compiler\%TARGET_VS%\09_RayTracing_NRD\09_RayTracing_
 del /q "%DATA_FOLDER%\*.dll"
 copy "_Build\TargetDeps\Assimp\Bin\*.dll" "%DATA_FOLDER%\"
 copy "_Build\TargetDeps\AGS\lib\*.dll" "%DATA_FOLDER%\"
-copy "External\NGX\*.dll" "%DATA_FOLDER%\"
 
 copy "Tests\Bistro.bin" "%DATA_FOLDER%\Scenes\Bistro\tests.bin"
 

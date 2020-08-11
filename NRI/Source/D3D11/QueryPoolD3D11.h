@@ -35,7 +35,7 @@ namespace nri
 
     private:
         Vector<ComPtr<ID3D11Query>> m_Pool;
-        QueryType m_Type;
         DeviceD3D11& m_Device;
+        QueryType m_Type = QueryType::MAX_NUM;
     };
 }

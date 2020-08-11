@@ -14,6 +14,21 @@ namespace nrd
 {
     const uint32_t MAX_HISTORY_FRAME_NUM = 31;
 
+    enum class CheckerboardMode : uint32_t
+    {
+        // Internally NRD uses the following sequence, which is based on "CommonSettings::frameIndex":
+        //  Even frame    Odd frame    ...
+        //    B W           W B
+        //    W B           B W
+
+        // These constants allow to define cells without data:
+        OFF,            // no checkerboarding
+        NO_DATA_BLACK,  // black cells have no data
+        NO_DATA_WHITE,  // white cells have no data
+
+        MAX_NUM
+    };
+
     struct CommonSettings
     {
         // Requirements:
@@ -23,12 +38,9 @@ namespace nrd
         //  -non jittered!
         //  - if IN_VIEWZ has "+" values, "viewToClip" should be left-handed
         //  - if IN_VIEWZ has "-" values, "viewToClip" should be right-handed
+        //  - "worldToView" matrices are expected to be right-handed only!
         // Jitter range:
         //  [-0.5; 0.5]
-        // In "checkerboard" mode the input data has layout:
-        //  Frame 0    Frame 1    ...
-        //  D S        S D
-        //  S D        D S
 
         float worldToViewMatrix[16] = {};
         float worldToViewMatrixPrev[16] = {};
@@ -83,7 +95,7 @@ namespace nrd
         float disocclusionThreshold = 0.005f; // normalized %
         float denoisingRadius = 30.0f; // pixels
         float maxAdaptiveRadiusScale = 5.0f; // 0-10
-        bool checkerboard = false;
+        CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
     };
 
     struct SpecularSettings
@@ -95,8 +107,8 @@ namespace nrd
         float disocclusionThreshold = 0.005f; // normalized %
         float denoisingRadius = 40.0f; // pixels
         float minAdaptiveRadiusScale = 0.5f;
+        CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         bool anisotropicFiltering = false;
-        bool checkerboard = false;
     };
 
     struct ShadowSettings

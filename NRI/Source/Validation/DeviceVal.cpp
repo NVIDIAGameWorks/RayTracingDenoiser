@@ -33,6 +33,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 using namespace nri;
 
 void ConvertGeometryObjectsVal(GeometryObject* destObjects, const GeometryObject* sourceObjects, uint32_t objectNum);
+QueryType GetQueryTypeVK(uint32_t queryTypeVK);
 
 DeviceVal::DeviceVal(const Log& log, const StdAllocator<uint8_t>& stdAllocator, DeviceBase& device, uint32_t physicalDeviceNum) :
     DeviceBase(log, stdAllocator),
@@ -622,7 +623,7 @@ Result DeviceVal::CreateQueryPool(const QueryPoolDesc& queryPoolDesc, QueryPool*
     if (result == Result::SUCCESS)
     {
         RETURN_ON_FAILURE(GetLog(), queryPoolImpl != nullptr, Result::FAILURE, "Unexpected error: 'queryPoolImpl' is NULL!");
-        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl);
+        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl, queryPoolDesc.queryType);
     }
 
     return result;
@@ -1139,7 +1140,9 @@ Result DeviceVal::CreateQueryPoolVK(const QueryPoolVulkanDesc& queryPoolVulkanDe
         RETURN_ON_FAILURE(GetLog(), queryPoolImpl != nullptr, Result::FAILURE,
             "Can't create QueryPool: unexpected error.");
 
-        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl);
+        const QueryType queryType = GetQueryTypeVK(queryPoolVulkanDesc.vkQueryType);
+
+        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl, queryType);
     }
 
     return result;

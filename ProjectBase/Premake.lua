@@ -1,5 +1,5 @@
 local WIN_SDK_VERSION = "10.0.19041.0"
-local VK_SDK_PATH = "C:/VulkanSDK/1.2.135.0/"
+local VK_SDK_PATH = os.getenv("VULKAN_SDK") .. "/"
 
 workspace "SANDBOX"
 

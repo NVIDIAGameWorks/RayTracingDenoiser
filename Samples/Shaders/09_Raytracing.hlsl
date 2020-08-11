@@ -156,7 +156,7 @@ float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps 
     float2 uvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5;
     float4 prevLsum = gIn_PrevComposedImage.SampleLevel( gLinearSampler, uvPrev, 0.0 );
     float prevViewZ = prevLsum.w / NRD_FP16_VIEWZ_SCALE;
-    float err = abs( prevViewZ - clipPrev.w ) * STL::Math::PositiveRcp( min( abs( prevViewZ ), abs( clipPrev.w ) ) );
+    float err = abs( abs( prevViewZ ) - clipPrev.w ) * STL::Math::PositiveRcp( min( abs( prevViewZ ), abs( clipPrev.w ) ) );
     float2 f = STL::Math::LinearStep( 0.0, 0.1, uvPrev ) * STL::Math::LinearStep( 1.0, 0.9, uvPrev );
 
     // TODO: this doesn't include antilag handling - since the previous frame is used in the current frame it adds "lag",

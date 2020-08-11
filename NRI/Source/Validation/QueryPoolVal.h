@@ -14,9 +14,13 @@ namespace nri
 {
     struct QueryPoolVal : public DeviceObjectVal<QueryPool>
     {
-        QueryPoolVal(DeviceVal& device, QueryPool& queryPool);
+        QueryPoolVal(DeviceVal& device, QueryPool& queryPool, QueryType queryType);
 
         void SetDebugName(const char* name);
         uint32_t GetQuerySize() const;
+        QueryType GetQueryType() const;
+
+    private:
+        QueryType m_QueryType;
     };
 }

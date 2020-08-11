@@ -23,6 +23,7 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define FRAME                                   1
 #define PIXEL                                   2
 #define MAX_ACCUM_FRAME_NUM                     31 // "2 ^ N - 1"
+#define CHECKERBOARD_OFF                        2
 
 // Debug
 
@@ -43,7 +44,8 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define USE_MIX_WITH_ORIGINAL                   1
 #define USE_NORMAL_WEIGHT_IN_DIFF_PRE_BLUR      0
 #define USE_ANTILAG                             1
-#define USE_CATMULL_ROM_UPSAMPLING              0
+#define USE_CATMULLROM_RESAMPLING_IN_TA         1 // TODO: adds 0.3 ms on RTX 2080 @ 1440p
+#define USE_CATMULLROM_RESAMPLING_IN_TS         1 // adds 0.1 ms on RTX 2080 @ 1440p
 #define USE_SQRT_ROUGHNESS                      1
 
 // Settings
@@ -95,7 +97,7 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define BUFFER_Y                                ( GROUP_Y + BORDER * 2 )
 #define RENAMED_GROUP_Y                         ( ( GROUP_X * GROUP_Y ) / BUFFER_X )
 
-// Misc unpacking
+// Misc
 
 float4 UnpackNormalAndRoughness( float4 p, bool bNormalize = true )
 {
@@ -125,7 +127,12 @@ uint PackViewZAndAccumSpeed( float z, float accumSpeed )
 
 float GetHitDistance( float normHitDist, float viewZ, float4 scalingParams, float roughness = 1.0 )
 {
-    return normHitDist * ( scalingParams.x + scalingParams.y * viewZ ) * lerp( scalingParams.z, 1.0, exp2( -roughness * roughness * scalingParams.w ) );
+    return normHitDist * ( scalingParams.x + scalingParams.y * abs( viewZ ) ) * lerp( scalingParams.z, 1.0, exp2( -roughness * roughness * scalingParams.w ) );
+}
+
+float PixelRadiusToWorld( float pixelRadius, float centerZ, float unproject, float isOrtho )
+{
+     return pixelRadius * unproject * lerp( abs( centerZ ), 1.0, abs( isOrtho ) );
 }
 
 // Accumulation speed (accumSpeeds.y is not packed since it's a known constant)
@@ -151,24 +158,21 @@ float4 UnpackDiffInternalData( uint p )
 // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIzMSooeF4wLjY2KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIzMSooMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiNGQTBEMEQifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIzMSJdfV0-
 #define GetSpecAccumulatedFrameNum( roughness, powerScale ) ( MAX_ACCUM_FRAME_NUM * ( 1.0 - exp2( -200.0 * roughness * roughness ) ) * STL::Math::Pow01( roughness, SPEC_ACCUM_BASE_POWER * powerScale ) )
 
-float4 PackSpecInternalData( float3 accumSpeeds, float roughness, float parallax )
+float4 PackSpecInternalData( float3 accumSpeeds, float virtualHistoryAmount, float parallax )
 {
     float4 r;
     r.xy = saturate( accumSpeeds.xz / MAX_ACCUM_FRAME_NUM );
-    r.z = STL::Math::Sqrt01( roughness );
+    r.z = virtualHistoryAmount;
     r.w = parallax;
 
     return r;
 }
 
-float4 UnpackSpecInternalData( float4 p )
+float3 UnpackSpecInternalData( float4 p, float roughness )
 {
-    float roughness = p.z * p.z;
-
-    float4 r;
+    float3 r;
     r.xz = MAX_ACCUM_FRAME_NUM * p.xy;
     r.y = GetSpecAccumulatedFrameNum( roughness, 1.0 );
-    r.w = roughness;
 
     return r;
 }
@@ -228,6 +232,8 @@ float GetBlurRadiusScaleBasingOnTrimming( float roughness, float3 trimmingParams
 
 void GetKernelBasis( float3 Xv, float3 Nv, float roughness, float worldRadius, float normAccumSpeed, uint anisotropicFiltering, out float3 Tv, out float3 Bv )
 {
+    roughness = lerp( 1.0, roughness, STL::Math::Sqrt01( normAccumSpeed ) ); // TODO: it was a useful experiment - keep it? It helps "a bit" for glancing angles
+
     if( roughness < 0.95 )
     {
         float3 Vv = -normalize( Xv );
@@ -275,10 +281,8 @@ float2 GetKernelSampleCoordinates( float4x4 mViewToClip, float2 jitter, float3 o
 
 // Weight parameters
 
-float2 GetNormalWeightParams( bool isSpecular, float roughness, float accumSpeed = MAX_ACCUM_FRAME_NUM, float normAccumSpeed = 1.0 )
+float2 GetNormalWeightParams( float roughness, float accumSpeed = MAX_ACCUM_FRAME_NUM, float normAccumSpeed = 1.0 )
 {
-    float fadeAmount = 0.66 * ( 1.0 - roughness * roughness * float( isSpecular ) );
-
     // Fade out normal weights if less than 25% of allowed frames are accumulated
     float k = STL::Math::LinearStep( 0.0, 0.25, normAccumSpeed );
 
@@ -290,8 +294,8 @@ float2 GetNormalWeightParams( bool isSpecular, float roughness, float accumSpeed
 
     // This is the main parameter - cone angle
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
-    angle *= 0.5; // to avoid overblurring
-    angle *= 1.0 - fadeAmount * STL::Math::LinearStep( 0.25, 1.0, normAccumSpeed );
+    angle *= 0.5; // to avoid overblurring // TODO: 0.333? Search for all 0.333 and create a macro?
+    angle *= 1.0 - 0.66 * STL::Math::LinearStep( 0.25, 1.0, normAccumSpeed );
 
     // Mitigate banding introduced by normals stored in RGB8 format
     angle += STL::Math::DegToRad( 2.5 );
@@ -301,7 +305,7 @@ float2 GetNormalWeightParams( bool isSpecular, float roughness, float accumSpeed
 
 float2 GetRoughnessWeightParams( float roughness0 )
 {
-    float a = rcp( roughness0 * roughness0 * 0.99 + 0.01 );
+    float a = rcp( roughness0 * 0.333 * 0.99 + 0.01 );
     float b = roughness0 * a;
 
     return float2( a, b );
@@ -326,7 +330,7 @@ float GetGeometryWeightParams( float metersToUnits, float centerZ )
     // ...but it looks like "no magic" works well and improves the quality of upsampling
     float scale = 1.0;
 
-    return scale / ( PLANE_DIST_SENSITIVITY * ( metersToUnits + centerZ ) );
+    return scale / ( PLANE_DIST_SENSITIVITY * ( metersToUnits + abs( centerZ ) ) );
 }
 
 float2 GetTemporalAccumulationParams( float isInScreen, float accumSpeed, float motionLength, float parallax = 0.0, float roughness = 1.0 )
@@ -349,11 +353,11 @@ float2 GetTemporalAccumulationParams( float isInScreen, float accumSpeed, float 
 float GetNormalWeight( float2 params0, float3 n0, float3 n )
 {
     // Assuming that "n0" is normalized and "n" is not!
-    float cosa = saturate( dot( n0, n ) * rsqrt( STL::Math::LengthSquared( n ) ) );
+    float cosa = saturate( dot( n0, n ) * STL::Math::Rsqrt( STL::Math::LengthSquared( n ) ) );
     float a = STL::Math::AcosApprox( cosa );
     a = 1.0 - STL::Math::SmoothStep( 0.0, params0.x, a );
 
-    return a * params0.y + 1.0 - params0.y;
+    return saturate( a * params0.y + 1.0 - params0.y );
 }
 
 float GetGeometryWeight( float3 p0, float3 n0, float3 p, float geometryWeightParams )
@@ -410,7 +414,7 @@ float4 GetBilateralWeight( float4 z, float zc, float cutoff = 99999.0 )
 
 float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invTextureSize )
 {
-    #if( USE_CATMULL_ROM_UPSAMPLING == 1 )
+    #if( USE_CATMULLROM_RESAMPLING_IN_TS == 1 )
         const float sharpness = TS_HISTORY_SHARPNESS;
 
         float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
@@ -446,8 +450,9 @@ float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 
         color += tex.SampleLevel( samp, float2( tc2.x, tc3.y ), 0 ) * w;
         sum += w;
 
-        // TODO: ensure that the data is positive, but keep in mind that YCoCg is [-0.5; 0.5] for chroma... currently, results can be negative...
-        return color * STL::Math::PositiveRcp( sum );
+        color *= STL::Math::PositiveRcp( sum );
+
+        return color; // Can return negative values due to negative lobes! Additionally. YCoCg can have negative chroma!
     #else
         return tex.SampleLevel( samp, samplePos * invTextureSize, 0 );
     #endif

@@ -75,12 +75,11 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float3 centerPos = STL::Geometry::ReconstructViewPosition( sampleUv, gFrustum, centerZ, gIsOrtho );
     float4 finalA = gIn_SignalA[ pixelPos ];
     float centerNormHitDist = finalA.w;
-    centerZ = abs( centerZ );
 
     // Blur radius
     float hitDist = GetHitDistance( finalA.w, centerZ, gScalingParams );
     float radius = GetBlurRadius( gBlurRadius, 1.0, hitDist, centerPos, nonLinearAccumSpeed );
-    float worldRadius = radius * gUnproject * lerp( centerZ, 1.0, abs( gIsOrtho ) );
+    float worldRadius = PixelRadiusToWorld( radius, centerZ, gUnproject, gIsOrtho );
 
     // Tangent basis
     float3 Tv, Bv;
@@ -99,7 +98,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float sum = 1.0;
 
     float geometryWeightParams = GetGeometryWeightParams( gMetersToUnits, centerZ );
-    float2 normalWeightParams = GetNormalWeightParams( false, 1.0, internalData.z, normAccumSpeed );
+    float2 normalWeightParams = GetNormalWeightParams( 1.0, internalData.z, normAccumSpeed );
 
     DIFF_UNROLL
     for( uint s = 0; s < DIFF_POISSON_SAMPLE_NUM; s++ )

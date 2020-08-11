@@ -22,8 +22,9 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_InternalData, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_SpecHit, t, 1, 0 ); // mips 1-4, mip = 0 actually samples from mip#1!
-NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 ); // mips 0-4
+NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_SpecHit, t, 2, 0 ); // mips 1-4, mip = 0 actually samples from mip#1!
+NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 3, 0 ); // mips 0-4
 
 // Outputs
 NRI_RESOURCE( RWTexture2D<float4>, gOut_SpecHit, u, 0, 0 );
@@ -76,11 +77,11 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     }
     #endif
 
+    float roughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] ).w;
     float4 pack = gIn_InternalData[ pixelPos ];
-    float4 internalData = UnpackSpecInternalData( pack );
+    float3 internalData = UnpackSpecInternalData( pack, roughness );
     float normAccumSpeed = saturate( internalData.z * STL::Math::PositiveRcp( internalData.y * HISTORY_FIX_FRAME_NUM_PERCENTAGE ) ); // .x instead of .z can't be used here due to adaptive number of accumulated frames
-    float modifiedRoughness = internalData.w;
-    float realMipLevelf = GetMipLevel( normAccumSpeed, internalData.z, modifiedRoughness );
+    float realMipLevelf = GetMipLevel( normAccumSpeed, internalData.z, roughness );
     uint realMipLevel = uint( realMipLevelf );
 
     [branch]

@@ -386,7 +386,7 @@ float3 GetRealMip( uint textureIndex, float mip )
     float3 mips;
     mips.x = min( realMip, mipNum - 7.0 );
     mips.y = realMip;
-    mips.z = mips.y - 0.5 * gTaa;
+    mips.z = mips.y + gMipBias;
 
     return max( mips, 0.0 ) * gUseMipmapping;
 }

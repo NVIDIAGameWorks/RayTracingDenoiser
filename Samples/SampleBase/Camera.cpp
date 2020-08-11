@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "Camera.h"
 
-void Camera::Initialize(const float3& position, const float3& lookAt, bool isRelative, bool isLeftHanded)
+void Camera::Initialize(const float3& position, const float3& lookAt, bool isRelative)
 {
     float3 dir = Normalize(lookAt - position);
 
@@ -21,9 +21,7 @@ void Camera::Initialize(const float3& position, const float3& lookAt, bool isRel
 
     m_GlobalPosition = ToDouble(position);
     m_Rotation = RadToDeg(rot);
-
     m_IsRelative = isRelative;
-    m_IsLeftHanded = isLeftHanded;
 }
 
 void Camera::Update(const CameraDesc& desc, uint32_t frameIndex)
@@ -34,7 +32,7 @@ void Camera::Update(const CameraDesc& desc, uint32_t frameIndex)
     float timeScale = 0.06f * Pow( m_Timer.GetSmoothedElapsedTime(), 0.75f );
 
     uint32_t projFlags = desc.isProjectionReversed ? PROJ_REVERSED_Z : 0;
-    projFlags |= m_IsLeftHanded ? PROJ_LEFT_HANDED : 0;
+    projFlags |= desc.isLeftHanded ? PROJ_LEFT_HANDED : 0;
 
     // Previous state
     m_WorldToViewPrev = m_WorldToView;
@@ -50,7 +48,7 @@ void Camera::Update(const CameraDesc& desc, uint32_t frameIndex)
 
     float linearSpeed = 5.0f * timeScale;
     float3 delta = desc.dLocal * linearSpeed;
-    delta.z *= m_IsLeftHanded ? 1.0f : -1.0f;
+    delta.z *= desc.isLeftHanded ? 1.0f : -1.0f;
 
     m_GlobalPosition += ToDouble(vRight * delta.x);
     m_GlobalPosition += ToDouble(vUp * delta.y);

@@ -32,7 +32,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float3 gSunDirection;
     float gExposure;
     float3 gWorldOrigin;
-    float gTaa;
+    float gMipBias;
     float3 gTrimmingParams;
     float gEmissionIntensity;
     float2 gScreenSize;

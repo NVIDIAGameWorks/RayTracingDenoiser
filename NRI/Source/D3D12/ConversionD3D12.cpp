@@ -108,8 +108,7 @@ D3D12_RESOURCE_FLAGS GetBufferFlags(BufferUsageBits bufferUsageMask)
 {
     D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
 
-    if (bufferUsageMask & BufferUsageBits::SHADER_RESOURCE_STORAGE ||
-        bufferUsageMask & BufferUsageBits::RAY_TRACING_SCRATCH_BUFFER)
+    if (bufferUsageMask & BufferUsageBits::SHADER_RESOURCE_STORAGE)
         flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
     return flags;

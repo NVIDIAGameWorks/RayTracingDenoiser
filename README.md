@@ -1,4 +1,4 @@
-# NVIDIA Ray Tracing Denoiser v1.6.5
+# NVIDIA Ray Tracing Denoiser v1.7.2
 
 ## Quick Start Guide
 
@@ -20,8 +20,9 @@ Any DXR enabled GPU. NVIDIA DXR enabled GPUs:
 - GTX 1080 Ti, 1080, 1070, 1060 with at least 6GB of memory
 
 ### How to Compile and Run
+- Install latest Vulkan SDK
 - Run ``Deploy.bat``
-- Install required Windows and Vulkan SDKs (you will be prompted)
+- Install required Windows SDK (you will be prompted)
 - Open ```_Compiler\vs2017\SANDBOX.sln```
 - Rebuild the solution
 - It's recommended to install Smart Command Line Arguments Extension for Visual Studio https://marketplace.visualstudio.com/items?itemName=MBulli.SmartCommandlineArguments

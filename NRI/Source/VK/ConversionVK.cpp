@@ -50,3 +50,17 @@ TextureType GetTextureTypeVK(uint32_t vkImageType)
 {
     return GetTextureType((VkImageType)vkImageType);
 }
+
+QueryType GetQueryTypeVK(uint32_t queryTypeVK)
+{
+    if (queryTypeVK == VK_QUERY_TYPE_OCCLUSION)
+        return QueryType::OCCLUSION;
+
+    if (queryTypeVK == VK_QUERY_TYPE_PIPELINE_STATISTICS)
+        return QueryType::PIPELINE_STATISTICS;
+
+    if (queryTypeVK == VK_QUERY_TYPE_TIMESTAMP)
+        return QueryType::TIMESTAMP;
+
+    return QueryType::MAX_NUM;
+}

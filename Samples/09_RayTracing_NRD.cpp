@@ -170,7 +170,7 @@ struct GlobalConstantBufferData
     float4x4 gWorldToClip;
     float4 gCameraFrustum;
     float4 gSunDirection_gExposure;
-    float4 gWorldOrigin_gTaa;
+    float4 gWorldOrigin_gMipBias;
     float4 gTrimmingParams_gEmissionIntensity;
     float2 gScreenSize;
     float2 gInvScreenSize;
@@ -590,7 +590,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs);
     NRI_ABORT_ON_FALSE( m_NRD.Initialize(*m_Device, NRI, denoiserCreationDesc, false) );
 
-    m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, CAMERA_RELATIVE, CAMERA_LEFT_HANDED);
+    m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, CAMERA_RELATIVE);
     m_Scene.UnloadResources();
 
     return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, m_OutputResolution.x, m_OutputResolution.y, BUFFERED_FRAME_MAX_NUM, swapChainFormat);
@@ -639,7 +639,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
         ImGui::SetNextWindowSize(ImVec2(0.0f, 0.0f));
         ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize);
         {
-            float avgFrameTime = m_Timer.GetSmoothedElapsedTime();
+            float avgFrameTime = m_Timer.GetVerySmoothedElapsedTime();
             char avg[64];
             sprintf_s(avg, "%.1f FPS (%.2f ms)", 1000.0f / avgFrameTime, avgFrameTime);
 
@@ -952,6 +952,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                                     fclose(fp);
 
                                     lastSelected = i + 1;
+
+                                    m_Settings.debug = 0.0f; // reset to default to avoid potential confusion
                                 }
                             }
                         }
@@ -1021,6 +1023,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
     desc.nearZ = NEAR_Z / m_Settings.unitsToMetersMultiplier;
     desc.farZ = 1000.0f / m_Settings.unitsToMetersMultiplier;
     desc.isCustomMatrixSet = m_Settings.animateCamera;
+    desc.isLeftHanded = CAMERA_LEFT_HANDED;
     GetCameraDescFromInputDevices(desc);
 
     const float animationSpeed = m_Settings.pauseAnimation ? 0.0f : (m_Settings.animationSpeed < 0.0f ? 1.0f / (1.0f + Abs(m_Settings.animationSpeed)) : (1.0f + m_Settings.animationSpeed));
@@ -1245,7 +1248,7 @@ void Sample::CreateResources(nri::Format swapChainFormat)
 
     // nri::MemoryLocation::HOST_UPLOAD
     CreateBuffer(descriptorDescs, "Buffer::GlobalConstants", m_ConstantBufferSize * BUFFERED_FRAME_MAX_NUM, 1, nri::BufferUsageBits::CONSTANT_BUFFER);
-    CreateBuffer(descriptorDescs, "Buffer::TlasDataStaging", (m_Scene.instances.size() + ANIMATED_INSTANCE_MAX_NUM) * sizeof(nri::GeometryObjectInstance) * BUFFERED_FRAME_MAX_NUM, 1, nri::BufferUsageBits::NONE);
+    CreateBuffer(descriptorDescs, "Buffer::TlasDataStaging", (m_Scene.instances.size() + ANIMATED_INSTANCE_MAX_NUM) * sizeof(nri::GeometryObjectInstance) * BUFFERED_FRAME_MAX_NUM, 1, nri::BufferUsageBits::RAY_TRACING_SCRATCH_BUFFER);
     CreateBuffer(descriptorDescs, "Buffer::InstanceDataStaging", instanceDataSize * BUFFERED_FRAME_MAX_NUM, 1, nri::BufferUsageBits::NONE);
 
     // nri::MemoryLocation::DEVICE
@@ -2157,8 +2160,8 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gCameraFrustum = m_Camera.m_Frustum;
         data->gSunDirection_gExposure = sunDirection;
         data->gSunDirection_gExposure.w = m_Settings.exposure;
-        data->gWorldOrigin_gTaa = ToFloat( m_Camera.m_GlobalPosition );
-        data->gWorldOrigin_gTaa.w = m_Settings.temporal ? 1.0f : 0.0f;
+        data->gWorldOrigin_gMipBias = ToFloat( m_Camera.m_GlobalPosition );
+        data->gWorldOrigin_gMipBias.w = m_Settings.temporal ? -0.5f : 0.0f;
         data->gTrimmingParams_gEmissionIntensity = GetTrimmingParams();
         data->gTrimmingParams_gEmissionIntensity.w = emissionIntensity;
         data->gScreenSize = screenSize;
@@ -2454,7 +2457,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         diffuseSettings.disocclusionThreshold = m_Settings.disocclusionThreshold * 0.01f;
         diffuseSettings.denoisingRadius = m_Settings.diffDenoisingRadius;
         diffuseSettings.maxAdaptiveRadiusScale = m_Settings.diffAdaptiveRadiusScale;
-        diffuseSettings.checkerboard = m_Settings.checkerboard;
+        diffuseSettings.checkerboardMode = m_Settings.checkerboard ? nrd::CheckerboardMode::NO_DATA_BLACK : nrd::CheckerboardMode::OFF;
         m_NRD.SetMethodSettings(nrd::Method::DIFFUSE, &diffuseSettings);
 
         const float3 trimmingParams = GetTrimmingParams();
@@ -2468,7 +2471,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         specularSettings.denoisingRadius = m_Settings.specDenoisingRadius;
         specularSettings.minAdaptiveRadiusScale = m_Settings.specAdaptiveRadiusScale;
         specularSettings.anisotropicFiltering = m_Settings.specularAnisotropicFiltering;
-        specularSettings.checkerboard = m_Settings.checkerboard;
+        specularSettings.checkerboardMode = m_Settings.checkerboard ? nrd::CheckerboardMode::NO_DATA_WHITE : nrd::CheckerboardMode::OFF;
         m_NRD.SetMethodSettings(nrd::Method::SPECULAR, &specularSettings);
 
         nrd::ShadowSettings shadowSettings = {};

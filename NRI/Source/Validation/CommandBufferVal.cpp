@@ -486,6 +486,11 @@ void CommandBufferVal::BeginQuery(const QueryPool& queryPool, uint32_t offset)
     RETURN_ON_FAILURE(m_Device.GetLog(), m_IsRecordingStarted, ReturnVoid(),
         "Can't begin query: the command buffer must be in the recording state.");
 
+    const QueryPoolVal& queryPoolVal = (const QueryPoolVal&)queryPool;
+
+    RETURN_ON_FAILURE(m_Device.GetLog(), queryPoolVal.GetQueryType() != QueryType::TIMESTAMP, ReturnVoid(),
+        "Can't begin query: BeginQuery() is not supported for timestamp queries.");
+
     QueryPool* queryPoolImpl = NRI_GET_IMPL(QueryPool, &queryPool);
 
     m_CoreAPI.CmdBeginQuery(m_ImplObject, *queryPoolImpl, offset);

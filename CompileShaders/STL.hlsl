@@ -12,7 +12,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define STL_H
 
 #define STL_VERSION_MAJOR 1
-#define STL_VERSION_MINOR 0
+#define STL_VERSION_MINOR 1
+
+/*
+Changelog:
+v1.1
+- removed bicubic filter
+- added Catmull-Rom filter with custom weights
+- removed "STL::" inside the namespace
+*/
 
 // Settings
 #define STL_SIGN_DEFAULT            STL_SIGN_FAST
@@ -956,10 +964,9 @@ namespace STL
             return mip; // Yes, no clamping to 0 here!
         }
 
-        // Nearest filter
+        // Nearest filter (for nearest sampling)
         struct Nearest
         {
-            // USAGE: linear sampling is not needed
             float2 origin;
         };
 
@@ -973,10 +980,9 @@ namespace STL
             return result;
         }
 
-        // Bilinear filter
+        // Bilinear filter (for nearest sampling)
         struct Bilinear
         {
-            // USAGE: linear sampling is not needed
             float2 origin;
             float2 weights;
         };
@@ -1006,7 +1012,6 @@ namespace STL
 
         float4 GetBilinearCustomWeights( Bilinear f, float4 customWeights )
         {
-            // TODO: should be implemented in HW!
             float2 oneMinusWeights = 1.0 - f.weights;
 
             float4 weights = customWeights;
@@ -1026,60 +1031,107 @@ namespace STL
         float4 ApplyBilinearCustomWeights( float4 s00, float4 s10, float4 s01, float4 s11, float4 w, compiletime const bool normalize = true )
         { return _ApplyBilinearCustomWeights( s00, s10, s01, s11, w, normalize ); }
 
-        // Bicubic filter
-        struct Bicubic
+        // Catmull-Rom (for nearest sampling)
+        struct CatmullRom
         {
-            // USAGE: linear sampling is needed!
-            float4 uv_10_00;
-            float4 uv_11_01;
-            float2 weights;
+            float2 origin;
+            float2 weights[4];
         };
 
-        Bicubic GetBicubicFilter( float2 uv, float2 texSize )
+        CatmullRom GetCatmullRomFilter( float2 uv, float2 texSize )
         {
-            const float4 c1 = float4(  3.0,  0.0,  1.0, 4.0 );
-            const float4 c2 = float4( -1.0,  3.0, -3.0, 1.0 );
-            const float4 c3 = float4(  3.0, -6.0, -3.0, 0.0 );
-            const float k = 1.0 / 6.0;
+            float2 tci = uv * texSize;
+            float2 tc = floor( tci - 0.5 ) + 0.5;
+            float2 f = tci - tc;
 
-            float4 dxdy = -c1.zyyz / texSize.xyxy;
-
-            float2 f = frac( uv.xy * texSize - 0.5 );
-            float2 f2 = f * f;
-            float2 f3 = f2 * f;
-
-            float3 xw, yw;
-            float4 phi;
-
-            phi = k * ( c2.xyzw * f3.xxxx + c3.xyxw * f2.xxxx + c3.zwxw * f.xxxx + c1.zwzy );
-            xw.xy = c2.ww + c2.wx * f.xx + c2.xw * phi.yw / ( phi.xz + phi.yw );
-            xw.z = phi.x + phi.y;
-
-            phi = k * ( c2.xyzw * f3.yyyy + c3.xyxw * f2.yyyy + c3.zwxw * f.yyyy + c1.zwzy );
-            yw.xy = c2.ww + c2.wx * f.yy + c2.xw * phi.yw / ( phi.xz + phi.yw );
-            yw.z = phi.x + phi.y;
-
-            float4 t = uv.xyxy + c2.wwxx * xw.xxyy * dxdy.xyxy;
-
-            Bicubic result;
-            result.uv_11_01 = t + yw.xxxx * dxdy.zwzw;
-            result.uv_10_00 = t - yw.yyyy * dxdy.zwzw;
-            result.weights = float2( yw.z, xw.z );
+            CatmullRom result;
+            result.origin = tc - 1.5;
+            result.weights[ 0 ] = f * ( -0.5 + f * ( 1.0 - 0.5 * f ) );
+            result.weights[ 1 ] = 1.0 + f * f * ( -2.5 + 1.5 * f );
+            result.weights[ 2 ] = f * ( 0.5 + f * ( 2.0 - 1.5 *f ) );
+            result.weights[ 3 ] = f * f * ( -0.5 + 0.5 * f );
 
             return result;
         }
 
-        float ApplyBicubicFilter( float s00, float s10, float s01, float s11, Bicubic f )
-        { return lerp( lerp( s00, s01, f.weights.x ), lerp( s10, s11, f.weights.x ), f.weights.y ); }
+        float4 ApplyCatmullRomFilterWithCustomWeights( CatmullRom filter, float4 s00, float4 s10, float4 s20, float4 s30, float4 s01, float4 s11, float4 s21, float4 s31, float4 s02, float4 s12, float4 s22, float4 s32, float4 s03, float4 s13, float4 s23, float4 s33, float4 w0, float4 w1, float4 w2, float4 w3 )
+        {
+            /*
+            s00 * w0.x   s10 * w0.y   s20 * w1.x   s30 * w1.y
+            s01 * w0.z   s11 * w0.w   s21 * w1.z   s31 * w1.w
+            s02 * w2.x   s12 * w2.y   s22 * w3.x   s32 * w3.y
+            s03 * w2.z   s13 * w2.w   s23 * w3.z   s33 * w3.w
+            */
 
-        float2 ApplyBicubicFilter( float2 s00, float2 s10, float2 s01, float2 s11, Bicubic f )
-        { return lerp( lerp( s00, s01, f.weights.x ), lerp( s10, s11, f.weights.x ), f.weights.y ); }
+            float w = w0.x * filter.weights[ 0 ].x * filter.weights[ 0 ].y;
+            float4 color = s00 * w;
+            float sum = w;
 
-        float3 ApplyBicubicFilter( float3 s00, float3 s10, float3 s01, float3 s11, Bicubic f )
-        { return lerp( lerp( s00, s01, f.weights.x ), lerp( s10, s11, f.weights.x ), f.weights.y ); }
+            w = w0.y * filter.weights[ 1 ].x * filter.weights[ 0 ].y;
+            color += s10 * w;
+            sum += w;
 
-        float4 ApplyBicubicFilter( float4 s00, float4 s10, float4 s01, float4 s11, Bicubic f )
-        { return lerp( lerp( s00, s01, f.weights.x ), lerp( s10, s11, f.weights.x ), f.weights.y ); }
+            w = w1.x * filter.weights[ 2 ].x * filter.weights[ 0 ].y;
+            color += s20 * w;
+            sum += w;
+
+            w = w1.y * filter.weights[ 3 ].x * filter.weights[ 0 ].y;
+            color += s30 * w;
+            sum += w;
+
+
+            w = w0.z * filter.weights[ 0 ].x * filter.weights[ 1 ].y;
+            color += s01 * w;
+            sum += w;
+
+            w = w0.w * filter.weights[ 1 ].x * filter.weights[ 1 ].y;
+            color += s11 * w;
+            sum += w;
+
+            w = w1.z * filter.weights[ 2 ].x * filter.weights[ 1 ].y;
+            color += s21 * w;
+            sum += w;
+
+            w = w1.w * filter.weights[ 3 ].x * filter.weights[ 1 ].y;
+            color += s31 * w;
+            sum += w;
+
+
+            w = w2.x * filter.weights[ 0 ].x * filter.weights[ 2 ].y;
+            color += s02 * w;
+            sum += w;
+
+            w = w2.y * filter.weights[ 1 ].x * filter.weights[ 2 ].y;
+            color += s12 * w;
+            sum += w;
+
+            w = w3.x * filter.weights[ 2 ].x * filter.weights[ 2 ].y;
+            color += s22 * w;
+            sum += w;
+
+            w = w3.y * filter.weights[ 3 ].x * filter.weights[ 2 ].y;
+            color += s32 * w;
+            sum += w;
+
+
+            w = w2.z * filter.weights[ 0 ].x * filter.weights[ 3 ].y;
+            color += s03 * w;
+            sum += w;
+
+            w = w2.w * filter.weights[ 1 ].x * filter.weights[ 3 ].y;
+            color += s13 * w;
+            sum += w;
+
+            w = w3.z * filter.weights[ 2 ].x * filter.weights[ 3 ].y;
+            color += s23 * w;
+            sum += w;
+
+            w = w3.w * filter.weights[ 3 ].x * filter.weights[ 3 ].y;
+            color += s33 * w;
+            sum += w;
+
+            return color * Math::PositiveRcp( sum );
+        }
 
         // Blur 1D
         // offsets = { -offsets.xy, offsets.zw, 0, offsets.xy, offsets.zw };
@@ -1769,7 +1821,7 @@ namespace STL
 
         float3 ExtractDirection( SH1 sh )
         {
-            return sh.c1 * STL::Math::Rsqrt( STL::Math::LengthSquared( sh.c1 ) );
+            return sh.c1 * Math::Rsqrt( Math::LengthSquared( sh.c1 ) );
         }
 
         // https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf

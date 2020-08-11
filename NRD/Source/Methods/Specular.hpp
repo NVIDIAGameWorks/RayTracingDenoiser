@@ -94,6 +94,7 @@ size_t DenoiserImpl::AddMethod_Specular(uint32_t w, uint32_t h)
     PushPass("Specular history fix");
     {
         PushInput( AsUint(Transient::INTERNAL_DATA) );
+        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::ACCUMULATED), 1, 4 );
         PushInput( AsUint(Transient::SCALED_VIEWZ), 0, 5 );
 
@@ -172,9 +173,8 @@ void DenoiserImpl::UpdateMethod_Specular(const MethodData& methodData)
     float maxAccumulatedFrameNum = float( Min(settings.maxAccumulatedFrameNum, MAX_HISTORY_FRAME_NUM) );
     float denoisingRadius = settings.denoisingRadius;
     float unproject = 1.0f / ( 0.5f * w * m_Project );
-    float frameTime = Max(m_Timer.GetSmoothedElapsedTime(), 1.0f) * 0.001f;
-    float invFrameTime = 1.0f / frameTime;
     float disocclusionThreshold = settings.disocclusionThreshold;
+    uint32_t remappedCheckerboard = ( uint32_t(settings.checkerboardMode) + 2 ) % 3;
     bool useAntilag = !m_CommonSettings.forceReferenceAccumulation && settings.antilagSettings.enable;
 
     if (m_CommonSettings.forceReferenceAccumulation)
@@ -200,7 +200,7 @@ void DenoiserImpl::UpdateMethod_Specular(const MethodData& methodData)
     AddFloat(data, m_CommonSettings.denoisingRange);
     AddFloat(data, unproject);
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, settings.checkerboard ? 1 : 0);
+    AddUint(data, remappedCheckerboard);
     AddUint(data, settings.anisotropicFiltering ? 1 : 0);
     AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
@@ -222,9 +222,9 @@ void DenoiserImpl::UpdateMethod_Specular(const MethodData& methodData)
     AddFloat(data, m_IsOrthoPrev);
     AddFloat(data, disocclusionThreshold);
     AddFloat(data, float(maxAccumulatedFrameNum));
-    AddFloat(data, invFrameTime);
+    AddFloat(data, m_CommonSettings.forceReferenceAccumulation ? 1.0f : 0.0f);
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, settings.checkerboard ? 1 : 0);
+    AddUint(data, remappedCheckerboard);
     AddUint(data, m_CommonSettings.worldSpaceMotion ? 1 : 0);
     AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);

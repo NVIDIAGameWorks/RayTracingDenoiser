@@ -140,8 +140,8 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float4 diffB = gIn_DiffB[ pixelPos ];
 
     #if( CHECKERBOARD_SUPPORT == 1 )
-        bool isDiffuse = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex ) != 0;
-        if ( gCheckerboard != 0 && !isDiffuse )
+        bool isNoData = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex ) == gCheckerboard;
+        if ( gCheckerboard != CHECKERBOARD_OFF && isNoData )
         {
             int3 pixelPosLR = int3( pixelPos.x - 1, pixelPos.x + 1, pixelPos.y );
 

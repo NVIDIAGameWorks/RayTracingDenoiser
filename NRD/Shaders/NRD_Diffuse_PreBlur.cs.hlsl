@@ -65,7 +65,6 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float3 centerPos = STL::Geometry::ReconstructViewPosition( sampleUv, gFrustum, centerZ, gIsOrtho );
     float4 finalA = gIn_SignalA[ pixelPos ];
     float centerNormHitDist = finalA.w;
-    centerZ = abs( centerZ );
 
     // Normal
     float4 normalAndRoughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
@@ -75,7 +74,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     // Blur radius
     float hitDist = GetHitDistance( finalA.w, centerZ, gScalingParams );
     float radius = DIFF_PRE_BLUR_RADIUS_SCALE * GetBlurRadius( gBlurRadius, 1.0, hitDist, centerPos, 1.0 );
-    float worldRadius = radius * gUnproject * lerp( centerZ, 1.0, abs( gIsOrtho ) );
+    float worldRadius = PixelRadiusToWorld( radius, centerZ, gUnproject, gIsOrtho );
 
     // Tangent basis
     float3 Tv, Bv;
@@ -94,7 +93,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float sum = 1.0;
 
     float geometryWeightParams = GetGeometryWeightParams( gMetersToUnits, centerZ );
-    float2 normalWeightParams = GetNormalWeightParams( false, 1.0 );
+    float2 normalWeightParams = GetNormalWeightParams( 1.0 );
 
     float checkerboardOffset = ( gFrameIndex & 0x1 ) == 0 ? -gInvScreenSize.x : gInvScreenSize.x;
 
@@ -107,11 +106,11 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
         // Checkerboard handling - needed only in passes before temporal accumulation since signal reconstruction is there
         #if( CHECKERBOARD_SUPPORT == 1 )
-            if( gCheckerboard != 0 && all( saturate( uv ) == uv ) )
+            if( gCheckerboard != CHECKERBOARD_OFF && all( saturate( uv ) == uv ) )
             {
                 uint2 pos = uint2( STL::Filtering::GetNearestFilter( uv, gScreenSize ).origin );
-                bool isNotDiffuse = STL::Sequence::CheckerBoard( pos, gFrameIndex ) == 0;
-                uv.x += checkerboardOffset * float( isNotDiffuse );
+                bool isNoData = STL::Sequence::CheckerBoard( pos, gFrameIndex ) == gCheckerboard;
+                uv.x += checkerboardOffset * float( isNoData );
                 checkerboardOffset = -checkerboardOffset;
             }
         #endif

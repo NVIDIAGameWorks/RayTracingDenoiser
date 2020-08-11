@@ -60,11 +60,10 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
     float4 finalB = gIn_SignalB[ pixelPos ];
     float centerZ = finalB.w / NRD_FP16_VIEWZ_SCALE;
-    centerZ = abs( centerZ );
 
     // Early out
     [branch]
-    if ( centerZ > gInf )
+    if ( abs( centerZ ) > gInf )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_SignalA[ pixelPos ] = 0;
@@ -102,7 +101,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     error *= 1.0 - nonLinearAccumSpeed;
     radius *= gBlurRadiusScale * error;
 
-    float worldRadius = radius * gUnproject * lerp( centerZ, 1.0, abs( gIsOrtho ) );
+    float worldRadius = PixelRadiusToWorld( radius, centerZ, gUnproject, gIsOrtho );
 
     // Tangent basis
     float3 Tv, Bv;
@@ -121,7 +120,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float sum = 1.0;
 
     float geometryWeightParams = GetGeometryWeightParams( gMetersToUnits, centerZ );
-    float2 normalWeightParams = GetNormalWeightParams( false, 1.0, internalData.z, normAccumSpeed );
+    float2 normalWeightParams = GetNormalWeightParams( 1.0, internalData.z, normAccumSpeed );
 
     DIFF_UNROLL
     for( uint s = 0; s < DIFF_POISSON_SAMPLE_NUM; s++ )

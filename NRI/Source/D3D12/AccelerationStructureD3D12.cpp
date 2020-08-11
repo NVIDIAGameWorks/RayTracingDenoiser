@@ -51,7 +51,7 @@ Result AccelerationStructureD3D12::Create(const AccelerationStructureDesc& accel
 
     BufferDesc bufferDesc = {};
     bufferDesc.size = m_PrebuildInfo.ResultDataMaxSizeInBytes;
-    bufferDesc.usageMask = BufferUsageBits::RAY_TRACING_SCRATCH_BUFFER;
+    bufferDesc.usageMask = BufferUsageBits::SHADER_RESOURCE_STORAGE;
 
     m_Buffer = Allocate<BufferD3D12>(m_Device.GetStdAllocator(), m_Device);
     Result result = m_Buffer->Create(bufferDesc);

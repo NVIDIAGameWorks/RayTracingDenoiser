@@ -34,13 +34,11 @@ void Timer::UpdateElapsedTimeSinceLastSave()
 
     m_Delta = float(ms);
 
-    float relativeDelta = Abs(m_Delta - m_SmoothedDelta) / m_Delta;
+    float relativeDelta = Abs(m_Delta - m_SmoothedDelta) / ( Min( m_Delta, m_SmoothedDelta ) + 1e-7f );
+    float f = relativeDelta / ( 1.0f + relativeDelta );
 
-    float f1 = Clamp( relativeDelta, 1.0f / 30.0f, 1.0f );
-    m_SmoothedDelta = Lerp(m_SmoothedDelta, m_Delta, f1);
-
-    float f2 = Clamp( relativeDelta, 1.0f / 120.0f, 1.0f );
-    m_VerySmoothedDelta = Lerp(m_VerySmoothedDelta, m_Delta, f2);
+    m_SmoothedDelta = Lerp(m_SmoothedDelta, m_Delta, Max( f, 1.0f / 32.0f ));
+    m_VerySmoothedDelta = Lerp(m_VerySmoothedDelta, m_Delta, Max( f, 1.0f / 64.0f ));
 }
 
 void Timer::SaveCurrentTime()

@@ -62,7 +62,7 @@ Result DeviceD3D12::Create(const DeviceCreationD3D12Desc& deviceCreationDesc)
     m_Device = (ID3D12Device*)deviceCreationDesc.d3d12Device;
     if (SUCCEEDED(m_Device->QueryInterface(IID_PPV_ARGS(&m_Device5))))
         m_IsRaytracingSupported = true;
-    
+
     if (deviceCreationDesc.d3d12GraphicsQueue)
         CreateCommandQueue((ID3D12CommandQueue*)deviceCreationDesc.d3d12GraphicsQueue, m_CommandQueues[(uint32_t)CommandQueueType::GRAPHICS]);
     if (deviceCreationDesc.d3d12ComputeQueue)
@@ -160,7 +160,7 @@ inline void DeviceD3D12::DestroyAccelerationStructure(AccelerationStructure& acc
 
 Result DeviceD3D12::CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t descriptorNum)
 {
-    HeapIndexType heapIndex = (HeapIndexType)m_DescriptorHeaps.size();
+    size_t heapIndex = m_DescriptorHeaps.size();
     if (heapIndex >= DESCRIPTOR_HEAP_NUM_MAX)
         return Result::OUT_OF_MEMORY;
 
@@ -181,7 +181,7 @@ Result DeviceD3D12::CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32
     m_DescriptorHeaps.push_back(descriptorHeapDesc);
 
     for (HeapOffsetType i = 0; i < DESCRIPTORS_BATCH_SIZE; i++)
-        m_DescriptorPool[type].push_back({ heapIndex, i });
+        m_DescriptorPool[type].push_back( {(HeapIndexType)heapIndex, i} );
 
     return Result::SUCCESS;
 }
