@@ -131,9 +131,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueueGraphics) );
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::COMPUTE, m_CommandQueueCompute) );
 
-    uint32_t windowWidth = GetWindowWidth();
-    uint32_t windowHeight = GetWindowHeight();
-
     // Swap chain
     nri::Format swapChainFormat;
     {
@@ -142,8 +139,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         swapChainDesc.commandQueue = m_CommandQueueGraphics;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
         swapChainDesc.verticalSyncInterval = m_SwapInterval;
-        swapChainDesc.width = windowWidth;
-        swapChainDesc.height = windowHeight;
+        swapChainDesc.width = GetWindowWidth();
+        swapChainDesc.height = GetWindowHeight();
         swapChainDesc.textureNum = SWAP_CHAIN_TEXTURE_NUM;
         NRI_ABORT_ON_FAILURE( NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain) );
 
@@ -213,7 +210,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         nri::InputAssemblyDesc inputAssemblyDesc = {};
         inputAssemblyDesc.topology = nri::Topology::TRIANGLE_LIST;
         inputAssemblyDesc.attributes = vertexAttributeDesc;
-        inputAssemblyDesc.attributeNum = helper::GetCountOf(vertexAttributeDesc);
+        inputAssemblyDesc.attributeNum = (uint8_t)helper::GetCountOf(vertexAttributeDesc);
         inputAssemblyDesc.streams = &vertexStreamDesc;
         inputAssemblyDesc.streamNum = 1;
 
@@ -268,7 +265,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
     // Storage texture
     {
-        nri::CTextureDesc textureDesc = nri::CTextureDesc::Texture2D(swapChainFormat, windowWidth / 2, windowHeight, 1, 1,
+        nri::CTextureDesc textureDesc = nri::CTextureDesc::Texture2D(swapChainFormat, GetWindowWidth() / 2, GetWindowHeight(), 1, 1,
             nri::TextureUsageBits::SHADER_RESOURCE_STORAGE);
         NRI_ABORT_ON_FAILURE( NRI.CreateTexture(*m_Device, textureDesc, m_Texture) );
     }
@@ -344,7 +341,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         NRI_ABORT_ON_FAILURE( helper::UploadData(NRI, *m_Device, &textureData, 1, &bufferData, 1) );
     }
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, windowWidth, windowHeight, BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)
@@ -419,7 +416,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         transitionBarriers.textureNum = 1;
         NRI.CmdPipelineBarrier(commandBuffer1, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
 
-        NRI.CmdBeginRenderPass(commandBuffer1, *currentBackBuffer.frameBuffer, nri::FramebufferBindFlag::NONE);
+        NRI.CmdBeginRenderPass(commandBuffer1, *currentBackBuffer.frameBuffer, nri::RenderPassBeginFlag::NONE);
 
         const nri::Viewport viewport = { 0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f };
         const nri::Rect scissorRect = { 0, 0, windowWidth, windowHeight };
@@ -466,11 +463,11 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
         // Copy texture produced by compute to back buffer
         nri::TextureRegionDesc dstRegion = {};
-        dstRegion.offset[0] = windowWidth / 2;
+        dstRegion.offset[0] = (uint16_t)windowWidth / 2;
 
         nri::TextureRegionDesc srcRegion = {};
-        srcRegion.size[0] = windowWidth / 2;
-        srcRegion.size[1] = windowHeight;
+        srcRegion.size[0] = (uint16_t)windowWidth / 2;
+        srcRegion.size[1] = (uint16_t)windowHeight;
         srcRegion.size[2] = 1;
 
         NRI.CmdCopyTexture(commandBuffer2, *currentBackBuffer.texture, 0, &dstRegion, *m_Texture, 0, &srcRegion);
@@ -497,8 +494,6 @@ void Sample::RenderFrame(uint32_t frameIndex)
     nri::WorkSubmissionDesc workSubmissionDesc = {};
     if (m_IsAsyncMode)
     {
-
-        nri::WorkSubmissionDesc workSubmissionDesc = {};
         workSubmissionDesc.commandBufferNum = 1;
         workSubmissionDesc.commandBuffers = &commandBufferArray[0];
         workSubmissionDesc.signalNum = 1;
@@ -526,7 +521,6 @@ void Sample::RenderFrame(uint32_t frameIndex)
     }
     else
     {
-        nri::WorkSubmissionDesc workSubmissionDesc = {};
         workSubmissionDesc.commandBufferNum = helper::GetCountOf(commandBufferArray);
         workSubmissionDesc.commandBuffers = commandBufferArray;
         workSubmissionDesc.waitNum = 1;

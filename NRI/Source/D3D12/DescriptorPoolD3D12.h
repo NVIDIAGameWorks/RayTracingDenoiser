@@ -17,7 +17,7 @@ namespace nri
     struct DeviceD3D12;
     struct DescriptorSetD3D12;
 
-    enum DescriptorHeapType
+    enum DescriptorHeapType : uint32_t
     {
         RESOURCE = 0,
         SAMPLER,
@@ -48,9 +48,9 @@ namespace nri
 
     private:
         DeviceD3D12& m_Device;
-        DescriptorHeapDesc m_DescriptorHeapDescs[DescriptorHeapType::MAX_NUM];
-        uint32_t m_DescriptorNum[DescriptorHeapType::MAX_NUM] = {};
-        ID3D12DescriptorHeap* m_DescriptorHeaps[DescriptorHeapType::MAX_NUM] = {};
+        std::array<DescriptorHeapDesc, DescriptorHeapType::MAX_NUM> m_DescriptorHeapDescs;
+        std::array<uint32_t, DescriptorHeapType::MAX_NUM> m_DescriptorNum = {};
+        std::array<ID3D12DescriptorHeap*, DescriptorHeapType::MAX_NUM> m_DescriptorHeaps = {};
         uint32_t m_DescriptorHeapNum = 0;
         Vector<DescriptorSetD3D12*> m_DescriptorSets;
         uint32_t m_DescriptorSetNum = 0;

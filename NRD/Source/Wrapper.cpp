@@ -16,20 +16,23 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 using namespace nrd;
 
-static const std::array<Method, 3> g_NrdSupportedMethods =
+static const std::array<Method, 5> g_NrdSupportedMethods =
 {
-    Method::DIFFUSE,
-    Method::SPECULAR,
-    Method::SHADOW,
+    Method::NRD_DIFFUSE,
+    Method::NRD_SPECULAR,
+    Method::NRD_SHADOW,
+    Method::NRD_TRANSLUCENT_SHADOW,
+    Method::SVGF,
 };
 
+static_assert( g_NrdSupportedMethods.size() == (uint32_t)Method::MAX_NUM );
 static_assert( VERSION_MAJOR == NRD_VERSION_MAJOR, "VERSION_MAJOR & NRD_VERSION_MAJOR don't match!");
 static_assert( VERSION_MINOR == NRD_VERSION_MINOR, "VERSION_MINOR & NRD_VERSION_MINOR don't match!");
 static_assert( VERSION_BUILD == NRD_VERSION_BUILD, "VERSION_BUILD & NRD_VERSION_BUILD don't match!");
 
 static const LibraryDesc g_NrdLibraryDesc =
 {
-    { 100, 200, 300, 400 }, // TODO: since NRD is compiled via "CompileHLSLToSPIRV" these should match the BAT file!
+    { 100, 200, 300, 400 }, // IMPORTANT: since NRD is compiled via "CompileHLSLToSPIRV" these should match the BAT file!
     g_NrdSupportedMethods.data(),
     (uint32_t)g_NrdSupportedMethods.size(),
     VERSION_MAJOR,
@@ -44,14 +47,21 @@ NRD_API const LibraryDesc& NRD_CALL nrd::GetLibraryDesc()
 
 NRD_API Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser)
 {
-    DenoiserImpl* denoiserImpl = new DenoiserImpl;
+    DenoiserCreationDesc modifiedDenoiserCreationDesc = denoiserCreationDesc;
+    CheckAndSetDefaultAllocator(modifiedDenoiserCreationDesc.memoryAllocatorInterface);
 
-    Result result = denoiserImpl->Create(denoiserCreationDesc);
-    if (result != Result::SUCCESS)
-        delete denoiserImpl;
-    else
-        denoiser = (Denoiser*)denoiserImpl;
+    StdAllocator<uint8_t> memoryAllocator(modifiedDenoiserCreationDesc.memoryAllocatorInterface);
 
+    DenoiserImpl* implementation = Allocate<DenoiserImpl>(memoryAllocator, memoryAllocator);
+    const Result result = implementation->Create(modifiedDenoiserCreationDesc);
+
+    if (result == Result::SUCCESS)
+    {
+        denoiser = (Denoiser*)implementation;
+        return Result::SUCCESS;
+    }
+
+    Deallocate(memoryAllocator, implementation);
     return result;
 }
 
@@ -72,5 +82,6 @@ NRD_API Result NRD_CALL nrd::GetComputeDispatches(Denoiser& denoiser, const Comm
 
 NRD_API void NRD_CALL nrd::DestroyDenoiser(Denoiser& denoiser)
 {
-    delete (DenoiserImpl*)&denoiser;
+    StdAllocator<uint8_t> memoryAllocator = ((DenoiserImpl&)denoiser).GetStdAllocator();
+    Deallocate(memoryAllocator, (DenoiserImpl*)&denoiser);
 }

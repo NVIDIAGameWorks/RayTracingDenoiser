@@ -97,7 +97,7 @@ Result AccelerationStructureVK::RetrieveNativeHandle()
 
 void AccelerationStructureVK::SetDebugName(const char* name)
 {
-    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV, (void**)m_Handles, name);
+    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV, (void**)m_Handles.data(), name);
 }
 
 void AccelerationStructureVK::GetMemoryInfo(MemoryDesc& memoryDesc) const
@@ -150,7 +150,7 @@ void AccelerationStructureVK::GetMemoryInfo(VkAccelerationStructureMemoryRequire
 Result AccelerationStructureVK::CreateDescriptor(uint32_t physicalDeviceMask, Descriptor*& descriptor) const
 {
     DescriptorVK& descriptorImpl = *Allocate<DescriptorVK>(m_Device.GetStdAllocator(), m_Device);
-    descriptorImpl.Create(m_Handles, physicalDeviceMask);
+    descriptorImpl.Create(m_Handles.data(), physicalDeviceMask);
     descriptor = (Descriptor*)&descriptorImpl;
 
     return Result::SUCCESS;

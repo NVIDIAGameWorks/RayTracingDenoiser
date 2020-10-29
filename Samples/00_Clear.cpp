@@ -170,7 +170,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         transitionBarriers.textures = &textureTransitionBarrierDesc;
         NRI.CmdPipelineBarrier(commandBuffer, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
 
-        NRI.CmdBeginRenderPass(commandBuffer, *backBuffer.frameBuffer, nri::FramebufferBindFlag::NONE);
+        NRI.CmdBeginRenderPass(commandBuffer, *backBuffer.frameBuffer, nri::RenderPassBeginFlag::NONE);
         {
             helper::Annotation annotation(NRI, commandBuffer, "Clear");
 

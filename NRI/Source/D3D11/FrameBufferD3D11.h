@@ -22,7 +22,7 @@ namespace nri
         inline DeviceD3D11& GetDevice() const
         { return m_Device; }
 
-        void Bind(VersionedContext& context, FramebufferBindFlag bindFlag) const;
+        void Bind(VersionedContext& context, RenderPassBeginFlag renderPassBeginFlag) const;
         void ClearAttachments(VersionedContext& context, const ClearDesc* clearDescs, uint32_t clearDescNum, const Rect* rects, uint32_t rectNum) const;
 
         //======================================================================================================================

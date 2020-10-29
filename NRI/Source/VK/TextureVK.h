@@ -28,8 +28,8 @@ namespace nri
         VkImageAspectFlags GetImageAspectFlags() const;
         const VkExtent3D& GetExtent() const;
         uint16_t GetSize(uint32_t dim, uint32_t mipOffset = 0) const;
-        uint32_t GetMipNum() const;
-        uint32_t GetArraySize() const;
+        uint16_t GetMipNum() const;
+        uint16_t GetArraySize() const;
         Format GetFormat() const;
         TextureType GetType() const;
         VkSampleCountFlagBits GetSampleCount() const;
@@ -43,11 +43,11 @@ namespace nri
         void GetTextureVK(uint32_t physicalDeviceIndex, TextureVulkanDesc& textureVulkanDesc) const;
 
     private:
-        VkImage m_Handles[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
+        std::array<VkImage, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_Handles = {};
         VkImageAspectFlags m_ImageAspectFlags = (VkImageAspectFlags)0;
         VkExtent3D m_Extent = {};
-        uint32_t m_MipNum = 0;
-        uint32_t m_ArraySize = 0;
+        uint16_t m_MipNum = 0;
+        uint16_t m_ArraySize = 0;
         Format m_Format = nri::Format::UNKNOWN;
         TextureType m_TextureType = (TextureType)0;
         VkSampleCountFlagBits m_SampleCount = (VkSampleCountFlagBits)0;
@@ -87,12 +87,12 @@ namespace nri
         return m_Extent;
     }
 
-    inline uint32_t TextureVK::GetMipNum() const
+    inline uint16_t TextureVK::GetMipNum() const
     {
         return m_MipNum;
     }
 
-    inline uint32_t TextureVK::GetArraySize() const
+    inline uint16_t TextureVK::GetArraySize() const
     {
         return m_ArraySize;
     }

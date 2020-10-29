@@ -10,13 +10,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "09_Resources.hlsl"
 
-NRI_RESOURCE( Texture2D<float>, gIn_ViewZ, t, 0, 1);
-NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 1, 1 );
-NRI_RESOURCE( Texture2D<float3>, gIn_Color, t, 2, 1 );
-NRI_RESOURCE( Texture2D<float3>, gIn_History, t, 3, 1 );
+NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 0, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 1, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_ComposedLighting_ViewZ, t, 2, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_TransparentLighting, t, 3, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_History, t, 4, 1 );
 
-NRI_RESOURCE( RWTexture2D<float3>, gOut_History, u, 4, 1 );
-NRI_RESOURCE( RWTexture2D<unorm float3>, gOut_Color, u, 5, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_History, u, 5, 1 );
 
 #define BORDER 1
 #define GROUP_X 16
@@ -25,12 +25,11 @@ NRI_RESOURCE( RWTexture2D<unorm float3>, gOut_Color, u, 5, 1 );
 #define BUFFER_Y ( GROUP_Y + BORDER * 2 )
 #define RENAMED_GROUP_Y ( ( GROUP_X * GROUP_Y ) / BUFFER_X )
 
-groupshared float3 s_Color[ BUFFER_Y ][ BUFFER_X ];
+groupshared float4 s_Data[ BUFFER_Y ][ BUFFER_X ];
+groupshared float4 s_Normal[ BUFFER_Y ][ BUFFER_X ];
 
-float3 BicubicFilterNoCorners( Texture2D<float3> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const float sharpness )
+float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const float sharpness )
 {
-    #define RGB1(uvx, uvy) float4( tex.SampleLevel( samp, float2( uvx, uvy ), 0 ).xyz, 1.0 )
-
     float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
     float2 f = samplePos - centerPos;
     float2 f2 = f * f;
@@ -43,24 +42,55 @@ float3 BicubicFilterNoCorners( Texture2D<float3> tex, SamplerState samp, float2 
     float2 tc2 = invTextureSize * ( centerPos + w2 * STL::Math::PositiveRcp( wl2 ) );
     float2 tc0 = invTextureSize * ( centerPos - 1.0 );
     float2 tc3 = invTextureSize * ( centerPos + 2.0 );
-    float4 color = RGB1( tc2.x, tc0.y ) * ( wl2.x * w0.y  ) +
-                   RGB1( tc0.x, tc2.y ) * ( w0.x  * wl2.y ) +
-                   RGB1( tc2.x, tc2.y ) * ( wl2.x * wl2.y ) +
-                   RGB1( tc3.x, tc2.y ) * ( w3.x  * wl2.y ) +
-                   RGB1( tc2.x, tc3.y ) * ( wl2.x * w3.y  );
 
-    return color.xyz * STL::Math::PositiveRcp( color.w );
+    float w = wl2.x * w0.y;
+    float4 color = tex.SampleLevel( samp, float2( tc2.x, tc0.y ), 0 ) * w;
+    float sum = w;
 
-    #undef RGB1
+    w = w0.x  * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc0.x, tc2.y ), 0 ) * w;
+    sum += w;
+
+    w = wl2.x * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc2.x, tc2.y ), 0 ) * w;
+    sum += w;
+
+    w = w3.x  * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc3.x, tc2.y ), 0 ) * w;
+    sum += w;
+
+    w = wl2.x * w3.y;
+    color += tex.SampleLevel( samp, float2( tc2.x, tc3.y ), 0 ) * w;
+    sum += w;
+
+    color *= STL::Math::PositiveRcp( sum );
+
+    return color;
+}
+
+float3 ClipAABB( float3 center, float3 extents, float3 prevSample )
+{
+    // note: only clips towards aabb center (but fast!)
+    float3 d = prevSample - center;
+    float3 dn = abs( d * STL::Math::PositiveRcp( extents ) );
+    float maxd = max( dn.x, max( dn.y, dn.z ) );
+    float3 t = center + d / maxd;
+
+    return maxd > 1.0 ? t : prevSample;
 }
 
 void Preload( int2 sharedId, int2 globalId )
 {
-    float3 color = gIn_Color[ globalId ];
-    color = STL::Color::LinearToYCoCg( color.xyz );
+    // TODO: use w = 0 if outside of the screen or use SampleLevel with Clamp sampler
+    float4 color_viewZ = gIn_ComposedLighting_ViewZ[ globalId ];
+    color_viewZ.xyz = ApplyPostLightingComposition( globalId, color_viewZ.xyz, gIn_TransparentLighting );
+    color_viewZ.w /= NRD_FP16_VIEWZ_SCALE;
 
-    s_Color[ sharedId.y ][ sharedId.x ] = color;
+    s_Data[ sharedId.y ][ sharedId.x ] = color_viewZ;
+    s_Normal[ sharedId.y ][ sharedId.x ] = UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] );
 }
+
+#define MOTION_LENGTH_SCALE 16.0
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
@@ -84,10 +114,16 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     GroupMemoryBarrierWithGroupSync( );
 
-    // Calculate color distribution
-    float3 colorMoment1 = 0;
-    float3 colorMoment2 = 0;
-    float3 thisPixelColor = 0;
+    // Neighborhood
+    float3 m1 = 0;
+    float3 m2 = 0;
+    float3 input = 0;
+    float3 maxInput = -INF;
+    float3 minInput = INF;
+
+    float viewZ = s_Data[ threadId.y + BORDER ][threadId.x + BORDER ].w;
+    float viewZnearest = viewZ;
+    int2 offseti = int2( BORDER, BORDER );
 
     [unroll]
     for( int dy = 0; dy <= BORDER * 2; dy++ )
@@ -95,60 +131,115 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         [unroll]
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
-            int2 pos = threadId + int2( dx, dy );
-            float3 color = s_Color[ pos.y ][ pos.x ];
+            int2 t = int2( dx, dy );
+            int2 pos = threadId + t;
+            float4 data = s_Data[ pos.y ][ pos.x ];
 
-            if ( dx == BORDER && dy == BORDER )
-                thisPixelColor = color;
+            if( dx == BORDER && dy == BORDER )
+                input = data.xyz;
+            else
+            {
+                int2 t1 = t - BORDER;
+                if( ( abs( t1.x ) + abs( t1.y ) == 1 ) && abs( data.w ) < abs( viewZnearest ) )
+                {
+                    viewZnearest = data.w;
+                    offseti = t;
+                }
 
-            colorMoment1 += color;
-            colorMoment2 += color * color;
+                maxInput = max( maxInput, data.xyz );
+                minInput = min( minInput, data.xyz );
+            }
+
+            m1 += data.xyz;
+            m2 += data.xyz * data.xyz;
         }
     }
 
-    colorMoment1 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
-    colorMoment2 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
+    m1 /= 9.0;
+    m2 /= 9.0;
 
-    float3 colorVariance = colorMoment2 - colorMoment1 * colorMoment1;
-    float3 colorSigma = sqrt( abs( colorVariance ) );
+    float3 aabbCenter = m1;
+    float3 aabbExtents = sqrt( abs( m2 - m1 * m1 ) );
 
-    // Position
-    float viewZ = gIn_ViewZ[ pixelPos ];
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gCameraFrustum, viewZ, gIsOrtho );
-    float3 X = STL::Geometry::AffineTransform( gViewToWorld, Xv );
+    // Apply RCRS
+    if( pixelUv.x > gSeparator )
+    {
+        input = min( input, maxInput );
+        input = max( input, minInput );
+    }
 
-    // Compute previous pixel position
-    float3 motionVector = gIn_ObjectMotion[ pixelPos ] * ( gWorldSpaceMotion ? 1.0 : gInvScreenSize.xyy );
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, gWorldSpaceMotion );
-    bool isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
+    // Previous pixel position
+    offseti -= BORDER;
+    float2 offset = float2( offseti ) * gInvScreenSize;
+    float3 Xvnearest = STL::Geometry::ReconstructViewPosition( pixelUv + offset, gCameraFrustum, viewZnearest, gIsOrtho );
+    float3 Xnearest = STL::Geometry::AffineTransform( gViewToWorld, Xvnearest );
+    float3 mvNearest = gIn_ObjectMotion[ pixelPos + offseti ] * ( gWorldSpaceMotion ? 1.0 : gInvScreenSize.xyy );
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, gWorldSpaceMotion );
+    pixelUvPrev -= offset;
+
+    // Edge detection
+    float3 Navg = s_Normal[ threadId.y + BORDER + 0 ][threadId.x + BORDER + 0 ].xyz;
+    Navg += s_Normal[ threadId.y + BORDER + 1 ][threadId.x + BORDER + 0 ].xyz;
+    Navg += s_Normal[ threadId.y + BORDER + 0 ][threadId.x + BORDER + 1 ].xyz;
+    Navg += s_Normal[ threadId.y + BORDER + 1 ][threadId.x + BORDER + 1 ].xyz;
+    Navg /= 4.0;
+    float edge = 1.0 - STL::Math::SmoothStep( 0.94, 0.98, length( Navg ) ); // 0.95, 1.0 - more edges
+
+    // History clamping
+    float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
+    float4 t = BicubicFilterNoCorners( gIn_History, gLinearSampler, pixelPosPrev, gInvScreenSize, TAA_HISTORY_SHARPNESS );
+    float3 history = t.xyz;
+    float2 motion = pixelUvPrev - pixelUv;
+    float motionLength = length( motion * gScreenSize );
+    float motionLengthPrev = MOTION_LENGTH_SCALE * t.w;
+    float motionDelta = abs( motionLength - motionLengthPrev );
+    float disocclusion = STL::Math::SmoothStep( 0.0, 1.5, motionDelta );
+
+    if( gWorldSpaceMotion )
+    {
+        float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gCameraFrustum, viewZ, gIsOrtho );
+        float3 X = STL::Geometry::AffineTransform( gViewToWorld, Xv );
+
+        float3 mv = gIn_ObjectMotion[ pixelPos ] * ( gWorldSpaceMotion ? 1.0 : gInvScreenSize.xyy );
+        float3 Xprev = X + mv;
+
+        float3 Xt = Xprev - gCameraDelta;
+        float2 uvt = STL::Geometry::GetScreenUv( gWorldToClip, Xt );
+        float2 parallaxInUv = uvt - pixelUv;
+        float parallaxInPixels = length( parallaxInUv * gScreenSize );
+
+        disocclusion *= STL::Math::SmoothStep( 0.0, 1.5, parallaxInPixels );
+    }
+
+    float scale = 1.0 + edge * 1.03 / ( STL::Math::Pow01( disocclusion, 0.5 ) + 0.03 );
+    float3 historyClamped = ClipAABB( aabbCenter, aabbExtents * scale, history );
 
     // History weight
-    float2 motion = pixelUvPrev - pixelUv;
-    float motionLength = length( motion );
-    float historyWeight = lerp( TAA_MAX_HISTORY_WEIGHT, TAA_MIN_HISTORY_WEIGHT, saturate( motionLength / TAA_MOTION_MAX_REUSE ) );
+    float lc = STL::Color::Luminance( input, STL_LUMINANCE_BT709 );
+    float lh = STL::Color::Luminance( history, STL_LUMINANCE_BT709 );
+    float ls = STL::Color::Luminance( aabbExtents, STL_LUMINANCE_BT709 );
+    float ld = saturate( abs( lc - lh ) - ls ) / ( max( lc, lh ) + ls + 0.01 );
+
+    bool isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
+    float motionAmount = saturate( length( motion ) / TAA_MOTION_MAX_REUSE );
+    float historyWeight = lerp( TAA_MAX_HISTORY_WEIGHT, TAA_MIN_HISTORY_WEIGHT, motionAmount );
+    historyWeight *= lerp( 1.0, 0.5, ld );
     historyWeight *= float( gMipBias != 0.0 && isInScreen );
 
-    // Mix with history
-    float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
-    float3 history = BicubicFilterNoCorners( gIn_History, gLinearSampler, pixelPosPrev, gInvScreenSize, TAA_HISTORY_SHARPNESS ) - float2( 0.0, 0.5 ).xyy; // 10_10_10_2_UNORM
-    float3 colorMin = colorMoment1 - colorSigma;
-    float3 colorMax = colorMoment1 + colorSigma;
-    float3 historyClamped = clamp( history, colorMin, colorMax );
-
-    float3 newHistory = lerp( thisPixelColor, historyClamped, historyWeight );
-    float3 result = STL::Color::YCoCgToLinear( newHistory );
-
     // Dithering
-    STL::Rng::Initialize( pixelPos, gFrameIndex + 567 );
+    STL::Rng::Initialize( pixelPos, gFrameIndex );
     float2 rnd = STL::Rng::GetFloat2( );
-    float amplitude = lerp( 0.2, 0.005, STL::Math::Sqrt01( newHistory.x ) );
+    float luma = STL::Color::Luminance( aabbCenter, STL_LUMINANCE_BT709 );
+    float amplitude = lerp( 0.2, 0.005, STL::Math::Sqrt01( luma ) );
     float2 dither = 1.0 + ( rnd - 0.5 ) * amplitude;
-    result *= dither.x;
-    newHistory *= dither.y;
+    historyClamped *= dither.x;
+
+    // Final mix
+    float3 result = lerp( input, historyClamped, historyWeight );
+    motionLengthPrev = lerp( motionLength, motionLengthPrev, historyWeight );
 
     // Split screen - noisy input / denoised output
-    float3 resultNoAA = STL::Color::YCoCgToLinear( thisPixelColor );
-    result = pixelUv.x < gSeparator ? resultNoAA : result;
+    result = pixelUv.x < gSeparator ? input : result;
 
     // Split screen - vertical line
     float verticalLine = saturate( 1.0 - abs( pixelUv.x - gSeparator ) * gScreenSize.x / 3.5 );
@@ -158,6 +249,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     result = lerp( result, nvColor * verticalLine, verticalLine * float( gSeparator != 0.0 ) );
 
     // Output
-    gOut_Color[ pixelPos ] = result;
-    gOut_History[ pixelPos ] = newHistory + float2( 0.0, 0.5 ).xyy; // 10_10_10_2_UNORM
+    float packedMotionLengthPrev = motionLengthPrev / MOTION_LENGTH_SCALE;
+
+    gOut_History[ pixelPos ] = float4( result, packedMotionLengthPrev );
 }

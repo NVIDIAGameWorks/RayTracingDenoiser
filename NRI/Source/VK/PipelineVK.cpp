@@ -55,7 +55,7 @@ Result PipelineVK::Create(const GraphicsPipelineDesc& graphicsPipelineDesc)
     VkPipelineDynamicStateCreateInfo dynamicState = {};
 
     VkPipelineShaderStageCreateInfo* stages = STACK_ALLOC(VkPipelineShaderStageCreateInfo, graphicsPipelineDesc.shaderStageNum);
-    VkShaderModule* modules = STACK_ALLOC(VkShaderModule, graphicsPipelineDesc.shaderStageNum); 
+    VkShaderModule* modules = STACK_ALLOC(VkShaderModule, graphicsPipelineDesc.shaderStageNum);
     VkShaderModule* modulesBegin = modules;
 
     const InputAssemblyDesc& inputAssembly = *graphicsPipelineDesc.inputAssembly;
@@ -71,9 +71,9 @@ Result PipelineVK::Create(const GraphicsPipelineDesc& graphicsPipelineDesc)
     for (uint32_t i = 0; i < graphicsPipelineDesc.shaderStageNum; i++)
     {
         const ShaderDesc& shaderDesc = graphicsPipelineDesc.shaderStages[i];
-        Result result = SetupShaderStage(stages[i], shaderDesc, modules);
-        if (result != Result::SUCCESS)
-            return result;
+        Result res = SetupShaderStage(stages[i], shaderDesc, modules);
+        if (res != Result::SUCCESS)
+            return res;
 
         stages[i].pName = (shaderDesc.entryPointName == nullptr) ? "main" : shaderDesc.entryPointName;
     }
@@ -490,7 +490,7 @@ void PipelineVK::FillColorBlendState(const GraphicsPipelineDesc& graphicsPipelin
         const ColorAttachmentDesc& attachmentDesc = outputMerger.color[i];
 
         attachments[i] = {
-            attachmentDesc.blendEnabled,
+            VkBool32(attachmentDesc.blendEnabled),
             GetBlendFactor(attachmentDesc.colorBlend.srcFactor),
             GetBlendFactor(attachmentDesc.colorBlend.dstFactor),
             GetBlendOp(attachmentDesc.colorBlend.func),
@@ -560,8 +560,8 @@ Result PipelineVK::CreateRenderPass(const OutputMergerDesc* outputMerger, const 
                 VK_ATTACHMENT_STORE_OP_STORE,
                 VK_ATTACHMENT_LOAD_OP_LOAD,
                 VK_ATTACHMENT_STORE_OP_STORE,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             };
         }
 
@@ -619,10 +619,10 @@ void PipelineVK::FillGroupIndices(const RayTracingPipelineDesc& rayTracingPipeli
     for (uint32_t i = 0; i < rayTracingPipelineDesc.shaderGroupDescNum; i++)
     {
         const ShaderGroupDesc& shaderGroupDesc = rayTracingPipelineDesc.shaderGroupDescs[i];
-        for (uint32_t i = 0; i < GetCountOf(shaderGroupDesc.shaderIndices); i++)
+        for (uint32_t j = 0; i < GetCountOf(shaderGroupDesc.shaderIndices); j++)
         {
-            if (shaderGroupDesc.shaderIndices[i] != 0)
-                groupIndices[shaderGroupDesc.shaderIndices[i] - 1] = i;
+            if (shaderGroupDesc.shaderIndices[j] != 0)
+                groupIndices[shaderGroupDesc.shaderIndices[j] - 1] = j;
         }
     }
 }

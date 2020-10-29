@@ -56,9 +56,9 @@ FrameBufferD3D11::~FrameBufferD3D11()
 {
 }
 
-void FrameBufferD3D11::Bind(VersionedContext& context, FramebufferBindFlag bindFlag) const
+void FrameBufferD3D11::Bind(VersionedContext& context, RenderPassBeginFlag renderPassBeginFlag) const
 {
-    if (bindFlag != FramebufferBindFlag::SKIP_CLEAR && !m_ClearDescs.empty())
+    if (renderPassBeginFlag != RenderPassBeginFlag::SKIP_FRAME_BUFFER_CLEAR && !m_ClearDescs.empty())
         ClearAttachments(context, &m_ClearDescs[0], (uint32_t)m_ClearDescs.size(), nullptr, 0);
 
     context->OMSetRenderTargets((uint32_t)m_RenderTargets.size(), &m_RenderTargets[0], m_DepthStencil);
@@ -87,14 +87,14 @@ void FrameBufferD3D11::ClearAttachments(VersionedContext& context, const ClearDe
                 break;
             case AttachmentContentType::STENCIL:
                 {
-                    const uint32_t clearStencil = clearDesc.value.depthStencil.stencil;
+                    const uint8_t clearStencil = clearDesc.value.depthStencil.stencil;
                     context->ClearDepthStencilView(m_DepthStencil, D3D11_CLEAR_STENCIL, 0.0f, clearStencil);
                 }
                 break;
             case AttachmentContentType::DEPTH_STENCIL:
                 {
                     const float clearDepth = clearDesc.value.depthStencil.depth;
-                    const uint32_t clearStencil = clearDesc.value.depthStencil.stencil;
+                    const uint8_t clearStencil = clearDesc.value.depthStencil.stencil;
                     context->ClearDepthStencilView(m_DepthStencil, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, clearDepth, clearStencil);
                 }
                 break;

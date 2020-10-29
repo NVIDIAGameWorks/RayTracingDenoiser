@@ -324,13 +324,11 @@ Result CreateDeviceD3D11(const DeviceCreationD3D11Desc& deviceCreationD3D11Desc,
 {
     DeviceCreationDesc deviceCreationDesc = {};
     deviceCreationDesc.callbackInterface = deviceCreationD3D11Desc.callbackInterface;
-    deviceCreationDesc.callbackInterfaceUserArg = deviceCreationD3D11Desc.callbackInterfaceUserArg;
     deviceCreationDesc.memoryAllocatorInterface = deviceCreationD3D11Desc.memoryAllocatorInterface;
-    deviceCreationDesc.memoryAllocatorInterfaceUserArg = deviceCreationD3D11Desc.memoryAllocatorInterfaceUserArg;
     deviceCreationDesc.graphicsAPI = GraphicsAPI::D3D11;
 
-    Log log(GraphicsAPI::D3D11, deviceCreationDesc.callbackInterface, deviceCreationDesc.callbackInterfaceUserArg);
-    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface, deviceCreationDesc.memoryAllocatorInterfaceUserArg);
+    Log log(GraphicsAPI::D3D11, deviceCreationDesc.callbackInterface);
+    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface);
 
     ID3D11Device* d3d11Device = (ID3D11Device*)deviceCreationD3D11Desc.d3d11Device;
 

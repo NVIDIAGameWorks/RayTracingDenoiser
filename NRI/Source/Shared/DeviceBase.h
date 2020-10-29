@@ -24,22 +24,19 @@ namespace nri
         virtual Result FillFunctionTable(WrapperD3D12Interface& table) const { table = {}; return Result::UNSUPPORTED; }
         virtual Result FillFunctionTable(WrapperVKInterface& table) const { table = {}; return Result::UNSUPPORTED; }
         virtual Result FillFunctionTable(RayTracingInterface& table) const { table = {}; return Result::UNSUPPORTED; }
+        virtual Result FillFunctionTable(MeshShaderInterface& table) const { table = {}; return Result::UNSUPPORTED; }
 
         const Log& GetLog() const;
         StdAllocator<uint8_t>& GetStdAllocator();
 
     protected:
         Log m_Log;
-        nri::MemoryAllocatorInterface m_MemoryAllocatorInterface;
-        void* m_MemoryAllocatorInterfaceUserArg;
         StdAllocator<uint8_t> m_StdAllocator;
     };
 
     inline DeviceBase::DeviceBase(const Log& log, const StdAllocator<uint8_t>& stdAllocator) :
         m_Log(log),
-        m_MemoryAllocatorInterface(*stdAllocator.GetInterface()),
-        m_MemoryAllocatorInterfaceUserArg(stdAllocator.GetUserArg()),
-        m_StdAllocator(m_MemoryAllocatorInterface, m_MemoryAllocatorInterfaceUserArg)
+        m_StdAllocator(stdAllocator)
     {
     }
 

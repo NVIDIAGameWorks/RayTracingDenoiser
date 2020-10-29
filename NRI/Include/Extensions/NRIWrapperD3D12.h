@@ -28,9 +28,7 @@ namespace nri
         ID3D12CommandQueue* d3d12CopyQueue;
         IDXGIAdapter* d3d12PhysicalAdapter;
         CallbackInterface callbackInterface;
-        void* callbackInterfaceUserArg;
         MemoryAllocatorInterface memoryAllocatorInterface;
-        void* memoryAllocatorInterfaceUserArg;
         bool enableNRIValidation;
         bool enableAPIValidation;
     };

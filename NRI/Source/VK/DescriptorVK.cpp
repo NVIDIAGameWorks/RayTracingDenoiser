@@ -108,7 +108,7 @@ Result DescriptorVK::CreateTextureView(const T& textureViewDesc)
     const TextureVK& texture = *(const TextureVK*)textureViewDesc.texture;
 
     m_Type = DescriptorTypeVK::IMAGE_VIEW;
-    m_Format = ::GetVkFormat(textureViewDesc.format);
+    m_Format = ::GetVkImageViewFormat(textureViewDesc.format);
     m_Extent = texture.GetExtent();
     FillTextureDesc(textureViewDesc, m_TextureDesc);
 
@@ -164,7 +164,7 @@ Result DescriptorVK::Create(const BufferViewDesc& bufferViewDesc)
             m_BufferDesc.handles[i] = buffer.GetHandle(i);
     }
 
-    if (bufferViewDesc.viewType == BufferViewType::CONSTANT)
+    if (bufferViewDesc.format == Format::UNKNOWN)
         return Result::SUCCESS;
 
     VkBufferViewCreateInfo info = {
@@ -225,14 +225,14 @@ Result DescriptorVK::Create(const SamplerDesc& samplerDesc)
         GetSamplerAddressMode(samplerDesc.addressModes.v),
         GetSamplerAddressMode(samplerDesc.addressModes.w),
         samplerDesc.mipBias,
-        samplerDesc.anisotropy > 1.0f,
+        VkBool32(samplerDesc.anisotropy > 1.0f),
         (float)samplerDesc.anisotropy,
-        samplerDesc.compareFunc != CompareFunc::NONE,
+        VkBool32(samplerDesc.compareFunc != CompareFunc::NONE),
         GetCompareOp(samplerDesc.compareFunc),
         samplerDesc.mipMin,
         samplerDesc.mipMax,
         VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
-        samplerDesc.unnormalizedCoordinates
+        VkBool32(samplerDesc.unnormalizedCoordinates)
     };
 
     const auto& vk = m_Device.GetDispatchTable();

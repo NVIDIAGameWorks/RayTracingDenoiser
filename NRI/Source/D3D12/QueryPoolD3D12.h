@@ -34,7 +34,7 @@ namespace nri
 
     private:
         DeviceD3D12& m_Device;
-        D3D12_QUERY_TYPE m_QueryType;
+        D3D12_QUERY_TYPE m_QueryType = D3D12_QUERY_TYPE(-1);
         ComPtr<ID3D12QueryHeap> m_QueryHeap;
     };
 

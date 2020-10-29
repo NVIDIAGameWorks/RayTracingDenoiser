@@ -25,6 +25,7 @@ namespace nri
         const WrapperD3D12Interface& GetWrapperD3D12Interface() const;
         const WrapperVKInterface& GetWrapperVKInterface() const;
         const RayTracingInterface& GetRayTracingInterface() const;
+        const MeshShaderInterface& GetMeshShaderInterface() const;
 
         bool Create();
         void RegisterMemoryType(MemoryType memoryType, MemoryLocation memoryLocation);
@@ -110,6 +111,7 @@ namespace nri
         Result FillFunctionTable(WrapperD3D12Interface& table) const;
         Result FillFunctionTable(WrapperVKInterface& table) const;
         Result FillFunctionTable(RayTracingInterface& table) const;
+        Result FillFunctionTable(MeshShaderInterface& table) const;
 
     private:
         Device& m_Device;
@@ -120,11 +122,13 @@ namespace nri
         WrapperD3D12Interface m_WrapperD3D12API = {};
         WrapperVKInterface m_WrapperVKAPI = {};
         RayTracingInterface m_RayTracingAPI = {};
+        MeshShaderInterface m_MeshShaderAPI = {};
         bool m_IsSwapChainSupported = false;
         bool m_IsWrapperD3D11Supported = false;
         bool m_IsWrapperD3D12Supported = false;
         bool m_IsWrapperVKSupported = false;
         bool m_IsRayTracingSupported = false;
+        bool m_IsMeshShaderExtSupported = false;
         uint32_t m_PhysicalDeviceNum = 0;
         uint32_t m_PhysicalDeviceMask = 0;
         std::array<CommandQueueVal*, COMMAND_QUEUE_TYPE_NUM> m_CommandQueues = {};
@@ -170,5 +174,10 @@ namespace nri
     inline const RayTracingInterface& DeviceVal::GetRayTracingInterface() const
     {
         return m_RayTracingAPI;
+    }
+
+    inline const MeshShaderInterface& DeviceVal::GetMeshShaderInterface() const
+    {
+        return m_MeshShaderAPI;
     }
 }

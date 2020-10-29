@@ -42,7 +42,7 @@ static const std::array<aiTextureType, 5> gSupportedTextureTypes =
     aiTextureType_SHININESS     // OBJ - map_Ns (smoothness)
 };
 
-static const std::array<char*, 13> gShaderExts =
+static const std::array<const char*, 13> gShaderExts =
 {
     "",
     ".vs.",
@@ -409,19 +409,6 @@ static nri::Format GetFormatNRI(uint32_t detexFormat)
     return nri::Format::UNKNOWN;
 }
 
-static uint32_t GetFormatDetex(nri::Format nriFormat)
-{
-    for (auto& entry : formatTable)
-    {
-        if (entry.nriFormat == nriFormat)
-        {
-            return entry.detexFormat;
-        }
-    }
-
-    return 0;
-}
-
 static nri::Format MakeSRGBFormat(nri::Format format)
 {
     switch (format)
@@ -448,23 +435,26 @@ static nri::Format MakeSRGBFormat(nri::Format format)
 
 bool utils::LoadTexture(const std::string& path, Texture& texture, bool computeAvgColorAndAlphaMode)
 {
-    detexTexture **dTexture;
-    int mipNum;
+    detexTexture** dTexture = nullptr;
+    int mipNum = 0;
 
     if (!detexLoadTextureFileWithMipmaps(path.c_str(), 32, &dTexture, &mipNum)) {
+        char s[1024];
+        sprintf_s(s, "ERROR: Can't load texture '%s'\n", path.c_str());
+        OutputDebugStringA(s);
+
         return false;
     }
 
-    texture.mipNum = mipNum;
     texture.texture = dTexture;
-    texture.format = GetFormatNRI(dTexture[0]->format);
-    texture.width = dTexture[0]->width;
-    texture.height = dTexture[0]->height;
-
-    texture.hash = ComputeHash(path.c_str(), (uint32_t)path.length());
     texture.name = path;
+    texture.hash = ComputeHash(path.c_str(), (uint32_t)path.length());
+    texture.format = GetFormatNRI(dTexture[0]->format);
+    texture.width = (uint16_t)dTexture[0]->width;
+    texture.height = (uint16_t)dTexture[0]->height;
+    texture.mipNum = (uint16_t)mipNum;
 
-    // detex doesn't support cubemaps and 3D textures
+    // TODO: detex doesn't support cubemaps and 3D textures
     texture.arraySize = 1;
     texture.depth = 1;
 
@@ -472,11 +462,10 @@ bool utils::LoadTexture(const std::string& path, Texture& texture, bool computeA
     if (computeAvgColorAndAlphaMode)
     {
         // Alpha mode
-        // TODO: can be improved by starting from the last mip, if no alpha detected go up...
         if (texture.format == nri::Format::BC1_RGBA_UNORM || texture.format == nri::Format::BC1_RGBA_SRGB)
         {
             bool hasTransparency = false;
-            for (int i = mipNum - 1; i >= 0; i--) {
+            for (int i = mipNum - 1; i >= 0 && !hasTransparency; i--) {
                 const size_t size = detexTextureSize(dTexture[i]->width_in_blocks, dTexture[i]->height_in_blocks, dTexture[i]->format);
                 const uint8_t* bc1 = dTexture[i]->data;
 
@@ -497,9 +486,7 @@ bool utils::LoadTexture(const std::string& path, Texture& texture, bool computeA
                 texture.alphaMode = AlphaMode::PREMULTIPLIED;
         }
 
-        // Average color
-        float4 avgColor = float4(0.0f);
-
+        // Decompress last mip
         std::vector<uint8_t> image;
         detexTexture *lastMip = dTexture[mipNum - 1];
         uint8_t *rgba8 = lastMip->data;
@@ -511,21 +498,25 @@ bool utils::LoadTexture(const std::string& path, Texture& texture, bool computeA
             rgba8 = &image[0];
         }
 
+        // Average color
+        double4 avgColor = double4(0.0f);
         const size_t pixelNum = lastMip->width * lastMip->height;
         for (size_t i = 0; i < pixelNum; i++)
-            avgColor += Packed::uint_to_uf4<8, 8, 8, 8>(*(uint32_t*)(rgba8 + i * 4));
+            avgColor += ToDouble( Packed::uint_to_uf4<8, 8, 8, 8>(*(uint32_t*)(rgba8 + i * 4)) );
         avgColor /= float(pixelNum);
-        texture.averageColor = Packed::uf4_to_uint<8, 8, 8, 8>(avgColor);
+        texture.averageColor = Packed::uf4_to_uint<8, 8, 8, 8>( ToFloat( avgColor ) );
 
-        if (texture.alphaMode != AlphaMode::PREMULTIPLIED && avgColor.w < 1.0f)
+        if (texture.alphaMode != AlphaMode::PREMULTIPLIED && avgColor.w < 254.5f / 255.0f)
             texture.alphaMode = avgColor.w == 0.0f ? AlphaMode::OFF : AlphaMode::TRANSPARENT;
-    }
 
-    // FIXME: hack! but useful...
-    std::string name = GetFileName(path);
-    name = name.substr(0, name.find_last_of("."));
-    if (EndsWithNoCase(name, "_BaseColor") || EndsWithNoCase(name, "_Diffuse") || EndsWithNoCase(name, "_Albedo") || EndsWithNoCase(name, "_D"))
-        texture.OverrideFormat(MakeSRGBFormat(texture.format));
+        // Useful to find a texture which is TRANSPARENT but needs to be OPAQUE or PREMULTIPLIED
+        /*if (texture.alphaMode == AlphaMode::TRANSPARENT || texture.alphaMode == AlphaMode::OFF)
+        {
+            char s[1024];
+            sprintf_s(s, "%s: %s\n", texture.alphaMode == AlphaMode::OFF ? "OFF" : "TRANSPARENT", path.c_str());
+            OutputDebugStringA(s);
+        }*/
+    }
 
     return true;
 }
@@ -545,13 +536,12 @@ void utils::LoadTextureFromMemory(nri::Format format, uint32_t width, uint32_t h
 
 bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, const std::vector<float3>& instanceData)
 {
-    // TODO: make assimp a static library...
     static bool isLibraryLoaded = false;
     if (!isLibraryLoaded)
     {
         std::string assimpDllPath = GetFullPath("assimp-vc141-mt.dll", DataFolder::ROOT);
         HMODULE handle = LoadLibraryA(assimpDllPath.c_str());
-        isLibraryLoaded = true;
+        isLibraryLoaded = (handle != nullptr);
     }
 
     const uint32_t globalInstanceCount = ((uint32_t)instanceData.size() / 2);
@@ -723,7 +713,6 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
         float animationTotalMs = float(1000.0 * aiAnimation->mDuration / aiAnimation->mTicksPerSecond);
         animation.durationMs = animationTotalMs;
         animation.animationNodes.resize(aiAnimation->mNumChannels);
-        bool isCameraAnimated = false;
 
         for(uint32_t i = 0; i < aiAnimation->mNumChannels; i++)
         {
@@ -918,7 +907,15 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
     size_t newCapacity = scene.textures.size() + textureNum;
     scene.textures.reserve(newCapacity);
 
-    // StaticTexture::BLACK
+    // StaticTexture::Invalid
+    {
+        Texture* texture = new Texture;
+        const std::string& texPath = GetFullPath("checkerboard0.dds", DataFolder::TEXTURES);
+        NRI_ABORT_ON_FALSE( LoadTexture(texPath, *texture, true) );
+        scene.textures.push_back(texture);
+    }
+
+    // StaticTexture::Black
     {
         Texture* texture = new Texture;
         const std::string& texPath = GetFullPath("black.png", DataFolder::TEXTURES);
@@ -971,26 +968,36 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
         uint32_t* textureIndices = &material.diffuseMapIndex;
         for (size_t j = 0; j < gSupportedTextureTypes.size(); j++)
         {
-            textureIndices[j] = (gSupportedTextureTypes[j] == aiTextureType_NORMALS) ? 1 : 0;
+            const aiTextureType type = gSupportedTextureTypes[j];
 
-            if (assimpMaterial->GetTexture(gSupportedTextureTypes[j], 0, &str) == AI_SUCCESS)
+            textureIndices[j] = StaticTexture::Black;
+            if (type == aiTextureType_NORMALS)
+                textureIndices[j] = StaticTexture::FlatNormal;
+            // OPTIONAL - useful for debug:
+            //else if (type == aiTextureType_DIFFUSE)
+            //    textureIndices[j] = StaticTexture::Invalid;
+
+            if (assimpMaterial->GetTexture(type, 0, &str) == AI_SUCCESS)
             {
-                std::string& texPath = baseDir + str.data;
+                std::string texPath = baseDir + str.data;
                 const uint64_t hash = ComputeHash(texPath.c_str(), (uint32_t)texPath.length());
 
                 const auto comparePred = [&hash](const Texture* texture)
                 { return hash == texture->hash; };
 
-                auto result = std::find_if(scene.textures.begin(), scene.textures.end(), comparePred);
-                if (result == scene.textures.end())
+                auto findResult = std::find_if(scene.textures.begin(), scene.textures.end(), comparePred);
+                if (findResult == scene.textures.end())
                 {
-                    const bool computeAverageColor = gSupportedTextureTypes[j] == aiTextureType_DIFFUSE || gSupportedTextureTypes[j] == aiTextureType_EMISSIVE;
+                    const bool computeAverageColor = type == aiTextureType_DIFFUSE || type == aiTextureType_EMISSIVE;
 
                     Texture* texture = new Texture;
                     bool isLoaded = LoadTexture(texPath, *texture, computeAverageColor);
 
                     if (isLoaded)
                     {
+                        if( type == aiTextureType_DIFFUSE || type == aiTextureType_EMISSIVE || type == aiTextureType_SPECULAR )
+                            texture->OverrideFormat(MakeSRGBFormat(texture->format));
+
                         textureIndices[j] = (uint32_t)scene.textures.size();
                         scene.textures.push_back(texture);
                     }
@@ -998,7 +1005,7 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
                         delete texture;
                 }
                 else
-                    textureIndices[j] = (uint32_t)(result - scene.textures.begin());
+                    textureIndices[j] = (uint32_t)(findResult - scene.textures.begin());
             }
         }
 
@@ -1011,6 +1018,7 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
             float4 baseColor = Packed::uint_to_uf4<8, 8, 8, 8>(diffuseTexture->averageColor);
             float4 emissionColor = Packed::uint_to_uf4<8, 8, 8, 8>(emissionTexture->averageColor);
             baseColor = Pow( baseColor, float4( 2.2f ) );
+            emissionColor = Pow( emissionColor, float4( 2.2f ) );
             emissionColor *= (baseColor + 0.01f) / (Max(baseColor.x, Max(baseColor.y, baseColor.z)) + 0.01f);
             emissionColor.w = 1.0f;
             emissionColor = Pow( emissionColor, float4( 1.0f / 2.2f ) );

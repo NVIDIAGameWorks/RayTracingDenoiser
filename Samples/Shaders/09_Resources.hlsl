@@ -12,12 +12,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "STL.hlsl"
 
 //===============================================================
-// DENOISER PART
-//===============================================================
-
-#include "..\..\NRD\Shaders\NRD.hlsl"
-
-//===============================================================
 // RESOURCES
 //===============================================================
 
@@ -29,6 +23,8 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToClipPrev;
     float4x4 gWorldToClip;
     float4 gCameraFrustum;
+    float3 gCameraDelta;
+    float gNearZ;
     float3 gSunDirection;
     float gExposure;
     float3 gWorldOrigin;
@@ -40,7 +36,6 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float2 gJitter;
     float gAmbient;
     float gSeparator;
-    float gNearZ;
     float gRoughnessOverride;
     float gMetalnessOverride;
     float gDiffHitDistScale;
@@ -48,7 +43,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gUnitsToMetersMultiplier;
     float gIndirectDiffuse;
     float gIndirectSpecular;
-    float gTanSunAngularDiameter;
+    float gTanSunAngularRadius;
     float gPixelAngularDiameter;
     float gSunAngularDiameter;
     float gUseMipmapping;
@@ -56,6 +51,8 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gDebug;
     float gDiffSecondBounce;
     float gTransparent;
+    uint gSvgf;
+    uint gDisableShadowsAndEnableImportanceSampling;
     uint gOnScreen;
     uint gFrameIndex;
     uint gForcedMaterial;
@@ -64,12 +61,18 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     uint gUseNormalMap;
     uint gWorldSpaceMotion;
     uint gUseBlueNoise;
-    uint gDither;
+    uint gCheckerboard;
 };
 
 NRI_RESOURCE( SamplerState, gLinearMipmapLinearSampler, s, 1, 0 );
 NRI_RESOURCE( SamplerState, gNearestMipmapNearestSampler, s, 2, 0 );
 NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
+
+//===============================================================
+// DENOISER PART
+//===============================================================
+
+#include "..\..\NRD\Shaders\NRD.hlsl"
 
 //=============================================================================================
 // SETTINGS
@@ -99,22 +102,24 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 #define SKY_MARK                            0.0
 
 // Settings
+#define USE_SQRT_ROUGHNESS                  1
+#define USE_OCT_PACKED_NORMALS              1
 #define USE_BEST_FIT_NORMALS                1
+
 #define USE_SIMPLE_MIP_SELECTION            1
 #define USE_SIMPLIFIED_BRDF_MODEL           0
-#define USE_SQRT_ROUGHNESS                  1
+#define USE_IMPORTANCE_SAMPLING             2 // 0 - off, 1 - ignore rays with 0 throughput, 2 - plus local lights importance sampling
 
-#define GEOMETRY_OFFSET                     ( 0.0001 / gUnitsToMetersMultiplier ) // m
-#define SHADOW_OFFSET                       ( 0.002 / gUnitsToMetersMultiplier ) // m
 #define TAA_HISTORY_SHARPNESS               0.5 // [0; 1], 0.5 matches Catmull-Rom
-#define TAA_MOTION_MAX_REUSE                ( 210.0 / 1920.0 )
-#define TAA_FAST_MOTION_LENGTH              ( 30.0 / 1920.0 )
-#define TAA_MIN_HISTORY_WEIGHT              0.1
 #define TAA_MAX_HISTORY_WEIGHT              0.9
+#define TAA_MIN_HISTORY_WEIGHT              0.1
+#define TAA_MOTION_MAX_REUSE                0.1
 #define MAX_MIP_LEVEL                       11.0
 #define EMISSION_TEXTURE_MIP_BIAS           5.0
 #define HIT_DISTANCE_LINEAR_SCALE           0.1
-#define MAX_MONTE_CARLO_VIRTUAL_SAMPLE_NUM  16 // number of steps to replace useless rays "being cast inside the surface" with valid rays (1 - better perf)
+#define ZERO_TROUGHPUT_SAMPLE_NUM           16
+#define IMPORTANCE_SAMPLE_NUM               16
+#define GLASS_TINT                          float3( 0.9, 0.9, 1.0 )
 
 //=============================================================================================
 // SHARED
@@ -139,30 +144,52 @@ void ModifyMaterial( inout float3 baseColor, inout float metalness, inout float 
     roughness = gRoughnessOverride == 0.0 ? roughness : gRoughnessOverride;
 }
 
-float4 PackNormalAndRoughness( float3 N, float roughness )
+float4 PackNormalAndRoughness( float3 N, float linearRoughness )
 {
-    #if( USE_BEST_FIT_NORMALS == 1 )
-        float m = max( abs( N.x ), max( abs( N.y ), abs( N.z ) ) );
-        N *= STL::Math::PositiveRcp( m );
-    #endif
+    float4 p;
 
     #if( USE_SQRT_ROUGHNESS == 1 )
-        roughness = STL::Math::Sqrt01( roughness );
+        linearRoughness = STL::Math::Sqrt01( linearRoughness );
     #endif
 
-    return float4( N * 0.5 + 0.5, roughness );
+    #if( USE_OCT_PACKED_NORMALS == 1 )
+        p.xy = STL::Packing::EncodeUnitVector( N, false );
+        p.z = linearRoughness;
+        p.w = 0;
+    #else
+        p.xyz = N;
+        #if( USE_BEST_FIT_NORMALS == 1 )
+            float m = max( abs( N.x ), max( abs( N.y ), abs( N.z ) ) );
+            p.xyz *= STL::Math::PositiveRcp( m );
+        #endif
+
+        p.xyz = p.xyz * 0.5 + 0.5;
+        p.w = linearRoughness;
+    #endif
+
+    return p;
 }
 
 float4 UnpackNormalAndRoughness( float4 p )
 {
-    p.xyz = p.xyz * 2.0 - 1.0;
-    p.xyz *= STL::Math::Rsqrt( STL::Math::LengthSquared( p.xyz ) );
-
-    #if( USE_SQRT_ROUGHNESS == 1 )
-        p.w *= p.w;
+    float4 r;
+    #if( USE_OCT_PACKED_NORMALS == 1 )
+        p.xy = p.xy * 2.0 - 1.0;
+        r.xyz = STL::Packing::DecodeUnitVector( p.xy, true, false );
+        r.w = p.z;
+    #else
+        p.xyz = p.xyz * 2.0 - 1.0;
+        r.xyz = p.xyz;
+        r.w = p.w;
     #endif
 
-    return p;
+    r.xyz = normalize( r.xyz );
+
+    #if( USE_SQRT_ROUGHNESS == 1 )
+        r.w *= r.w;
+    #endif
+
+    return r;
 }
 
 float GetTrimmingFactor( float roughness )
@@ -170,6 +197,23 @@ float GetTrimmingFactor( float roughness )
     float trimmingFactor = gTrimmingParams.x * STL::Math::SmoothStep( gTrimmingParams.y, gTrimmingParams.z, roughness );
 
     return trimmingFactor;
+}
+
+float3 ApplyPostLightingComposition( uint2 pixelPos, float3 Lsum, Texture2D<float4> gIn_TransparentLighting )
+{
+    // Transparent layer
+    float4 transparentLayer = gIn_TransparentLighting[ pixelPos ] * gTransparent;
+    Lsum = Lsum * ( 1.0 - transparentLayer.w ) * ( transparentLayer.w != 0.0 ? GLASS_TINT : 1.0 ) + transparentLayer.xyz;
+
+    // Tonemap
+    if( gOnScreen == SHOW_FINAL )
+        Lsum = STL::Color::HdrToLinear_Uncharted( Lsum );
+
+    // Conversion
+    if ( gOnScreen == SHOW_FINAL || gOnScreen == SHOW_BASE_COLOR )
+        Lsum = STL::Color::LinearToSrgb( Lsum );
+
+    return Lsum;
 }
 
 //=============================================================================================

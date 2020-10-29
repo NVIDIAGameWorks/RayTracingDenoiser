@@ -22,7 +22,7 @@ namespace nri
         DeviceD3D12& GetDevice() const;
 
         Result Create(const FrameBufferDesc& frameBufferDesc);
-        void Bind(ID3D12GraphicsCommandList* graphicsCommandList, FramebufferBindFlag bindFlag);
+        void Bind(ID3D12GraphicsCommandList* graphicsCommandList, RenderPassBeginFlag renderPassBeginFlag);
         void Clear(ID3D12GraphicsCommandList* graphicsCommandList, const ClearDesc* clearDescs, uint32_t clearDescNum, const Rect* rects, uint32_t rectNum);
 
         //================================================================================================================

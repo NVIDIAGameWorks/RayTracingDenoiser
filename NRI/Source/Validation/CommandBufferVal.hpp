@@ -55,9 +55,9 @@ static void NRI_CALL CmdSetConstants(CommandBuffer& commandBuffer, uint32_t push
     ((CommandBufferVal*)&commandBuffer)->SetConstants(pushConstantIndex, data, size);
 }
 
-static void NRI_CALL CmdBeginRenderPass(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+static void NRI_CALL CmdBeginRenderPass(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
-    ((CommandBufferVal*)&commandBuffer)->BeginRenderPass(frameBuffer, bindFlag);
+    ((CommandBufferVal*)&commandBuffer)->BeginRenderPass(frameBuffer, renderPassBeginFlag);
 }
 
 static void NRI_CALL CmdEndRenderPass(CommandBuffer& commandBuffer)
@@ -337,6 +337,20 @@ void FillFunctionTableCommandBufferVal(RayTracingInterface& rayTracingInterface)
     rayTracingInterface.CmdWriteAccelerationStructureSize = CmdWriteAccelerationStructureSize;
     rayTracingInterface.CmdDispatchRays = CmdDispatchRays;
 
+}
+
+#pragma endregion
+
+#pragma region [  MeshShaderInterface  ]
+
+static void NRI_CALL CmdDispatchMeshTasks(CommandBuffer& commandBuffer, uint32_t taskNum)
+{
+    ((CommandBufferVal&)commandBuffer).DispatchMeshTasks(taskNum);
+}
+
+void FillFunctionTableCommandBufferVal(MeshShaderInterface& meshShaderInterface)
+{
+    meshShaderInterface.CmdDispatchMeshTasks = CmdDispatchMeshTasks;
 }
 
 #pragma endregion

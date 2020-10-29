@@ -34,7 +34,7 @@ namespace nri
         void Unmap();
 
     private:
-        VkBuffer m_Handles[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
+        std::array<VkBuffer, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_Handles = {};
         DeviceVK& m_Device;
         uint64_t m_Size = 0;
         MemoryVK* m_Memory = nullptr;

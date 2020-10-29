@@ -44,7 +44,7 @@ DescriptorSetVK::DescriptorSetVK(DeviceVK& device, const VkDescriptorSet* handle
 
 void DescriptorSetVK::SetDebugName(const char* name)
 {
-    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_DESCRIPTOR_SET, (void**)m_Handles, name);
+    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_DESCRIPTOR_SET, (void**)m_Handles.data(), name);
 }
 
 typedef bool(*WriteDescriptorsFunc)(uint32_t physicalDeviceIndex, const DescriptorRangeDesc& rangeDesc, const DescriptorRangeUpdateDesc& update,
@@ -191,7 +191,7 @@ void DescriptorSetVK::UpdateDescriptorRanges(uint32_t physicalDeviceMask, uint32
 
     VkWriteDescriptorSet* writes = STACK_ALLOC(VkWriteDescriptorSet, writeMaxNum);
 
-    constexpr size_t slabSize = 65536;
+    constexpr size_t slabSize = 32768;
     SlabAllocator slab(STACK_ALLOC(uint8_t, slabSize), slabSize);
 
     const auto& vk = m_Device.GetDispatchTable();
@@ -217,15 +217,15 @@ void DescriptorSetVK::UpdateDescriptorRanges(uint32_t physicalDeviceMask, uint32
                 const DescriptorRangeUpdateDesc& update = rangeUpdateDescs[j];
                 const DescriptorRangeDesc& rangeDesc = m_SetDesc.ranges[rangeOffset + j];
 
-                VkWriteDescriptorSet& write = writes[writeNum++];
+                const uint32_t bindingOffset = rangeDesc.isArray ? 0 : update.offsetInRange + descriptorOffset;
+                const uint32_t arrayOffset = rangeDesc.isArray ? update.offsetInRange + descriptorOffset : 0;
 
-                write = {
-                    VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    nullptr,
-                    m_Handles[i],
-                    rangeDesc.baseRegisterIndex,
-                    update.offsetInRange + (uint32_t)descriptorOffset
-                };
+                VkWriteDescriptorSet& write = writes[writeNum++];
+                write = {};
+                write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                write.dstSet = m_Handles[i];
+                write.dstBinding = rangeDesc.baseRegisterIndex + bindingOffset;
+                write.dstArrayElement = arrayOffset;
 
                 const uint32_t index = (uint32_t)rangeDesc.descriptorType;
                 slabHasFreeSpace = WRITE_FUNCS[index](i, rangeDesc, update, descriptorOffset, write, slab);

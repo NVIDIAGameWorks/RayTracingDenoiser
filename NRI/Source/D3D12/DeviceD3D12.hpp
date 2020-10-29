@@ -417,19 +417,9 @@ static void NRI_CALL DestroyAccelerationStructure(AccelerationStructure& acceler
     device.DestroyAccelerationStructure(accelerationStructure);
 }
 
-static Result NRI_CALL CreateAccelerationStructureDescriptor(const AccelerationStructure& accelerationStructure, Descriptor*& descriptor)
-{
-    return ((AccelerationStructureD3D12&)accelerationStructure).CreateDescriptor(descriptor);
-}
-
 static Result NRI_CALL BindAccelerationStructureMemory(Device& device, const AccelerationStructureMemoryBindingDesc* memoryBindingDescs, uint32_t memoryBindingDescNum)
 {
     return ((DeviceD3D12&)device).BindAccelerationStructureMemory(memoryBindingDescs, memoryBindingDescNum);
-}
-
-static uint64_t NRI_CALL GetShaderGroupIdentifierSize(Device& device)
-{
-    return ((DeviceD3D12&)device).GetDesc().rayTracingShaderGroupIdentifierSize;
 }
 
 void FillFunctionTablePipelineD3D12(RayTracingInterface& rayTracingInterface);
@@ -453,6 +443,26 @@ Result DeviceD3D12::FillFunctionTable(RayTracingInterface& rayTracingInterface) 
     rayTracingInterface.DestroyAccelerationStructure = ::DestroyAccelerationStructure;
 
     return ValidateFunctionTable(GetLog(), rayTracingInterface);
+}
+#endif
+
+#pragma endregion
+
+#pragma region [  MeshShaderInterface  ]
+
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+void FillFunctionTableCommandBufferD3D12(MeshShaderInterface& meshShaderInterface);
+
+Result DeviceD3D12::FillFunctionTable(MeshShaderInterface& meshShaderInterface) const
+{
+    if (!m_IsMeshShaderSupported)
+        return Result::UNSUPPORTED;
+
+    meshShaderInterface = {};
+
+    FillFunctionTableCommandBufferD3D12(meshShaderInterface);
+
+    return ValidateFunctionTable(GetLog(), meshShaderInterface);
 }
 #endif
 

@@ -73,6 +73,8 @@ namespace nri
         ID3D12CommandSignature* GetDrawIndexedCommandSignature(uint32_t stride);
         ID3D12CommandSignature* GetDispatchCommandSignature() const;
 
+        bool IsMeshShaderSupported() const;
+
         //================================================================================================================
         // NRI
         //================================================================================================================
@@ -146,6 +148,9 @@ namespace nri
 #ifdef __ID3D12GraphicsCommandList4_INTERFACE_DEFINED__
         Result FillFunctionTable(RayTracingInterface& rayTracingInterface) const;
 #endif
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+        Result FillFunctionTable(MeshShaderInterface& meshShaderInterface) const;
+#endif
 
     private:
         void UpdateDeviceDesc(IDXGIAdapter* adapter, bool enableValidation);
@@ -157,6 +162,7 @@ namespace nri
         ComPtr<ID3D12Device5> m_Device5;
 #endif
         bool m_IsRaytracingSupported = false;
+        bool m_IsMeshShaderSupported = false;
         std::array<CommandQueueD3D12*, COMMAND_QUEUE_TYPE_NUM> m_CommandQueues = {};
         Vector<DescriptorHeapDesc> m_DescriptorHeaps;
         static const uint32_t m_DescriptorHeapTypeNum = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
@@ -178,4 +184,9 @@ namespace nri
         return m_Device5.GetInterface();
     }
 #endif
+
+    inline bool DeviceD3D12::IsMeshShaderSupported() const
+    {
+        return m_IsMeshShaderSupported;
+    }
 }

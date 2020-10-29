@@ -43,7 +43,7 @@ namespace nri
     private:
         DeviceD3D12& m_Device;
         ComPtr<ID3D12CommandQueue> m_CommandQueue;
-        D3D12_COMMAND_LIST_TYPE m_CommandListType;
+        D3D12_COMMAND_LIST_TYPE m_CommandListType = D3D12_COMMAND_LIST_TYPE(-1);
     };
 
     inline CommandQueueD3D12::CommandQueueD3D12(DeviceD3D12& device)

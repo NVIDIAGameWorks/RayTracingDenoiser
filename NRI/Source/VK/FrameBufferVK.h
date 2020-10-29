@@ -23,7 +23,7 @@ namespace nri
 
         VkFramebuffer GetHandle(uint32_t physicalDeviceIndex) const;
         const VkRect2D& GetRenderArea() const;
-        VkRenderPass GetRenderPass(FramebufferBindFlag framebufferBindFlag) const;
+        VkRenderPass GetRenderPass(RenderPassBeginFlag renderPassBeginFlag) const;
         uint32_t GetAttachmentNum() const;
         void GetClearValues(VkClearValue* values) const;
 
@@ -62,9 +62,9 @@ namespace nri
         return m_Handles[physicalDeviceIndex];
     }
 
-    inline VkRenderPass FrameBufferVK::GetRenderPass(FramebufferBindFlag framebufferBindFlag) const
+    inline VkRenderPass FrameBufferVK::GetRenderPass(RenderPassBeginFlag renderPassBeginFlag) const
     {
-        return (framebufferBindFlag == FramebufferBindFlag::SKIP_CLEAR) ? m_RenderPass : m_RenderPassWithClear;
+        return (renderPassBeginFlag == RenderPassBeginFlag::SKIP_FRAME_BUFFER_CLEAR) ? m_RenderPass : m_RenderPassWithClear;
     }
 
     inline const VkRect2D& FrameBufferVK::GetRenderArea() const

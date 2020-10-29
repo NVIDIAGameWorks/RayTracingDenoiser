@@ -27,10 +27,9 @@ constexpr std::array<const char*, uint32_t(nri::GraphicsAPI::VULKAN) + 1> GRAPHI
     "VULKAN"
 };
 
-Log::Log(nri::GraphicsAPI graphicsAPI, const nri::CallbackInterface& callbackInterface, void* callbackInterfaceUserArg) :
+Log::Log(nri::GraphicsAPI graphicsAPI, const nri::CallbackInterface& callbackInterface) :
     m_GraphicsAPI(graphicsAPI),
-    m_CallbackInterface(callbackInterface),
-    m_CallbackInterfaceUserArg(callbackInterfaceUserArg)
+    m_CallbackInterface(callbackInterface)
 {
 }
 
@@ -52,10 +51,10 @@ void Log::ReportMessage(nri::Message message, const char* format, ...) const
     buffer[end + 1] = '\0';
 
     if (m_CallbackInterface.MessageCallback != nullptr)
-        m_CallbackInterface.MessageCallback(m_CallbackInterfaceUserArg, buffer, message);
+        m_CallbackInterface.MessageCallback(m_CallbackInterface.userArg, buffer, message);
 
     if (message == nri::Message::TYPE_ERROR && m_CallbackInterface.AbortExecution != nullptr)
-        m_CallbackInterface.AbortExecution(m_CallbackInterfaceUserArg);
+        m_CallbackInterface.AbortExecution(m_CallbackInterface.userArg);
 }
 
 void ConvertCharToWchar(const char* in, wchar_t* out, size_t outLength)
@@ -410,31 +409,6 @@ nri::Format GetFormat(uint32_t dxgiFormat)
 nri::Format GetFormatDXGI(uint32_t dxgiFormat)
 {
     return GetFormat(dxgiFormat);
-}
-
-static void* AlignedMalloc(void* userArg, size_t size, size_t alignment)
-{
-    return _aligned_malloc(size, alignment);
-}
-
-static void* AlignedRealloc(void* userArg, void* memory, size_t size, size_t alignment)
-{
-    return _aligned_realloc(memory, size, alignment);
-}
-
-static void AlignedFree(void* userArg, void* memory)
-{
-    _aligned_free(memory);
-}
-
-void CheckAndSetDefaultAllocator(nri::MemoryAllocatorInterface& memoryAllocatorInterface)
-{
-    if (memoryAllocatorInterface.Allocate != nullptr)
-        return;
-
-    memoryAllocatorInterface.Allocate = AlignedMalloc;
-    memoryAllocatorInterface.Reallocate = AlignedRealloc;
-    memoryAllocatorInterface.Free = AlignedFree;
 }
 
 static void MessageCallback(void* userArg, const char* message, nri::Message messageType)

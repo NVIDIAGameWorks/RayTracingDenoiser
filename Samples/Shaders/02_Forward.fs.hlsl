@@ -12,11 +12,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "02_Resources.hlsl"
 
 [earlydepthstencil]
-float3 main( in Attributes input ) : SV_Target
+float4 main( in Attributes input ) : SV_Target
 {
     PS_INPUT;
     float4 output = Shade( float4( albedo, diffuse.w ), Rf0, roughness, emissive, N, L, V, Clight, FAKE_AMBIENT );
 
     output.xyz = STL::Color::HdrToLinear( output.xyz * exposure );
-    return output.xyz;
+    return output;
 }

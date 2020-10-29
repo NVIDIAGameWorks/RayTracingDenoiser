@@ -8,10 +8,11 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-NRI_RESOURCE( RaytracingAccelerationStructure, gTlas, t, 0, 2 );
-NRI_RESOURCE( Buffer<uint4>, gIn_PrimitiveData, t, 1, 2 );
-NRI_RESOURCE( Buffer<float4>, gIn_InstanceData, t, 2, 2 );
-NRI_RESOURCE( Texture2D<float4>, gIn_Textures[], t, 3, 2 );
+NRI_RESOURCE( RaytracingAccelerationStructure, gWorldTlas, t, 0, 2 );
+NRI_RESOURCE( RaytracingAccelerationStructure, gLightTlas, t, 1, 2 );
+NRI_RESOURCE( Buffer<uint4>, gIn_PrimitiveData, t, 2, 2 );
+NRI_RESOURCE( Buffer<float4>, gIn_InstanceData, t, 3, 2 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Textures[], t, 4, 2 );
 
 //====================================================================================================================================
 
@@ -30,13 +31,11 @@ NRI_RESOURCE( Texture2D<float4>, gIn_Textures[], t, 3, 2 );
 #define FLAG_UNUSED2                    0x40
 #define FLAG_UNUSED3                    0x80
 
-#define FLAGS_ALL                       ( FLAG_OPAQUE_OR_ALPHA_OPAQUE | FLAG_TRANSPARENT | FLAG_EMISSION | FLAG_FORCED_EMISSION )
+#define FLAGS_ALL                       ( FLAG_OPAQUE_OR_ALPHA_OPAQUE | FLAG_EMISSION | FLAG_FORCED_EMISSION | FLAG_TRANSPARENT )
 #define FLAGS_ONLY_EMISSION             ( FLAG_EMISSION | FLAG_FORCED_EMISSION )
 #define FLAGS_ONLY_TRANSPARENT          ( FLAG_TRANSPARENT )
-#define FLAGS_IGNORE_EMISSION           ( FLAG_OPAQUE_OR_ALPHA_OPAQUE | FLAG_TRANSPARENT )
 #define FLAGS_IGNORE_TRANSPARENT        ( FLAG_OPAQUE_OR_ALPHA_OPAQUE | FLAG_EMISSION | FLAG_FORCED_EMISSION )
 #define FLAGS_DEFAULT                   FLAGS_IGNORE_TRANSPARENT
-#define FLAGS_SHADOW                    FLAGS_IGNORE_TRANSPARENT
 
 struct IntersectionAttributes
 {
@@ -143,6 +142,16 @@ struct GeometryProps
     float viewZ;
     float tmin;
     uint textureOffsetAndFlags;
+
+    float3 GetXWithOffset()
+    {
+        // Moves the ray origin further from surface to prevent self-intersections. Minimizes the distance for best results ( taken from RT Gems "A Fast and Robust Method for Avoiding Self-Intersection" )
+        int3 o = int3( N * 256.0 );
+        float3 a = asfloat( asint( X ) + ( X < 0.0 ? -o : o ) );
+        float3 b = X + N * ( 1.0 / 65536.0 );
+
+        return abs( X ) < ( 1.0f / 32.0 ) ? b : a;
+    }
 
     bool IsTransparent()
     { return ( textureOffsetAndFlags & ( FLAG_TRANSPARENT << 24 ) ) != 0; }
@@ -335,7 +344,7 @@ GeometryProps GetGeometryProps( UnpackedPayload unpackedPayload, float3 rayOrigi
         }
 
         // Position
-        props.X = rayOrigin + rayDirection * unpackedPayload.tmin + props.N * GEOMETRY_OFFSET;
+        props.X = rayOrigin + rayDirection * unpackedPayload.tmin;
         props.viewZ = STL::Geometry::AffineTransform( gWorldToView, props.X ).z;
 
         Xprev = STL::Geometry::AffineTransform( mWorldToWorldPrev, props.X );
@@ -370,9 +379,9 @@ Returns:
     .x - for visibility (emissive, shadow)
         We must avoid using lower mips because it can lead to significant increase in AHS invocations. Mips lower than 128x128 are skipped!
     .y - for sampling (normals...)
-        Nothing special
-    .z - for sharp sampling
         Negative MIP bias is applied
+    .z - for sharp sampling
+        Negative MIP bias is applied (can be more negative...)
 */
 float3 GetRealMip( uint textureIndex, float mip )
 {
@@ -385,8 +394,8 @@ float3 GetRealMip( uint textureIndex, float mip )
 
     float3 mips;
     mips.x = min( realMip, mipNum - 7.0 );
-    mips.y = realMip;
-    mips.z = mips.y + gMipBias;
+    mips.y = realMip + gMipBias * 0.5;
+    mips.z = realMip + gMipBias;
 
     return max( mips, 0.0 ) * gUseMipmapping;
 }
@@ -429,9 +438,6 @@ MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection
         float3 emissive = geometryProps.IsForcedEmission() ? geometryProps.GetForcedEmissionColor() : baseColor;
         emissive *= gEmissionIntensity * float( geometryProps.IsEmissive() );
 
-        props.Lsum = emissive * gExposure;
-        props.isEmissive = STL::Color::Luminance( emissive ) != 0.0;
-
         // Direct lighting (no shadow)
         float3 Cimp = lerp( Csky, Csun, STL::Math::SmoothStep( 0.0, 0.2, roughness ) ); // sky importance sampling
 
@@ -440,12 +446,15 @@ MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection
         float NoL = dot( geometryProps.N, gSunDirection );
         float Kdiff = saturate( NoL ) / STL::Math::Pi( 1.0 );
         float3 Lsum = Kdiff * C;
+        Lsum *= shadow;
 
+        props.isEmissive = STL::Color::Luminance( emissive ) != 0.0;
         props.N = geometryProps.N;
         props.baseColor = baseColor;
         props.metalness = metalness;
         props.roughness = roughness;
-        props.Lsum += Lsum * shadow * gExposure;
+        props.Lsum = props.isEmissive ? emissive : Lsum;
+        props.Lsum *= gExposure;
     }
     else
     {
@@ -458,8 +467,8 @@ MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection
         baseColor.xyz = saturate( baseColor.xyz );
 
         float3 materialProps = gIn_Textures[ baseTexture + 1 ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.z ).xyz;
+        float roughness = materialProps.y;
         float metalness = materialProps.z;
-        float roughness = materialProps.y * materialProps.y;
 
         ModifyMaterial( baseColor.xyz, metalness, roughness );
 
@@ -469,15 +478,13 @@ MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection
         emissive = geometryProps.IsForcedEmission() ? geometryProps.GetForcedEmissionColor() : emissive;
         emissive *= gEmissionIntensity * float( geometryProps.IsEmissive() );
 
-        props.Lsum = emissive * gExposure;
-        props.isEmissive = STL::Color::Luminance( emissive ) != 0.0;
-
         // Normal
         float2 packedNormal = gIn_Textures[ baseTexture + 2 ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.y ).xy;
         packedNormal = gUseNormalMap ? packedNormal : ( 127.0 / 255.0 );
         float3 N = STL::Geometry::TransformLocalNormal( packedNormal, geometryProps.T, geometryProps.N );
 
         // Direct lighting (no shadow)
+        float3 Lsum = 0;
         if( shadow != 0.0 )
         {
             float3 albedo, Rf0;
@@ -488,14 +495,17 @@ MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection
 
             float3 Cimp = lerp( Csky, Csun, STL::Math::SmoothStep( 0.0, 0.2, roughness ) ); // sky importance sampling
 
-            float3 Lsum = Cdiff * albedo * Csun + Cspec * Cimp;
-            props.Lsum += Lsum * shadow * gExposure;
+            Lsum = Cdiff * albedo * Csun + Cspec * Cimp;
+            Lsum *= shadow;
         }
 
+        props.isEmissive = STL::Color::Luminance( emissive ) != 0.0;
         props.N = N;
         props.baseColor = baseColor.xyz;
         props.metalness = metalness;
         props.roughness = roughness;
+        props.Lsum = props.isEmissive ? emissive : Lsum;
+        props.Lsum *= gExposure;
     }
 
     return props;

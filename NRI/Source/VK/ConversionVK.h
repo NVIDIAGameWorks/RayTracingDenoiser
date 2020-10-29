@@ -45,7 +45,7 @@ namespace nri
         if (usageMask & BufferUsageBits::ARGUMENT_BUFFER)
             flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
-        if (usageMask & BufferUsageBits::RAY_TRACING_SCRATCH_BUFFER)
+        if (usageMask & BufferUsageBits::RAY_TRACING_BUFFER)
             flags |= VK_BUFFER_USAGE_RAY_TRACING_BIT_NV;
 
         if (usageMask & BufferUsageBits::SHADER_RESOURCE)
@@ -154,7 +154,9 @@ namespace nri
         VK_SHADER_STAGE_INTERSECTION_BIT_NV,            // INTERSECTION,
         VK_SHADER_STAGE_CLOSEST_HIT_BIT_NV,             // CLOSEST_HIT,
         VK_SHADER_STAGE_ANY_HIT_BIT_NV,                 // ANY_HIT
-        VK_SHADER_STAGE_CALLABLE_BIT_NV                 // CALLABLE
+        VK_SHADER_STAGE_CALLABLE_BIT_NV,                // CALLABLE
+        VK_SHADER_STAGE_TASK_BIT_NV,                    // MESH_CONTROL
+        VK_SHADER_STAGE_MESH_BIT_NV                     // MESH_EVALUATION
     };
 
     constexpr VkShaderStageFlags GetShaderStageFlags(ShaderStage stage)
@@ -163,6 +165,94 @@ namespace nri
     }
 
     constexpr std::array<VkFormat, (uint32_t)Format::MAX_NUM> VK_FORMAT = {
+        VK_FORMAT_UNDEFINED,        // UNKNOWN
+
+        VK_FORMAT_R8_UNORM,         // R8_UNORM
+        VK_FORMAT_R8_SNORM,         // R8_SNORM
+        VK_FORMAT_R8_UINT,          // R8_UINT
+        VK_FORMAT_R8_SINT,          // R8_SINT
+
+        VK_FORMAT_R8G8_UNORM,       // RG8_UNORM
+        VK_FORMAT_R8G8_SNORM,       // RG8_SNORM
+        VK_FORMAT_R8G8_UINT,        // RG8_UINT
+        VK_FORMAT_R8G8_SINT,        // RG8_SINT
+
+        VK_FORMAT_B8G8R8A8_UNORM,   // BGRA8_UNORM
+
+        VK_FORMAT_R8G8B8A8_UNORM,   // RGBA8_UNORM
+        VK_FORMAT_R8G8B8A8_SNORM,   // RGBA8_SNORM
+        VK_FORMAT_R8G8B8A8_UINT,    // RGBA8_UINT
+        VK_FORMAT_R8G8B8A8_SINT,    // RGBA8_SINT
+        VK_FORMAT_R8G8B8A8_UNORM,   // RGBA8_SRGB
+
+        VK_FORMAT_R16_UNORM,        // R16_UNORM
+        VK_FORMAT_R16_SNORM,        // R16_SNORM
+        VK_FORMAT_R16_UINT,         // R16_UINT
+        VK_FORMAT_R16_SINT,         // R16_SINT
+        VK_FORMAT_R16_SFLOAT,       // R16_SFLOAT
+
+        VK_FORMAT_R16G16_UNORM,     // RG16_UNORM
+        VK_FORMAT_R16G16_SNORM,     // RG16_SNORM
+        VK_FORMAT_R16G16_UINT,      // RG16_UINT
+        VK_FORMAT_R16G16_SINT,      // RG16_SINT
+        VK_FORMAT_R16G16_SFLOAT,    // RG16_SFLOAT
+
+        VK_FORMAT_R16G16B16A16_UNORM,   // RGBA16_UNORM
+        VK_FORMAT_R16G16B16A16_SNORM,   // RGBA16_SNORM
+        VK_FORMAT_R16G16B16A16_UINT,    // RGBA16_UINT
+        VK_FORMAT_R16G16B16A16_SINT,    // RGBA16_SINT
+        VK_FORMAT_R16G16B16A16_SFLOAT,  // RGBA16_SFLOAT
+
+        VK_FORMAT_R32_UINT,         // R32_UINT
+        VK_FORMAT_R32_SINT,         // R32_SINT
+        VK_FORMAT_R32_SFLOAT,       // R32_SFLOAT
+
+        VK_FORMAT_R32G32_UINT,      // RG32_UINT
+        VK_FORMAT_R32G32_SINT,      // RG32_SINT
+        VK_FORMAT_R32G32_SFLOAT,    // RG32_SFLOAT
+
+        VK_FORMAT_R32G32B32_UINT,   // RGB32_UINT
+        VK_FORMAT_R32G32B32_SINT,   // RGB32_SINT
+        VK_FORMAT_R32G32B32_SFLOAT, // RGB32_SFLOAT
+
+        VK_FORMAT_R32G32B32A32_UINT,    // RGB32_UINT
+        VK_FORMAT_R32G32B32A32_SINT,    // RGB32_SINT
+        VK_FORMAT_R32G32B32A32_SFLOAT,  // RGB32_SFLOAT
+
+        VK_FORMAT_A2B10G10R10_UNORM_PACK32,     // R10_G10_B10_A2_UNORM
+        VK_FORMAT_A2B10G10R10_UINT_PACK32,      // R10_G10_B10_A2_UINT
+        VK_FORMAT_B10G11R11_UFLOAT_PACK32,      // R11_G11_B10_UFLOAT
+        VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,       // R9_G9_B9_E5_UFLOAT
+
+        VK_FORMAT_BC1_RGBA_UNORM_BLOCK, // BC1_RGBA_UNORM
+        VK_FORMAT_BC1_RGBA_SRGB_BLOCK,  // BC1_RGBA_SRGB
+        VK_FORMAT_BC2_UNORM_BLOCK,      // BC2_RGBA_UNORM
+        VK_FORMAT_BC2_SRGB_BLOCK,       // BC2_RGBA_SRGB
+        VK_FORMAT_BC3_UNORM_BLOCK,      // BC3_RGBA_UNORM
+        VK_FORMAT_BC3_SRGB_BLOCK,       // BC3_RGBA_SRGB
+        VK_FORMAT_BC4_UNORM_BLOCK,      // BC4_R_UNORM
+        VK_FORMAT_BC4_SNORM_BLOCK,      // BC4_R_SNORM
+        VK_FORMAT_BC5_UNORM_BLOCK,      // BC5_RG_UNORM
+        VK_FORMAT_BC5_SNORM_BLOCK,      // BC5_RG_SNORM
+        VK_FORMAT_BC6H_UFLOAT_BLOCK,    // BC6H_RGB_UFLOAT
+        VK_FORMAT_BC6H_SFLOAT_BLOCK,    // BC6H_RGB_SFLOAT
+        VK_FORMAT_BC7_UNORM_BLOCK,      // BC7_RGBA_UNORM
+        VK_FORMAT_BC7_SRGB_BLOCK,       // BC7_RGBA_SRGB
+
+        // Depth-specific
+
+        VK_FORMAT_D16_UNORM,            // D16_UNORM
+        VK_FORMAT_D24_UNORM_S8_UINT,    // D24_UNORM_S8_UINT
+        VK_FORMAT_D32_SFLOAT,           // D32_SFLOAT
+        VK_FORMAT_D32_SFLOAT_S8_UINT,   // D32_SFLOAT_S8_UINT_X24_TYPELESS
+
+        VK_FORMAT_X8_D24_UNORM_PACK32,  // D24_UNORM_X8_TYPELESS
+        VK_FORMAT_D24_UNORM_S8_UINT,    // X24_TYPLESS_S8_UINT /// TODO: there is no such format in VK
+        VK_FORMAT_D32_SFLOAT_S8_UINT,   // X32_TYPLESS_S8_UINT_X24_TYPELESS
+        VK_FORMAT_D32_SFLOAT_S8_UINT    // D32_SFLOAT_X8_TYPLESS_X24_TYPELESS
+    };
+
+    constexpr std::array<VkFormat, (uint32_t)Format::MAX_NUM> VK_IMAGE_VIEW_FORMAT = {
         VK_FORMAT_UNDEFINED,        // UNKNOWN
 
         VK_FORMAT_R8_UNORM,         // R8_UNORM
@@ -253,6 +343,11 @@ namespace nri
     constexpr VkFormat GetVkFormat(Format format)
     {
         return VK_FORMAT[(uint32_t)format];
+    }
+
+    constexpr VkFormat GetVkImageViewFormat(Format format)
+    {
+        return VK_IMAGE_VIEW_FORMAT[(uint32_t)format];
     }
 
     // TODO: add packed formats and depth-specific

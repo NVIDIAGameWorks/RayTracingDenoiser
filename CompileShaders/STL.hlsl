@@ -12,26 +12,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define STL_H
 
 #define STL_VERSION_MAJOR 1
-#define STL_VERSION_MINOR 1
-
-/*
-Changelog:
-v1.1
-- removed bicubic filter
-- added Catmull-Rom filter with custom weights
-- removed "STL::" inside the namespace
-*/
+#define STL_VERSION_MINOR 2
 
 // Settings
-#define STL_SIGN_DEFAULT            STL_SIGN_FAST
-#define STL_SQRT_DEFAULT            STL_SQRT_SAFE
-#define STL_RSQRT_DEFAULT           STL_POSITIVE_RSQRT_ACCURATE_SAFE
-#define STL_POSITIVE_RCP_DEFAULT    STL_POSITIVE_RCP_ACCURATE_SAFE
-#define STL_LUMINANCE_DEFAULT       STL_LUMINANCE_BT601
-#define STL_RNG_DEFAULT             STL_RNG_MANTISSA_BITS
-#define STL_BAYER_DEFAULT           STL_BAYER_REVERSEBITS
-#define STL_RF0_DIELECTRICS         0.04
-#define STL_GTR_GAMMA               1.5
+#define STL_SIGN_DEFAULT                            STL_SIGN_FAST
+#define STL_SQRT_DEFAULT                            STL_SQRT_SAFE
+#define STL_RSQRT_DEFAULT                           STL_POSITIVE_RSQRT_ACCURATE_SAFE
+#define STL_POSITIVE_RCP_DEFAULT                    STL_POSITIVE_RCP_ACCURATE_SAFE
+#define STL_LUMINANCE_DEFAULT                       STL_LUMINANCE_BT601
+#define STL_RNG_DEFAULT                             STL_RNG_MANTISSA_BITS
+#define STL_BAYER_DEFAULT                           STL_BAYER_REVERSEBITS
+#define STL_RF0_DIELECTRICS                         0.04
+#define STL_GTR_GAMMA                               1.5
+#define STL_SPECULAR_DOMINANT_DIRECTION_DEFAULT     STL_SPECULAR_DOMINANT_DIRECTION_APPROX
 
 #define compiletime
 
@@ -580,14 +573,22 @@ namespace STL
             return p;
         }
 
+        float2 GetScreenUv( float4x4 worldToClip, float3 X )
+        {
+            float4 clip = Geometry::ProjectiveTransform( worldToClip, X );
+            float2 uv = ( clip.xy / clip.w ) * float2( 0.5, -0.5 ) + 0.5;
+            uv = clip.w < 0.0 ? 99999.0 : uv;
+
+            return uv;
+        }
+
         #define STL_SCREEN_MOTION 0
         #define STL_WORLD_MOTION 1
 
         float2 GetPrevUvFromMotion( float2 uv, float3 X, float4x4 worldToClipPrev, float3 motionVector, compiletime const uint motionType = STL_WORLD_MOTION )
         {
             float3 Xprev = X + motionVector;
-            float4 clipPrev = Geometry::ProjectiveTransform( worldToClipPrev, Xprev );
-            float2 uvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5;
+            float2 uvPrev = GetScreenUv( worldToClipPrev, Xprev );
 
             [flatten]
             if( motionType == STL_SCREEN_MOTION )
@@ -703,6 +704,20 @@ namespace STL
         }
 
         // HDR
+        float3 Compress( float3 color, float exposure = 1.0 )
+        {
+            float luma = Luminance( color );
+
+            return color * Math::PositiveRcp( 1.0 + luma * exposure );
+        }
+
+        float3 Decompress( float3 color, float exposure = 1.0 )
+        {
+            float luma = Luminance( color );
+
+            return color * Math::PositiveRcp( 1.0 - luma * exposure );
+        }
+
         float3 HdrToLinear( float3 colorMulExposure )
         {
             float3 x0 = colorMulExposure * 0.38317;
@@ -731,18 +746,36 @@ namespace STL
             return saturate( x0 );
         }
 
-        float3 Compress( float3 color, float exposure )
+        float3 _UnchartedCurve( float3 color )
         {
-            float luma = Luminance( color );
+            float A = 0.22; // Shoulder Strength
+            float B = 0.3;  // Linear Strength
+            float C = 0.1;  // Linear Angle
+            float D = 0.2;  // Toe Strength
+            float E = 0.01; // Toe Numerator
+            float F = 0.3;  // Toe Denominator
 
-            return color * Math::PositiveRcp( 1.0 + luma * exposure );
+            return saturate( ( ( color * ( A * color + C * B ) + D * E ) / ( color * ( A * color + B ) + D * F ) ) - ( E / F ) );
         }
 
-        float3 Decompress( float3 color, float exposure )
+        float3 HdrToLinear_Uncharted( float3 color )
         {
-            float luma = Luminance( color );
+            // John Hable's Uncharted 2 filmic tone map (http://filmicgames.com/archives/75)
+            return saturate( _UnchartedCurve( color ) / _UnchartedCurve( 11.2 ).x );
+        }
 
-            return color * Math::PositiveRcp( 1.0 - luma * exposure );
+        float3 HdrToLinear_Aces( float3 color )
+        {
+            // Cancel out the pre-exposure mentioned in https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
+            color *= 0.6;
+
+            float A = 2.51;
+            float B = 0.03;
+            float C = 2.43;
+            float D = 0.59;
+            float E = 0.14;
+
+            return saturate( ( color * ( A * color + B ) ) * Math::PositiveRcp( color * ( C * color + D ) + E ) );
         }
 
         // Blending functions
@@ -917,7 +950,7 @@ namespace STL
             return bSigned ? v.xy : saturate( v.xy * 0.5 + 0.5 );
         }
 
-        float3 DecodeUnitVector( float2 p, compiletime const bool bSigned = false )
+        float3 DecodeUnitVector( float2 p, compiletime const bool bSigned = false, compiletime const bool bNormalize = true )
         {
             p = bSigned ? p : ( p * 2.0 - 1.0 );
 
@@ -926,7 +959,7 @@ namespace STL
             float t = saturate( -n.z );
             n.xy += n.xy >= 0.0 ? -t : t;
 
-            return normalize( n );
+            return bNormalize ? normalize( n ) : n;
         }
     };
 
@@ -936,13 +969,13 @@ namespace STL
 
     namespace Filtering
     {
-        float GetModifiedRoughnessFromNormalVariance( float roughness, float3 nonNormalizedAverageNormal )
+        float GetModifiedRoughnessFromNormalVariance( float linearRoughness, float3 nonNormalizedAverageNormal )
         {
             // https://blog.selfshadow.com/publications/s2013-shading-course/rad/s2013_pbs_rad_notes.pdf (page 20)
             float l = length( nonNormalizedAverageNormal );
             float kappa = saturate( 1.0 - l * l ) * Math::PositiveRcp( l * ( 3.0 - l * l ) );
 
-            return Math::Sqrt01( roughness * roughness + kappa );
+            return Math::Sqrt01( linearRoughness * linearRoughness + kappa );
         }
 
         // Mipmap level
@@ -1026,6 +1059,9 @@ namespace STL
         #define _ApplyBilinearCustomWeights( s00, s10, s01, s11, w, normalize ) ( ( s00 * w.x + s10 * w.y + s01 * w.z + s11 * w.w ) * ( normalize ? Math::PositiveRcp( dot( w, 1.0 ) ) : 1.0 ) )
 
         float ApplyBilinearCustomWeights( float s00, float s10, float s01, float s11, float4 w, compiletime const bool normalize = true )
+        { return _ApplyBilinearCustomWeights( s00, s10, s01, s11, w, normalize ); }
+
+        float2 ApplyBilinearCustomWeights( float2 s00, float2 s10, float2 s01, float2 s11, float4 w, compiletime const bool normalize = true )
         { return _ApplyBilinearCustomWeights( s00, s10, s01, s11, w, normalize ); }
 
         float4 ApplyBilinearCustomWeights( float4 s00, float4 s10, float4 s01, float4 s11, float4 w, compiletime const bool normalize = true )
@@ -1274,12 +1310,19 @@ namespace STL
             return saturate( probability );
         }
 
-        float GetSpecularLobeHalfAngle( float roughness )
+        // Defines a cone angle, where micro-normals are distributed
+        float GetSpecularLobeHalfAngle( float linearRoughness, float percentOfVolume = 0.75 )
         {
-            // Defines a cone angle, where micro-normals are distributed
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
 
-            return Math::DegToRad( 180.0 ) * m / ( 1.0 + m );
+            // Comparison of two methods: http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJhdGFuKDAuNzUqeCp4LygxLTAuNzUpKSoxODAvMy4xNDE1OTIiLCJjb2xvciI6IiMxOUYwMEUifSx7InR5cGUiOjAsImVxIjoiMTgwKngqeC8oMSt4KngpIiwiY29sb3IiOiIjRkYwMDJCIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMTgwIl19XQ--
+            #if 1
+                // https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf (page 72)
+                // TODO: % of NDF volume - is it the trimming factor from VNDF sampling?
+                return atan( m * percentOfVolume / ( 1.0 - percentOfVolume ) );
+            #else
+                return Math::DegToRad( 180.0 ) * m / ( 1.0 + m );
+            #endif
         }
 
         float3 CorrectDirectionToInfiniteSource( float3 N, float3 L, float3 V, float tanOfAngularSize )
@@ -1292,26 +1335,32 @@ namespace STL
         }
 
         // https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf (page 69)
-        float3 GetSpecularDominantDirection( float3 N, float3 V, float roughness )
+        #define STL_SPECULAR_DOMINANT_DIRECTION_G1      0
+        #define STL_SPECULAR_DOMINANT_DIRECTION_G2      1
+        #define STL_SPECULAR_DOMINANT_DIRECTION_APPROX  2
+
+        float4 GetSpecularDominantDirection( float3 N, float3 V, float linearRoughness, compiletime const uint mode = STL_SPECULAR_DOMINANT_DIRECTION_DEFAULT )
         {
-            #if 1
-                float a = 0.298475 * log( 39.4115 - 39.0029 * roughness );
+            float NoV = abs( dot( N, V ) );
 
-                // This is my fix for the original approximation to prevent elongation of true mirror reflections
-                float smallRoughnessFix = Math::SmoothStep( 0.05, 0.2, roughness );
-                a = lerp( 1.0, a, smallRoughnessFix );
-
-                float NoV = abs( dot( N, V ) );
-                float f = Math::Pow01( 1.0 - NoV, 10.8649 ) * ( 1.0 - a ) + a;
-            #else
-                float smoothness = 1.0 - roughness;
-                float f = smoothness * ( Math::Sqrt01( smoothness ) + roughness );
-            #endif
+            float f;
+            if( mode == STL_SPECULAR_DOMINANT_DIRECTION_G2 )
+            {
+                float a = 0.298475 * log( 39.4115 - 39.0029 * linearRoughness );
+                f = Math::Pow01( 1.0 - NoV, 10.8649 ) * ( 1.0 - a ) + a;
+            }
+            else if( mode == STL_SPECULAR_DOMINANT_DIRECTION_G1 )
+                f = 0.298475 * NoV * log( 39.4115 - 39.0029 * linearRoughness ) + ( 0.385503 - 0.385503 * NoV ) * log( 13.1567 - 12.2848 * linearRoughness );
+            else
+            {
+                float s = 1.0 - linearRoughness;
+                f = s * ( Math::Sqrt01( s ) + linearRoughness );
+            }
 
             float3 R = reflect( -V, N );
-            float3 lobeAxis = lerp( N, R, f );
+            float3 lobeAxis = normalize( lerp( N, R, f ) );
 
-            return normalize( lobeAxis );
+            return float4( lobeAxis, f );
         }
 
         //=================================================================================
@@ -1379,9 +1428,9 @@ namespace STL
                 return 4.0 * VoH * Math::PositiveRcp( D * NoH );
             }
 
-            float3 GetRay( float2 rnd, float roughness )
+            float3 GetRay( float2 rnd, float linearRoughness )
             {
-                float m = roughness * roughness;
+                float m = linearRoughness * linearRoughness;
                 float m2 = m * m;
                 float t = ( m2 - 1.0 ) * rnd.y + 1.0;
                 float cosThetaSq = ( 1.0 - rnd.y ) * Math::PositiveRcp( t );
@@ -1409,11 +1458,14 @@ namespace STL
                 return 4.0 * VoH * Math::PositiveRcp( D );
             }
 
-            float3 GetRay( float2 rnd, float2 roughness, float3 Vlocal, float trimFactor = 1.0 )
+            float3 GetRay( float2 rnd, float2 linearRoughness, float3 Vlocal, float trimFactor = 1.0 )
             {
                 const float EPS = 1e-7;
 
-                float2 m = roughness * roughness;
+                // TODO: instead of using 2 roughness values introduce "anisotropy" parameter
+                // https://blog.selfshadow.com/publications/s2013-shading-course/rad/s2013_pbs_rad_notes.pdf (page 3)
+
+                float2 m = linearRoughness * linearRoughness;
 
                 // Section 3.2: transforming the view direction to the hemisphere configuration
                 float3 Vh = normalize( float3( m * Vlocal.xy, Vlocal.z ) );
@@ -1454,6 +1506,8 @@ namespace STL
     https://blog.selfshadow.com/publications/
     */
 
+    // "roughness" (aka "alpha", aka "m") = specular or real roughness
+    // "linearRoughness" (aka "perceptual roughness", aka "artistic roughness") = sqrt( roughness )
     // G1 = G1(V, m) is % visible in one direction
     // G2 = G2(L, V, m) is % visible in two directions (in practice, derived from G1)
     // G2(uncorellated) = G1(L, m) * G1(V, m)
@@ -1466,6 +1520,9 @@ namespace STL
 
         void ConvertDiffuseMetalnessToAlbedoRf0( float3 diffuseColor, float metalness, out float3 albedo, out float3 Rf0 )
         {
+            // TODO: ideally, STL_RF0_DIELECTRICS needs to be replaced with reflectance "STL_RF0_DIELECTRICS = 0.16 * reflectance * reflectance"
+            // see https://google.github.io/filament/Filament.html#toc4.8
+            // see https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf (page 13)
             albedo = diffuseColor * saturate( 1.0 - metalness );
             Rf0 = lerp( STL_RF0_DIELECTRICS, diffuseColor, metalness );
         }
@@ -1480,7 +1537,7 @@ namespace STL
         // Diffuse terms
         //======================================================================================================================
 
-        float DiffuseTerm_Lambert( float roughness, float NoL, float NoV, float VoH )
+        float DiffuseTerm_Lambert( float linearRoughness, float NoL, float NoV, float VoH )
         {
             float d = 1.0;
 
@@ -1488,9 +1545,9 @@ namespace STL
         }
 
         // [Burley 2012, "Physically-Based Shading at Disney"]
-        float DiffuseTerm_Burley( float roughness, float NoL, float NoV, float VoH )
+        float DiffuseTerm_Burley( float linearRoughness, float NoL, float NoV, float VoH )
         {
-            float f = 2.0 * VoH * VoH * roughness - 0.5;
+            float f = 2.0 * VoH * VoH * linearRoughness - 0.5;
             float FdV = f * Pow5( NoV ) + 1.0;
             float FdL = f * Pow5( NoL ) + 1.0;
             float d = FdV * FdL;
@@ -1499,9 +1556,9 @@ namespace STL
         }
 
         // [Gotanda 2012, "Beyond a Simple Physically Based Blinn-Phong Model in Real-Time"]
-        float DiffuseTerm_OrenNayar( float roughness, float NoL, float NoV, float VoH )
+        float DiffuseTerm_OrenNayar( float linearRoughness, float NoL, float NoV, float VoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
             float VoL = 2.0 * VoH - 1.0;
             float c1 = 1.0 - 0.5 * m2 / ( m2 + 0.33 );
@@ -1513,13 +1570,13 @@ namespace STL
             return d / Math::Pi( 1.0 );
         }
 
-        float DiffuseTerm( float roughness, float NoL, float NoV, float VoH )
+        float DiffuseTerm( float linearRoughness, float NoL, float NoV, float VoH )
         {
             // DiffuseTerm_Lambert
             // DiffuseTerm_Burley
             // DiffuseTerm_OrenNayar
 
-            return DiffuseTerm_Burley( roughness, NoL, NoV, VoH );
+            return DiffuseTerm_Burley( linearRoughness, NoL, NoV, VoH );
         }
 
         //======================================================================================================================
@@ -1527,9 +1584,9 @@ namespace STL
         //======================================================================================================================
 
         // [Blinn 1977, "Models of light reflection for computer synthesized pictures"]
-        float DistributionTerm_Blinn( float roughness, float NoH )
+        float DistributionTerm_Blinn( float linearRoughness, float NoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
             float alpha = 2.0 * Math::PositiveRcp( m2 ) - 2.0;
             float norm = ( alpha + 2.0 ) / 2.0;
@@ -1539,9 +1596,9 @@ namespace STL
         }
 
         // [Beckmann 1963, "The scattering of electromagnetic waves from rough surfaces"]
-        float DistributionTerm_Beckmann( float roughness, float NoH )
+        float DistributionTerm_Beckmann( float linearRoughness, float NoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
             float b = NoH * NoH;
             float a = m2 * b;
@@ -1551,9 +1608,9 @@ namespace STL
         }
 
         // GGX / Trowbridge-Reitz, [Walter et al. 2007, "Microfacet models for refraction through rough surfaces"]
-        float DistributionTerm_GGX( float roughness, float NoH )
+        float DistributionTerm_GGX( float linearRoughness, float NoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
 
             #if 1
@@ -1570,9 +1627,9 @@ namespace STL
         }
 
         // Generalized Trowbridge-Reitz, [Burley 2012, "Physically-Based Shading at Disney"]
-        float DistributionTerm_GTR( float roughness, float NoH )
+        float DistributionTerm_GTR( float linearRoughness, float NoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
             float t = ( NoH * m2 - NoH ) * NoH + 1.0;
 
@@ -1583,14 +1640,14 @@ namespace STL
             return d / Math::Pi( 1.0 );
         }
 
-        float DistributionTerm( float roughness, float NoH )
+        float DistributionTerm( float linearRoughness, float NoH )
         {
             // DistributionTerm_Blinn
             // DistributionTerm_Beckmann
             // DistributionTerm_GGX
             // DistributionTerm_GTR
 
-            return DistributionTerm_GGX( roughness, NoH );
+            return DistributionTerm_GGX( linearRoughness, NoH );
         }
 
         //======================================================================================================================
@@ -1598,9 +1655,9 @@ namespace STL
         //======================================================================================================================
 
         // Known as "G1"
-        float GeometryTerm_Smith( float roughness, float NoVL )
+        float GeometryTerm_Smith( float linearRoughness, float NoVL )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
             float a = NoVL + Math::Sqrt01( ( NoVL - m2 * NoVL ) * NoVL + m2 );
 
@@ -1612,21 +1669,21 @@ namespace STL
         // G(mod) = G / ( 4.0 * NoV * NoL ): BRDF = F * D * G / (4 * NoV * NoL) => BRDF = F * D * Gmod
         //======================================================================================================================
 
-        float GeometryTermMod_Implicit( float roughness, float NoL, float NoV, float VoH, float NoH )
+        float GeometryTermMod_Implicit( float linearRoughness, float NoL, float NoV, float VoH, float NoH )
         {
             return 0.25;
         }
 
         // [Neumann 1999, "Compact metallic reflectance models"]
-        float GeometryTermMod_Neumann( float roughness, float NoL, float NoV, float VoH, float NoH )
+        float GeometryTermMod_Neumann( float linearRoughness, float NoL, float NoV, float VoH, float NoH )
         {
             return 0.25 * Math::PositiveRcp( max( NoL, NoV ) );
         }
 
         // [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
-        float GeometryTermMod_Schlick( float roughness, float NoL, float NoV, float VoH, float NoH )
+        float GeometryTermMod_Schlick( float linearRoughness, float NoL, float NoV, float VoH, float NoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
 
             // original form
             //float k = m * sqrt( 2.0 / Math::Pi( 1.0 ) );
@@ -1643,9 +1700,9 @@ namespace STL
         // [Smith 1967, "Geometrical shadowing of a random rough surface"]
         // https://twvideo01.ubm-us.net/o1/vault/gdc2017/Presentations/Hammon_Earl_PBR_Diffuse_Lighting.pdf
         // Known as "G2 height correlated"
-        float GeometryTermMod_SmithCorrelated( float roughness, float NoL, float NoV, float VoH, float NoH )
+        float GeometryTermMod_SmithCorrelated( float linearRoughness, float NoL, float NoV, float VoH, float NoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
             float a = NoV * Math::Sqrt01( ( NoL - m2 * NoL ) * NoL + m2 );
             float b = NoL * Math::Sqrt01( ( NoV - m2 * NoV ) * NoV + m2 );
@@ -1656,9 +1713,9 @@ namespace STL
         // Smith term for GGX modified by Disney to be less "hot" for small roughness values
         // [Burley 2012, "Physically-Based Shading at Disney"]
         // Known as "G2 = G1( NoL ) * G1( NoV )"
-        float GeometryTermMod_SmithUncorrelated( float roughness, float NoL, float NoV, float VoH, float NoH )
+        float GeometryTermMod_SmithUncorrelated( float linearRoughness, float NoL, float NoV, float VoH, float NoH )
         {
-            float m = roughness * roughness;
+            float m = linearRoughness * linearRoughness;
             float m2 = m * m;
             float a = NoL + Math::Sqrt01( ( NoL - m2 * NoL ) * NoL + m2 );
             float b = NoV + Math::Sqrt01( ( NoV - m2 * NoV ) * NoV + m2 );
@@ -1667,7 +1724,7 @@ namespace STL
         }
 
         // [Cook and Torrance 1982, "A Reflectance Model for Computer Graphics"]
-        float GeometryTermMod_CookTorrance( float roughness, float NoL, float NoV, float VoH, float NoH )
+        float GeometryTermMod_CookTorrance( float linearRoughness, float NoL, float NoV, float VoH, float NoH )
         {
             float k = 2.0 * NoH / VoH;
             float a = min( k * NoV, k * NoL );
@@ -1675,7 +1732,7 @@ namespace STL
             return saturate( a ) * 0.25 * Math::PositiveRcp( NoV * NoL );
         }
 
-        float GeometryTermMod( float roughness, float NoL, float NoV, float VoH, float NoH )
+        float GeometryTermMod( float linearRoughness, float NoL, float NoV, float VoH, float NoH )
         {
             // GeometryTermMod_Implicit
             // GeometryTermMod_Neumann
@@ -1684,7 +1741,7 @@ namespace STL
             // GeometryTermMod_SmithUncorrelated
             // GeometryTermMod_CookTorrance
 
-            return GeometryTermMod_SmithCorrelated( roughness, NoL, NoV, VoH, NoH );
+            return GeometryTermMod_SmithCorrelated( linearRoughness, NoL, NoV, VoH, NoH );
         }
 
         //======================================================================================================================
@@ -1730,14 +1787,13 @@ namespace STL
 
         // Approximate Models For Physically Based Rendering by Angelo Pesce and Michael Iwanicki
         // http://miciwan.com/SIGGRAPH2015/course_notes_wip.pdf
-        float3 EnvironmentTerm_Pesce( float3 Rf0, float NoV, float roughness )
+        float3 EnvironmentTerm_Pesce( float3 Rf0, float NoV, float linearRoughness )
         {
-            float m = roughness * roughness;
-
+            float m = linearRoughness * linearRoughness;
             float a = 7.0 * NoV + 4.0 * m;
             float bias = exp2( -a );
 
-            float b = min( roughness, 0.739 + 0.323 * NoV ) - 0.434;
+            float b = min( linearRoughness, 0.739 + 0.323 * NoV ) - 0.434;
             float scale = 1.0 - bias - m * max( bias, b );
 
             bias *= FresnelTerm_Shadowing( Rf0 );
@@ -1747,24 +1803,25 @@ namespace STL
 
         // Shlick's approximation for Ross BRDF - makes Fresnel converge to less than 1.0 when NoV is low
         // https://hal.inria.fr/inria-00443630/file/article-1.pdf
-        float3 EnvironmentTerm_Ross( float3 Rf0, float NoV, float roughness )
+        float3 EnvironmentTerm_Ross( float3 Rf0, float NoV, float linearRoughness )
         {
-            return Rf0 + ( 1.0 - Rf0 ) * Math::Pow01( 1.0 - NoV, 5.0 * exp( -2.69 * roughness ) ) / ( 1.0 + 22.7 * Math::Pow01( roughness, 1.5 ) );
+            float m = linearRoughness * linearRoughness;
+            return Rf0 + ( 1.0 - Rf0 ) * Math::Pow01( 1.0 - NoV, 5.0 * exp( -2.69 * m ) ) / ( 1.0 + 22.7 * Math::Pow01( m, 1.5 ) );
         }
 
-        float3 EnvironmentTerm( float3 Rf0, float NoV, float roughness )
+        float3 EnvironmentTerm( float3 Rf0, float NoV, float linearRoughness )
         {
             // EnvironmentTerm_Pesce
             // EnvironmentTerm_Ross
 
-            return EnvironmentTerm_Ross( Rf0, NoV, roughness );
+            return EnvironmentTerm_Ross( Rf0, NoV, linearRoughness );
         }
 
         //======================================================================================================================
         // Direct lighting
         //======================================================================================================================
 
-        void DirectLighting( float3 N, float3 L, float3 V, float3 Rf0, float roughness, out float3 Cdiff, out float3 Cspec )
+        void DirectLighting( float3 N, float3 L, float3 V, float3 Rf0, float linearRoughness, out float3 Cdiff, out float3 Cspec )
         {
             float3 H = normalize( L + V );
 
@@ -1775,10 +1832,10 @@ namespace STL
             // Due to normal mapping can easily be < 0, it blows up GeometryTerm (Smith)
             float NoV = abs( dot( N, V ) );
 
-            float D = DistributionTerm( roughness, NoH );
-            float G = GeometryTermMod( roughness, NoL, NoV, VoH, NoH );
+            float D = DistributionTerm( linearRoughness, NoH );
+            float G = GeometryTermMod( linearRoughness, NoL, NoV, VoH, NoH );
             float3 F = FresnelTerm( Rf0, VoH );
-            float Kdiff = DiffuseTerm( roughness, NoL, NoV, VoH );
+            float Kdiff = DiffuseTerm( linearRoughness, NoL, NoV, VoH );
 
             Cspec = F * D * G * NoL;
             Cdiff = ( 1.0 - F ) * Kdiff * NoL;
@@ -1846,3 +1903,16 @@ namespace STL
 }
 
 #endif
+
+/*
+Changelog:
+v1.1
+- removed bicubic filter
+- added Catmull-Rom filter with custom weights
+- removed "STL::" inside the namespace
+- added tone mapping curves
+- added more specular dominant direction calculation variants
+
+v1.2
+- fixed messed up "roughness" and "linearRoughness" entities
+*/

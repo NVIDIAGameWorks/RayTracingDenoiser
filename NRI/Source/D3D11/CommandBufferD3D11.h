@@ -49,7 +49,7 @@ namespace nri
         void ClearAttachments(const ClearDesc* clearDescs, uint32_t clearDescNum, const Rect* rects, uint32_t rectNum);
         void ClearStorageBuffer(const ClearStorageBufferDesc& clearDesc);
         void ClearStorageTexture(const ClearStorageTextureDesc& clearDesc);
-        void BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag);
+        void BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag);
         void EndRenderPass();
         void SetVertexBuffers(uint32_t baseSlot, uint32_t bufferNum, const Buffer* const* buffers, const uint64_t* offsets);
         void SetIndexBuffer(const Buffer& buffer, uint64_t offset, IndexType indexType);

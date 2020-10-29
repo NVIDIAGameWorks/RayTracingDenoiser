@@ -236,7 +236,7 @@ void CommandBufferVK::ClearStorageTexture(const ClearStorageTextureDesc& clearDe
     m_VK.CmdClearColorImage(m_Handle, descriptor.GetImage(m_PhysicalDeviceIndex), VK_IMAGE_LAYOUT_GENERAL, value, 1, &range);
 }
 
-void CommandBufferVK::BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+void CommandBufferVK::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
     const FrameBufferVK& frameBufferImpl = (const FrameBufferVK&)frameBuffer;
 
@@ -247,7 +247,7 @@ void CommandBufferVK::BeginRenderPass(const FrameBuffer& frameBuffer, Framebuffe
     const VkRenderPassBeginInfo info = {
         VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         nullptr,
-        frameBufferImpl.GetRenderPass(bindFlag),
+        frameBufferImpl.GetRenderPass(renderPassBeginFlag),
         frameBufferImpl.GetHandle(m_PhysicalDeviceIndex),
         frameBufferImpl.GetRenderArea(),
         attachmentNum,
@@ -864,6 +864,11 @@ void CommandBufferVK::DispatchRays(const DispatchRaysDesc& dispatchRaysDesc)
         hitBufferHandle, dispatchRaysDesc.hitShaderGroups.offset, dispatchRaysDesc.hitShaderGroups.stride,
         callableBufferHandle, dispatchRaysDesc.callableShaders.offset, dispatchRaysDesc.callableShaders.stride,
         dispatchRaysDesc.width, dispatchRaysDesc.height, dispatchRaysDesc.depth);
+}
+
+void CommandBufferVK::DispatchMeshTasks(uint32_t taskNum)
+{
+    m_VK.CmdDrawMeshTasksNV(m_Handle, taskNum, 0);
 }
 
 #include "CommandBufferVK.hpp"

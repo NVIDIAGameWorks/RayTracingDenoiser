@@ -247,11 +247,10 @@ D3D11_PRIMITIVE_TOPOLOGY GetD3D11TopologyFromTopology(nri::Topology topology, ui
 
 inline bool DoesLibraryExist(const Log& log, const char* moduleName)
 {
-    HMODULE handle = GetModuleHandleA(moduleName);
-    if (!handle)
-        handle = LoadLibraryA(moduleName);
-
-    if (!handle)
+    HMODULE handle = LoadLibraryA(moduleName);
+    if (handle)
+        FreeLibrary(handle);
+    else
         REPORT_INFO(log, "'%s' is not found. It's not required, but to enable AMD extensions put it in the working/system directory.", moduleName);
 
     return handle != nullptr;
@@ -266,9 +265,9 @@ DX11Extensions::~DX11Extensions()
         agsDeInit(agsContext);
 }
 
-void DX11Extensions::Create(const Log& log, nri::Vendor vendor, AGSContext* context)
+void DX11Extensions::Create(const Log& l, nri::Vendor vendor, AGSContext* context)
 {
-    this->log = &log;
+    this->log = &l;
 
     const NvAPI_Status res1 = NvAPI_Initialize();
     isAvailableNVAPI = (res1 == NVAPI_OK);
@@ -277,7 +276,7 @@ void DX11Extensions::Create(const Log& log, nri::Vendor vendor, AGSContext* cont
     {
         AGSReturnCode res2 = AGS_ERROR_MISSING_DLL;
 
-        if (DoesLibraryExist(log, "amd_ags_x64.dll"))
+        if (DoesLibraryExist(l, "amd_ags_x64.dll"))
             res2 = agsInit(&agsContext, nullptr, nullptr);
 
         isAvailableAGS = (res2 == AGS_SUCCESS);
@@ -293,7 +292,7 @@ void DX11Extensions::Create(const Log& log, nri::Vendor vendor, AGSContext* cont
     case nri::Vendor::NVIDIA:
         {
             if (!isAvailableNVAPI)
-                REPORT_WARNING(log, "NVAPI library is not available!");
+                REPORT_WARNING(l, "NVAPI library is not available!");
 
             isAvailableAGS = false;
         }
@@ -301,7 +300,7 @@ void DX11Extensions::Create(const Log& log, nri::Vendor vendor, AGSContext* cont
     case nri::Vendor::AMD:
         {
             if (!isAvailableAGS)
-                REPORT_WARNING(log, "AMDAGS library is not available!");
+                REPORT_WARNING(l, "AMDAGS library is not available!");
 
             isAvailableNVAPI = false;
         }
@@ -453,11 +452,11 @@ namespace nri
                 static_assert(sizeof(TextureUsageBits) == sizeof(uint16_t), "invalid sizeof");
 
                 textureDesc.format = GetFormatDXGI(desc.Format);
-                textureDesc.size[0] = desc.Width;
+                textureDesc.size[0] = (uint16_t)desc.Width;
                 textureDesc.size[1] = 1;
                 textureDesc.size[2] = 1;
-                textureDesc.mipNum = desc.MipLevels;
-                textureDesc.arraySize = desc.ArraySize;
+                textureDesc.mipNum = (uint16_t)desc.MipLevels;
+                textureDesc.arraySize = (uint16_t)desc.ArraySize;
                 textureDesc.sampleNum = 1;
                 textureDesc.physicalDeviceMask = 0x1; // unsupported in D3D11
                 break;
@@ -474,12 +473,12 @@ namespace nri
                 static_assert(sizeof(TextureUsageBits) == sizeof(uint16_t), "invalid sizeof");
 
                 textureDesc.format = GetFormatDXGI(desc.Format);
-                textureDesc.size[0] = desc.Width;
-                textureDesc.size[1] = desc.Height;
+                textureDesc.size[0] = (uint16_t)desc.Width;
+                textureDesc.size[1] = (uint16_t)desc.Height;
                 textureDesc.size[2] = 1;
-                textureDesc.mipNum = desc.MipLevels;
-                textureDesc.arraySize = desc.ArraySize;
-                textureDesc.sampleNum = desc.SampleDesc.Count;
+                textureDesc.mipNum = (uint16_t)desc.MipLevels;
+                textureDesc.arraySize = (uint16_t)desc.ArraySize;
+                textureDesc.sampleNum = (uint8_t)desc.SampleDesc.Count;
                 textureDesc.physicalDeviceMask = 0x1; // unsupported in D3D11
                 break;
             }
@@ -495,10 +494,10 @@ namespace nri
                 static_assert(sizeof(TextureUsageBits) == sizeof(uint16_t), "invalid sizeof");
 
                 textureDesc.format = GetFormatDXGI(desc.Format);
-                textureDesc.size[0] = desc.Width;
-                textureDesc.size[1] = desc.Height;
-                textureDesc.size[2] = desc.Depth;
-                textureDesc.mipNum = desc.MipLevels;
+                textureDesc.size[0] = (uint16_t)desc.Width;
+                textureDesc.size[1] = (uint16_t)desc.Height;
+                textureDesc.size[2] = (uint16_t)desc.Depth;
+                textureDesc.mipNum = (uint16_t)desc.MipLevels;
                 textureDesc.arraySize = 1;
                 textureDesc.sampleNum = 1;
                 textureDesc.physicalDeviceMask = 0x1; // unsupported in D3D11

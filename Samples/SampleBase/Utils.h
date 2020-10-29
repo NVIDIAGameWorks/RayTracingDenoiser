@@ -37,6 +37,7 @@ namespace utils
 
     enum StaticTexture : uint32_t
     {
+        Invalid,
         Black,
         FlatNormal,
         ScramblingRanking1spp,
@@ -69,17 +70,17 @@ namespace utils
 
     struct Texture
     {
+        detexTexture **texture = nullptr;
         std::string name;
         uint64_t hash = 0;
         uint32_t averageColor = 0;
         AlphaMode alphaMode = AlphaMode::OPAQUE;
         nri::Format format = nri::Format::UNKNOWN;
-        uint32_t arraySize = 0;
-        uint32_t mipNum = 0;
-        uint32_t width = 0;
-        uint32_t height = 0;
-        uint32_t depth = 0;
-        detexTexture **texture = nullptr;
+        uint16_t width = 0;
+        uint16_t height = 0;
+        uint16_t depth = 0;
+        uint16_t mipNum = 0;
+        uint16_t arraySize = 0;
 
         inline ~Texture()
         {
@@ -87,25 +88,25 @@ namespace utils
             texture = nullptr;
         }
 
-        inline void OverrideFormat(nri::Format format)
-        { this->format = format; }
+        inline void OverrideFormat(nri::Format fmt)
+        { this->format = fmt; }
 
         inline bool IsBlockCompressed() const
         { return detexFormatIsCompressed(texture[0]->format); }
 
-        inline uint32_t GetArraySize() const
+        inline uint16_t GetArraySize() const
         { return arraySize; }
 
-        inline uint32_t GetMipNum() const
+        inline uint16_t GetMipNum() const
         { return mipNum; }
 
-        inline uint32_t GetWidth() const
-        { return (uint32_t)helper::GetAlignedSize(width, IsBlockCompressed() ? 4 : 1); }
+        inline uint16_t GetWidth() const
+        { return helper::GetAlignedSize(width, IsBlockCompressed() ? 4 : 1); }
 
-        inline uint32_t GetHeight() const
-        { return (uint32_t)helper::GetAlignedSize(height, IsBlockCompressed() ? 4 : 1); }
+        inline uint16_t GetHeight() const
+        { return helper::GetAlignedSize(height, IsBlockCompressed() ? 4 : 1); }
 
-        inline uint32_t GetDepth() const
+        inline uint16_t GetDepth() const
         { return depth; }
 
         inline nri::Format GetFormat() const
@@ -115,6 +116,7 @@ namespace utils
         {
             // TODO: 3D images are not supported, "subresource.slices" needs to be allocated to store pointers to all slices of current mipmap
             assert(GetDepth() == 1);
+            PLATFORM_UNUSED(arrayIndex);
 
             subresource.slices = (const void* const*)&texture[mipIndex]->data;
             subresource.sliceNum = 1;

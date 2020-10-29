@@ -24,7 +24,7 @@ namespace nri
 
         Result Create(const AccelerationStructureDesc& accelerationStructureDesc);
         Result RetrieveNativeHandle();
-        uint32_t GetCreationFlags() const; 
+        uint32_t GetCreationFlags() const;
 
         void SetDebugName(const char* name);
         void GetMemoryInfo(MemoryDesc& memoryDesc) const;
@@ -36,8 +36,8 @@ namespace nri
     private:
         void GetMemoryInfo(VkAccelerationStructureMemoryRequirementsTypeNV type, VkMemoryRequirements2& requirements) const;
 
-        VkAccelerationStructureNV m_Handles[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
-        uint64_t m_NativeHandles[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
+        std::array<VkAccelerationStructureNV, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_Handles = {};
+        std::array<uint64_t, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_NativeHandles = {};
         DeviceVK& m_Device;
         uint32_t m_CreationFlags = 0;
         bool m_OwnsNativeObjects = false;

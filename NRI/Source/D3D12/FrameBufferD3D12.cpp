@@ -55,7 +55,7 @@ Result FrameBufferD3D12::Create(const FrameBufferDesc& frameBufferDesc)
     return Result::SUCCESS;
 }
 
-void FrameBufferD3D12::Bind(ID3D12GraphicsCommandList* graphicsCommandList, FramebufferBindFlag bindFlag)
+void FrameBufferD3D12::Bind(ID3D12GraphicsCommandList* graphicsCommandList, RenderPassBeginFlag renderPassBeginFlag)
 {
     graphicsCommandList->OMSetRenderTargets(
         (UINT)m_RenderTargets.size(),
@@ -64,7 +64,7 @@ void FrameBufferD3D12::Bind(ID3D12GraphicsCommandList* graphicsCommandList, Fram
         m_DepthStencilTarget.ptr != 0 ? &m_DepthStencilTarget : nullptr
     );
 
-    if (bindFlag == FramebufferBindFlag::SKIP_CLEAR || m_ClearDescs.empty())
+    if (renderPassBeginFlag == RenderPassBeginFlag::SKIP_FRAME_BUFFER_CLEAR || m_ClearDescs.empty())
         return;
 
     Clear(graphicsCommandList, &m_ClearDescs[0], (uint32_t)m_ClearDescs.size(), nullptr, 0);
@@ -84,7 +84,7 @@ void FrameBufferD3D12::Clear(ID3D12GraphicsCommandList* graphicsCommandList, con
         }
         else if (m_DepthStencilTarget.ptr)
         {
-            D3D12_CLEAR_FLAGS clearFlags;
+            D3D12_CLEAR_FLAGS clearFlags = (D3D12_CLEAR_FLAGS)0;
             switch (clearDescs[i].attachmentContentType)
             {
             case AttachmentContentType::DEPTH:

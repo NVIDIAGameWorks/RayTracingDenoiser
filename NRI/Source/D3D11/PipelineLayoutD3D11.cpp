@@ -43,7 +43,7 @@ using namespace nri;
     if ( IsShaderVisible(ss.shaderVisibility, stage) ) \
         context->xy##SetSamplers(ss.slot, 1, (ID3D11SamplerState**)&ss.sampler)
 
-constexpr uint32_t ALL_GRAPHICS_STAGES = ~(1 << (uint32_t)ShaderStage::COMPUTE);
+constexpr uint32_t ALL_GRAPHICS_STAGES = ~(1u << (uint32_t)ShaderStage::COMPUTE);
 
 // see StageSlots
 constexpr std::array<DescriptorTypeDX11, (uint32_t)DescriptorType::MAX_NUM> g_RemapDescriptorTypeToIndex =

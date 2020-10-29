@@ -364,7 +364,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
     NRI.CmdPipelineBarrier(commandBuffer, &transitionBarriers, nullptr, nri::BarrierDependency::GRAPHICS_STAGE);
 
     NRI.CmdBeginAnnotation(commandBuffer, "Thread0");
-    NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBuffer, nri::FramebufferBindFlag::NONE);
+    NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBuffer, nri::RenderPassBeginFlag::NONE);
 
     if (m_IsMultithreadingEnabled)
     {
@@ -382,7 +382,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
     if (!m_IsMultithreadingEnabled)
     {
-        NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBufferUI, nri::FramebufferBindFlag::SKIP_CLEAR);
+        NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBufferUI, nri::RenderPassBeginFlag::SKIP_FRAME_BUFFER_CLEAR);
         m_UserInterface.Render(commandBuffer);
         NRI.CmdEndRenderPass(commandBuffer);
 
@@ -475,7 +475,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex)
         snprintf(annotation, sizeof(annotation), "Thread%u", threadIndex);
 
         NRI.CmdBeginAnnotation(commandBuffer, annotation);
-        NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBuffer, nri::FramebufferBindFlag::SKIP_CLEAR);
+        NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBuffer, nri::RenderPassBeginFlag::SKIP_FRAME_BUFFER_CLEAR);
 
         const uint32_t baseBoxIndex = threadIndex * m_BoxesPerThread;
         const uint32_t boxNum = std::min(m_BoxesPerThread, (uint32_t)m_Boxes.size() - baseBoxIndex);
@@ -486,7 +486,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex)
 
         if (threadIndex == m_ThreadNum - 1)
         {
-            NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBufferUI, nri::FramebufferBindFlag::SKIP_CLEAR);
+            NRI.CmdBeginRenderPass(commandBuffer, *m_BackBuffer->frameBufferUI, nri::RenderPassBeginFlag::SKIP_FRAME_BUFFER_CLEAR);
             m_UserInterface.Render(commandBuffer);
             NRI.CmdEndRenderPass(commandBuffer);
         }
@@ -635,7 +635,7 @@ bool Sample::CreatePipeline(nri::Format swapChainFormat)
     nri::InputAssemblyDesc inputAssemblyDesc = {};
     inputAssemblyDesc.topology = nri::Topology::TRIANGLE_LIST;
     inputAssemblyDesc.attributes = vertexAttributeDesc;
-    inputAssemblyDesc.attributeNum = helper::GetCountOf(vertexAttributeDesc);
+    inputAssemblyDesc.attributeNum = (uint8_t)helper::GetCountOf(vertexAttributeDesc);
     inputAssemblyDesc.streams = &vertexStreamDesc;
     inputAssemblyDesc.streamNum = 1;
 
@@ -993,9 +993,7 @@ void Sample::CreateViewConstantBuffer()
 
 void Sample::SetupProjViewMatrix(float4x4& projViewMatrix)
 {
-    const uint32_t windowWidth = GetWindowWidth();
-    const uint32_t windowHeight = GetWindowHeight();
-    const float aspect = float(windowWidth) / float(windowHeight);
+    const float aspect = float( GetWindowWidth() ) / float( GetWindowHeight() );
 
     float4x4 projectionMatrix;
     projectionMatrix.SetupByHalfFovxInf(DegToRad(45.0f), aspect, 0.1f, 0);

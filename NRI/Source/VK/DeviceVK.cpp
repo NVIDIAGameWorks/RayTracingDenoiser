@@ -33,28 +33,25 @@ using namespace nri;
 void* vkAllocateHostMemory(void* pUserData, size_t size, size_t alignment, VkSystemAllocationScope allocationScope)
 {
     StdAllocator<uint8_t>& stdAllocator = *(StdAllocator<uint8_t>*)pUserData;
-    const auto& lowLevelAllocator = *stdAllocator.GetInterface();
-    const auto& lowLevelAllocatorArg = stdAllocator.GetUserArg();
+    const auto& lowLevelAllocator = stdAllocator.GetInterface();
 
-    return lowLevelAllocator.Allocate(lowLevelAllocatorArg, size, alignment);
+    return lowLevelAllocator.Allocate(lowLevelAllocator.userArg, size, alignment);
 }
 
 void* vkReallocateHostMemory(void* pUserData, void* pOriginal, size_t size, size_t alignment, VkSystemAllocationScope allocationScope)
 {
     StdAllocator<uint8_t>& stdAllocator = *(StdAllocator<uint8_t>*)pUserData;
-    const auto& lowLevelAllocator = *stdAllocator.GetInterface();
-    const auto& lowLevelAllocatorArg = stdAllocator.GetUserArg();
+    const auto& lowLevelAllocator = stdAllocator.GetInterface();
 
-    return lowLevelAllocator.Reallocate(lowLevelAllocatorArg, pOriginal, size, alignment);
+    return lowLevelAllocator.Reallocate(lowLevelAllocator.userArg, pOriginal, size, alignment);
 }
 
 void vkFreeHostMemory(void* pUserData, void* pMemory)
 {
     StdAllocator<uint8_t>& stdAllocator = *(StdAllocator<uint8_t>*)pUserData;
-    const auto& lowLevelAllocator = *stdAllocator.GetInterface();
-    const auto& lowLevelAllocatorArg = stdAllocator.GetUserArg();
+    const auto& lowLevelAllocator = stdAllocator.GetInterface();
 
-    return lowLevelAllocator.Free(lowLevelAllocatorArg, pMemory);
+    return lowLevelAllocator.Free(lowLevelAllocator.userArg, pMemory);
 }
 
 void vkHostMemoryInternalAllocationNotification(void* pUserData, size_t size, VkInternalAllocationType allocationType,
@@ -86,7 +83,8 @@ Result DeviceVK::CreateImplementation(Interface*& entity, const Args&... args)
 DeviceVK::DeviceVK(const Log& log, const StdAllocator<uint8_t>& stdAllocator) :
     DeviceBase(log, stdAllocator),
     m_PhysicalDevices(GetStdAllocator()),
-    m_PhysicalDeviceIndices(GetStdAllocator())
+    m_PhysicalDeviceIndices(GetStdAllocator()),
+    m_ConcurrentSharingModeQueueIndices(GetStdAllocator())
 {
 }
 
@@ -142,6 +140,7 @@ Result DeviceVK::Create(const DeviceCreationDesc& deviceCreationDesc)
         return res;
 
     RetrieveRayTracingInfo();
+    RetrieveMeshShaderInfo();
     CreateCommandQueues();
 
     res = ResolveDispatchTable();
@@ -238,8 +237,7 @@ bool DeviceVK::GetMemoryType(uint32_t index, MemoryTypeInfo& memoryTypeInfo) con
 
     const VkMemoryType& memoryType = m_MemoryProps.memoryTypes[index];
 
-    memoryTypeInfo.memoryTypeIndex = index;
-
+    memoryTypeInfo.memoryTypeIndex = (uint16_t)index;
     memoryTypeInfo.isHostCoherent = memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
     const bool isHostVisible = memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
@@ -701,9 +699,9 @@ Result DeviceVK::BindAccelerationStructureMemory(const AccelerationStructureMemo
         }
     }
 
-    const VkResult result = m_VK.BindAccelerationStructureMemoryNV(m_Device, infoNum, infos);
-    RETURN_ON_FAILURE(GetLog(), result == VK_SUCCESS, GetReturnCode(result),
-        "Can't bind a memory to an acceleratrion structure: BindAccelerationStructureMemoryNVX returned %d.", (int32_t)result);
+    const VkResult res = m_VK.BindAccelerationStructureMemoryNV(m_Device, infoNum, infos);
+    RETURN_ON_FAILURE(GetLog(), res == VK_SUCCESS, GetReturnCode(res),
+        "Can't bind a memory to an acceleratrion structure: BindAccelerationStructureMemoryNVX returned %d.", (int32_t)res);
 
     for (uint32_t i = 0; i < memoryBindingDescNum; i++)
     {
@@ -1131,14 +1129,14 @@ Result DeviceVK::FindPhysicalDeviceGroup(const PhysicalDeviceGroup* physicalDevi
     return Result::SUCCESS;
 }
 
-uint32_t GetMaxSampleCount(VkSampleCountFlags flags)
+inline uint8_t GetMaxSampleCount(VkSampleCountFlags flags)
 {
-    return (uint32_t)flags;
+    return (uint8_t)flags;
 }
 
 void DeviceVK::SetDeviceLimits(bool enableValidation)
 {
-    uint32_t conservativeRasterTier = 0;
+    uint8_t conservativeRasterTier = 0;
     if (m_IsConservativeRasterExtSupported)
     {
         VkPhysicalDeviceConservativeRasterizationPropertiesEXT cr = {
@@ -1386,6 +1384,7 @@ Result DeviceVK::CreateLogicalDevice(const DeviceCreationDesc& deviceCreationDes
     }
 
     extensions.push_back(VK_NV_RAY_TRACING_EXTENSION_NAME);
+    extensions.push_back(VK_NV_MESH_SHADER_EXTENSION_NAME);
     extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
     extensions.push_back(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME);
     extensions.push_back(VK_EXT_SAMPLER_FILTER_MINMAX_EXTENSION_NAME);
@@ -1401,6 +1400,7 @@ Result DeviceVK::CreateLogicalDevice(const DeviceCreationDesc& deviceCreationDes
     m_IsSampleLocationExtSupported = IsExtensionInList(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME, extensions);
     m_IsMinMaxFilterExtSupported = IsExtensionInList(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME, extensions);
     m_IsConservativeRasterExtSupported = IsExtensionInList(VK_EXT_CONSERVATIVE_RASTERIZATION_EXTENSION_NAME, extensions);
+    m_IsMeshShaderExtSupported = IsExtensionInList(VK_NV_MESH_SHADER_EXTENSION_NAME, extensions);
 
     const bool isDemoteToHelperInvocationSupported = IsExtensionInList(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME, extensions);
 
@@ -1415,6 +1415,9 @@ Result DeviceVK::CreateLogicalDevice(const DeviceCreationDesc& deviceCreationDes
     VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT demoteToHelperInvocationFeatures =
         { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT };
 
+    VkPhysicalDeviceMeshShaderFeaturesNV meshShaderFeatures =
+        { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
+
     deviceFeatures2.pNext = &bufferDeviceAddressFeatures;
 
     if (m_IsDescriptorIndexingExtSupported)
@@ -1427,6 +1430,12 @@ Result DeviceVK::CreateLogicalDevice(const DeviceCreationDesc& deviceCreationDes
     {
         demoteToHelperInvocationFeatures.pNext = deviceFeatures2.pNext;
         deviceFeatures2.pNext = &demoteToHelperInvocationFeatures;
+    }
+
+    if (m_IsMeshShaderExtSupported)
+    {
+        meshShaderFeatures.pNext = deviceFeatures2.pNext;
+        deviceFeatures2.pNext = &meshShaderFeatures;
     }
 
     vkGetPhysicalDeviceFeatures2(m_PhysicalDevices.front(), &deviceFeatures2);
@@ -1484,6 +1493,8 @@ void DeviceVK::CreateCommandQueues()
         vkGetDeviceQueue(m_Device, m_FamilyIndices[i], 0, &handle);
 
         m_Queues[i] = Allocate<CommandQueueVK>(GetStdAllocator(), *this, handle, m_FamilyIndices[i], (CommandQueueType)i);
+
+        m_ConcurrentSharingModeQueueIndices.push_back(m_FamilyIndices[i]);
     }
 }
 
@@ -1506,6 +1517,40 @@ void DeviceVK::RetrieveRayTracingInfo()
     m_DeviceDesc.rayTracingGeometryObjectMaxNum = (uint32_t)m_RayTracingDeviceProperties.maxGeometryCount;
     m_DeviceDesc.rayTracingShaderTableAligment = m_RayTracingDeviceProperties.shaderGroupBaseAlignment;
     m_DeviceDesc.rayTracingShaderTableMaxStride = m_RayTracingDeviceProperties.maxShaderGroupStride;
+}
+
+void DeviceVK::RetrieveMeshShaderInfo()
+{
+    VkPhysicalDeviceMeshShaderPropertiesNV meshShaderProperties =
+        { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV };
+
+    if (!m_IsMeshShaderExtSupported)
+        return;
+
+    VkPhysicalDeviceProperties2 props = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        &meshShaderProperties
+    };
+
+    vkGetPhysicalDeviceProperties2(m_PhysicalDevices.front(), &props);
+
+    m_DeviceDesc.maxMeshTasksCount = meshShaderProperties.maxDrawMeshTasksCount;
+    m_DeviceDesc.maxTaskWorkGroupInvocations = meshShaderProperties.maxTaskWorkGroupInvocations;
+    m_DeviceDesc.maxTaskWorkGroupSize[0] = meshShaderProperties.maxTaskWorkGroupSize[0];
+    m_DeviceDesc.maxTaskWorkGroupSize[1] = meshShaderProperties.maxTaskWorkGroupSize[1];
+    m_DeviceDesc.maxTaskWorkGroupSize[2] = meshShaderProperties.maxTaskWorkGroupSize[2];
+    m_DeviceDesc.maxTaskTotalMemorySize = meshShaderProperties.maxTaskTotalMemorySize;
+    m_DeviceDesc.maxTaskOutputCount = meshShaderProperties.maxTaskOutputCount;
+    m_DeviceDesc.maxMeshWorkGroupInvocations = meshShaderProperties.maxMeshWorkGroupInvocations;
+    m_DeviceDesc.maxMeshWorkGroupSize[0] = meshShaderProperties.maxMeshWorkGroupSize[0];
+    m_DeviceDesc.maxMeshWorkGroupSize[1] = meshShaderProperties.maxMeshWorkGroupSize[1];
+    m_DeviceDesc.maxMeshWorkGroupSize[2] = meshShaderProperties.maxMeshWorkGroupSize[2];
+    m_DeviceDesc.maxMeshTotalMemorySize = meshShaderProperties.maxMeshTotalMemorySize;
+    m_DeviceDesc.maxMeshOutputVertices = meshShaderProperties.maxMeshOutputVertices;
+    m_DeviceDesc.maxMeshOutputPrimitives = meshShaderProperties.maxMeshOutputPrimitives;
+    m_DeviceDesc.maxMeshMultiviewViewCount = meshShaderProperties.maxMeshMultiviewViewCount;
+    m_DeviceDesc.meshOutputPerVertexGranularity = meshShaderProperties.meshOutputPerVertexGranularity;
+    m_DeviceDesc.meshOutputPerPrimitiveGranularity = meshShaderProperties.meshOutputPerPrimitiveGranularity;
 }
 
 void DeviceVK::SetDebugNameToTrivialObject(VkObjectType objectType, const void* handle, const char* name)
@@ -1572,9 +1617,9 @@ void DeviceVK::ReportDeviceGroupInfo()
         if (m_MemoryProps.memoryHeaps[i].flags & VK_MEMORY_HEAP_MULTI_INSTANCE_BIT)
             text += "MULTI_INSTANCE_BIT ";
 
-        const double size = double(m_MemoryProps.memoryHeaps[i].size) / (1024.0 * 1024.0 * 1024.0);
+        const double size = double(m_MemoryProps.memoryHeaps[i].size) / (1024.0 * 1024.0);
 
-        REPORT_INFO(GetLog(), "\tHeap%u %.1lfGB - %s", i, size, text.c_str());
+        REPORT_INFO(GetLog(), "\tHeap%u %.1lfMiB - %s", i, size, text.c_str());
 
         if (m_DeviceDesc.phyiscalDeviceGroupSize == 1)
             continue;
@@ -1733,6 +1778,11 @@ Result DeviceVK::ResolveDispatchTable()
         RESOLVE_DEVICE_FUNCTION(CmdTraceRaysNV);
     }
 
+    if (m_IsMeshShaderExtSupported)
+    {
+        RESOLVE_DEVICE_FUNCTION(CmdDrawMeshTasksNV);
+    }
+
     RESOLVE_INSTANCE_FUNCTION(GetPhysicalDeviceFormatProperties);
 
     return Result::SUCCESS;
@@ -1745,8 +1795,8 @@ void DeviceVK::Destroy()
 
 Result CreateDeviceVK(const DeviceCreationDesc& deviceCreationDesc, DeviceBase*& device)
 {
-    Log log(GraphicsAPI::VULKAN, deviceCreationDesc.callbackInterface, deviceCreationDesc.callbackInterfaceUserArg);
-    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface, deviceCreationDesc.memoryAllocatorInterfaceUserArg);
+    Log log(GraphicsAPI::VULKAN, deviceCreationDesc.callbackInterface);
+    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface);
 
     DeviceVK* implementation = Allocate<DeviceVK>(allocator, log, allocator);
 
@@ -1764,8 +1814,8 @@ Result CreateDeviceVK(const DeviceCreationDesc& deviceCreationDesc, DeviceBase*&
 
 Result CreateDeviceVK(const DeviceCreationVulkanDesc& deviceCreationDesc, DeviceBase*& device)
 {
-    Log log(GraphicsAPI::VULKAN, deviceCreationDesc.callbackInterface, deviceCreationDesc.callbackInterfaceUserArg);
-    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface, deviceCreationDesc.memoryAllocatorInterfaceUserArg);
+    Log log(GraphicsAPI::VULKAN, deviceCreationDesc.callbackInterface);
+    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface);
 
     DeviceVK* implementation = Allocate<DeviceVK>(allocator, log, allocator);
     const Result res = implementation->Create(deviceCreationDesc);

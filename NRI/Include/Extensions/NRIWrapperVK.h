@@ -40,9 +40,7 @@ namespace nri
         const uint32_t* queueFamilyIndices;
         uint32_t queueFamilyIndexNum;
         CallbackInterface callbackInterface;
-        void* callbackInterfaceUserArg;
         MemoryAllocatorInterface memoryAllocatorInterface;
-        void* memoryAllocatorInterfaceUserArg;
         bool enableNRIValidation;
         bool enableAPIValidation;
     };

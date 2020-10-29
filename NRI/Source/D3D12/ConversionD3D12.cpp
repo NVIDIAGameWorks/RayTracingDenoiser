@@ -154,6 +154,8 @@ static constexpr std::array<D3D12_DESCRIPTOR_RANGE_TYPE, (uint32_t)DescriptorTyp
     D3D12_DESCRIPTOR_RANGE_TYPE_UAV,            // STORAGE_TEXTURE
     D3D12_DESCRIPTOR_RANGE_TYPE_SRV,            // BUFFER
     D3D12_DESCRIPTOR_RANGE_TYPE_UAV,            // STORAGE_BUFFER
+    D3D12_DESCRIPTOR_RANGE_TYPE_UAV,            // STRUCTURED_BUFFER
+    D3D12_DESCRIPTOR_RANGE_TYPE_UAV,            // STORAGE_STRUCTURED_BUFFER
     D3D12_DESCRIPTOR_RANGE_TYPE_SRV             // ACCELERATION_STRUCTURE
 };
 
@@ -180,7 +182,9 @@ static constexpr std::array<D3D12_SHADER_VISIBILITY, (uint32_t)ShaderStage::MAX_
     D3D12_SHADER_VISIBILITY_ALL,                // INTERSECTION
     D3D12_SHADER_VISIBILITY_ALL,                // CLOSEST_HIT
     D3D12_SHADER_VISIBILITY_ALL,                // ANY_HIT
-    D3D12_SHADER_VISIBILITY_ALL                 // CALLABLE
+    D3D12_SHADER_VISIBILITY_ALL,                // CALLABLE
+    D3D12_SHADER_VISIBILITY_AMPLIFICATION,      // MESH_CONTROL
+    D3D12_SHADER_VISIBILITY_MESH                // MESH_EVALUATION
 };
 
 D3D12_SHADER_VISIBILITY GetShaderVisibility(ShaderStage shaderStage)
@@ -863,7 +867,7 @@ namespace nri
 
         textureDesc = {};
         textureDesc.type = TEXTURE_TYPE_TABLE[desc.Dimension];
-    
+
         textureDesc.usageMask = (TextureUsageBits)0xffff;
         static_assert(sizeof(TextureUsageBits) == sizeof(uint16_t), "invalid sizeof");
 
@@ -873,7 +877,7 @@ namespace nri
         textureDesc.size[2] = textureDesc.type == TextureType::TEXTURE_3D ? desc.DepthOrArraySize : 1;
         textureDesc.mipNum = desc.MipLevels;
         textureDesc.arraySize = textureDesc.type == TextureType::TEXTURE_3D ? 1 : desc.DepthOrArraySize;
-        textureDesc.sampleNum = desc.SampleDesc.Count;
+        textureDesc.sampleNum = (uint8_t)desc.SampleDesc.Count;
         textureDesc.physicalDeviceMask = 0x1; // unsupported in D3D12
     }
 

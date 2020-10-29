@@ -237,7 +237,7 @@ void Nrd::CreateResources()
         nrdTexture.format = format;
         m_TexturePool.push_back(nrdTexture);
 
-        for (uint32_t mip = 0; mip < nrdTextureDesc.mipNum; mip++)
+        for (uint16_t mip = 0; mip < nrdTextureDesc.mipNum; mip++)
             nrdTexture.states[mip] = nri::TextureTransition(texture, nri::AccessBits::UNKNOWN, nri::TextureLayout::UNKNOWN, mip, 1);
 
         resourceStateNum += nrdTextureDesc.mipNum;
@@ -246,7 +246,7 @@ void Nrd::CreateResources()
     // Constant buffer
     const nri::DeviceDesc& deviceDesc = m_NRI->GetDeviceDesc(*m_Device);
     m_ConstantBufferViewSize = helper::GetAlignedSize(denoiserDesc.constantBufferDesc.maxDataSize, deviceDesc.constantBufferOffsetAlignment);
-    m_ConstantBufferSize = BUFFERED_FRAME_MAX_NUM * m_ConstantBufferViewSize * denoiserDesc.descriptorSetDesc.setNum;
+    m_ConstantBufferSize = uint64_t(m_ConstantBufferViewSize) * denoiserDesc.descriptorSetDesc.setNum * m_BufferedFrameMaxNum;
 
     nri::BufferDesc bufferDesc = {};
     bufferDesc.size = m_ConstantBufferSize;
@@ -282,12 +282,18 @@ void Nrd::SetMethodSettings(nrd::Method method, const void* methodSettings)
 
 void Nrd::Denoise(nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool)
 {
+    #if( NRD_DEBUG_LOGGING == 1 )
+        char s[128];
+        sprintf_s(s, "Frame %u ==============================================================================\n", commonSettings.frameIndex);
+        OutputDebugStringA(s);
+    #endif
+
     const nrd::DispatchDesc* dispatchDescs = nullptr;
     uint32_t dispatchDescNum = 0;
     nrd::Result result = nrd::GetComputeDispatches(*m_Denoiser, commonSettings, dispatchDescs, dispatchDescNum);
     assert(result == nrd::Result::SUCCESS);
 
-    const uint32_t bufferedFrameIndex = commonSettings.frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const uint32_t bufferedFrameIndex = commonSettings.frameIndex % m_BufferedFrameMaxNum;
     nri::DescriptorPool* descriptorPool = m_DescriptorPools[bufferedFrameIndex];
     m_NRI->ResetDescriptorPool(*descriptorPool);
     m_NRI->CmdSetDescriptorPool(commandBuffer, *descriptorPool);
@@ -347,11 +353,13 @@ void Nrd::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descr
 
             const nri::AccessBits nextAccess = nrdResource.stateNeeded == nrd::DescriptorType::TEXTURE ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::SHADER_RESOURCE_STORAGE;
             const nri::TextureLayout nextLayout =  nrdResource.stateNeeded == nrd::DescriptorType::TEXTURE ? nri::TextureLayout::SHADER_RESOURCE : nri::TextureLayout::GENERAL;
-            nri::TextureTransitionBarrierDesc* state = nrdTexture->states + nrdResource.mipOffset;
             for (uint16_t mip = 0; mip < nrdResource.mipNum; mip++)
             {
-                if (state[mip].nextAccess != nextAccess || state[mip].nextLayout != nextLayout)
-                    transitions[transitionBarriers.textureNum++] = nri::TextureTransition(state[mip], nextAccess, nextLayout, nrdResource.mipOffset + mip, 1);
+                nri::TextureTransitionBarrierDesc* state = nrdTexture->states + nrdResource.mipOffset + mip;
+                bool isStateChanged = nextAccess != state->nextAccess || nextLayout != state->nextLayout;
+                bool isStorageBarrier = nextAccess == nri::AccessBits::SHADER_RESOURCE_STORAGE && state->nextAccess == nri::AccessBits::SHADER_RESOURCE_STORAGE;
+                if (isStateChanged || isStorageBarrier)
+                    transitions[transitionBarriers.textureNum++] = nri::TextureTransition(*state, nextAccess, nextLayout, nrdResource.mipOffset + mip, 1);
             }
 
             const bool isStorage = descriptorRangeDesc.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE;
@@ -403,31 +411,92 @@ void Nrd::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descr
     m_NRI->CmdSetPipeline(commandBuffer, *pipeline);
     m_NRI->CmdSetDescriptorSets(commandBuffer, 0, 1, &descriptorSet, &dynamicConstantBufferOffset);
     m_NRI->CmdDispatch(commandBuffer, dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1);
+
+    // Debug logging
+    #if( NRD_DEBUG_LOGGING == 1 )
+        static const char* names[] =
+        {
+            "IN_MV ",
+            "IN_NORMAL_ROUGHNESS ",
+            "IN_VIEWZ ",
+            "IN_SHADOW ",
+            "IN_DIFFA ",
+            "IN_DIFFB ",
+            "IN_SPEC_HIT ",
+            "IN_TRANSLUCENCY ",
+
+            "OUT_SHADOW ",
+            "OUT_SHADOW_TRANSLUCENCY ",
+            "OUT_DIFF_HIT ",
+            "OUT_SPEC_HIT ",
+        };
+
+        static_assert( _countof(names) == (uint32_t)nrd::ResourceType::MAX_NUM - 2 );
+
+        char s[128];
+        char t[32];
+
+        sprintf_s(s, "Pipeline #%u (%s)\n", dispatchDesc.pipelineIndex, dispatchDesc.name);
+        OutputDebugStringA(s);
+
+        strcpy_s(s, "\t");
+        for( uint32_t i = 0; i < dispatchDesc.resourceNum; i++ )
+        {
+            const nrd::Resource& r = dispatchDesc.resources[i];
+
+            if( r.type == nrd::ResourceType::PERMANENT_POOL )
+                sprintf_s(t, "P(%u) ", r.indexInPool);
+            else if( r.type == nrd::ResourceType::TRANSIENT_POOL )
+                sprintf_s(t, "T(%u) ", r.indexInPool);
+            else
+                sprintf_s(t, names[(uint32_t)r.type]);
+
+            strcat_s(s, t);
+        }
+        strcat_s(s, "\n");
+        OutputDebugStringA(s);
+    #endif
 }
 
 void Nrd::Destroy()
 {
     // Assuming that the device is in IDLE state
     m_NRI->DestroyDescriptor(*m_ConstantBufferView);
+    m_ConstantBufferView = nullptr;
+
     m_NRI->DestroyBuffer(*m_ConstantBuffer);
+    m_ConstantBuffer = nullptr;
 
     for (const auto& entry : m_Descriptors)
         m_NRI->DestroyDescriptor(*entry.second);
+    m_Descriptors.clear();
 
     for (const NrdTexture& nrdTexture : m_TexturePool)
         m_NRI->DestroyTexture(*nrdTexture.texture);
+    m_TexturePool.clear();
 
     for (nri::Pipeline* pipeline : m_Pipelines)
         m_NRI->DestroyPipeline(*pipeline);
+    m_Pipelines.clear();
 
     for (nri::PipelineLayout* pipelineLayout : m_PipelineLayouts)
         m_NRI->DestroyPipelineLayout(*pipelineLayout);
+    m_PipelineLayouts.clear();
 
     for (nri::Memory* memory : m_Memories)
         m_NRI->FreeMemory(*memory);
+    m_Memories.clear();
 
     for (nri::DescriptorPool* descriptorPool : m_DescriptorPools)
         m_NRI->DestroyDescriptorPool(*descriptorPool);
 
     nrd::DestroyDenoiser(*m_Denoiser);
+    m_Denoiser = nullptr;
+
+    m_NRI = nullptr;
+    m_Device = nullptr;
+    m_ConstantBufferSize = 0;
+    m_ConstantBufferViewSize = 0;
+    m_ConstantBufferOffset = 0;
+    m_IsShadersReloadRequested = false;
 }

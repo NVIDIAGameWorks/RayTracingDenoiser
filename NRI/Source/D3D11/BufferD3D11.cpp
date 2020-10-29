@@ -234,8 +234,8 @@ void BufferD3D11::FinalizeReadback()
         for (uint32_t j = 0; j < h; j++)
         {
             const uint8_t* s = src + j * srcData.RowPitch;
-            uint8_t* d = dst + j * m_ReadbackDataLayoutDesc.rowPitch;
-            memcpy(d, s, srcData.RowPitch);
+            uint8_t* dstLocal = dst + j * m_ReadbackDataLayoutDesc.rowPitch;
+            memcpy(dstLocal, s, srcData.RowPitch);
         }
         src += srcData.DepthPitch;
         dst += m_ReadbackDataLayoutDesc.slicePitch;

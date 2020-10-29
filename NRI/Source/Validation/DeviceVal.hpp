@@ -568,3 +568,21 @@ Result DeviceVal::FillFunctionTable(RayTracingInterface& rayTracingInterface) co
 }
 
 #pragma endregion
+
+#pragma region [  MeshShaderInterface  ]
+
+void FillFunctionTableCommandBufferVal(MeshShaderInterface& meshShaderInterface);
+
+Result DeviceVal::FillFunctionTable(MeshShaderInterface& meshShaderInterface) const
+{
+    if (!m_IsMeshShaderExtSupported)
+        return Result::UNSUPPORTED;
+
+    meshShaderInterface = {};
+
+    FillFunctionTableCommandBufferVal(meshShaderInterface);
+
+    return ValidateFunctionTable(GetLog(), meshShaderInterface);
+}
+
+#pragma endregion

@@ -33,48 +33,50 @@ struct CameraDesc
     float4x4 customMatrix = float4x4::identity;
 };
 
+struct CameraState
+{
+    double3 globalPosition = {};
+    float4x4 mViewToClip = float4x4::identity;
+    float4x4 mClipToView = float4x4::identity;
+    float4x4 mWorldToView = float4x4::identity;
+    float4x4 mViewToWorld = float4x4::identity;
+    float4x4 mWorldToClip = float4x4::identity;
+    float4x4 mClipToWorld = float4x4::identity;
+    float4 frustum = {};
+    float3 position = {};
+    float3 rotation = {};
+    float2 viewportJitter = {};
+    float motionScale = 0.015f;
+};
+
 class Camera
 {
 public:
     void Update(const CameraDesc& desc, uint32_t frameIndex);
     void Initialize(const float3& position, const float3& lookAt, bool isRelative = false);
 
+    inline void SavePreviousState()
+    {
+        statePrev = state;
+    }
+
     inline const float3 GetRelative(const double3& origin) const
     {
-        double3 position = m_IsRelative ? m_GlobalPosition : double3(0.0);
+        double3 position = m_IsRelative ? state.globalPosition : double3(0.0);
 
         return ToFloat(origin - position);
     }
 
-    inline void* GetDataPtr()
-    { return &m_GlobalPosition; }
+    inline void* GetState()
+    { return &state; }
 
-    inline uint32_t GetDataSize() const
-    { return sizeof(Camera) - sizeof(Timer) - sizeof(bool) * 2; }
+    static inline uint32_t GetStateSize()
+    { return sizeof(CameraState); }
 
 public:
     Timer m_Timer;
-    double3 m_GlobalPosition = {};
-    double3 m_GlobalPositionPrev = {};
-    float4x4 m_ViewToClip = float4x4::identity;
-    float4x4 m_ViewToClipPrev = float4x4::identity;
-    float4x4 m_ClipToView = float4x4::identity;
-    float4x4 m_ClipToViewPrev = float4x4::identity;
-    float4x4 m_WorldToView = float4x4::identity;
-    float4x4 m_WorldToViewPrev = float4x4::identity;
-    float4x4 m_ViewToWorld = float4x4::identity;
-    float4x4 m_ViewToWorldPrev = float4x4::identity;
-    float4x4 m_WorldToClip = float4x4::identity;
-    float4x4 m_WorldToClipPrev = float4x4::identity;
-    float4x4 m_ClipToWorld = float4x4::identity;
-    float4x4 m_ClipToWorldPrev = float4x4::identity;
-    float3 m_Position = {};
-    float3 m_PositionPrev = {};
-    float3 m_Rotation = {};
-    float4 m_Frustum = {};
-    float2 m_ViewportJitter = {};
-    float2 m_ViewportJitterPrev = {};
-    float m_MotionScale = 0.015f;
+    CameraState state = {};
+    CameraState statePrev = {};
     float m_IsOrtho = 0.0f;
 private:
     bool m_IsRelative = false;

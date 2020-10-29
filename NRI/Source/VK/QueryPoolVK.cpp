@@ -43,7 +43,7 @@ Result QueryPoolVK::Create(const QueryPoolDesc& queryPoolDesc)
     };
 
     const auto& vk = m_Device.GetDispatchTable();
-    
+
     const uint32_t physicalDeviceMask = (queryPoolDesc.physicalDeviceMask == WHOLE_DEVICE_GROUP) ? 0xff : queryPoolDesc.physicalDeviceMask;
 
     for (uint32_t i = 0; i < m_Device.GetPhyiscalDeviceGroupSize(); i++)
@@ -79,7 +79,7 @@ Result QueryPoolVK::Create(const QueryPoolVulkanDesc& queryPoolDesc)
 
 void QueryPoolVK::SetDebugName(const char* name)
 {
-    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_QUERY_POOL, (void**)m_Handles, name);
+    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_QUERY_POOL, (void**)m_Handles.data(), name);
 }
 
 uint32_t QueryPoolVK::GetQuerySize() const

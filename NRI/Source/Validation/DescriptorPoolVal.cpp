@@ -45,7 +45,15 @@ void DescriptorPoolVal::SetDebugName(const char* name)
 
 bool DescriptorPoolVal::CheckDescriptorRange(const DescriptorRangeDesc& rangeDesc, uint32_t variableDescriptorNum)
 {
-    const uint32_t descriptorNum = rangeDesc.isVariableDescriptorNum ? variableDescriptorNum : rangeDesc.descriptorNum;
+    const uint32_t descriptorNum = rangeDesc.isDescriptorNumVariable ? variableDescriptorNum : rangeDesc.descriptorNum;
+
+    if (descriptorNum > rangeDesc.descriptorNum)
+    {
+        REPORT_ERROR(m_Device.GetLog(), "variableDescriptorNum (%u) is greater than DescriptorRangeDesc::descriptorNum (%u).",
+            variableDescriptorNum, rangeDesc.descriptorNum);
+
+        return false;
+    }
 
     switch (rangeDesc.descriptorType)
     {
@@ -75,7 +83,7 @@ bool DescriptorPoolVal::CheckDescriptorRange(const DescriptorRangeDesc& rangeDes
 
 void DescriptorPoolVal::IncrementDescriptorNum(const DescriptorRangeDesc& rangeDesc, uint32_t variableDescriptorNum)
 {
-    const uint32_t descriptorNum = rangeDesc.isVariableDescriptorNum ? variableDescriptorNum : rangeDesc.descriptorNum;
+    const uint32_t descriptorNum = rangeDesc.isDescriptorNumVariable ? variableDescriptorNum : rangeDesc.descriptorNum;
 
     switch (rangeDesc.descriptorType)
     {

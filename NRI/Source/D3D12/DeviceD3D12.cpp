@@ -60,8 +60,6 @@ DeviceD3D12::~DeviceD3D12()
 Result DeviceD3D12::Create(const DeviceCreationD3D12Desc& deviceCreationDesc)
 {
     m_Device = (ID3D12Device*)deviceCreationDesc.d3d12Device;
-    if (SUCCEEDED(m_Device->QueryInterface(IID_PPV_ARGS(&m_Device5))))
-        m_IsRaytracingSupported = true;
 
     if (deviceCreationDesc.d3d12GraphicsQueue)
         CreateCommandQueue((ID3D12CommandQueue*)deviceCreationDesc.d3d12GraphicsQueue, m_CommandQueues[(uint32_t)CommandQueueType::GRAPHICS]);
@@ -110,7 +108,7 @@ Result DeviceD3D12::Create(IDXGIAdapter* dxgiAdapter, bool enableValidation)
     // Create CPU-visible descriptor heaps for resource views
     for (uint32_t descriptorType = 0; descriptorType < m_DescriptorHeapTypeNum; descriptorType++)
     {
-        Result result = CreateDescriptorHeap((D3D12_DESCRIPTOR_HEAP_TYPE)descriptorType, DESCRIPTORS_BATCH_SIZE);
+        result = CreateDescriptorHeap((D3D12_DESCRIPTOR_HEAP_TYPE)descriptorType, DESCRIPTORS_BATCH_SIZE);
         if (result != Result::SUCCESS)
             return result;
     }
@@ -600,10 +598,13 @@ void DeviceD3D12::UpdateDeviceDesc(IDXGIAdapter* adapter, bool enableValidation)
     hr = m_Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3, &options3, sizeof(options3));
 
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
-    if (SUCCEEDED(m_Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5))))
-    {
-        m_IsRaytracingSupported = options5.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED ? true : false;
-    }
+    m_Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5));
+
+    D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7 = {};
+    m_Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &options7, sizeof(options7));
+
+    m_IsRaytracingSupported = options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0;
+    m_IsMeshShaderSupported = options7.MeshShaderTier >= D3D12_MESH_SHADER_TIER_1;
 
     D3D12_FEATURE_DATA_FEATURE_LEVELS levels = {};
      const std::array<D3D_FEATURE_LEVEL, 4> levelsList = {
@@ -725,7 +726,7 @@ void DeviceD3D12::UpdateDeviceDesc(IDXGIAdapter* adapter, bool enableValidation)
     }
 #endif
     m_DeviceDesc.phyiscalDeviceGroupSize                   = m_Device->GetNodeCount();
-    m_DeviceDesc.conservativeRasterTier                    = options.ConservativeRasterizationTier;
+    m_DeviceDesc.conservativeRasterTier                    = (uint8_t)options.ConservativeRasterizationTier;
     m_DeviceDesc.isAPIValidationEnabled                    = enableValidation;
     m_DeviceDesc.isTextureFilterMinMaxSupported            = levels.MaxSupportedFeatureLevel >= D3D_FEATURE_LEVEL_11_1 ? true : false;
     m_DeviceDesc.isLogicOpSupported                        = options.OutputMergerLogicOp != 0;
@@ -750,8 +751,8 @@ void DeviceD3D12::Destroy()
 
 Result CreateDeviceD3D12(const DeviceCreationD3D12Desc& deviceCreationDesc, DeviceBase*& device)
 {
-    Log log(GraphicsAPI::D3D12, deviceCreationDesc.callbackInterface, deviceCreationDesc.callbackInterfaceUserArg);
-    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface, deviceCreationDesc.memoryAllocatorInterfaceUserArg);
+    Log log(GraphicsAPI::D3D12, deviceCreationDesc.callbackInterface);
+    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface);
 
     DeviceD3D12* implementation = Allocate<DeviceD3D12>(allocator, log, allocator);
     const Result res = implementation->Create(deviceCreationDesc);
@@ -768,8 +769,8 @@ Result CreateDeviceD3D12(const DeviceCreationD3D12Desc& deviceCreationDesc, Devi
 
 Result CreateDeviceD3D12(const DeviceCreationDesc& deviceCreationDesc, DeviceBase*& device)
 {
-    Log log(GraphicsAPI::D3D12, deviceCreationDesc.callbackInterface, deviceCreationDesc.callbackInterfaceUserArg);
-    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface, deviceCreationDesc.memoryAllocatorInterfaceUserArg);
+    Log log(GraphicsAPI::D3D12, deviceCreationDesc.callbackInterface);
+    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface);
 
     ComPtr<IDXGIFactory4> factory;
     HRESULT hr = CreateDXGIFactory2(0, IID_PPV_ARGS(&factory));

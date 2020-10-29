@@ -12,20 +12,23 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
-    float4x4 gWorldToView;
     float4x4 gViewToClip;
     float4 gFrustum;
-    float4 gScalingParams;
-    float2 gJitter;
     float2 gInvScreenSize;
-    float2 gBlueNoiseSinCos;
-    float gIsOrtho;
+    float2 padding;
     float gMetersToUnits;
-    float gBlurRadius;
-    float gInf;
+    float gIsOrtho;
     float gUnproject;
-    uint gFrameIndex;
     float gDebug;
+    float gInf;
+    uint gCheckerboard;
+    uint gFrameIndex;
+    uint gWorldSpaceMotion;
+
+    float4x4 gWorldToView;
+    float4 gScalingParams;
+    float4 gRotator;
+    float gBlurRadius;
 };
 
 #include "NRD_Common.hlsl"
@@ -44,16 +47,15 @@ NRI_RESOURCE( RWTexture2D<float4>, gOut_SignalB, u, 1, 0 );
 void main( uint2 pixelPos : SV_DispatchThreadId )
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
-    float2 sampleUv = pixelUv + gJitter;
 
+    // Early out
     float4 finalB = gIn_SignalB[ pixelPos ];
     float centerZ = finalB.w / NRD_FP16_VIEWZ_SCALE;
 
-    // Early out
     [branch]
     if ( abs( centerZ ) > gInf )
     {
-        #if( BLACK_OUT_INF_PIXELS == 1 )
+        #if( DIFF_BLACK_OUT_INF_PIXELS == 1 )
             gOut_SignalA[ pixelPos ] = 0;
         #endif
         gOut_SignalB[ pixelPos ] = NRD_INF_DIFF_B;
@@ -61,7 +63,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     }
 
     // Normal
-    float4 normalAndRoughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
+    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
     float3 N = normalAndRoughness.xyz;
     float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
 
@@ -72,27 +74,21 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float nonLinearAccumSpeed = 1.0 / ( 1.0 + internalData.x );
 
     // Center data
-    float3 centerPos = STL::Geometry::ReconstructViewPosition( sampleUv, gFrustum, centerZ, gIsOrtho );
+    float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
     float4 finalA = gIn_SignalA[ pixelPos ];
     float centerNormHitDist = finalA.w;
 
     // Blur radius
     float hitDist = GetHitDistance( finalA.w, centerZ, gScalingParams );
     float radius = GetBlurRadius( gBlurRadius, 1.0, hitDist, centerPos, nonLinearAccumSpeed );
-    float worldRadius = PixelRadiusToWorld( radius, centerZ, gUnproject, gIsOrtho );
+    float worldRadius = PixelRadiusToWorld( radius, centerZ );
 
     // Tangent basis
     float3 Tv, Bv;
-    GetKernelBasis( centerPos, Nv, 1.0, worldRadius, normAccumSpeed, 0, Tv, Bv );
+    GetKernelBasis( centerPos, Nv, 1.0, worldRadius, normAccumSpeed, Tv, Bv );
 
     // Random rotation
-    float4 rotator = float4( 1, 0, 0, 1 );
-    #if( DIFF_BLUR_ROTATOR_MODE == FRAME )
-        rotator = STL::Geometry::GetRotator( gBlueNoiseSinCos.x, gBlueNoiseSinCos.y );
-    #elif( DIFF_BLUR_ROTATOR_MODE == PIXEL )
-        float angle = STL::Sequence::Bayer4x4( pixelPos, gFrameIndex + 7 );
-        rotator = STL::Geometry::GetRotator( angle * STL::Math::Pi( 2.0 ) );
-    #endif
+    float4 rotator = GetBlurKernelRotation( DIFF_BLUR_ROTATOR_MODE, pixelPos, gRotator );
 
     // Denoising
     float sum = 1.0;
@@ -105,7 +101,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     {
         // Sample coordinates
         float3 offset = DIFF_POISSON_SAMPLES[ s ];
-        float2 uv = GetKernelSampleCoordinates( gViewToClip, gJitter, offset, centerPos, Tv, Bv, rotator );
+        float2 uv = GetKernelSampleCoordinates( offset, centerPos, Tv, Bv, rotator );
 
         // Fetch data
         float4 sA = gIn_SignalA.SampleLevel( gNearestMirror, uv, 0.0 );
@@ -114,7 +110,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
         float z = sB.w / NRD_FP16_VIEWZ_SCALE;
         float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
-        normal = UnpackNormalAndRoughness( normal, false );
+        normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
         // Sample weight
         float w = GetGeometryWeight( centerPos, Nv, samplePos, geometryWeightParams );

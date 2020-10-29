@@ -31,7 +31,7 @@ namespace nri
         uint32_t GetQuerySize() const;
 
     private:
-        VkQueryPool m_Handles[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
+        std::array<VkQueryPool, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_Handles = {};
         uint32_t m_Stride = 0;
         VkQueryType m_Type = (VkQueryType)0;
         DeviceVK& m_Device;

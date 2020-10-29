@@ -12,24 +12,25 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
-    float4x4 gWorldToView;
     float4x4 gViewToClip;
     float4 gFrustum;
+    float2 gInvScreenSize;
+    float2 padding;
+    float gMetersToUnits;
+    float gIsOrtho;
+    float gUnproject;
+    float gDebug;
+    float gInf;
+    uint gCheckerboard;
+    uint gFrameIndex;
+    uint gWorldSpaceMotion;
+
+    float4x4 gWorldToView;
     float4 gScalingParams;
     float3 gTrimmingParams;
-    float gIsOrtho;
-    float2 gJitter;
-    float2 gBlueNoiseSinCos;
-    float2 gInvScreenSize;
-    float2 gScreenSize;
-    float gMetersToUnits;
     float gBlurRadius;
-    float gInf;
-    float gUnproject;
-    uint gFrameIndex;
-    uint gCheckerboard;
-    uint gAnisotropicFiltering;
-    float gDebug;
+    float4 gRotator;
+    float2 gScreenSize;
 };
 
 #include "NRD_Common.hlsl"
@@ -45,28 +46,62 @@ NRI_RESOURCE( RWTexture2D<float4>, gOut_Signal, u, 0, 0 );
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( uint2 pixelPos : SV_DispatchThreadId )
 {
-    float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvScreenSize;
-    float2 sampleUv = pixelUv + gJitter;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
 
-    float centerZ = gIn_ViewZ[ pixelPos ];
+    // Checkerboard
+    bool hasData = ApplyCheckerboard( pixelPos );
+
+    uint2 checkerboardPixelPos = pixelPos;
+    float checkerboardScale = 1.0;
+
+    if( IsCheckerboardMode( ) )
+    {
+        checkerboardPixelPos.x >>= 1;
+        checkerboardScale = 0.5;
+    }
 
     // Early out
+    float centerZ = gIn_ViewZ[ pixelPos ];
+
     [branch]
     if ( abs( centerZ ) > gInf )
     {
-        #if( BLACK_OUT_INF_PIXELS == 1 )
+        #if( SPEC_BLACK_OUT_INF_PIXELS == 1 )
             gOut_Signal[ pixelPos ] = 0;
         #endif
         return;
     }
 
     // Center data
-    float3 centerPos = STL::Geometry::ReconstructViewPosition( sampleUv, gFrustum, centerZ, gIsOrtho );
-    float4 final = gIn_Signal[ pixelPos ];
+    float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
+    float4 final = gIn_Signal[ checkerboardPixelPos ];
+
+    if( !hasData )
+    {
+        #if( CHECKERBOARD_RESOLVE_MODE == SOFT )
+            int4 pos = pixelPos.xyxy + int4( 0, -1, 0, 1 );
+        #else
+            int4 pos = pixelPos.xyxy + int4( -1, 0, 1, 0 );
+        #endif
+
+        float viewZ0 = gIn_ViewZ[ pos.xy ];
+        float viewZ1 = gIn_ViewZ[ pos.zw ];
+
+        pos.xz >>= 1;
+
+        float4 signal0 = gIn_Signal[ pos.xy ];
+        float4 signal1 = gIn_Signal[ pos.zw ];
+
+        float2 w = GetBilateralWeight( float2( viewZ0, viewZ1 ), centerZ );
+        w *= STL::Math::PositiveRcp( w.x + w.y );
+
+        final = signal0 * w.x + signal1 * w.y;
+    }
+
     float centerNormHitDist = final.w;
 
     // Normal and roughness
-    float4 normalAndRoughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
+    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
     float3 N = normalAndRoughness.xyz;
     float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
     float roughness = normalAndRoughness.w;
@@ -75,20 +110,14 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float hitDist = GetHitDistance( final.w, centerZ, gScalingParams, roughness );
     float radius = SPEC_PRE_BLUR_RADIUS_SCALE * GetBlurRadius( gBlurRadius, roughness, hitDist, centerPos, 1.0 );
     radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gTrimmingParams );
-    float worldRadius = PixelRadiusToWorld( radius, centerZ, gUnproject, gIsOrtho );
+    float worldRadius = PixelRadiusToWorld( radius, centerZ );
 
     // Tangent basis
     float3 Tv, Bv;
-    GetKernelBasis( centerPos, Nv, roughness, worldRadius, 0.65, gAnisotropicFiltering, Tv, Bv );
+    GetKernelBasis( centerPos, Nv, roughness, worldRadius, 0.65, Tv, Bv );
 
     // Random rotation
-    float4 rotator = float4( 1, 0, 0, 1 );
-    #if( SPEC_PRE_BLUR_ROTATOR_MODE == FRAME )
-        rotator = STL::Geometry::GetRotator( -gBlueNoiseSinCos.y, gBlueNoiseSinCos.x );
-    #elif( SPEC_PRE_BLUR_ROTATOR_MODE == PIXEL )
-        float angle = STL::Sequence::Bayer4x4( pixelPos, gFrameIndex );
-        rotator = STL::Geometry::GetRotator( angle * STL::Math::Pi( 2.0 ) + STL::Math::Pi( 0.5 ) );
-    #endif
+    float4 rotator = GetBlurKernelRotation( SPEC_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator );
 
     // Denoising
     float2 sum = 1.0;
@@ -98,33 +127,25 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( roughness, centerNormHitDist );
 
-    float checkerboardOffset = ( gFrameIndex & 0x1 ) == 0 ? -gInvScreenSize.x : gInvScreenSize.x;
-
     SPEC_UNROLL
     for( uint s = 0; s < SPEC_POISSON_SAMPLE_NUM; s++ )
     {
         // Sample coordinates
         float3 offset = SPEC_POISSON_SAMPLES[ s ];
-        float2 uv = GetKernelSampleCoordinates( gViewToClip, gJitter, offset, centerPos, Tv, Bv, rotator );
+        float2 uv = GetKernelSampleCoordinates( offset, centerPos, Tv, Bv, rotator );
 
-        // Checkerboard handling - needed only in passes before temporal accumulation since signal reconstruction is there
-        #if( CHECKERBOARD_SUPPORT == 1 )
-            if( gCheckerboard != CHECKERBOARD_OFF && all( saturate( uv ) == uv ) )
-            {
-                uint2 pos = uint2( STL::Filtering::GetNearestFilter( uv, gScreenSize ).origin );
-                bool isNoData = STL::Sequence::CheckerBoard( pos, gFrameIndex ) == gCheckerboard;
-                uv.x += checkerboardOffset * float( isNoData );
-                checkerboardOffset = -checkerboardOffset;
-            }
-        #endif
+        // Handle half res input in the checkerboard mode
+        float2 checkerboardUv = uv;
+        checkerboardUv.x *= checkerboardScale;
+        checkerboardUv.x = checkerboardUv.x > checkerboardScale ? ( 2.0 * checkerboardScale - checkerboardUv.x ) : checkerboardUv.x;
 
         // Fetch data
-        float4 s = gIn_Signal.SampleLevel( gNearestMirror, uv, 0 );
+        float4 s = gIn_Signal.SampleLevel( gNearestMirror, checkerboardUv, 0 );
         float z = gIn_ViewZ.SampleLevel( gNearestMirror, uv, 0 );
         float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0.0 );
 
         float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
-        normal = UnpackNormalAndRoughness( normal, false );
+        normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
         // Sample weight
         float w = GetGeometryWeight( centerPos, Nv, samplePos, geometryWeightParams );
@@ -138,7 +159,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
         sum += ww;
     }
 
-    final /= sum.xxxy;
+    final *= STL::Math::PositiveRcp( sum.xxxy );
 
     // Special case for hit distance
     final.w = lerp( final.w, centerNormHitDist, HIT_DIST_INPUT_MIX );

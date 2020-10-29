@@ -459,3 +459,21 @@ Result DeviceVK::FillFunctionTable(RayTracingInterface& rayTracingInterface) con
 }
 
 #pragma endregion
+
+#pragma region [  MeshShaderInterface  ]
+
+void FillFunctionTableCommandBufferVK(MeshShaderInterface& meshShaderInterface);
+
+Result DeviceVK::FillFunctionTable(MeshShaderInterface& meshShaderInterface) const
+{
+    if (!m_IsMeshShaderExtSupported)
+        return Result::UNSUPPORTED;
+
+    meshShaderInterface = {};
+
+    FillFunctionTableCommandBufferVK(meshShaderInterface);
+
+    return ValidateFunctionTable(GetLog(), meshShaderInterface);
+}
+
+#pragma endregion

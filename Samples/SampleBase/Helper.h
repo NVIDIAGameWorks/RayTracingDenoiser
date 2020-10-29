@@ -11,10 +11,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #include <vector>
+#include <array>
 
 namespace helper
 {
     constexpr bool VARIABLE_DESCRIPTOR_NUM = true;
+    constexpr bool DESCRIPTOR_ARRAY = true;
 
     template<typename T> constexpr T GetAlignedSize(const T& size, size_t alignment)
     { return T(((size + alignment - 1) / alignment) * alignment); }
@@ -23,6 +25,9 @@ namespace helper
     { return N; }
 
     template <typename T> constexpr uint32_t GetCountOf(const std::vector<T>& v)
+    { return (uint32_t)v.size(); }
+
+    template <typename T, uint32_t N> constexpr uint32_t GetCountOf(const std::array<T, N>& v)
     { return (uint32_t)v.size(); }
 
     template<typename T, typename U> constexpr uint32_t GetOffsetOf(U T::*member)
@@ -56,11 +61,11 @@ namespace helper
     struct TextureDataDesc
     {
         const TextureSubresource* subresources;
-        uint32_t mipNum;
-        uint32_t arraySize;
         nri::Texture* texture;
         nri::AccessBits nextAccess;
         nri::TextureLayout nextLayout;
+        uint16_t mipNum;
+        uint16_t arraySize;
 
         const TextureSubresource& GetSubresource(uint32_t mipIndex, uint32_t arrayIndex = 0) const
         { return subresources[arrayIndex * mipNum + mipIndex]; }
@@ -72,6 +77,7 @@ namespace helper
         uint64_t dataSize;
         nri::Buffer* buffer;
         uint64_t bufferOffset;
+        nri::AccessBits prevAccess;
         nri::AccessBits nextAccess;
     };
 

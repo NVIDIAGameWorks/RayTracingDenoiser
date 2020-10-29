@@ -134,9 +134,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
     m_DepthFormat = nri::GetSupportedDepthFormat(NRI, *m_Device, 24, false);
 
-    uint32_t windowWidth = GetWindowWidth();
-    uint32_t windowHeight = GetWindowHeight();
-
     // Swap chain
     {
         nri::SwapChainDesc swapChainDesc = {};
@@ -144,8 +141,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         swapChainDesc.commandQueue = m_CommandQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_10BIT;
         swapChainDesc.verticalSyncInterval = m_SwapInterval;
-        swapChainDesc.width = windowWidth;
-        swapChainDesc.height = windowHeight;
+        swapChainDesc.width = GetWindowWidth();
+        swapChainDesc.height = GetWindowHeight();
         swapChainDesc.textureNum = SWAP_CHAIN_TEXTURE_NUM;
         NRI_ABORT_ON_FAILURE( NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain) );
     }
@@ -219,7 +216,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         nri::InputAssemblyDesc inputAssemblyDesc = {};
         inputAssemblyDesc.topology = nri::Topology::TRIANGLE_LIST;
         inputAssemblyDesc.attributes = vertexAttributeDesc;
-        inputAssemblyDesc.attributeNum = helper::GetCountOf(vertexAttributeDesc);
+        inputAssemblyDesc.attributeNum = (uint8_t)helper::GetCountOf(vertexAttributeDesc);
         inputAssemblyDesc.streams = &vertexStreamDesc;
         inputAssemblyDesc.streamNum = 1;
 
@@ -345,7 +342,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // Depth attachment
     nri::Texture* depthTexture;
     {
-        nri::CTextureDesc textureDesc = nri::CTextureDesc::Texture2D(m_DepthFormat, windowWidth, windowHeight, 1, 1,
+        nri::CTextureDesc textureDesc = nri::CTextureDesc::Texture2D(m_DepthFormat, GetWindowWidth(), GetWindowHeight(), 1, 1,
             nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT);
 
         NRI_ABORT_ON_FAILURE( NRI.CreateTexture(*m_Device, textureDesc, depthTexture) );
@@ -551,8 +548,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
         helper::BufferDataDesc bufferData[] =
         {
-            {m_Scene.vertices.data(), helper::GetByteSizeOf(m_Scene.vertices), m_Buffers[VERTEX_BUFFER], 0, nri::AccessBits::VERTEX_BUFFER},
-            {m_Scene.indices.data(), helper::GetByteSizeOf(m_Scene.indices), m_Buffers[INDEX_BUFFER], 0, nri::AccessBits::INDEX_BUFFER},
+            {m_Scene.vertices.data(), helper::GetByteSizeOf(m_Scene.vertices), m_Buffers[VERTEX_BUFFER], 0, nri::AccessBits::UNKNOWN, nri::AccessBits::VERTEX_BUFFER},
+            {m_Scene.indices.data(), helper::GetByteSizeOf(m_Scene.indices), m_Buffers[INDEX_BUFFER], 0, nri::AccessBits::UNKNOWN, nri::AccessBits::INDEX_BUFFER},
         };
 
         NRI_ABORT_ON_FAILURE( helper::UploadData(NRI, *m_Device, textureData.data(), (uint32_t)textureData.size(), bufferData, helper::GetCountOf(bufferData)) );
@@ -565,11 +562,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
 void Sample::PrepareFrame(uint32_t frameIndex)
 {
-    const uint32_t windowWidth = GetWindowWidth();
-    const uint32_t windowHeight = GetWindowHeight();
-
     CameraDesc desc = {};
-    desc.aspectRatio = float(windowWidth) / float(windowHeight);
+    desc.aspectRatio = float( GetWindowWidth() ) / float( GetWindowHeight() );
     desc.horizontalFov = 90.0f;
     desc.nearZ = 0.1f;
     desc.isProjectionReversed = (CLEAR_DEPTH == 0.0f);
@@ -586,8 +580,8 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
     auto constants = (GlobalConstantBufferLayout*)NRI.MapBuffer(*m_Buffers[CONSTANT_BUFFER], rangeOffset, sizeof(GlobalConstantBufferLayout));
     if (constants)
     {
-        constants->gWorldToClip = m_Camera.m_WorldToClip;
-        constants->gCameraPos = m_Camera.m_Position;
+        constants->gWorldToClip = m_Camera.state.mWorldToClip;
+        constants->gCameraPos = m_Camera.state.position;
 
         NRI.UnmapBuffer(*m_Buffers[CONSTANT_BUFFER]);
     }
@@ -629,7 +623,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         transitionBarriers.textures = &textureTransitionBarrierDesc;
         NRI.CmdPipelineBarrier(commandBuffer, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
 
-        NRI.CmdBeginRenderPass(commandBuffer, *currentBackBuffer.frameBuffer, nri::FramebufferBindFlag::NONE);
+        NRI.CmdBeginRenderPass(commandBuffer, *currentBackBuffer.frameBuffer, nri::RenderPassBeginFlag::NONE);
         {
             const nri::Viewport viewport = { 0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f };
             const nri::Rect scissor = { 0, 0, windowWidth, windowHeight };

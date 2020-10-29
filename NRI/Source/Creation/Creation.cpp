@@ -73,6 +73,11 @@ Result NRI_CALL nri::GetInterface(const Device& device, const char* interfaceNam
         realInterfaceSize = sizeof(RayTracingInterface);
         result = deviceBase.FillFunctionTable(*(RayTracingInterface*)interfacePtr);
     }
+    else if (hash == Hash( NRI_STRINGIFY(nri::MeshShaderInterface) ))
+    {
+        realInterfaceSize = sizeof(MeshShaderInterface);
+        result = deviceBase.FillFunctionTable(*(MeshShaderInterface*)interfacePtr);
+    }
 
     if (result == Result::INVALID_ARGUMENT)
         REPORT_ERROR(deviceBase.GetLog(), "Unknown interface '%s'!", interfaceName);
@@ -245,9 +250,7 @@ NRI_API Result NRI_CALL nri::CreateDeviceFromD3D11Device(const DeviceCreationD3D
 {
     DeviceCreationDesc deviceCreationDesc = {};
     deviceCreationDesc.callbackInterface = deviceCreationD3D11Desc.callbackInterface;
-    deviceCreationDesc.callbackInterfaceUserArg = deviceCreationD3D11Desc.callbackInterfaceUserArg;
     deviceCreationDesc.memoryAllocatorInterface = deviceCreationD3D11Desc.memoryAllocatorInterface;
-    deviceCreationDesc.memoryAllocatorInterfaceUserArg = deviceCreationD3D11Desc.memoryAllocatorInterfaceUserArg;
     deviceCreationDesc.graphicsAPI = GraphicsAPI::D3D11;
     deviceCreationDesc.enableNRIValidation = deviceCreationD3D11Desc.enableNRIValidation;
     deviceCreationDesc.enableAPIValidation = deviceCreationD3D11Desc.enableAPIValidation;
@@ -272,9 +275,7 @@ NRI_API Result NRI_CALL nri::CreateDeviceFromD3D12Device(const DeviceCreationD3D
 {
     DeviceCreationDesc deviceCreationDesc = {};
     deviceCreationDesc.callbackInterface = deviceCreationD3D12Desc.callbackInterface;
-    deviceCreationDesc.callbackInterfaceUserArg = deviceCreationD3D12Desc.callbackInterfaceUserArg;
     deviceCreationDesc.memoryAllocatorInterface = deviceCreationD3D12Desc.memoryAllocatorInterface;
-    deviceCreationDesc.memoryAllocatorInterfaceUserArg = deviceCreationD3D12Desc.memoryAllocatorInterfaceUserArg;
     deviceCreationDesc.graphicsAPI = GraphicsAPI::D3D12;
     deviceCreationDesc.enableNRIValidation = deviceCreationD3D12Desc.enableNRIValidation;
     deviceCreationDesc.enableAPIValidation = deviceCreationD3D12Desc.enableAPIValidation;
@@ -304,9 +305,7 @@ NRI_API Result NRI_CALL nri::CreateDeviceFromVkDevice(const DeviceCreationVulkan
 {
     DeviceCreationDesc deviceCreationDesc = {};
     deviceCreationDesc.callbackInterface = deviceCreationVulkanDesc.callbackInterface;
-    deviceCreationDesc.callbackInterfaceUserArg = deviceCreationVulkanDesc.callbackInterfaceUserArg;
     deviceCreationDesc.memoryAllocatorInterface = deviceCreationVulkanDesc.memoryAllocatorInterface;
-    deviceCreationDesc.memoryAllocatorInterfaceUserArg = deviceCreationVulkanDesc.memoryAllocatorInterfaceUserArg;
     deviceCreationDesc.graphicsAPI = GraphicsAPI::VULKAN;
     deviceCreationDesc.enableNRIValidation = deviceCreationVulkanDesc.enableNRIValidation;
     deviceCreationDesc.enableAPIValidation = deviceCreationVulkanDesc.enableAPIValidation;

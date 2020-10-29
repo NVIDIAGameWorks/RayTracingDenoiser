@@ -21,9 +21,7 @@ namespace nri
         ID3D11Device* d3d11Device;
         void* agsContextAssociatedWithDevice;
         CallbackInterface callbackInterface;
-        void* callbackInterfaceUserArg;
         MemoryAllocatorInterface memoryAllocatorInterface;
-        void* memoryAllocatorInterfaceUserArg;
         bool enableNRIValidation;
         bool enableAPIValidation;
     };

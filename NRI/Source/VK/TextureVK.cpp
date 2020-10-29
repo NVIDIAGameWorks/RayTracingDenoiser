@@ -54,25 +54,26 @@ Result TextureVK::Create(const TextureDesc& textureDesc)
 
     const VkImageType imageType = ::GetImageType(textureDesc.type);
 
-    VkImageCreateInfo info = {
-        VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        nullptr,
-        (VkImageCreateFlags)0,
-        imageType,
-        ::GetVkFormat(m_Format),
-        textureDesc.size[0],
-        textureDesc.size[1],
-        textureDesc.size[2],
-        textureDesc.mipNum,
-        textureDesc.arraySize,
-        m_SampleCount,
-        VK_IMAGE_TILING_OPTIMAL,
-        GetImageUsageFlags(textureDesc.usageMask),
-        VK_SHARING_MODE_EXCLUSIVE,
-        0,
-        nullptr,
-        VK_IMAGE_LAYOUT_UNDEFINED
-    };
+    const VkSharingMode sharingMode =
+        m_Device.IsConcurrentSharingModeEnabledForBuffers() ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+
+    const Vector<uint32_t>& queueIndices = m_Device.GetConcurrentSharingModeQueueIndices();
+
+    VkImageCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    info.imageType = imageType;
+    info.format = ::GetVkFormat(m_Format);
+    info.extent.width = textureDesc.size[0];
+    info.extent.height = textureDesc.size[1];
+    info.extent.depth = textureDesc.size[2];
+    info.mipLevels = textureDesc.mipNum;
+    info.arrayLayers = textureDesc.arraySize;
+    info.samples = m_SampleCount;
+    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    info.usage = GetImageUsageFlags(textureDesc.usageMask);
+    info.sharingMode = sharingMode;
+    info.queueFamilyIndexCount = (uint32_t)queueIndices.size();
+    info.pQueueFamilyIndices = queueIndices.data();
 
     m_ImageAspectFlags = ::GetImageAspectFlags(textureDesc.format);
 
@@ -119,7 +120,7 @@ Result TextureVK::Create(const TextureVulkanDesc& textureDesc)
 
 void TextureVK::SetDebugName(const char* name)
 {
-    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_IMAGE, (void**)m_Handles, name);
+    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_IMAGE, (void**)m_Handles.data(), name);
 }
 
 void TextureVK::GetMemoryInfo(MemoryLocation memoryLocation, MemoryDesc& memoryDesc) const
@@ -175,7 +176,7 @@ void TextureVK::GetTextureVK(uint32_t physicalDeviceIndex, TextureVulkanDesc& te
     textureVulkanDesc.size[2] = GetSize(2);
     textureVulkanDesc.mipNum = GetMipNum();
     textureVulkanDesc.arraySize = GetArraySize();
-    textureVulkanDesc.sampleNum = GetSampleCount();
+    textureVulkanDesc.sampleNum = (uint8_t)GetSampleCount();
     textureVulkanDesc.physicalDeviceMask = 1 << physicalDeviceIndex;
 }
 

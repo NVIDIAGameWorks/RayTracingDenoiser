@@ -37,7 +37,6 @@ namespace nri
         uint32_t GetIAStreamStride(uint32_t streamSlot) const;
         uint8_t GetSampleNum() const;
         const PipelineLayoutD3D12& GetPipelineLayout() const;
-        void SetDescriptorSets(ID3D12GraphicsCommandList* graphicsCommandList, uint32_t baseIndex, uint32_t setNum, const DescriptorSet* const* descriptorSets, const uint32_t* offsets);
 
         //======================================================================================================================
         // NRI
@@ -45,26 +44,28 @@ namespace nri
         void SetDebugName(const char* name);
 
     private:
+        Result CreateFromStream(const GraphicsPipelineDesc& graphicsPipelineDesc);
         void FillInputLayout(D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc, const GraphicsPipelineDesc& graphicsPipelineDesc);
         void FillShaderBytecode(D3D12_SHADER_BYTECODE& shaderBytecode, const ShaderDesc& shaderDesc) const;
-        void FillRasterizerState(D3D12_GRAPHICS_PIPELINE_STATE_DESC& graphicsPipleineStateDesc, const GraphicsPipelineDesc& graphicsPipelineDesc);
+        void FillRasterizerState(D3D12_RASTERIZER_DESC& rasterizerDesc, const GraphicsPipelineDesc& graphicsPipelineDesc);
         void FillDepthStencilState(D3D12_DEPTH_STENCIL_DESC& depthStencilDesc, const OutputMergerDesc& outputMergerDesc) const;
-        void FillOutputMergerState(D3D12_GRAPHICS_PIPELINE_STATE_DESC& graphicsPipleineStateDesc, const GraphicsPipelineDesc& graphicsPipelineDesc);
+        void FillBlendState(D3D12_BLEND_DESC& blendDesc, const GraphicsPipelineDesc& graphicsPipelineDesc);
+        void FillSampleDesc(DXGI_SAMPLE_DESC& sampleDesc, UINT& sampleMask, const GraphicsPipelineDesc& graphicsPipelineDesc);
 
         DeviceD3D12& m_Device;
-        bool m_IsGraphicsPipeline = false;
-        uint32_t m_IAStreamStride[D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT] = {}; // TODO: optimize?
-        D3D_PRIMITIVE_TOPOLOGY m_PrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
-        const PipelineLayoutD3D12* m_PipelineLayout;
+        std::array<uint32_t, D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> m_IAStreamStride = {}; // TODO: optimize?
         ComPtr<ID3D12PipelineState> m_PipelineState;
 #ifdef __ID3D12Device5_INTERFACE_DEFINED__
         ComPtr<ID3D12StateObject> m_StateObject;
         ComPtr<ID3D12StateObjectProperties> m_StateObjectProperties;
         Vector<std::wstring> m_ShaderGroupNames;
 #endif
+        const PipelineLayoutD3D12* m_PipelineLayout = nullptr;
+        D3D_PRIMITIVE_TOPOLOGY m_PrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+        Color<float> m_BlendFactor = {};
         uint8_t m_SampleNum = 1;
         bool m_BlendEnabled = false;
-        Color<float> m_BlendFactor = {};
+        bool m_IsGraphicsPipeline = false;
     };
 
     inline PipelineD3D12::PipelineD3D12(DeviceD3D12& device)

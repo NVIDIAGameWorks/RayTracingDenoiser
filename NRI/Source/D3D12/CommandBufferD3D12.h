@@ -51,7 +51,7 @@ namespace nri
         void ClearAttachments(const ClearDesc* clearDescs, uint32_t clearDescNum, const Rect* rects, uint32_t rectNum);
         void ClearStorageBuffer(const ClearStorageBufferDesc& clearDesc);
         void ClearStorageTexture(const ClearStorageTextureDesc& clearDesc);
-        void BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag);
+        void BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag);
         void EndRenderPass();
         void SetVertexBuffers(uint32_t baseSlot, uint32_t bufferNum, const Buffer* const* buffers, const uint64_t* offsets);
         void SetIndexBuffer(const Buffer& buffer, uint64_t offset, IndexType indexType);
@@ -89,6 +89,8 @@ namespace nri
         void WriteAccelerationStructureSize(const AccelerationStructure* const* accelerationStructures, uint32_t accelerationStructureNum, QueryPool& queryPool, uint32_t queryOffset);
         void DispatchRays(const DispatchRaysDesc& dispatchRaysDesc);
 
+        void DispatchMeshTasks(uint32_t taskNum);
+
     private:
         static void AddResourceBarrier(ID3D12Resource* resource, AccessBits before, AccessBits after, D3D12_RESOURCE_BARRIER& resourceBarrier, uint32_t subresource);
 
@@ -99,12 +101,15 @@ namespace nri
 #ifdef __ID3D12GraphicsCommandList4_INTERFACE_DEFINED__
         ComPtr<ID3D12GraphicsCommandList4> m_GraphicsCommandList4;
 #endif
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+        ComPtr<ID3D12GraphicsCommandList6> m_GraphicsCommandList6;
+#endif
         const PipelineLayoutD3D12* m_PipelineLayout = nullptr;
         bool m_IsGraphicsPipelineLayout = false;
         PipelineD3D12* m_Pipeline = nullptr;
         FrameBufferD3D12* m_FrameBuffer = nullptr;
         D3D12_PRIMITIVE_TOPOLOGY m_PrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
-        std::array<DescriptorSetD3D12*, 64> m_DescriptorSets;
+        std::array<DescriptorSetD3D12*, 64> m_DescriptorSets = {};
     };
 
     inline CommandBufferD3D12::CommandBufferD3D12(DeviceD3D12& device)

@@ -71,7 +71,7 @@ Result DescriptorPoolD3D12::Create(const DescriptorPoolDesc& descriptorPoolDesc)
 
 void DescriptorPoolD3D12::Bind(ID3D12GraphicsCommandList* graphicsCommandList) const
 {
-    graphicsCommandList->SetDescriptorHeaps(m_DescriptorHeapNum, m_DescriptorHeaps);
+    graphicsCommandList->SetDescriptorHeaps(m_DescriptorHeapNum, m_DescriptorHeaps.data());
 }
 
 uint32_t DescriptorPoolD3D12::AllocateDescriptors(DescriptorHeapType descriptorHeapType, uint32_t descriptorNum)

@@ -12,8 +12,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
+    float4x4 gViewToClip;
+    float4 gFrustum;
     float2 gInvScreenSize;
+    float2 padding;
+    float gMetersToUnits;
+    float gIsOrtho;
+    float gUnproject;
     float gDebug;
+    float gInf;
+    uint gCheckerboard;
+    uint gFrameIndex;
+    uint gWorldSpaceMotion;
 };
 
 #include "NRD_Common.hlsl"

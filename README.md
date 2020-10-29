@@ -1,11 +1,11 @@
-# NVIDIA Ray Tracing Denoiser v1.7.2
+# NVIDIA Real-time (Ray tracing) Denoiser v1.8.6
 
-## Quick Start Guide
+## QUICK START GUIDE
 
 NVIDIA Ray Tracing Denoiser (NRD) is a spatio-temporal API agnostic denoising library. The library has been designed to work with low rpp (ray per pixel) signals. NRD is a fast solution that slightly depends on input signals and environment conditions. NRD currently supports denoising of 3 signal types:
 * Diffuse (with embedded ambient occlusion)
 * Specular or reflections (with embedded specular occlusion)
-* Shadows from an infinite light source (sun shadows)
+* Shadows from an infinite light source (sun shadows, translucency information can be provided additionally)
 
 NRD is distributed as source as well with a “ready-to-use” library (if used in a precompiled form).
 
@@ -14,12 +14,14 @@ It can easily be integrated into any DX12, VULKAN or even DX11 engines using 2 m
 2. Integration via an abstraction layer. In this case, the engine should expose native Graphics API pointers for certain types of objects. The integration layer, provided as a part of SDK, can be used to simplify this kind of integration
 
 ### Minimum Requirements
-Any DXR enabled GPU. NVIDIA DXR enabled GPUs:
-- RTX 2080 Ti, 2080 SUPER, 2080, 2070 SUPER, 2070, 2060 SUPER, 2060
-- GTX 1660 Ti, 1660 SUPER, 1660
-- GTX 1080 Ti, 1080, 1070, 1060 with at least 6GB of memory
+Any Ray Tracing compatible GPU. NVIDIA Ray Tracing compatible GPUs:
+- RTX 3000 series
+- RTX 2000 series
+- GTX 1660 (Ti, S)
+- GTX 1000 series (GPUs with at least 6GB of memory)
 
 ### How to Compile and Run
+- Update Windows to the latest version (2004)
 - Install latest Vulkan SDK
 - Run ``Deploy.bat``
 - Install required Windows SDK (you will be prompted)
@@ -27,8 +29,18 @@ Any DXR enabled GPU. NVIDIA DXR enabled GPUs:
 - Rebuild the solution
 - It's recommended to install Smart Command Line Arguments Extension for Visual Studio https://marketplace.visualstudio.com/items?itemName=MBulli.SmartCommandlineArguments
   - In this case "Command Line Arguments" tab will contain all possible command line arguments for the NRD sample (API, resolution, scene selection...)
-- Exit out of Visual Studio once completed.
-- Run TestNRD.bat to view the NRD sample application.
+- Exit out of Visual Studio once completed
+- Run the sample
+  - Use Smart Command Line arguments or set this minimal command line ```--width=1920 --height=1080 --api=D3D12 --testMode --scene=Bistro/BistroInterior.fbx```
+  - Or use ```TestNRD.bat``` to view the NRD sample application
+
+### NRD sample usage
+- Press MOUSE_RIGHT to move...
+- W/S/A/D - move camera
+- MOUSE_SCROLL - accelerate / decelerate
+- F1 - hide UI toggle
+- F2 - switch to the next denoiser (NRD => SVGF => ...)
+- SPACE - animation pause toggle
 
 ## INTEGRATION VARIANTS
 
@@ -79,46 +91,45 @@ NRD doesn’t have a "resize" functionality. On resolution change the old denois
 
 The following textures can be requested as inputs for a method. Brackets contain recommended precision:
 
-* IN_MOTION_VECTOR (RGBA16f+ or RG16f+) - surface motion (a common part of the g-buffer). MVs must be non-jittered, old = new + MV
-3D world space motion (recommended). In this case, the alpha channel is unused and can be used by the app
-2D screen space motion
+* IN\_MV (RGBA16f+ or RG16f+) - surface motion (a common part of the g-buffer). MVs must be non-jittered, ```old = new + MV```
+  - 3D world space motion (recommended). In this case, the alpha channel is unused and can be used by the app
+  - 2D screen space motion
 
-* IN_NORMAL_ROUGHNESS (RGBA8+) - xyz - normal in world space, unpacking "normalize(x * 2 - 1)", w - artistic roughness, where "artistic roughness" = sqrt( "mathematical roughness" )
+* IN\_NORMAL\_ROUGHNESS (RGBA8+) - xyz - normal in world space, unpacking ```normalize(x * 2 - 1)```, w - artistic roughness, where ```"artistic roughness" = sqrt( "mathematical roughness" )```
 
-* IN_VIEWZ (R32f) - .x - linear view depth ("+" for LHS, "-" for RHS)
+* IN\_VIEWZ (R32f) - .x - linear view depth ("+" for LHS, "-" for RHS)
 
-* IN_SHADOW (RG16f+), IN_DIFF_A (RGBA16f+), IN_DIFF_B (RGBA16f+), IN_SPEC_HIT (RGBA16f+) - main inputs for shadow, diffuse and specular methods respectively. These inputs should be prepared using the corresponding packing function from NRD.hlsl. Infinite (sky) pixels for shadow and diffuse must be cleared using corresponding NRD_INF_x macros.
+* IN\_SHADOW (RG16f+), IN\_DIFFA (RGBA16f+), IN\_DIFFB (RGBA16f+), IN\_SPEC\_HIT (RGBA16f+) - main inputs for shadow, diffuse and specular methods respectively. These inputs should be prepared using the corresponding packing function from NRD.hlsl. Infinite (sky) pixels for shadow and diffuse must be cleared using corresponding NRD_INF_x macros
+* IN\_TRANSLUCENCY - translucency to be used by NRD\_TRANSLUCENT\_SHADOW denoiser. There are two ways how it can be used (see OUT\_SHADOW)
+  - ```final shadow = lerp( translucency, 1.0, shadow )``` (recommended)
+  - ```final shadow = translucency * shadow```
 
 ### NRD OUTPUTS
 
-* OUT_SHADOW (R8+) - denoised shadow
+* OUT\_SHADOW (R8+) - denoised shadow
+  - R8 - for NRD\_SHADOW denoiser (.x - shadow)
+  - RGBA8 - for NRD\_TRANSLUCENT\_SHADOW denoiser (.x - shadow, .yzw - translucency)
 
-* OUT_DIFF_HIT (RGBA16f+) - .xyz - denoisied diffuse radiance, .w - denoised normalized hit distance
+* OUT\_DIFF\_HIT (RGBA16f+) - .xyz - denoisied diffuse radiance, .w - denoised normalized hit distance
 
-* OUT_SPEC_HIT (RGBA16f+) - .xyz - denoised specular radiance, .w - normalized hit distance
+* OUT\_SPEC\_HIT (RGBA16f+) - .xyz - denoised specular radiance, .w - normalized hit distance
 
 ## RECOMMENDATIONS AND GOOD PRACTICES
 
 Denoising is not a panacea or miracle. Denoising works best with ray tracing results produced by a suitable form of importance sampling. Additionally, NRD has its own restrictions. The following suggestions should help to achieve best image quality:
 
-NRD has been designed to work with pure radiance coming from a particular direction. It means that BRDF should be applied after denoising:
+1. NRD has been designed to work with pure radiance coming from a particular direction. It means that BRDF should be applied **after** denoising:
 
-#### Examples
-* Denoising( DiffuseRadiance * Albedo ) →
-Denosing( DiffuseRadiance ) * Albedo
+	Denoising( DiffuseRadiance * Albedo ) → Denosing( DiffuseRadiance ) * Albedo
+	Denoising( SpecularRadiance * BRDF( micro params ) ) → Denoising( SpecularRadiance ) * BRDF( macro params )
 
-* Denoising( SpecularRadiance * BRDF( micro parameters ) ) →
-Denoising( SpecularRadiance ) * BRDF( macro parameters )
+2. Importance sampling is recommended to achieve good results in case of complex lighting environments. Consider using:
+   - Cosine distribution for diffuse from non-local light sources
+   - VNDF sampling for specular
+   - Custom importance sampling for local light sources
 
-Importance sampling is recommended to achieve good results in case of complex lighting environments. Consider using:
-Cosine distribution for diffuse from non-local light sources
-VNDF sampling for specular
-Custom importance sampling for local light sources
+3. For diffuse and specular NRD expects hit distance input in normalized form. Some tweaking can be needed here, but in most cases normalization to 3-40 meters works well (can be roughness or view distance dependent). NRD outputs denoised normalized hit distance, which can be used by the application (see unpacking functions from ```NRD.hlsl```)
 
-For diffuse and specular NRD expects hit distance input in normalized form. Some tweaking can be needed here, but in most cases normalization to 3-10 meters works well (can be roughness or view distance dependent). NRD outputs denoised normalized hit distance, which can be used by the application (see unpacking functions from NRD.hlsl)
+4. To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
 
-Shadow denoiser doesn’t have a temporal component. To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
-
-Low discrepancy sampling helps to have a cleaner output
-
-
+5. Low discrepancy sampling helps to have a cleaner output

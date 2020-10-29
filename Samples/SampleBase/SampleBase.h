@@ -101,11 +101,11 @@ public:
     virtual ~SampleBase()
     {}
 
-    inline uint32_t GetWindowWidth() const
-    { return m_WindowWidth; }
+    inline uint16_t GetWindowWidth() const
+    { return (uint16_t)m_WindowWidth; }
 
-    inline uint32_t GetWindowHeight() const
-    { return m_WindowHeight; }
+    inline uint16_t GetWindowHeight() const
+    { return (uint16_t)m_WindowHeight; }
 
     inline bool IsAutomated() const
     { return m_FrameNum != uint32_t(-1); }
@@ -142,7 +142,7 @@ protected:
 private:
     uint32_t m_WindowWidth = 1280;
     uint32_t m_WindowHeight = 720;
-    uint32_t m_FrameNum = -1;
+    uint32_t m_FrameNum = uint32_t(-1);
     nri::GraphicsAPI m_GraphicsAPI = nri::GraphicsAPI::D3D11;
 };
 

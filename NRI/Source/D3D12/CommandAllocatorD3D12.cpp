@@ -53,7 +53,7 @@ inline Result CommandAllocatorD3D12::CreateCommandBuffer(CommandBuffer*& command
 
 inline void CommandAllocatorD3D12::Reset()
 {
-    HRESULT hr = m_CommandAllocator->Reset();
+    m_CommandAllocator->Reset();
 }
 
 #include "CommandAllocatorD3D12.hpp"

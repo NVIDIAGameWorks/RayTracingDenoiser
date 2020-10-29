@@ -127,6 +127,8 @@ struct DispatchTable
     VULKAN_FUNCTION(CmdWriteAccelerationStructuresPropertiesNV);
     VULKAN_FUNCTION(CmdTraceRaysNV);
 
+    VULKAN_FUNCTION(CmdDrawMeshTasksNV);
+
     VULKAN_FUNCTION(SetDebugUtilsObjectNameEXT);
 };
 

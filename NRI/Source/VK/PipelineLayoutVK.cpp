@@ -120,7 +120,10 @@ void PipelineLayoutVK::CreateSetLayout(const DescriptorSetDesc& descriptorSetDes
     uint32_t bindingMaxNum = descriptorSetDesc.dynamicConstantBufferNum + descriptorSetDesc.staticSamplerNum;
 
     for (uint32_t i = 0; i < descriptorSetDesc.rangeNum; i++)
-        bindingMaxNum += descriptorSetDesc.ranges[i].descriptorNum;
+    {
+        const DescriptorRangeDesc& range = descriptorSetDesc.ranges[i];
+        bindingMaxNum += range.isArray ? 1 : range.descriptorNum;
+    }
 
     VkDescriptorSetLayoutBinding* bindings = ALLOCATE_SCRATCH(m_Device, VkDescriptorSetLayoutBinding, bindingMaxNum);
     VkDescriptorBindingFlagsEXT* bindingFlags = ALLOCATE_SCRATCH(m_Device, VkDescriptorBindingFlagsEXT, bindingMaxNum);
@@ -165,16 +168,18 @@ void PipelineLayoutVK::CreateSetLayout(const DescriptorSetDesc& descriptorSetDes
 void PipelineLayoutVK::FillDescriptorBindings(const DescriptorSetDesc& descriptorSetDesc, const uint32_t* bindingOffsets,
     VkDescriptorSetLayoutBinding*& bindings, VkDescriptorBindingFlagsEXT*& bindingFlags) const
 {
+    constexpr VkDescriptorBindingFlagsEXT variableSizedArrayFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
+                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+
     for (uint32_t i = 0; i < descriptorSetDesc.rangeNum; i++)
     {
         const DescriptorRangeDesc& range = descriptorSetDesc.ranges[i];
 
         const uint32_t baseBindingIndex = range.baseRegisterIndex + bindingOffsets[(uint32_t)range.descriptorType];
 
-        if (range.isVariableDescriptorNum)
+        if (range.isArray)
         {
-            *(bindingFlags++) = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
-                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+            *(bindingFlags++) = range.isDescriptorNumVariable ? variableSizedArrayFlags : 0;
 
             VkDescriptorSetLayoutBinding& descriptorBinding = *(bindings++);
             descriptorBinding = {};
@@ -312,7 +317,7 @@ void PipelineLayoutVK::FillRuntimeBindingInfo(const PipelineLayoutDesc& pipeline
         {
             ranges[j].baseRegisterIndex += bindingOffsets[(uint32_t)descriptorSetDesc.ranges[j].descriptorType];
 
-            if (m_Device.IsDescriptorIndexingExtSupported() && descriptorSetDesc.ranges[j].isVariableDescriptorNum)
+            if (m_Device.IsDescriptorIndexingExtSupported() && descriptorSetDesc.ranges[j].isDescriptorNumVariable)
                 destination.hasVariableDescriptorNum[i] = true;
         }
 

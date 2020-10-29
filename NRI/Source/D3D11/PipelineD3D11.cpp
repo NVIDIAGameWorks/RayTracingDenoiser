@@ -120,6 +120,7 @@ Result PipelineD3D11::Create(const GraphicsPipelineDesc& pipelineDesc)
             m_InputAssemplyStrides[stream.bindingSlot] = stream.stride;
         };
 
+        assert(vertexShader != nullptr);
         hr = m_VersionedDevice->CreateInputLayout(&inputElements[0], ia.attributeNum, vertexShader->bytecode, vertexShader->size, &m_InputLayout);
         RETURN_ON_BAD_HRESULT(m_Device.GetLog(), hr, "ID3D11Device::CreateInputLayout() - FAILED!");
     }
@@ -278,10 +279,10 @@ void PipelineD3D11::ChangeSamplePositions(const VersionedContext& context, const
         newState.samplePositionHash = samplePositionState.positionHash;
 
         m_RasterizerStateExDesc->InterleavedSamplingEnable = samplePositionState.positionNum > m_RasterizerStateExDesc->SampleCount;
-        for (uint32_t i = 0; i < samplePositionState.positionNum; i++)
+        for (uint32_t j = 0; j < samplePositionState.positionNum; j++)
         {
-            m_RasterizerStateExDesc->SamplePositionsX[i] = samplePositionState.positions[i].x + 8;
-            m_RasterizerStateExDesc->SamplePositionsY[i] = samplePositionState.positions[i].y + 8;
+            m_RasterizerStateExDesc->SamplePositionsX[j] = samplePositionState.positions[j].x + 8;
+            m_RasterizerStateExDesc->SamplePositionsY[j] = samplePositionState.positions[j].y + 8;
         }
 
         if (context.ext->isAvailableNVAPI)

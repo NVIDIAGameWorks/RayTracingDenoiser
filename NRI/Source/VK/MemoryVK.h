@@ -34,8 +34,8 @@ namespace nri
         void SetDebugName(const char* name);
 
     private:
-        VkDeviceMemory m_Handles[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
-        uint8_t* m_MappedMemory[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
+        std::array<VkDeviceMemory, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_Handles = {};
+        std::array<uint8_t*, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_MappedMemory = {};
         MemoryType m_Type = std::numeric_limits<MemoryType>::max();
         DeviceVK& m_Device;
         bool m_OwnsNativeObjects = false;

@@ -12,10 +12,20 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
+    float4x4 gViewToClip;
+    float4 gFrustum;
     float2 gInvScreenSize;
-    uint2 gScreenSize;
-    uint gFrameIndex;
+    float2 padding;
+    float gMetersToUnits;
+    float gIsOrtho;
+    float gUnproject;
     float gDebug;
+    float gInf;
+    uint gCheckerboard;
+    uint gFrameIndex;
+    uint gWorldSpaceMotion;
+
+    uint2 gScreenSize;
 };
 
 #include "NRD_Common.hlsl"
@@ -77,11 +87,10 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     }
     #endif
 
-    float roughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] ).w;
-    float4 pack = gIn_InternalData[ pixelPos ];
-    float3 internalData = UnpackSpecInternalData( pack, roughness );
-    float normAccumSpeed = saturate( internalData.z * STL::Math::PositiveRcp( internalData.y * HISTORY_FIX_FRAME_NUM_PERCENTAGE ) ); // .x instead of .z can't be used here due to adaptive number of accumulated frames
-    float realMipLevelf = GetMipLevel( normAccumSpeed, internalData.z, roughness );
+    float roughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] ).w;
+    float2x3 internalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
+    float normAccumSpeed = saturate( internalData[ 0 ].z * STL::Math::PositiveRcp( internalData[ 0 ].y * HISTORY_FIX_FRAME_NUM_PERCENTAGE ) ); // .x instead of .z can't be used here due to adaptive number of accumulated frames
+    float realMipLevelf = GetMipLevel( normAccumSpeed, internalData[ 0 ].z, roughness );
     uint realMipLevel = uint( realMipLevelf );
 
     [branch]
@@ -114,7 +123,6 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
                 const float2 offset = float2( i, j ) * 2.0 - 1.0;
                 const float2 uv = saturate( mipUvFootprint00 + offset * invMipSize );
 
-                // TODO: add GatherLevel to HLSL and HW!
                 float4 z;
                 z.x = gIn_ScaledViewZ.SampleLevel( gNearestClamp, mipUvFootprint00, realMipLevel, int2( 0, 0 ) );
                 z.y = gIn_ScaledViewZ.SampleLevel( gNearestClamp, mipUvFootprint00, realMipLevel, int2( 1, 0 ) );

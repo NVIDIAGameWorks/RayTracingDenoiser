@@ -61,8 +61,8 @@ void Input::Process(void* data)
         // RDP is not supported!
         if (!(rawMouse->usFlags & MOUSE_MOVE_ABSOLUTE))
         {
-            m_MouseDx = float(rawMouse->lLastX);
-            m_MouseDy = float(rawMouse->lLastY);
+            m_MouseDx += float(rawMouse->lLastX);
+            m_MouseDy += float(rawMouse->lLastY);
         }
     }
     else if (rawInput->header.dwType == RIM_TYPEKEYBOARD)
@@ -72,7 +72,12 @@ void Input::Process(void* data)
             code |= 0x80;
 
         if (code != 0xAA)
+        {
             m_KeyState[code] = !(rawKeyboard->Flags & RI_KEY_BREAK);
+
+            if (m_KeyState[code])
+                m_KeyToggled[code] = true;
+        }
     }
 }
 

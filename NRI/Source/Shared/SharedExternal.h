@@ -19,10 +19,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "Extensions/NRIWrapperD3D12.h"
 #include "Extensions/NRIWrapperVK.h"
 #include "Extensions/NRIRayTracing.h"
+#include "Extensions/NRIMeshShader.h"
 
-#include <vector>
-#include <unordered_map>
-#include <string>
 #include <array>
 #include <atomic>
 #include <type_traits>
@@ -30,234 +28,26 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <cassert>
 #include <cstring>
 
-#if __linux__
-    #include <alloca.h>
-    #define _alloca alloca
-#else
-    #include <malloc.h>
-#endif
-
 #include "Lock.h"
+
+#define _MemoryAllocatorInterface nri::MemoryAllocatorInterface
+#include "StdAllocator/StdAllocator.h"
 
 constexpr uint32_t PHYSICAL_DEVICE_GROUP_MAX_SIZE = 4;
 constexpr uint32_t COMMAND_QUEUE_TYPE_NUM = (uint32_t)nri::CommandQueueType::MAX_NUM;
 
-void CheckAndSetDefaultAllocator(nri::MemoryAllocatorInterface& memoryAllocatorInterface);
 void CheckAndSetDefaultCallbacks(nri::CallbackInterface& callbackInterface);
 
 struct Log
 {
-    Log(nri::GraphicsAPI graphicsAPI, const nri::CallbackInterface& callbackInterface, void* callbackInterfaceUserArg);
+    Log(nri::GraphicsAPI graphicsAPI, const nri::CallbackInterface& callbackInterface);
 
     void ReportMessage(nri::Message message, const char* format, ...) const;
 
 private:
     nri::GraphicsAPI m_GraphicsAPI;
     nri::CallbackInterface m_CallbackInterface;
-    void* m_CallbackInterfaceUserArg;
 };
-
-template<typename T>
-struct StdAllocator
-{
-    typedef T value_type;
-    typedef size_t size_type;
-    typedef ptrdiff_t difference_type;
-    typedef std::true_type propagate_on_container_move_assignment;
-    typedef std::false_type is_always_equal;
-
-    StdAllocator(const nri::MemoryAllocatorInterface& memoryAllocatorInterface, void* userArg);
-
-    template <class U>
-    StdAllocator(const StdAllocator<U>& allocator);
-
-    StdAllocator<T>& operator= (const StdAllocator<T>& allocator);
-
-    T* allocate(size_t n) noexcept;
-    void deallocate(T* memory, size_t) noexcept;
-
-    const nri::MemoryAllocatorInterface* GetInterface() const;
-    void* GetUserArg() const;
-
-    template<typename U>
-    using other = StdAllocator<U>;
-
-private:
-    const nri::MemoryAllocatorInterface* m_Interface = nullptr;
-    void* m_UserArg = nullptr;
-};
-
-template<typename T>
-StdAllocator<T>::StdAllocator(const nri::MemoryAllocatorInterface& memoryAllocatorInterface, void* userArg) :
-    m_Interface(&memoryAllocatorInterface),
-    m_UserArg(userArg)
-{
-}
-
-template<typename T>
-template <class U>
-StdAllocator<T>::StdAllocator(const StdAllocator<U>& allocator) :
-    m_Interface(allocator.GetInterface()),
-    m_UserArg(allocator.GetUserArg())
-{
-}
-
-template<typename T>
-StdAllocator<T>& StdAllocator<T>::operator= (const StdAllocator<T>& allocator)
-{
-    m_Interface = allocator.GetInterface();
-    m_UserArg = allocator.GetUserArg();
-    return *this;
-}
-
-template<typename T>
-T* StdAllocator<T>::allocate(size_t n) noexcept
-{
-    return (T*)m_Interface->Allocate(m_UserArg, n * sizeof(T), alignof(T));
-}
-
-template<typename T>
-void StdAllocator<T>::deallocate(T* memory, size_t n) noexcept
-{
-    m_Interface->Free(m_UserArg, memory);
-}
-
-template<typename T>
-const nri::MemoryAllocatorInterface* StdAllocator<T>::GetInterface() const
-{
-    return m_Interface;
-}
-
-template<typename T>
-void* StdAllocator<T>::GetUserArg() const
-{
-    return m_UserArg;
-}
-
-template<typename T>
-bool operator== (const StdAllocator<T>& left, const StdAllocator<T>& right)
-{
-    return left.GetInterface() == right.GetInterface() && left.GetUserArg() == right.GetUserArg();
-}
-
-template<typename T>
-bool operator!= (const StdAllocator<T>& left, const StdAllocator<T>& right)
-{
-    return !operator==(left, right);
-}
-
-template<typename T>
-using Vector = std::vector<T, StdAllocator<T>>;
-
-template<typename U, typename T>
-using UnorderedMap = std::unordered_map<U, T, std::hash<U>, std::equal_to<U>, StdAllocator<std::pair<U, T>>>;
-
-using String = std::basic_string<char, std::char_traits<char>, StdAllocator<char>>;
-using WString = std::basic_string<wchar_t, std::char_traits<wchar_t>, StdAllocator<wchar_t>>;
-
-template<typename T>
-inline T GetAlignedSize(const T& x, uint32_t alignment)
-{
-    return ((x + alignment - 1) / alignment) * alignment;
-}
-
-template<typename T>
-inline T* Align(T* x, size_t alignment)
-{
-    return (T*)(((size_t)x + alignment - 1) / alignment * alignment);
-}
-
-template <typename T, uint32_t N>
-constexpr uint32_t GetCountOf(T const (&)[N])
-{
-    return N;
-}
-
-template<typename T, typename U>
-constexpr uint32_t GetOffsetOf(U T::*member)
-{
-    return (uint32_t)((const char*)&((T*)nullptr->*member) - (const char*)nullptr);
-}
-
-template<typename T, typename... Args>
-constexpr void Construct(T* objects, size_t number, Args&&... args)
-{
-    for (size_t i = 0; i < number; i++)
-        new (objects + i) T(std::forward<Args>(args)...);
-}
-
-template<typename T, typename... Args>
-inline T* Allocate(StdAllocator<uint8_t>& allocator, Args&&... args)
-{
-    const auto& lowLevelAllocator = *allocator.GetInterface();
-    const auto& lowLevelAllocatorArg = allocator.GetUserArg();
-    T* object = (T*)lowLevelAllocator.Allocate(lowLevelAllocatorArg, sizeof(T), alignof(T));
-
-    new (object) T(std::forward<Args>(args)...);
-    return object;
-}
-
-template<typename T, typename... Args>
-inline T* AllocateArray(StdAllocator<uint8_t>& allocator, size_t arraySize, Args&&... args)
-{
-    const auto& lowLevelAllocator = *allocator.GetInterface();
-    const auto& lowLevelAllocatorArg = allocator.GetUserArg();
-    T* array = (T*)lowLevelAllocator.Allocate(lowLevelAllocatorArg, arraySize * sizeof(T), alignof(T));
-
-    for (size_t i = 0; i < arraySize; i++)
-        new (array + i) T(std::forward<Args>(args)...);
-
-    return array;
-}
-
-template<typename T>
-inline void Deallocate(StdAllocator<uint8_t>& allocator, T* object)
-{
-    if (object == nullptr)
-        return;
-
-    object->~T();
-
-    const auto& lowLevelAllocator = *allocator.GetInterface();
-    const auto& lowLevelAllocatorArg = allocator.GetUserArg();
-    lowLevelAllocator.Free(lowLevelAllocatorArg, object);
-}
-
-template<typename T>
-inline void DeallocateArray(StdAllocator<uint8_t>& allocator, T* array, size_t arraySize)
-{
-    if (array == nullptr)
-        return;
-
-    for (size_t i = 0; i < arraySize; i++)
-        (array + i)->~T();
-
-    const auto& lowLevelAllocator = *allocator.GetInterface();
-    const auto& lowLevelAllocatorArg = allocator.GetUserArg();
-    lowLevelAllocator.Free(lowLevelAllocatorArg, array);
-}
-
-//==============================================================================================================================
-
-constexpr size_t STACK_ALLOC_MAX_SIZE = 65536;
-
-template<typename T>
-constexpr size_t CountStackAllocationSize(size_t arraySize)
-{
-    return arraySize * sizeof(T) + alignof(T);
-}
-
-#define ALLOCATE_SCRATCH(device, T, arraySize) \
-    (CountStackAllocationSize<T>(arraySize) <= STACK_ALLOC_MAX_SIZE) ? \
-    Align<T>(((arraySize) ? (T*)_alloca(CountStackAllocationSize<T>(arraySize)) : nullptr), alignof(T)) : \
-    AllocateArray<T>(device.GetStdAllocator(), arraySize);
-
-#define FREE_SCRATCH(device, array, arraySize) \
-    if (array != nullptr && CountStackAllocationSize<decltype(array[0])>(arraySize) > STACK_ALLOC_MAX_SIZE) \
-        DeallocateArray(device.GetStdAllocator(), array, arraySize);
-
-#define STACK_ALLOC(T, arraySize) \
-    Align<T>(((arraySize) ? (T*)_alloca(CountStackAllocationSize<T>(arraySize)) : nullptr), alignof(T))
 
 //==============================================================================================================================
 

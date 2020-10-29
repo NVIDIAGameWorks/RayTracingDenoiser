@@ -160,11 +160,11 @@ Result TextureD3D11::Create(DeviceD3D11& device, const TextureD3D11Desc& texture
         D3D11_TEXTURE1D_DESC desc = {};
         texture->GetDesc(&desc);
 
-        m_Desc.size[0] = desc.Width;
+        m_Desc.size[0] = (uint16_t)desc.Width;
         m_Desc.size[1] = 1;
         m_Desc.size[2] = 1;
-        m_Desc.mipNum = desc.MipLevels;
-        m_Desc.arraySize = desc.ArraySize;
+        m_Desc.mipNum = (uint16_t)desc.MipLevels;
+        m_Desc.arraySize = (uint16_t)desc.ArraySize;
         m_Desc.sampleNum = 1;
         m_Desc.type = TextureType::TEXTURE_1D;
         m_Desc.format = GetFormat(desc.Format);
@@ -177,12 +177,12 @@ Result TextureD3D11::Create(DeviceD3D11& device, const TextureD3D11Desc& texture
         D3D11_TEXTURE2D_DESC desc = {};
         texture->GetDesc(&desc);
 
-        m_Desc.size[0] = desc.Width;
-        m_Desc.size[1] = desc.Height;
+        m_Desc.size[0] = (uint16_t)desc.Width;
+        m_Desc.size[1] = (uint16_t)desc.Height;
         m_Desc.size[2] = 1;
-        m_Desc.mipNum = desc.MipLevels;
-        m_Desc.arraySize = desc.ArraySize;
-        m_Desc.sampleNum = desc.SampleDesc.Count;
+        m_Desc.mipNum = (uint16_t)desc.MipLevels;
+        m_Desc.arraySize = (uint16_t)desc.ArraySize;
+        m_Desc.sampleNum = (uint8_t)desc.SampleDesc.Count;
         m_Desc.type = TextureType::TEXTURE_2D;
         m_Desc.format = GetFormat(desc.Format);
 
@@ -194,10 +194,10 @@ Result TextureD3D11::Create(DeviceD3D11& device, const TextureD3D11Desc& texture
         D3D11_TEXTURE3D_DESC desc = {};
         texture->GetDesc(&desc);
 
-        m_Desc.size[0] = desc.Width;
-        m_Desc.size[1] = desc.Height;
-        m_Desc.size[2] = desc.Depth;
-        m_Desc.mipNum = desc.MipLevels;
+        m_Desc.size[0] = (uint16_t)desc.Width;
+        m_Desc.size[1] = (uint16_t)desc.Height;
+        m_Desc.size[2] = (uint16_t)desc.Depth;
+        m_Desc.mipNum = (uint16_t)desc.MipLevels;
         m_Desc.arraySize = 1;
         m_Desc.sampleNum = 1;
         m_Desc.type = TextureType::TEXTURE_3D;

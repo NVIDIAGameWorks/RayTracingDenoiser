@@ -53,6 +53,10 @@ Result CommandBufferD3D12::Create(D3D12_COMMAND_LIST_TYPE commandListType, ID3D1
     m_GraphicsCommandList->QueryInterface(IID_PPV_ARGS(&m_GraphicsCommandList4));
 #endif
 
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+    m_GraphicsCommandList->QueryInterface(IID_PPV_ARGS(&m_GraphicsCommandList6));
+#endif
+
     hr = m_GraphicsCommandList->Close();
     if (FAILED(hr))
     {
@@ -71,6 +75,10 @@ Result CommandBufferD3D12::Create(const CommandBufferD3D12Desc& commandBufferDes
 
 #ifdef __ID3D12GraphicsCommandList4_INTERFACE_DEFINED__
     m_GraphicsCommandList->QueryInterface(IID_PPV_ARGS(&m_GraphicsCommandList4));
+#endif
+
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+    m_GraphicsCommandList->QueryInterface(IID_PPV_ARGS(&m_GraphicsCommandList6));
 #endif
 
     return Result::SUCCESS;
@@ -197,10 +205,10 @@ inline void CommandBufferD3D12::ClearStorageTexture(const ClearStorageTextureDes
     }
 }
 
-inline void CommandBufferD3D12::BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+inline void CommandBufferD3D12::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
     m_FrameBuffer = (FrameBufferD3D12*)&frameBuffer;
-    m_FrameBuffer->Bind(m_GraphicsCommandList, bindFlag);
+    m_FrameBuffer->Bind(m_GraphicsCommandList, renderPassBeginFlag);
 }
 
 inline void CommandBufferD3D12::EndRenderPass()
@@ -668,6 +676,13 @@ void CommandBufferD3D12::DispatchRays(const DispatchRaysDesc& dispatchRaysDesc)
     desc.Depth = dispatchRaysDesc.depth;
 
     m_GraphicsCommandList4->DispatchRays(&desc);
+#endif
+}
+
+inline void CommandBufferD3D12::DispatchMeshTasks(uint32_t taskNum)
+{
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+    m_GraphicsCommandList6->DispatchMesh(taskNum, 1, 1);
 #endif
 }
 

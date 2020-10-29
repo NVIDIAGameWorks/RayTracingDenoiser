@@ -29,7 +29,7 @@ namespace nri
         // NRI
         //======================================================================================================================
         void SetDebugName(const char* name);
-        Texture* const* const GetTextures(uint32_t& textureNum, Format& format) const;
+        Texture* const* GetTextures(uint32_t& textureNum, Format& format) const;
         uint32_t AcquireNextTexture(QueueSemaphore& textureReadyForRender);
         Result Present(QueueSemaphore& textureReadyForPresent);
         Result SetHdrMetadata(const HdrMetadata& hdrMetadata);

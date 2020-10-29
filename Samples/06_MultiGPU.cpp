@@ -202,11 +202,21 @@ void Sample::PrepareFrame(uint32_t frameIndex)
 
     ImGui::Begin("Multi-GPU", nullptr, ImGuiWindowFlags_NoResize);
     {
+        if (m_PhyiscalDeviceGroupSize == 1)
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+
         ImGui::Checkbox("Use multiple GPUs", &m_IsMGPUEnabled);
+
+        if (m_PhyiscalDeviceGroupSize == 1)
+        {
+            ImGui::PopStyleVar();
+            m_IsMGPUEnabled = false;
+        }
 
         m_FrameTime.UpdateElapsedTimeSinceLastSave();
         m_FrameTime.SaveCurrentTime();
 
+        ImGui::Text("Phyiscal device group size: %u", m_PhyiscalDeviceGroupSize);
         ImGui::Text("Frametime: %.2f ms", m_FrameTime.GetSmoothedElapsedTime());
     }
     ImGui::End();
@@ -231,7 +241,7 @@ void Sample::RecordGraphics(nri::CommandBuffer& commandBuffer, uint32_t physical
 
     NRI.CmdPipelineBarrier(commandBuffer, &transitionBarriers, nullptr, nri::BarrierDependency::GRAPHICS_STAGE);
 
-    NRI.CmdBeginRenderPass(commandBuffer, *m_FrameBuffer, nri::FramebufferBindFlag::NONE);
+    NRI.CmdBeginRenderPass(commandBuffer, *m_FrameBuffer, nri::RenderPassBeginFlag::NONE);
 
     const nri::Rect scissorRect = { 0, 0, GetWindowWidth(), GetWindowHeight() };
     const nri::Viewport viewport = { 0.0f, 0.0f, (float)scissorRect.width, (float)scissorRect.height, 0.0f, 1.0f };
@@ -257,7 +267,7 @@ void Sample::RecordGraphics(nri::CommandBuffer& commandBuffer, uint32_t physical
 
     NRI.CmdEndRenderPass(commandBuffer);
 
-    NRI.CmdBeginRenderPass(commandBuffer, *m_FrameBufferUI, nri::FramebufferBindFlag::SKIP_CLEAR);
+    NRI.CmdBeginRenderPass(commandBuffer, *m_FrameBufferUI, nri::RenderPassBeginFlag::SKIP_FRAME_BUFFER_CLEAR);
     m_UserInterface.Render(commandBuffer);
     NRI.CmdEndRenderPass(commandBuffer);
 
@@ -487,7 +497,7 @@ void Sample::CreatePipeline(nri::Format swapChainFormat)
     nri::InputAssemblyDesc inputAssemblyDesc = {};
     inputAssemblyDesc.topology = nri::Topology::TRIANGLE_LIST;
     inputAssemblyDesc.attributes = vertexAttributeDesc;
-    inputAssemblyDesc.attributeNum = helper::GetCountOf(vertexAttributeDesc);
+    inputAssemblyDesc.attributeNum = (uint8_t)helper::GetCountOf(vertexAttributeDesc);
     inputAssemblyDesc.streams = &vertexStreamDesc;
     inputAssemblyDesc.streamNum = 1;
 
@@ -595,9 +605,9 @@ void Sample::CreateGeometry()
     }
 
     helper::BufferDataDesc dataDescArray[] = {
-        { vertexData.data(), vertexBufferDesc.size, m_VertexBuffer, 0, nri::AccessBits::VERTEX_BUFFER },
-        { box.indices.data(), indexBufferDesc.size, m_IndexBuffer, 0, nri::AccessBits::INDEX_BUFFER },
-        { transforms.data(), transformBufferDesc.size, m_TransformBuffer, 0, nri::AccessBits::CONSTANT_BUFFER }
+        { vertexData.data(), vertexBufferDesc.size, m_VertexBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::VERTEX_BUFFER },
+        { box.indices.data(), indexBufferDesc.size, m_IndexBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::INDEX_BUFFER },
+        { transforms.data(), transformBufferDesc.size, m_TransformBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::CONSTANT_BUFFER }
     };
     NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, dataDescArray, helper::GetCountOf(dataDescArray)));
 
@@ -646,7 +656,7 @@ void SetTexcoords(Box& box, uint32_t texcoordOffset, float x, float y)
     box.texcoords[texcoordOffset + 1] = y;
 }
 
-void SetQuadIndices(Box& box, uint32_t indexOffset, uint32_t topVertexIndex, uint32_t bottomVertexIndex)
+void SetQuadIndices(Box& box, uint32_t indexOffset, uint16_t topVertexIndex, uint16_t bottomVertexIndex)
 {
     box.indices[indexOffset + 0] = bottomVertexIndex;
     box.indices[indexOffset + 1] = topVertexIndex;
@@ -723,8 +733,8 @@ void SetBoxGeometry(uint32_t subdivisions, float boxHalfSize, Box& box)
 
             for (uint32_t k = 0; k < facesPerBox; k++)
             {
-                SetQuadIndices(box, indexOffset + k * indexFaceStride, topVertexIndex + k * verticesPerFace,
-                    bottomVertexIndex + k * verticesPerFace);
+                SetQuadIndices(box, indexOffset + k * indexFaceStride, uint16_t(topVertexIndex + k * verticesPerFace),
+                    uint16_t(bottomVertexIndex + k * verticesPerFace));
             }
         }
     }

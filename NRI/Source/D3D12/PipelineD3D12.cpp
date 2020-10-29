@@ -30,8 +30,153 @@ extern D3D12_BLEND GetBlend(BlendFactor blendFactor);
 extern D3D12_BLEND_OP GetBlendOp(BlendFunc blendFunc);
 extern DXGI_FORMAT GetFormat(Format format);
 
+template<typename DescComponent, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE subobjectType>
+struct alignas(void*) PipelineDescComponent
+{
+    PipelineDescComponent() = default;
+    operator DescComponent&();
+    void operator= (const DescComponent& desc);
+
+    D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type = subobjectType;
+    DescComponent desc = {};
+};
+
+template<typename DescComponent, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE subobjectType>
+inline PipelineDescComponent<DescComponent, subobjectType>::operator DescComponent&()
+{
+    return desc;
+}
+
+template<typename DescComponent, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE subobjectType>
+inline void PipelineDescComponent<DescComponent, subobjectType>::operator= (const DescComponent& d)
+{
+    this->desc = d;
+}
+
+typedef PipelineDescComponent<ID3D12RootSignature*, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE> PipelineRootSignature;
+typedef PipelineDescComponent<D3D12_INPUT_LAYOUT_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_INPUT_LAYOUT> PipelineInputLayout;
+typedef PipelineDescComponent<D3D12_INDEX_BUFFER_STRIP_CUT_VALUE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_IB_STRIP_CUT_VALUE> PipelineIndexBufferStripCutValue;
+typedef PipelineDescComponent<D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY> PipelinePrimitiveTopology;
+typedef PipelineDescComponent<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS> PipelineVertexShader;
+typedef PipelineDescComponent<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_HS> PipelineHullShader;
+typedef PipelineDescComponent<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DS> PipelineDomainShader;
+typedef PipelineDescComponent<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_GS> PipelineGeometryShader;
+typedef PipelineDescComponent<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_AS> PipelineAmplificationShader;
+typedef PipelineDescComponent<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS> PipelineMeshShader;
+typedef PipelineDescComponent<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS> PipelinePixelShader;
+typedef PipelineDescComponent<UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_NODE_MASK> PipelineNodeMask;
+typedef PipelineDescComponent<DXGI_SAMPLE_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC> PipelineSampleDesc;
+typedef PipelineDescComponent<UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK> PipelineSampleMask;
+typedef PipelineDescComponent<D3D12_BLEND_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND> PipelineBlend;
+typedef PipelineDescComponent<D3D12_RASTERIZER_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER> PipelineRasterizer;
+typedef PipelineDescComponent<D3D12_DEPTH_STENCIL_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL> PipelineDepthStencil;
+typedef PipelineDescComponent<DXGI_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT> PipelineDepthStencilFormat;
+typedef PipelineDescComponent<D3D12_RT_FORMAT_ARRAY, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS> PipelineRenderTargetFormats;
+
+Result PipelineD3D12::CreateFromStream(const GraphicsPipelineDesc& graphicsPipelineDesc)
+{
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+    m_PipelineLayout = (const PipelineLayoutD3D12*)graphicsPipelineDesc.pipelineLayout;
+
+    if (graphicsPipelineDesc.inputAssembly != nullptr)
+        m_PrimitiveTopology = ::GetPrimitiveTopology(graphicsPipelineDesc.inputAssembly->topology, graphicsPipelineDesc.inputAssembly->tessControlPointNum);
+
+    struct Stream
+    {
+        PipelineRootSignature rootSignature;
+        PipelinePrimitiveTopology primitiveTopology;
+        PipelineInputLayout inputLayout;
+        PipelineIndexBufferStripCutValue indexBufferStripCutValue;
+        PipelineVertexShader vertexShader;
+        PipelineHullShader hullShader;
+        PipelineDomainShader domainShader;
+        PipelineGeometryShader geometryShader;
+        PipelineAmplificationShader amplificationShader;
+        PipelineMeshShader meshShader;
+        PipelinePixelShader pixelShader;
+        PipelineSampleDesc sampleDesc;
+        PipelineSampleMask sampleMask;
+        PipelineRasterizer rasterizer;
+        PipelineBlend blend;
+        PipelineRenderTargetFormats renderTargetFormats;
+        PipelineDepthStencil depthStencil;
+        PipelineDepthStencilFormat depthStencilFormat;
+        PipelineNodeMask nodeMask;
+    };
+
+    Stream stream = {};
+
+    stream.rootSignature = *m_PipelineLayout;
+    stream.nodeMask = NRI_TEMP_NODE_MASK;
+
+    for (uint32_t i = 0; i < graphicsPipelineDesc.shaderStageNum; i++)
+    {
+        const ShaderDesc& shader = graphicsPipelineDesc.shaderStages[i];
+        if (shader.stage == ShaderStage::VERTEX)
+            FillShaderBytecode(stream.vertexShader, shader);
+        else if (shader.stage == ShaderStage::TESS_CONTROL)
+            FillShaderBytecode(stream.hullShader, shader);
+        else if (shader.stage == ShaderStage::TESS_EVALUATION)
+            FillShaderBytecode(stream.domainShader, shader);
+        else if (shader.stage == ShaderStage::GEOMETRY)
+            FillShaderBytecode(stream.amplificationShader, shader);
+        else if (shader.stage == ShaderStage::MESH_CONTROL)
+            FillShaderBytecode(stream.amplificationShader, shader);
+        else if (shader.stage == ShaderStage::MESH_EVALUATION)
+            FillShaderBytecode(stream.meshShader, shader);
+        else if (shader.stage == ShaderStage::FRAGMENT)
+            FillShaderBytecode(stream.pixelShader, shader);
+    }
+
+    D3D12_INPUT_LAYOUT_DESC inputLayout = {};
+
+    if (graphicsPipelineDesc.inputAssembly != nullptr)
+    {
+        stream.primitiveTopology = GetPrimitiveTopologyType(graphicsPipelineDesc.inputAssembly->topology);
+        stream.indexBufferStripCutValue = (D3D12_INDEX_BUFFER_STRIP_CUT_VALUE)graphicsPipelineDesc.inputAssembly->primitiveRestart;
+
+        inputLayout.pInputElementDescs = STACK_ALLOC(D3D12_INPUT_ELEMENT_DESC, graphicsPipelineDesc.inputAssembly->attributeNum);
+        FillInputLayout(inputLayout, graphicsPipelineDesc);
+        stream.inputLayout = inputLayout;
+    }
+
+    FillRasterizerState(stream.rasterizer, graphicsPipelineDesc);
+    FillBlendState(stream.blend, graphicsPipelineDesc);
+    FillSampleDesc(stream.sampleDesc, stream.sampleMask.desc, graphicsPipelineDesc);
+
+    if (graphicsPipelineDesc.outputMerger != nullptr)
+    {
+        FillDepthStencilState(stream.depthStencil, *graphicsPipelineDesc.outputMerger);
+        stream.depthStencilFormat = GetFormat(graphicsPipelineDesc.outputMerger->depthStencilFormat);
+
+        stream.renderTargetFormats.desc.NumRenderTargets = graphicsPipelineDesc.outputMerger->colorNum;
+        for (uint32_t i = 0; i < graphicsPipelineDesc.outputMerger->colorNum; i++)
+            stream.renderTargetFormats.desc.RTFormats[i] = GetFormat(graphicsPipelineDesc.outputMerger->color[i].format);
+    }
+
+    D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {};
+    pipelineStateStreamDesc.pPipelineStateSubobjectStream = &stream;
+    pipelineStateStreamDesc.SizeInBytes = sizeof(stream);
+
+    HRESULT hr = ((ID3D12Device2*)m_Device)->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&m_PipelineState));
+    if (FAILED(hr))
+    {
+        REPORT_ERROR(m_Device.GetLog(), "ID3D12Device()::CreatePipelineState failed, error code: 0x%X.", hr);
+        return Result::FAILURE;
+    }
+
+    m_IsGraphicsPipeline = true;
+#endif
+    return Result::SUCCESS;
+}
+
 Result PipelineD3D12::Create(const GraphicsPipelineDesc& graphicsPipelineDesc)
 {
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+    if (m_Device.IsMeshShaderSupported())
+        return CreateFromStream(graphicsPipelineDesc);
+#endif
+
     D3D12_GRAPHICS_PIPELINE_STATE_DESC graphicsPipleineStateDesc = {};
     graphicsPipleineStateDesc.NodeMask = NRI_TEMP_NODE_MASK;
 
@@ -65,9 +210,19 @@ Result PipelineD3D12::Create(const GraphicsPipelineDesc& graphicsPipelineDesc)
             FillShaderBytecode(graphicsPipleineStateDesc.PS, shader);
     }
 
-    FillRasterizerState(graphicsPipleineStateDesc, graphicsPipelineDesc);
+    FillRasterizerState(graphicsPipleineStateDesc.RasterizerState, graphicsPipelineDesc);
+    FillBlendState(graphicsPipleineStateDesc.BlendState, graphicsPipelineDesc);
+    FillSampleDesc(graphicsPipleineStateDesc.SampleDesc, graphicsPipleineStateDesc.SampleMask, graphicsPipelineDesc);
 
-    FillOutputMergerState(graphicsPipleineStateDesc, graphicsPipelineDesc);
+    if (graphicsPipelineDesc.outputMerger)
+    {
+        FillDepthStencilState(graphicsPipleineStateDesc.DepthStencilState, *graphicsPipelineDesc.outputMerger);
+        graphicsPipleineStateDesc.DSVFormat = GetFormat(graphicsPipelineDesc.outputMerger->depthStencilFormat);
+
+        graphicsPipleineStateDesc.NumRenderTargets = graphicsPipelineDesc.outputMerger->colorNum;
+        for (uint32_t i = 0; i < graphicsPipelineDesc.outputMerger->colorNum; i++)
+            graphicsPipleineStateDesc.RTVFormats[i] = GetFormat(graphicsPipelineDesc.outputMerger->color[i].format);
+    }
 
     HRESULT hr = ((ID3D12Device*)m_Device)->CreateGraphicsPipelineState(&graphicsPipleineStateDesc, IID_PPV_ARGS(&m_PipelineState));
     if (FAILED(hr))
@@ -216,7 +371,7 @@ Result PipelineD3D12::Create(const RayTracingPipelineDesc& rayTracingPipelineDes
                     break;
                 }
 
-                shaderIndentifierName = i;
+                shaderIndentifierName = std::to_wstring(i);
             }
         }
 
@@ -335,12 +490,11 @@ void PipelineD3D12::FillShaderBytecode(D3D12_SHADER_BYTECODE& shaderBytecode, co
     shaderBytecode.BytecodeLength = shaderDesc.size;
 }
 
-void PipelineD3D12::FillRasterizerState(D3D12_GRAPHICS_PIPELINE_STATE_DESC& graphicsPipleineStateDesc, const GraphicsPipelineDesc& graphicsPipelineDesc)
+void PipelineD3D12::FillRasterizerState(D3D12_RASTERIZER_DESC& rasterizerDesc, const GraphicsPipelineDesc& graphicsPipelineDesc)
 {
     if (!graphicsPipelineDesc.rasterization)
         return;
 
-    D3D12_RASTERIZER_DESC& rasterizerDesc = graphicsPipleineStateDesc.RasterizerState;
     const RasterizationDesc& rasterizationDesc = *graphicsPipelineDesc.rasterization;
 
     bool useMultisampling = rasterizationDesc.sampleNum > 1 ? true : false;
@@ -355,12 +509,6 @@ void PipelineD3D12::FillRasterizerState(D3D12_GRAPHICS_PIPELINE_STATE_DESC& grap
     rasterizerDesc.AntialiasedLineEnable = (BOOL)rasterizationDesc.antialiasedLines;
     rasterizerDesc.ForcedSampleCount = useMultisampling ? rasterizationDesc.sampleNum : 0;
     rasterizerDesc.ConservativeRaster = rasterizationDesc.conservativeRasterization ? D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON : D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-
-    graphicsPipleineStateDesc.SampleMask = graphicsPipelineDesc.rasterization->sampleMask;
-    graphicsPipleineStateDesc.SampleDesc.Count = rasterizationDesc.sampleNum;
-    graphicsPipleineStateDesc.SampleDesc.Quality = 0;
-
-    m_SampleNum = rasterizationDesc.sampleNum;
 }
 
 void PipelineD3D12::FillDepthStencilState(D3D12_DEPTH_STENCIL_DESC& depthStencilDesc, const OutputMergerDesc& outputMergerDesc) const
@@ -381,22 +529,11 @@ void PipelineD3D12::FillDepthStencilState(D3D12_DEPTH_STENCIL_DESC& depthStencil
     depthStencilDesc.BackFace.StencilFunc = GetComparisonFunc(outputMergerDesc.stencil.back.compareFunc);
 }
 
-void PipelineD3D12::FillOutputMergerState(D3D12_GRAPHICS_PIPELINE_STATE_DESC& graphicsPipleineStateDesc, const GraphicsPipelineDesc& graphicsPipelineDesc)
+void PipelineD3D12::FillBlendState(D3D12_BLEND_DESC& blendDesc, const GraphicsPipelineDesc& graphicsPipelineDesc)
 {
-    if (!graphicsPipelineDesc.outputMerger)
+    if (!graphicsPipelineDesc.outputMerger || !graphicsPipelineDesc.outputMerger->colorNum)
         return;
 
-    FillDepthStencilState(graphicsPipleineStateDesc.DepthStencilState, *graphicsPipelineDesc.outputMerger);
-    graphicsPipleineStateDesc.DSVFormat = GetFormat(graphicsPipelineDesc.outputMerger->depthStencilFormat);
-
-    if (!graphicsPipelineDesc.outputMerger->colorNum)
-        return;
-
-    graphicsPipleineStateDesc.NumRenderTargets = graphicsPipelineDesc.outputMerger->colorNum;
-    for (uint32_t i = 0; i < graphicsPipelineDesc.outputMerger->colorNum; i++)
-        graphicsPipleineStateDesc.RTVFormats[i] = GetFormat(graphicsPipelineDesc.outputMerger->color[i].format);
-
-    D3D12_BLEND_DESC& blendDesc = graphicsPipleineStateDesc.BlendState;
     blendDesc.AlphaToCoverageEnable = graphicsPipelineDesc.rasterization->alphaToCoverage;
     blendDesc.IndependentBlendEnable = TRUE;
 
@@ -421,6 +558,20 @@ void PipelineD3D12::FillOutputMergerState(D3D12_GRAPHICS_PIPELINE_STATE_DESC& gr
     }
 
     m_BlendFactor = graphicsPipelineDesc.outputMerger->blendConsts;
+}
+
+void PipelineD3D12::FillSampleDesc(DXGI_SAMPLE_DESC& sampleDesc, UINT& sampleMask, const GraphicsPipelineDesc& graphicsPipelineDesc)
+{
+    if (!graphicsPipelineDesc.rasterization)
+        return;
+
+    const RasterizationDesc& rasterizationDesc = *graphicsPipelineDesc.rasterization;
+
+    sampleMask = graphicsPipelineDesc.rasterization->sampleMask;
+    sampleDesc.Count = rasterizationDesc.sampleNum;
+    sampleDesc.Quality = 0;
+
+    m_SampleNum = rasterizationDesc.sampleNum;
 }
 
 void PipelineD3D12::SetDebugName(const char* name)

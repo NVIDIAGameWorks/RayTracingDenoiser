@@ -165,15 +165,15 @@ void CommandBufferEmuD3D11::Submit(const VersionedContext& immediateContext)
             }
             break;
         case SET_DEPTH_BOUNDS:
-        {
-            float boundsMin;
-            float boundsMax;
-            Read(m_PushBuffer, i, boundsMin);
-            Read(m_PushBuffer, i, boundsMax);
+            {
+                float boundsMin;
+                float boundsMax;
+                Read(m_PushBuffer, i, boundsMin);
+                Read(m_PushBuffer, i, boundsMax);
 
-            commandBuffer.SetDepthBounds(boundsMin, boundsMax);
-        }
-        break;
+                commandBuffer.SetDepthBounds(boundsMin, boundsMax);
+            }
+            break;
         case SET_STENCIL_REFERENCE:
             {
                 uint8_t stencilRef;
@@ -225,10 +225,10 @@ void CommandBufferEmuD3D11::Submit(const VersionedContext& immediateContext)
                 FrameBuffer* frameBuffer;
                 Read(m_PushBuffer, i, frameBuffer);
 
-                FramebufferBindFlag bindFlag;
-                Read(m_PushBuffer, i, bindFlag);
+                RenderPassBeginFlag renderPassBeginFlag;
+                Read(m_PushBuffer, i, renderPassBeginFlag);
 
-                commandBuffer.BeginRenderPass(*frameBuffer, bindFlag);
+                commandBuffer.BeginRenderPass(*frameBuffer, renderPassBeginFlag);
             }
             break;
         case END_RENDERPASS:
@@ -619,11 +619,11 @@ inline void CommandBufferEmuD3D11::ClearStorageTexture(const ClearStorageTexture
     Push(m_PushBuffer, clearDesc);
 }
 
-inline void CommandBufferEmuD3D11::BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+inline void CommandBufferEmuD3D11::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
     Push(m_PushBuffer, BEGIN_RENDERPASS);
     Push(m_PushBuffer, &frameBuffer);
-    Push(m_PushBuffer, bindFlag);
+    Push(m_PushBuffer, renderPassBeginFlag);
 }
 
 inline void CommandBufferEmuD3D11::EndRenderPass()

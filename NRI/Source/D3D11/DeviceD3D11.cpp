@@ -237,7 +237,7 @@ void DeviceD3D11::FillLimits(bool isValidationEnabled, Vendor vendor)
         queryDesc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
 
         ComPtr<ID3D11Query> query;
-        HRESULT hr = m_Device->CreateQuery(&queryDesc, &query);
+        hr = m_Device->CreateQuery(&queryDesc, &query);
         if (SUCCEEDED(hr))
         {
             m_ImmediateContext->Begin(query);
@@ -351,7 +351,7 @@ void DeviceD3D11::FillLimits(bool isValidationEnabled, Vendor vendor)
     m_Desc.rayTracingMaxRecursionDepth               = 0;
     m_Desc.rayTracingGeometryObjectMaxNum            = 0;
     m_Desc.phyiscalDeviceGroupSize                   = 1; // TODO: fill me
-    m_Desc.conservativeRasterTier                    = options2.ConservativeRasterizationTier;
+    m_Desc.conservativeRasterTier                    = (uint8_t)options2.ConservativeRasterizationTier;
     m_Desc.isAPIValidationEnabled                    = isValidationEnabled;
     m_Desc.isTextureFilterMinMaxSupported            = options1.MinMaxFiltering != 0;
     m_Desc.isLogicOpSupported                        = options.OutputMergerLogicOp != 0;
@@ -649,8 +649,8 @@ nri::Result DeviceD3D11::CreateImplementationWithNonEmptyConstructor(Interface*&
 
 Result CreateDeviceD3D11(const DeviceCreationDesc& deviceCreationDesc, DeviceBase*& device)
 {
-    Log log(GraphicsAPI::D3D11, deviceCreationDesc.callbackInterface, deviceCreationDesc.callbackInterfaceUserArg);
-    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface, deviceCreationDesc.memoryAllocatorInterfaceUserArg);
+    Log log(GraphicsAPI::D3D11, deviceCreationDesc.callbackInterface);
+    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface);
 
     ComPtr<IDXGIFactory4> factory;
     HRESULT hr = CreateDXGIFactory2(0, IID_PPV_ARGS(&factory));

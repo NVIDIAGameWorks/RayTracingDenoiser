@@ -27,7 +27,7 @@ namespace nri
     {
         DescriptorSetMapping(StdAllocator<uint8_t>& allocator);
 
-        uint32_t descriptorNum[DescriptorHeapType::MAX_NUM] = {};
+        std::array<uint32_t, DescriptorHeapType::MAX_NUM> descriptorNum = {};
         Vector<DescriptorRangeMapping> descriptorRangeMappings;
     };
 

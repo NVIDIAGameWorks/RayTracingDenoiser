@@ -70,6 +70,7 @@ bool DeviceVal::Create()
     m_IsWrapperD3D12Supported = deviceBase.FillFunctionTable(m_WrapperD3D12API) == Result::SUCCESS;
     m_IsWrapperVKSupported = deviceBase.FillFunctionTable(m_WrapperVKAPI) == Result::SUCCESS;
     m_IsRayTracingSupported = deviceBase.FillFunctionTable(m_RayTracingAPI) == Result::SUCCESS;
+    m_IsMeshShaderExtSupported = deviceBase.FillFunctionTable(m_MeshShaderAPI) == Result::SUCCESS;
 
     return true;
 }
@@ -468,6 +469,53 @@ Result DeviceVal::CreateDescriptor(const SamplerDesc& samplerDesc, Descriptor*& 
 
 Result DeviceVal::CreatePipelineLayout(const PipelineLayoutDesc& pipelineLayoutDesc, PipelineLayout*& pipelineLayout)
 {
+    const bool isGraphics = pipelineLayoutDesc.stageMask & PipelineLayoutShaderStageBits::ALL_GRAPHICS;
+    const bool isCompute = pipelineLayoutDesc.stageMask & PipelineLayoutShaderStageBits::COMPUTE;
+    const bool isRayTracing = pipelineLayoutDesc.stageMask & PipelineLayoutShaderStageBits::ALL_RAY_TRACING;
+    const uint32_t supportedTypes = (uint32_t)isGraphics + (uint32_t)isCompute + (uint32_t)isRayTracing;
+
+    RETURN_ON_FAILURE(GetLog(), supportedTypes > 0, Result::INVALID_ARGUMENT,
+        "Can't create pipeline layout: 'pipelineLayoutDesc.stageMask' is 0.");
+    RETURN_ON_FAILURE(GetLog(), supportedTypes == 1, Result::INVALID_ARGUMENT,
+        "Can't create pipeline layout: 'pipelineLayoutDesc.stageMask' is invalid, it can't be compatible with more than one type of pipeline.");
+
+    for (uint32_t i = 0; i < pipelineLayoutDesc.descriptorSetNum; i++)
+    {
+        const DescriptorSetDesc& descriptorSetDesc = pipelineLayoutDesc.descriptorSets[i];
+
+        for (uint32_t j = 0; j < descriptorSetDesc.rangeNum; j++)
+        {
+            const DescriptorRangeDesc& range = descriptorSetDesc.ranges[j];
+
+            RETURN_ON_FAILURE(GetLog(), !range.isDescriptorNumVariable || range.isArray, Result::INVALID_ARGUMENT,
+                "Can't create pipeline layout: 'pipelineLayoutDesc.descriptorSets[%u].ranges[%u]' is invalid, "
+                "'isArray' can't be false if 'isDescriptorNumVariable' is true.",
+                i, j);
+
+            RETURN_ON_FAILURE(GetLog(), range.descriptorNum > 0, Result::INVALID_ARGUMENT,
+                "Can't create pipeline layout: 'pipelineLayoutDesc.descriptorSets[%u].ranges[%u].descriptorNum' can't be 0.",
+                i, j);
+
+            RETURN_ON_FAILURE(GetLog(), range.visibility < ShaderStage::MAX_NUM, Result::INVALID_ARGUMENT,
+                "Can't create pipeline layout: 'pipelineLayoutDesc.descriptorSets[%u].ranges[%u].visibility' is invalid.",
+                i, j);
+
+            RETURN_ON_FAILURE(GetLog(), range.descriptorType < DescriptorType::MAX_NUM, Result::INVALID_ARGUMENT,
+                "Can't create pipeline layout: 'pipelineLayoutDesc.descriptorSets[%u].ranges[%u].descriptorType' is invalid.",
+                i, j);
+
+            if (range.visibility != ShaderStage::ALL)
+            {
+                const PipelineLayoutShaderStageBits visibilityMask = PipelineLayoutShaderStageBits(1 << (uint32_t)range.visibility);
+                const uint32_t filteredVisibilityMask = visibilityMask & pipelineLayoutDesc.stageMask;
+
+                RETURN_ON_FAILURE(GetLog(), (uint32_t)visibilityMask == filteredVisibilityMask, Result::INVALID_ARGUMENT,
+                    "Can't create pipeline layout: 'pipelineLayoutDesc.descriptorSets[%u].ranges[%u].visibility' is not "
+                    "compatible with 'pipelineLayoutDesc.stageMask'.", i, j);
+            }
+        }
+    }
+
     PipelineLayout* pipelineLayoutImpl = nullptr;
     const Result result = m_CoreAPI.CreatePipelineLayout(m_Device, pipelineLayoutDesc, pipelineLayoutImpl);
 
@@ -485,9 +533,6 @@ Result DeviceVal::CreatePipeline(const GraphicsPipelineDesc& graphicsPipelineDes
     RETURN_ON_FAILURE(GetLog(), graphicsPipelineDesc.pipelineLayout != nullptr, Result::INVALID_ARGUMENT,
         "Can't create Pipeline: 'graphicsPipelineDesc.pipelineLayout' is invalid.");
 
-    RETURN_ON_FAILURE(GetLog(), graphicsPipelineDesc.inputAssembly != nullptr, Result::INVALID_ARGUMENT,
-        "Can't create Pipeline: 'graphicsPipelineDesc.inputAssembly' is invalid.");
-
     RETURN_ON_FAILURE(GetLog(), graphicsPipelineDesc.outputMerger != nullptr, Result::INVALID_ARGUMENT,
         "Can't create Pipeline: 'graphicsPipelineDesc.outputMerger' is invalid.");
 
@@ -500,18 +545,34 @@ Result DeviceVal::CreatePipeline(const GraphicsPipelineDesc& graphicsPipelineDes
     RETURN_ON_FAILURE(GetLog(), graphicsPipelineDesc.shaderStageNum > 0, Result::INVALID_ARGUMENT,
         "Can't create Pipeline: 'graphicsPipelineDesc.shaderStageNum' is 0.");
 
+    const ShaderDesc* vertexShader = nullptr;
     for (uint32_t i = 0; i < graphicsPipelineDesc.shaderStageNum; i++)
     {
-        const ShaderDesc& shaderDesc = graphicsPipelineDesc.shaderStages[i];
+        const ShaderDesc* shaderDesc = graphicsPipelineDesc.shaderStages + i;
 
-        RETURN_ON_FAILURE(GetLog(), shaderDesc.bytecode != nullptr, Result::INVALID_ARGUMENT,
+        if (shaderDesc->stage == ShaderStage::VERTEX)
+            vertexShader = shaderDesc;
+
+        RETURN_ON_FAILURE(GetLog(), shaderDesc->bytecode != nullptr, Result::INVALID_ARGUMENT,
             "Can't create Pipeline: 'graphicsPipelineDesc.shaderStages[%u].bytecode' is invalid.", i);
 
-        RETURN_ON_FAILURE(GetLog(), shaderDesc.size != 0, Result::INVALID_ARGUMENT,
+        RETURN_ON_FAILURE(GetLog(), shaderDesc->size != 0, Result::INVALID_ARGUMENT,
             "Can't create Pipeline: 'graphicsPipelineDesc.shaderStages[%u].size' is 0.", i);
 
-        RETURN_ON_FAILURE(GetLog(), shaderDesc.stage > ShaderStage::ALL && shaderDesc.stage < ShaderStage::COMPUTE, Result::INVALID_ARGUMENT,
+        RETURN_ON_FAILURE(GetLog(), shaderDesc->stage > ShaderStage::ALL && shaderDesc->stage < ShaderStage::COMPUTE, Result::INVALID_ARGUMENT,
             "Can't create Pipeline: 'graphicsPipelineDesc.shaderStages[%u].stage' is invalid.", i);
+    }
+
+    if (graphicsPipelineDesc.inputAssembly != nullptr)
+    {
+        RETURN_ON_FAILURE(GetLog(), !graphicsPipelineDesc.inputAssembly->attributes || vertexShader, Result::INVALID_ARGUMENT,
+            "Can't create Pipeline: vertex shader is not specified, but input assembly attributes provided.");
+
+        const PipelineLayoutVal& pipelineLayout = *(PipelineLayoutVal*)graphicsPipelineDesc.pipelineLayout;
+        const PipelineLayoutShaderStageBits stageMask = pipelineLayout.GetPipelineLayoutDesc().stageMask;
+
+        RETURN_ON_FAILURE(GetLog(), (stageMask & PipelineLayoutShaderStageBits::VERTEX) != 0, Result::INVALID_ARGUMENT,
+            "Can't create Pipeline: vertex stage is not enabled in the pipeline layout.");
     }
 
     auto graphicsPipelineDescImpl = graphicsPipelineDesc;
@@ -792,6 +853,9 @@ Result DeviceVal::BindBufferMemory(const BufferMemoryBindingDesc* memoryBindingD
         RETURN_ON_FAILURE(GetLog(), !memoryDesc.mustBeDedicated || srcDesc.offset == 0, Result::INVALID_ARGUMENT,
             "Can't bind memory to buffers: 'memoryBindingDescs[%u].offset' must be zero for dedicated allocation.", i);
 
+        RETURN_ON_FAILURE(GetLog(), memoryDesc.alignment != 0, Result::INVALID_ARGUMENT,
+            "Can't bind memory to buffers: 'memoryBindingDescs[%u].alignment' can't be zero.", i);
+
         RETURN_ON_FAILURE(GetLog(), srcDesc.offset % memoryDesc.alignment == 0, Result::INVALID_ARGUMENT,
             "Can't bind memory to buffers: 'memoryBindingDescs[%u].offset' is misaligned.", i);
 
@@ -851,6 +915,9 @@ Result DeviceVal::BindTextureMemory(const TextureMemoryBindingDesc* memoryBindin
 
         RETURN_ON_FAILURE(GetLog(), !memoryDesc.mustBeDedicated || srcDesc.offset == 0, Result::INVALID_ARGUMENT,
             "Can't bind memory to textures: 'memoryBindingDescs[%u].offset' must be zero for dedicated allocation.", i);
+
+        RETURN_ON_FAILURE(GetLog(), memoryDesc.alignment != 0, Result::INVALID_ARGUMENT,
+            "Can't bind memory to textures: 'memoryBindingDescs[%u].alignment' can't be zero.", i);
 
         RETURN_ON_FAILURE(GetLog(), srcDesc.offset % memoryDesc.alignment == 0, Result::INVALID_ARGUMENT,
             "Can't bind memory to textures: 'memoryBindingDescs[%u].offset' is misaligned.", i);
@@ -1437,6 +1504,9 @@ Result DeviceVal::BindAccelerationStructureMemory(const AccelerationStructureMem
         RETURN_ON_FAILURE(GetLog(), !memoryDesc.mustBeDedicated || srcDesc.offset == 0, Result::INVALID_ARGUMENT,
             "Can't bind memory to acceleration structures: 'memoryBindingDescs[%u].offset' must be zero for dedicated allocation.", i);
 
+        RETURN_ON_FAILURE(GetLog(), memoryDesc.alignment != 0, Result::INVALID_ARGUMENT,
+            "Can't bind memory to acceleration structures: 'memoryBindingDescs[%u].alignment' can't be zero.", i);
+
         RETURN_ON_FAILURE(GetLog(), srcDesc.offset % memoryDesc.alignment == 0, Result::INVALID_ARGUMENT,
             "Can't bind memory to acceleration structures: 'memoryBindingDescs[%u].offset' is misaligned.", i);
 
@@ -1476,8 +1546,8 @@ void DeviceVal::Destroy()
 
 DeviceBase* CreateDeviceValidation(const DeviceCreationDesc& deviceCreationDesc, DeviceBase& device)
 {
-    Log log(deviceCreationDesc.graphicsAPI, deviceCreationDesc.callbackInterface, deviceCreationDesc.callbackInterfaceUserArg);
-    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface, deviceCreationDesc.memoryAllocatorInterfaceUserArg);
+    Log log(deviceCreationDesc.graphicsAPI, deviceCreationDesc.callbackInterface);
+    StdAllocator<uint8_t> allocator(deviceCreationDesc.memoryAllocatorInterface);
 
     uint32_t physicalDeviceNum = 1;
     if (deviceCreationDesc.physicalDeviceGroup != nullptr)

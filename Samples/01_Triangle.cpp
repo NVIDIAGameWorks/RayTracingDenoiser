@@ -246,7 +246,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         nri::InputAssemblyDesc inputAssemblyDesc = {};
         inputAssemblyDesc.topology = nri::Topology::TRIANGLE_LIST;
         inputAssemblyDesc.attributes = vertexAttributeDesc;
-        inputAssemblyDesc.attributeNum = helper::GetCountOf(vertexAttributeDesc);
+        inputAssemblyDesc.attributeNum = (uint8_t)helper::GetCountOf(vertexAttributeDesc);
         inputAssemblyDesc.streams = &vertexStreamDesc;
         inputAssemblyDesc.streamNum = 1;
 
@@ -475,7 +475,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         transitionBarriers.textures = &textureTransitionBarrierDesc;
         NRI.CmdPipelineBarrier(*commandBuffer, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
 
-        NRI.CmdBeginRenderPass(*commandBuffer, *currentBackBuffer.frameBuffer, nri::FramebufferBindFlag::NONE);
+        NRI.CmdBeginRenderPass(*commandBuffer, *currentBackBuffer.frameBuffer, nri::RenderPassBeginFlag::NONE);
         {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "Clear");

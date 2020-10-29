@@ -35,6 +35,9 @@ namespace nri
 
         uint32_t GetPhyiscalDeviceGroupSize() const;
         bool IsDescriptorIndexingExtSupported() const;
+        bool IsConcurrentSharingModeEnabledForBuffers() const;
+        bool IsConcurrentSharingModeEnabledForImages() const;
+        const Vector<uint32_t>& GetConcurrentSharingModeQueueIndices() const;
 
         void SetDebugNameToTrivialObject(VkObjectType objectType, const void* handle, const char* name);
         void SetDebugNameToDeviceGroupObject(VkObjectType objectType, const void* const* handles, const char* name);
@@ -105,6 +108,7 @@ namespace nri
         Result FillFunctionTable(SwapChainInterface& table) const;
         Result FillFunctionTable(WrapperVKInterface& wrapperVKInterface) const;
         Result FillFunctionTable(RayTracingInterface& rayTracingInterface) const;
+        Result FillFunctionTable(MeshShaderInterface& meshShaderInterface) const;
 
     private:
         Result CreateInstance(const DeviceCreationDesc& deviceCreationDesc);
@@ -118,6 +122,7 @@ namespace nri
         bool FilterInstanceExtensions(Vector<const char*>& extensions);
         bool FilterDeviceExtensions(Vector<const char*>& extensions);
         void RetrieveRayTracingInfo();
+        void RetrieveMeshShaderInfo();
         void ReportDeviceGroupInfo();
 
         template< typename Implementation, typename Interface, typename ... Args >
@@ -133,6 +138,7 @@ namespace nri
         std::array<uint32_t, COMMAND_QUEUE_TYPE_NUM> m_FamilyIndices = {};
         std::array<CommandQueueVK*, COMMAND_QUEUE_TYPE_NUM> m_Queues = {};
         Vector<uint32_t> m_PhysicalDeviceIndices;
+        Vector<uint32_t> m_ConcurrentSharingModeQueueIndices;
         VkAllocationCallbacks* m_AllocationCallbackPtr = nullptr;
         VkAllocationCallbacks m_AllocationCallbacks = {};
         VkDebugUtilsMessengerEXT m_Messenger = VK_NULL_HANDLE;
@@ -144,7 +150,10 @@ namespace nri
         bool m_IsSampleLocationExtSupported = false;
         bool m_IsMinMaxFilterExtSupported = false;
         bool m_IsConservativeRasterExtSupported = false;
+        bool m_IsMeshShaderExtSupported = false;
         bool m_IsSubsetAllocationSupported = false;
+        bool m_IsConcurrentSharingModeEnabledForBuffers = true;
+        bool m_IsConcurrentSharingModeEnabledForImages = true;
     };
 
     inline DeviceVK::operator VkDevice() const
@@ -190,6 +199,21 @@ namespace nri
     inline bool DeviceVK::IsDescriptorIndexingExtSupported() const
     {
         return m_IsDescriptorIndexingExtSupported;
+    }
+
+    inline bool DeviceVK::IsConcurrentSharingModeEnabledForBuffers() const
+    {
+        return m_IsConcurrentSharingModeEnabledForBuffers;
+    }
+
+    inline bool DeviceVK::IsConcurrentSharingModeEnabledForImages() const
+    {
+        return m_IsConcurrentSharingModeEnabledForImages;
+    }
+
+    inline const Vector<uint32_t>& DeviceVK::GetConcurrentSharingModeQueueIndices() const
+    {
+        return m_ConcurrentSharingModeQueueIndices;
     }
 }
 

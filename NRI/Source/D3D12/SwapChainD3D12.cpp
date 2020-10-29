@@ -149,7 +149,7 @@ inline void SwapChainD3D12::SetDebugName(const char* name)
     SET_D3D_DEBUG_OBJECT_NAME(m_SwapChain, name);
 }
 
-inline Texture* const* const SwapChainD3D12::GetTextures(uint32_t& textureNum, Format& format) const
+inline Texture* const* SwapChainD3D12::GetTextures(uint32_t& textureNum, Format& format) const
 {
     textureNum = (uint32_t)m_TexturePointer.size();
     format = m_Format;

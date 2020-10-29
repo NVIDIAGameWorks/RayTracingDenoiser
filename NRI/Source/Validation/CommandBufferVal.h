@@ -27,7 +27,7 @@ namespace nri
         void ClearAttachments(const ClearDesc* clearDescs, uint32_t clearDescNum, const Rect* rects, uint32_t rectNum);
         void ClearStorageBuffer(const ClearStorageBufferDesc& clearDesc);
         void ClearStorageTexture(const ClearStorageTextureDesc& clearDesc);
-        void BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag);
+        void BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag);
         void EndRenderPass();
         void SetVertexBuffers(uint32_t baseSlot, uint32_t bufferNum, const Buffer* const* buffers, const uint64_t* offsets);
         void SetIndexBuffer(const Buffer& buffer, uint64_t offset, IndexType indexType);
@@ -67,6 +67,7 @@ namespace nri
         void WriteAccelerationStructureSize(const AccelerationStructure* const* accelerationStructures, uint32_t accelerationStructureNum, QueryPool& queryPool, uint32_t queryOffset);
 
         void DispatchRays(const DispatchRaysDesc& dispatchRaysDesc);
+        void DispatchMeshTasks(uint32_t taskNum);
 
         ID3D11DeviceContext* GetCommandBufferD3D11() const;
         ID3D12GraphicsCommandList* GetCommandBufferD3D12() const;
@@ -77,5 +78,6 @@ namespace nri
         const FrameBuffer* m_FrameBuffer = nullptr;
         int32_t m_AnnotationStack = 0;
         const RayTracingInterface& m_RayTracingAPI;
+        const MeshShaderInterface& m_MeshShaderAPI;
     };
 }

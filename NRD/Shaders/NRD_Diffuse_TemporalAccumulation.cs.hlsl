@@ -12,22 +12,28 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
+    float4x4 gViewToClip;
+    float4 gFrustum;
+    float2 gInvScreenSize;
+    float2 padding;
+    float gMetersToUnits;
+    float gIsOrtho;
+    float gUnproject;
+    float gDebug;
+    float gInf;
+    uint gCheckerboard;
+    uint gFrameIndex;
+    uint gWorldSpaceMotion;
+
     float4x4 gWorldToViewPrev;
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
-    float4 gFrustum;
-    float2 gInvScreenSize;
     float2 gScreenSize;
-    float2 gJitter;
     float2 gMotionVectorScale;
-    float gIsOrtho;
-    float gInf;
+    float gCheckerboardResolveAccumSpeed;
     float gDisocclusionThreshold;
+    float gJitterDelta;
     float gMaxDiffAccumulatedFrameNum;
-    uint gFrameIndex;
-    uint gCheckerboard;
-    uint gWorldSpaceMotion;
-    float gDebug;
 };
 
 #include "NRD_Common.hlsl"
@@ -46,26 +52,53 @@ NRI_RESOURCE( Texture2D<uint>, gIn_Prev_ViewZ_AccumSpeed, t, 7, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffA, u, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffB, u, 1, 0 );
 NRI_RESOURCE( RWTexture2D<uint>, gOut_InternalData, u, 2, 0 );
-NRI_RESOURCE( RWTexture2D<uint>, gOut_ViewZ_AccumSpeed, u, 3, 0 );
+
+groupshared float4 s_Normal_ViewZ[ BUFFER_Y ][ BUFFER_X ];
+
+void Preload( int2 sharedId, int2 globalId )
+{
+    // TODO: use w = 0 if outside of the screen or use SampleLevel with Clamp sampler
+    float4 t;
+    t.xyz = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] ).xyz;
+    t.w = gIn_ViewZ[ globalId ];
+
+    s_Normal_ViewZ[ sharedId.y ][ sharedId.x ] = t;
+}
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( uint2 pixelPos : SV_DispatchThreadId )
+void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvScreenSize;
-    float2 sampleUv = pixelUv + gJitter;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
+
+    // Rename the 16x16 group into a 18x14 group + some idle threads in the end
+    float linearId = ( threadIndex + 0.5 ) / BUFFER_X;
+    int2 newId = int2( frac( linearId ) * BUFFER_X, linearId );
+    int2 groupBase = pixelPos - threadId - BORDER;
+
+    // Preload into shared memory
+    if ( newId.y < RENAMED_GROUP_Y )
+        Preload( newId, groupBase + newId );
+
+    newId.y += RENAMED_GROUP_Y;
+
+    if ( newId.y < BUFFER_Y )
+        Preload( newId, groupBase + newId );
+
+    GroupMemoryBarrierWithGroupSync( );
 
     // Early out
-    float viewZ = gIn_ViewZ[ pixelPos ];
+    int2 centerId = threadId + BORDER;
+    float4 centerData = s_Normal_ViewZ[ centerId.y ][ centerId.x ];
+    float viewZ = centerData.w;
 
     [branch]
     if ( abs( viewZ ) > gInf )
     {
-        #if( BLACK_OUT_INF_PIXELS == 1 )
+        #if( DIFF_BLACK_OUT_INF_PIXELS == 1 )
             gOut_DiffA[ pixelPos ] = 0;
         #endif
         gOut_DiffB[ pixelPos ] = NRD_INF_DIFF_B;
         gOut_InternalData[ pixelPos ] = PackDiffInternalData( MAX_ACCUM_FRAME_NUM, 0 ); // MAX_ACCUM_FRAME_NUM to skip HistoryFix on INF pixels
-        gOut_ViewZ_AccumSpeed[ pixelPos ] = PackViewZAndAccumSpeed( NRD_FP16_MAX, 0 );
         return;
     }
 
@@ -75,20 +108,28 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float invDistToPoint = STL::Math::Rsqrt( STL::Math::LengthSquared( Xv ) );
 
     // Normal and roughness
-    float4 normalAndRoughness = UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
-    float roughness = normalAndRoughness.w;
-    float3 N = normalAndRoughness.xyz;
+    float3 N = centerData.xyz;
 
-    // Pseudo flat normal
+    // Flat normal
     float3 Nflat = N;
-    #if( USE_PSEUDO_FLAT_NORMALS ) // TODO: shared memory?
-        Nflat += UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2( +1,  0 ) ], false ).xyz;
-        Nflat += UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2( -1,  0 ) ], false ).xyz;
-        Nflat += UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2(  0, -1 ) ], false ).xyz;
-        Nflat += UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2(  0, +1 ) ], false ).xyz;
-        Nflat = normalize( Nflat );
-    #endif
-    float3 Nvflat = STL::Geometry::RotateVectorInverse( gViewToWorld, Nflat );
+
+    [unroll]
+    for( int dy = 0; dy <= BORDER * 2; dy++ )
+    {
+        [unroll]
+        for( int dx = 0; dx <= BORDER * 2; dx++ )
+        {
+            if( dx == BORDER && dy == BORDER )
+                continue;
+
+            int2 pos = threadId + int2( dx, dy );
+            float4 normalAndViewZ = s_Normal_ViewZ[ pos.y ][ pos.x ];
+
+            Nflat += normalAndViewZ.xyz; // yes, no weight // TODO: all 9? or 5 samples like it was before?
+        }
+    }
+
+    Nflat = normalize( Nflat );
 
     // Compute previous pixel position
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
@@ -102,14 +143,19 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float4 viewZprev = UnpackViewZ( pack );
 
     // Compute disocclusion basing on plane distance
+    float disocclusionThreshold = gDisocclusionThreshold;
+    float jitterRadius = PixelRadiusToWorld( gJitterDelta, viewZ );
+    float NoV = abs( dot( Nflat, X ) ) * invDistToPoint;
+    disocclusionThreshold += jitterRadius * invDistToPoint / max( NoV, 0.05 );
+
     float3 Xprev = X + motionVector * float( gWorldSpaceMotion != 0 );
     float3 Xvprev = STL::Geometry::AffineTransform( gWorldToViewPrev, Xprev );
-    float NoXprev = dot( Nflat, Xprev ); // = dot( Nvflatprev, Xvprev )
+    float NoXprev = dot( Nflat, Xprev ) * invDistToPoint; // = dot( Nvflatprev, Xvprev )
     float NoVprev = NoXprev * STL::Math::PositiveRcp( abs( Xvprev.z ) ); // = dot( Nvflatprev, Xvprev / Xvprev.z )
     float4 planeDist = abs( NoVprev * abs( viewZprev ) - NoXprev );
+    float4 occlusion = saturate( isInScreen - step( disocclusionThreshold, planeDist ) );
 
-    float4 occlusion = step( gDisocclusionThreshold, planeDist * invDistToPoint );
-    occlusion = saturate( isInScreen - occlusion );
+    // TODO: potentially, it's worth adding normal-based occlusion too
 
     // Sample history
     float2 sampleUvNearestPrev = ( bilinearFilterAtPrevPos.origin + 0.5 ) * gInvScreenSize;
@@ -139,35 +185,39 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float4 diffA = gIn_DiffA[ pixelPos ];
     float4 diffB = gIn_DiffB[ pixelPos ];
 
-    #if( CHECKERBOARD_SUPPORT == 1 )
-        bool isNoData = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex ) == gCheckerboard;
-        if ( gCheckerboard != CHECKERBOARD_OFF && isNoData )
-        {
-            int3 pixelPosLR = int3( pixelPos.x - 1, pixelPos.x + 1, pixelPos.y );
+    bool hasData = ApplyCheckerboard( pixelPos );
+    if( !hasData )
+    {
+        #if( CHECKERBOARD_RESOLVE_MODE == SOFT )
+            int3 pos = int3( pixelPos.x - 1, pixelPos.x + 1, pixelPos.y );
 
-            float4 diffA_left = gIn_DiffA[ pixelPosLR.xz ];
-            float4 diffA_right = gIn_DiffA[ pixelPosLR.yz ];
+            float4 diffA0 = gIn_DiffA[ pos.xz ];
+            float4 diffA1 = gIn_DiffA[ pos.yz ];
 
-            float4 diffB_left = gIn_DiffB[ pixelPosLR.xz ];
-            float4 diffB_right = gIn_DiffB[ pixelPosLR.yz ];
+            float4 diffB0 = gIn_DiffB[ pos.xz ];
+            float4 diffB1 = gIn_DiffB[ pos.yz ];
 
-            float2 zDelta = GetBilateralWeight( float2( diffB_left.w, diffB_right.w ) / NRD_FP16_VIEWZ_SCALE, viewZ );
-            float2 w = zDelta * STL::Math::PositiveRcp( zDelta.x + zDelta.y );
-            float w00 = saturate( 1.0 - w.x - w.y );
+            float2 w = GetBilateralWeight( float2( diffB0.w, diffB1.w ) / NRD_FP16_VIEWZ_SCALE, viewZ );
+            w *= CHECKERBOARD_SIDE_WEIGHT * 0.5;
 
-            // History weight
-            float2 motion = pixelUvPrev - pixelUv;
-            float motionLength = length( motion );
-            float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, accumSpeed, motionLength );
-            float historyWeight = min( temporalAccumulationParams.x, 0.5 );
+            float invSum = STL::Math::PositiveRcp( w.x + w.y + 1.0 - CHECKERBOARD_SIDE_WEIGHT );
 
-            diffA = diffA_left * w.x + diffA_right * w.y + diffA * w00;
-            diffA = lerp( diffA, historyDiffA, historyWeight );
+            diffA = diffA0 * w.x + diffA1 * w.y + diffA * ( 1.0 - CHECKERBOARD_SIDE_WEIGHT );
+            diffA *= invSum;
 
-            diffB = diffB_left * w.x + diffB_right * w.y + diffB * w00;
-            diffB = lerp( diffB, historyDiffB, historyWeight );
-        }
-    #endif
+            diffB = diffB0 * w.x + diffB1 * w.y + diffB * ( 1.0 - CHECKERBOARD_SIDE_WEIGHT );
+            diffB *= invSum;
+        #endif
+
+        // Mix with history ( optional )
+        float2 motion = pixelUvPrev - pixelUv;
+        float motionLength = length( motion );
+        float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, accumSpeed, motionLength );
+        float historyWeight = gCheckerboardResolveAccumSpeed * temporalAccumulationParams.x;
+
+        diffA = lerp( diffA, historyDiffA, historyWeight );
+        diffB = lerp( diffB, historyDiffB, historyWeight );
+    }
 
     // Accumulation
     #if( SHOW_MIPS != 0 )
@@ -193,5 +243,4 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     gOut_DiffA[ pixelPos ] = historyDiffA;
     gOut_DiffB[ pixelPos ] = float4( historyDiffB.xyz, scaledViewZ );
     gOut_InternalData[ pixelPos ] = data;
-    gOut_ViewZ_AccumSpeed[ pixelPos ] = PackViewZAndAccumSpeed( viewZ, accumSpeed );
 }

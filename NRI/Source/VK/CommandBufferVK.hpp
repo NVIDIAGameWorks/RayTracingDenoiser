@@ -62,9 +62,9 @@ static void NRI_CALL CmdSetConstants(CommandBuffer& commandBuffer, uint32_t push
 }
 
 static void NRI_CALL CmdBeginRenderPass(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer,
-    FramebufferBindFlag bindFlag)
+    RenderPassBeginFlag renderPassBeginFlag)
 {
-    ((CommandBufferVK&)commandBuffer).BeginRenderPass(frameBuffer, bindFlag);
+    ((CommandBufferVK&)commandBuffer).BeginRenderPass(frameBuffer, renderPassBeginFlag);
 }
 
 static void NRI_CALL CmdEndRenderPass(CommandBuffer& commandBuffer)
@@ -341,6 +341,20 @@ void FillFunctionTableCommandBufferVK(RayTracingInterface& rayTracingInterface)
     rayTracingInterface.CmdCopyAccelerationStructure = CmdCopyAccelerationStructure;
     rayTracingInterface.CmdWriteAccelerationStructureSize = CmdWriteAccelerationStructureSize;
     rayTracingInterface.CmdDispatchRays = CmdDispatchRays;
+}
+
+#pragma endregion
+
+#pragma region [  MeshShaderInterface  ]
+
+static void NRI_CALL CmdDispatchMeshTasks(CommandBuffer& commandBuffer, uint32_t taskNum)
+{
+    ((CommandBufferVK&)commandBuffer).DispatchMeshTasks(taskNum);
+}
+
+void FillFunctionTableCommandBufferVK(MeshShaderInterface& meshShaderInterface)
+{
+    meshShaderInterface.CmdDispatchMeshTasks = CmdDispatchMeshTasks;
 }
 
 #pragma endregion

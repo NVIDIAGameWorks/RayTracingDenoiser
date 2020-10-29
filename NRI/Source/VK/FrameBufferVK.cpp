@@ -201,10 +201,9 @@ Result FrameBufferVK::Create(const FrameBufferDesc& frameBufferDesc)
                 imageViews[frameBufferDesc.colorAttachmentNum] = descriptorImpl.GetImageView(i);
             }
 
-            const VkResult result = vk.CreateFramebuffer(m_Device, &framebufferInfo, m_Device.GetAllocationCallbacks(), &m_Handles[i]);
-
-            RETURN_ON_FAILURE(m_Device.GetLog(), result == VK_SUCCESS, GetReturnCode(result),
-                "Can't create a frame buffer: vkCreateFramebuffer returned %d.", (int32_t)result);
+            const VkResult res = vk.CreateFramebuffer(m_Device, &framebufferInfo, m_Device.GetAllocationCallbacks(), &m_Handles[i]);
+            RETURN_ON_FAILURE(m_Device.GetLog(), res == VK_SUCCESS, GetReturnCode(res),
+                "Can't create a frame buffer: vkCreateFramebuffer returned %d.", (int32_t)res);
         }
     }
 

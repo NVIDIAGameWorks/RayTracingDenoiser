@@ -33,21 +33,20 @@ AccelerationStructureD3D12::~AccelerationStructureD3D12()
 
 Result AccelerationStructureD3D12::Create(const AccelerationStructureDesc& accelerationStructureDesc)
 {
-    m_AccelerationStructureInputs.Type = GetAccelerationStructureType(accelerationStructureDesc.type);
-    m_AccelerationStructureInputs.Flags = GetAccelerationStructureBuildFlags(accelerationStructureDesc.flags);
-    m_AccelerationStructureInputs.NumDescs = accelerationStructureDesc.instanceOrGeometryObjectNum;
-    m_AccelerationStructureInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY; // TODO:
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS accelerationStructureInputs = {};
+    accelerationStructureInputs.Type = GetAccelerationStructureType(accelerationStructureDesc.type);
+    accelerationStructureInputs.Flags = GetAccelerationStructureBuildFlags(accelerationStructureDesc.flags);
+    accelerationStructureInputs.NumDescs = accelerationStructureDesc.instanceOrGeometryObjectNum;
+    accelerationStructureInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY; // TODO:
 
     Vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs(accelerationStructureDesc.instanceOrGeometryObjectNum, m_Device.GetStdAllocator());
-    if (m_AccelerationStructureInputs.Type == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL && accelerationStructureDesc.instanceOrGeometryObjectNum)
+    if (accelerationStructureInputs.Type == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL && accelerationStructureDesc.instanceOrGeometryObjectNum)
     {
         ConvertGeometryDescs(&geometryDescs[0], accelerationStructureDesc.geometryObjects, accelerationStructureDesc.instanceOrGeometryObjectNum);
-        m_AccelerationStructureInputs.pGeometryDescs = &geometryDescs[0];
+        accelerationStructureInputs.pGeometryDescs = &geometryDescs[0];
     }
 
-    ((ID3D12Device5*)m_Device)->GetRaytracingAccelerationStructurePrebuildInfo(
-        &m_AccelerationStructureInputs,
-        &m_PrebuildInfo);
+    ((ID3D12Device5*)m_Device)->GetRaytracingAccelerationStructurePrebuildInfo(&accelerationStructureInputs, &m_PrebuildInfo);
 
     BufferDesc bufferDesc = {};
     bufferDesc.size = m_PrebuildInfo.ResultDataMaxSizeInBytes;

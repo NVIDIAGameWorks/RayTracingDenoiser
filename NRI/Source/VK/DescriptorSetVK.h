@@ -29,7 +29,7 @@ namespace nri
         void Copy(const DescriptorSetCopyDesc& descriptorSetCopyDesc);
 
     private:
-        VkDescriptorSet m_Handles[PHYSICAL_DEVICE_GROUP_MAX_SIZE] = {};
+        std::array<VkDescriptorSet, PHYSICAL_DEVICE_GROUP_MAX_SIZE> m_Handles = {};
         uint32_t m_DynamicConstantBufferNum = 0;
         const DescriptorSetDesc& m_SetDesc;
         DeviceVK& m_Device;

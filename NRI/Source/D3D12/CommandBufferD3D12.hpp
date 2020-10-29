@@ -56,9 +56,9 @@ static void NRI_CALL CmdSetConstants(CommandBuffer& commandBuffer, uint32_t push
     ((CommandBufferD3D12&)commandBuffer).SetConstants(pushConstantIndex, data, size);
 }
 
-static void NRI_CALL CmdBeginRenderPass(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+static void NRI_CALL CmdBeginRenderPass(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
-    ((CommandBufferD3D12&)commandBuffer).BeginRenderPass(frameBuffer, bindFlag);
+    ((CommandBufferD3D12&)commandBuffer).BeginRenderPass(frameBuffer, renderPassBeginFlag);
 }
 
 static void NRI_CALL CmdEndRenderPass(CommandBuffer& commandBuffer)
@@ -265,6 +265,7 @@ void FillFunctionTableCommandBufferD3D12(WrapperD3D12Interface& wrapperD3D12Inte
 
 #pragma region [  RayTracingInterface  ]
 
+#ifdef __ID3D12GraphicsCommandList4_INTERFACE_DEFINED__
 static void NRI_CALL CmdBuildTopLevelAccelerationStructure(CommandBuffer& commandBuffer, uint32_t instanceNum, const Buffer& buffer, uint64_t bufferOffset,
     AccelerationStructureBuildBits flags, AccelerationStructure& dst, Buffer& scratch, uint64_t scratchOffset)
 {
@@ -314,5 +315,22 @@ void FillFunctionTableCommandBufferD3D12(RayTracingInterface& rayTracingInterfac
     rayTracingInterface.CmdWriteAccelerationStructureSize = ::CmdWriteAccelerationStructureSize;
     rayTracingInterface.CmdDispatchRays = ::CmdDispatchRays;
 }
+#endif
+
+#pragma endregion
+
+#pragma region [  MeshShaderInterface  ]
+
+#ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
+static void NRI_CALL CmdDispatchMeshTasks(CommandBuffer& commandBuffer, uint32_t taskNum)
+{
+    ((CommandBufferD3D12&)commandBuffer).DispatchMeshTasks(taskNum);
+}
+
+void FillFunctionTableCommandBufferD3D12(MeshShaderInterface& meshShaderInterface)
+{
+    meshShaderInterface.CmdDispatchMeshTasks = CmdDispatchMeshTasks;
+}
+#endif
 
 #pragma endregion

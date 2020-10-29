@@ -41,7 +41,7 @@ Result CommandQueueD3D12::Create(CommandQueueType queueType)
 
 Result CommandQueueD3D12::Create(ID3D12CommandQueue* commandQueue)
 {
-    const D3D12_COMMAND_QUEUE_DESC& commandQueueDesc = m_CommandQueue->GetDesc();
+    const D3D12_COMMAND_QUEUE_DESC& commandQueueDesc = commandQueue->GetDesc();
 
     m_CommandQueue = commandQueue;
     m_CommandListType = commandQueueDesc.Type;

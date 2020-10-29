@@ -12,19 +12,29 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 namespace nrd
 {
-    const uint32_t MAX_HISTORY_FRAME_NUM = 31;
-
     enum class CheckerboardMode : uint32_t
     {
-        // Internally NRD uses the following sequence, which is based on "CommonSettings::frameIndex":
-        //  Even frame    Odd frame    ...
-        //    B W           W B
-        //    W B           B W
+        /*
+        1. Internally, NRD uses the following sequence based on "CommonSettings::frameIndex":
 
-        // These constants allow to define cells without data:
-        OFF,            // no checkerboarding
-        NO_DATA_BLACK,  // black cells have no data
-        NO_DATA_WHITE,  // white cells have no data
+            Even frame (0)  Odd frame (1)   ...
+                B W             W B
+                W B             B W
+
+            BLACK and WHITE modes define cells with VALID data
+
+        2. Checkerboard can be only horizontal
+
+        3. Notes:
+            - all inputs have the same resolution - logical FULL resolution
+            - the noisy input signal is tightly packed to the LEFT HALF of the texture (the input pixel = 2x1 screen pixel)
+            - for others, the input pixel = 1x1 screen pixel
+            - upsampling will be handled internally in checkerboard mode
+        */
+
+        OFF,
+        BLACK,
+        WHITE,
 
         MAX_NUM
     };
@@ -46,15 +56,13 @@ namespace nrd
         float worldToViewMatrixPrev[16] = {};
         float viewToClipMatrix[16] = {};
         float viewToClipMatrixPrev[16] = {};
+        float motionVectorScale[2] = {1.0f, 1.0f}; // in case of "worldSpaceMotion = true" will be used as "MV * motionVectorScale.xyy"
+        float cameraJitter[2] = {0.0f, 0.0f};
         float metersToUnitsMultiplier = 1.0f;
         float denoisingRange = 1e6f; // units
-        float xMotionVectorScale = 1.0f;
-        float yzMotionVectorScale = 1.0f;
-        float xJitter = 0.0f;
-        float yJitter = 0.0f;
         float debug = 0.0f;
         uint32_t frameIndex = 0;
-        bool worldSpaceMotion = false;
+        bool worldSpaceMotion = false; // if "true" IN_MV is 3D motion in world space (0 everywhere if the scene is static)
         bool forceReferenceAccumulation = false;
     };
 
@@ -87,33 +95,56 @@ namespace nrd
         bool enable = true;
     };
 
-    struct DiffuseSettings
+    // NRD_DIFFUSE
+
+    const uint32_t NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM = 31;
+
+    struct NrdDiffuseSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
         AntilagSettings antilagSettings = {};
-        uint32_t maxAccumulatedFrameNum = MAX_HISTORY_FRAME_NUM; // count (use 0 for one frame to reset history)
+        uint32_t maxAccumulatedFrameNum = NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM; // count 0-NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM (use 0 for one frame to reset history)
         float disocclusionThreshold = 0.005f; // normalized %
-        float denoisingRadius = 30.0f; // pixels
-        float maxAdaptiveRadiusScale = 5.0f; // 0-10
+        float blurRadius = 30.0f; // pixels
+        float postBlurMaxAdaptiveRadiusScale = 5.0f; // 0-10
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
     };
 
-    struct SpecularSettings
+    // NRD_SPECULAR
+
+    const uint32_t NRD_SPECULAR_MAX_HISTORY_FRAME_NUM = 31;
+
+    struct NrdSpecularSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
         LobeTrimmingParameters lobeTrimmingParameters = {};
         AntilagSettings antilagSettings = {};
-        uint32_t maxAccumulatedFrameNum = MAX_HISTORY_FRAME_NUM; // count (use 0 for one frame to reset history)
+        uint32_t maxAccumulatedFrameNum = NRD_SPECULAR_MAX_HISTORY_FRAME_NUM; // count 0-NRD_SPECULAR_MAX_HISTORY_FRAME_NUM (use 0 for one frame to reset history)
         float disocclusionThreshold = 0.005f; // normalized %
-        float denoisingRadius = 40.0f; // pixels
-        float minAdaptiveRadiusScale = 0.5f;
+        float blurRadius = 40.0f; // pixels
+        float postBlurRadiusScale = 0.5f;
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
-        bool anisotropicFiltering = false;
     };
 
-    struct ShadowSettings
+    // NRD_SHADOW and NRD_TRANSLUCENT_SHADOW
+
+    struct NrdShadowSettings
     {
-        float directionToLightSource[3] = {};
         float lightSourceAngularDiameter = 0.533f; // deg (0.533 = sun)
+        float blurRadiusScale = 1.0f; // adds bias, but if shadows are still unstable (have you tried blue noise?)... can be set in range [1; 1.5]
+    };
+
+    // SVGF
+
+    const uint32_t SVGF_MAX_HISTORY_FRAME_NUM = 255;
+
+    struct SvgfSettings
+    {
+        uint32_t maxAccumulatedFrameNum = 31; // count 0-SVGF_MAX_HISTORY_FRAME_NUM (use 0 for one frame to reset history)
+        uint32_t momentsMaxAccumulatedFrameNum = 5; // count 0-SVGF_MAX_HISTORY_FRAME_NUM (use 0 for one frame to reset history)
+        float disocclusionThreshold = 0.005f; // 0.005 - 0.05 (normalized %)
+        float varianceScale = 1.5f;
+        float zDeltaScale = 200.0f;
+        bool isDiffuse = false;
     };
 }

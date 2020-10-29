@@ -31,7 +31,8 @@ void ConvertGeometryObjectsVal(GeometryObject* destObjects, const GeometryObject
 
 CommandBufferVal::CommandBufferVal(DeviceVal& device, CommandBuffer& commandBuffer) :
     DeviceObjectVal(device, commandBuffer),
-    m_RayTracingAPI(device.GetRayTracingInterface())
+    m_RayTracingAPI(device.GetRayTracingInterface()),
+    m_MeshShaderAPI(device.GetMeshShaderInterface())
 {
 }
 
@@ -178,7 +179,7 @@ void CommandBufferVal::ClearStorageTexture(const ClearStorageTextureDesc& clearD
     m_CoreAPI.CmdClearStorageTexture(m_ImplObject, clearDescImpl);
 }
 
-void CommandBufferVal::BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+void CommandBufferVal::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
     RETURN_ON_FAILURE(m_Device.GetLog(), m_IsRecordingStarted, ReturnVoid(),
         "Can't begin render pass: the command buffer must be in the recording state.");
@@ -186,14 +187,14 @@ void CommandBufferVal::BeginRenderPass(const FrameBuffer& frameBuffer, Framebuff
     RETURN_ON_FAILURE(m_Device.GetLog(), m_FrameBuffer == nullptr, ReturnVoid(),
         "Can't begin render pass: render pass already started.");
 
-    RETURN_ON_FAILURE(m_Device.GetLog(), bindFlag < FramebufferBindFlag::MAX_NUM, ReturnVoid(),
-        "Can't begin render pass: 'bindFlag' is invalid.");
+    RETURN_ON_FAILURE(m_Device.GetLog(), renderPassBeginFlag < RenderPassBeginFlag::MAX_NUM, ReturnVoid(),
+        "Can't begin render pass: 'renderPassBeginFlag' is invalid.");
 
     m_FrameBuffer = &frameBuffer;
 
     FrameBuffer* frameBufferImpl = NRI_GET_IMPL(FrameBuffer, &frameBuffer);
 
-    m_CoreAPI.CmdBeginRenderPass(m_ImplObject, *frameBufferImpl, bindFlag);
+    m_CoreAPI.CmdBeginRenderPass(m_ImplObject, *frameBufferImpl, renderPassBeginFlag);
 }
 
 void CommandBufferVal::EndRenderPass()
@@ -366,6 +367,9 @@ void CommandBufferVal::CopyTexture(Texture& dstTexture, uint32_t dstPhysicalDevi
 
     RETURN_ON_FAILURE(m_Device.GetLog(), m_FrameBuffer == nullptr, ReturnVoid(),
         "Can't copy texture: this operation is allowed only outside render pass.");
+
+    RETURN_ON_FAILURE(m_Device.GetLog(), (dstRegionDesc == nullptr && srcRegionDesc == nullptr) || (dstRegionDesc != nullptr && srcRegionDesc != nullptr), ReturnVoid(),
+        "Can't copy texture: 'dstRegionDesc' and 'srcRegionDesc' must be valid pointers or be both NULL.");
 
     Texture* dstTextureImpl = NRI_GET_IMPL(Texture, &dstTexture);
     Texture* srcTextureImpl = NRI_GET_IMPL(Texture, &srcTexture);
@@ -725,6 +729,19 @@ void CommandBufferVal::DispatchRays(const DispatchRaysDesc& dispatchRaysDesc)
     dispatchRaysDescImpl.callableShaders.buffer = NRI_GET_IMPL(Buffer, dispatchRaysDesc.callableShaders.buffer);
 
     m_RayTracingAPI.CmdDispatchRays(m_ImplObject, dispatchRaysDescImpl);
+}
+
+void CommandBufferVal::DispatchMeshTasks(uint32_t taskNum)
+{
+    const uint32_t meshTaskMaxNum = m_Device.GetDesc().maxMeshTasksCount;
+
+    if (taskNum > meshTaskMaxNum)
+    {
+        REPORT_ERROR(m_Device.GetLog(),
+            "Can't dispatch the specified number of mesh tasks: the number exceeds the maximum number of mesh tasks.");
+    }
+
+    m_MeshShaderAPI.CmdDispatchMeshTasks(m_ImplObject, std::min(taskNum, meshTaskMaxNum));
 }
 
 ID3D11DeviceContext* CommandBufferVal::GetCommandBufferD3D11() const

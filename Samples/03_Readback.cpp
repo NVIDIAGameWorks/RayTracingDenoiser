@@ -102,9 +102,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // Command queue
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue) );
 
-    uint32_t windowWidth = GetWindowWidth();
-    uint32_t windowHeight = GetWindowHeight();
-
     // Swap chain
     {
         nri::SwapChainDesc swapChainDesc = {};
@@ -112,8 +109,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         swapChainDesc.commandQueue = m_CommandQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
         swapChainDesc.verticalSyncInterval = m_SwapInterval;
-        swapChainDesc.width = windowWidth;
-        swapChainDesc.height = windowHeight;
+        swapChainDesc.width = GetWindowWidth();
+        swapChainDesc.height = GetWindowHeight();
         swapChainDesc.textureNum = SWAP_CHAIN_TEXTURE_NUM;
         NRI_ABORT_ON_FAILURE( NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain) );
 
@@ -160,7 +157,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::HOST_READBACK, nullptr, 0, &m_ReadbackBuffer, 1, m_Memories) );
     }
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, windowWidth, windowHeight, BUFFERED_FRAME_MAX_NUM, m_SwapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, m_SwapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)
@@ -188,7 +185,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
     ImGui::SetNextWindowPos(p, ImGuiCond_Always);
     ImGui::Begin("ColorWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
     {
-        ImVec2 p = ImGui::GetCursorScreenPos();
+        p = ImGui::GetCursorScreenPos();
         ImGui::GetWindowDrawList()->AddRectFilled(p, ImVec2(p.x+sz, p.y+sz), color);
         ImGui::Dummy(ImVec2(sz, sz));
         ImGui::SameLine();
@@ -231,8 +228,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
         dstDataLayoutDesc.rowPitch = NRI.GetDeviceDesc(*m_Device).uploadBufferTextureRowAlignment;
 
         nri::TextureRegionDesc srcRegionDesc = {};
-        srcRegionDesc.offset[0] = Min((uint16_t)ImGui::GetMousePos().x, uint16_t(GetWindowWidth() - 1));
-        srcRegionDesc.offset[1] = Min((uint16_t)ImGui::GetMousePos().y, uint16_t(GetWindowHeight() - 1));
+        srcRegionDesc.offset[0] = (uint16_t)Min(ImGui::GetMousePos().x, float(windowWidth - 1));
+        srcRegionDesc.offset[1] = (uint16_t)Min(ImGui::GetMousePos().y, float(windowHeight - 1));
         srcRegionDesc.size[0] = 1;
         srcRegionDesc.size[1] = 1;
         srcRegionDesc.size[2] = 1;
@@ -246,7 +243,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         textureTransitionBarrierDesc.nextAccess = nri::AccessBits::COLOR_ATTACHMENT;
         NRI.CmdPipelineBarrier(commandBuffer, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
 
-        NRI.CmdBeginRenderPass(commandBuffer, *backBuffer.frameBuffer, nri::FramebufferBindFlag::NONE);
+        NRI.CmdBeginRenderPass(commandBuffer, *backBuffer.frameBuffer, nri::RenderPassBeginFlag::NONE);
         {
             helper::Annotation annotation(NRI, commandBuffer, "Clear");
 

@@ -11,6 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #include <cstdint>
+#include <array>
 
 // TODO: Key scan codes from dinput.h. Are they same on Linux?
 enum class Key : uint8_t
@@ -197,6 +198,14 @@ public:
     void Process(void* data);
     void Prepare();
 
+    inline bool IsKeyToggled(Key key)
+    {
+        bool state = m_KeyToggled[(uint8_t)key];
+        m_KeyToggled[(uint8_t)key] = false;
+
+        return state;
+    }
+
     inline bool IsKeyPressed(Key key) const
     { return m_KeyState[(uint8_t)key]; }
 
@@ -213,8 +222,9 @@ public:
     { return m_MouseWheel; }
 
 private:
-    bool m_KeyState[256] = {};
-    bool m_ButtonState[5] = {};
+    std::array<bool, 256> m_KeyState = {};
+    std::array<bool, 256> m_KeyToggled = {};
+    std::array<bool, 256> m_ButtonState = {};
     float m_MouseDx = 0.0f;
     float m_MouseDy = 0.0f;
     float m_MouseWheel = 0.0f;

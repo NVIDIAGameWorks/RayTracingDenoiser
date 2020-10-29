@@ -17,16 +17,17 @@ NRI_RESOURCE( Texture2D<uint4>, gIn_Sobol, t, 2, 1 );
 NRI_RESOURCE( Texture2D<float2>, gIn_IntegratedBRDF, t, 3, 1 );
 NRI_RESOURCE( Texture2D<float4>, gIn_PrevComposedImage, t, 4, 1 );
 
-NRI_RESOURCE( RWTexture2D<float3>, gOut_DirectLighting, u, 5, 1 );              // RGB11110f
-NRI_RESOURCE( RWTexture2D<float4>, gOut_TransparentLighting, u, 6, 1 );         // RGBA16f
-NRI_RESOURCE( RWTexture2D<float3>, gOut_ObjectMotion, u, 7, 1 );                // RGBA16f (TODO: .w is not used)
-NRI_RESOURCE( RWTexture2D<float>, gOut_ViewZ, u, 8, 1 );                        // R32f
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 9, 1 );            // RGBA8
-NRI_RESOURCE( RWTexture2D<unorm float4>, gOut_BaseColor_Metalness, u, 10, 1 );  // RGBA8
-NRI_RESOURCE( RWTexture2D<float2>, gOut_Shadow, u, 11, 1 );                     // RG16f
-NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffA, u, 12, 1 );                      // RGBA16f
-NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffB, u, 13, 1 );                      // RGBA16f
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SpecHit, u, 14, 1 );                    // RGBA16f
+NRI_RESOURCE( RWTexture2D<float3>, gOut_DirectLighting, u, 5, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_TransparentLighting, u, 6, 1 );
+NRI_RESOURCE( RWTexture2D<float3>, gOut_ObjectMotion, u, 7, 1 ); // TODO: .w is not used
+NRI_RESOURCE( RWTexture2D<float>, gOut_ViewZ, u, 8, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 9, 1 );
+NRI_RESOURCE( RWTexture2D<unorm float4>, gOut_BaseColor_Metalness, u, 10, 1 );
+NRI_RESOURCE( RWTexture2D<float2>, gOut_Shadow, u, 11, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffA, u, 12, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffB, u, 13, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_SpecHit, u, 14, 1 );
+NRI_RESOURCE( RWTexture2D<float3>, gOut_Translucency, u, 15, 1 );
 
 // SPP - must be POW of 2!
 // Virtual 32 spp tuned for NRD purposes (actually, 1 spp but distributed in time)
@@ -36,7 +37,7 @@ float2 GetRandom( bool isCheckerboard, uint seed, Texture2D<uint3> texScrambling
     // WHITE NOISE (for testing purposes)
 
     float4 white = STL::Rng::GetFloat4( );
-    if( gUseBlueNoise == 0 )
+    if( gUseBlueNoise == 0 || ( gSvgf && sppVirtual == 1 ) )
         return white.xy;
 
     // BLUE NOISE
@@ -49,11 +50,10 @@ float2 GetRandom( bool isCheckerboard, uint seed, Texture2D<uint3> texScrambling
     // Ideally, "sppVirtual" number should be adjusted to motion...
 
     uint2 pixelPos = DispatchRaysIndex( ).xy;
-    if( isCheckerboard )
-        pixelPos.x >>= 1;
 
     // Sample index
-    uint virtualSampleIndex = ( gFrameIndex + seed ) & ( sppVirtual - 1 );
+    uint frameIndex = isCheckerboard ? ( gFrameIndex >> 1 ) : gFrameIndex;
+    uint virtualSampleIndex = ( frameIndex + seed ) & ( sppVirtual - 1 );
     sampleIndex &= spp - 1;
     sampleIndex += virtualSampleIndex * spp;
 
@@ -108,42 +108,91 @@ float3 GetIndirectAmbient( float tmin, bool isDiffuse )
     return gAmbient * fade;
 }
 
-float CastShadowRay( GeometryProps geometryProps, MaterialProps materialProps, bool isSoft )
+float CastShadowRay( GeometryProps geometryProps, MaterialProps materialProps )
 {
-    bool isShadowNeeded = STL::Color::Luminance( materialProps.Lsum ) != 0.0 && !materialProps.isEmissive; // also skips INF rays
-    float3 direction = gSunDirection;
-
-    isSoft = isSoft && gTanSunAngularDiameter != 0.0f;
-    if( isSoft )
-    {
-        float3x3 mSunBasis = STL::Geometry::GetBasis( gSunDirection ); // TODO: move to CB
-
-        // Get blue noise which is static in screen space, since there is no temporal accumulation in shadow denoising
-        float2 rnd = GetRandom( false, 0, gIn_Scrambling_Ranking_1spp, 0, 1, 1 );
-        rnd = ( rnd - 0.5 ) * gTanSunAngularDiameter;
-
-        direction = normalize( mSunBasis[ 0 ] * rnd.x + mSunBasis[ 1 ] * rnd.y + mSunBasis[ 2 ] );
-    }
+    bool isOpaqueRayNeeded = STL::Color::Luminance( materialProps.Lsum ) != 0.0 && !materialProps.isEmissive && gDisableShadowsAndEnableImportanceSampling == 0; // also skips INF rays
 
     RayDesc rayDesc;
-    rayDesc.Origin = geometryProps.X;
-    rayDesc.Direction = direction;
+    rayDesc.Origin = geometryProps.GetXWithOffset();
+    rayDesc.Direction = gSunDirection;
     rayDesc.TMin = 0.0;
-    rayDesc.TMax = INF * float( isShadowNeeded );
+    rayDesc.TMax = INF * float( isOpaqueRayNeeded );
 
     float2 mipAndCone = float2( geometryProps.mip, gSunAngularDiameter );
     Payload payload = InitPayload( mipAndCone );
     {
-        const uint rayFlags = isSoft ? 0 : RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
-        const uint instanceInclusionMask = isShadowNeeded ? FLAGS_SHADOW : 0;
+        const uint rayFlags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+        const uint instanceInclusionMask = isOpaqueRayNeeded ? FLAGS_DEFAULT : 0;
         const uint rayContributionToHitGroupIndex = 0;
         const uint multiplierForGeometryContributionToHitGroupIndex = 0;
         const uint missShaderIndex = 0;
 
-        TraceRay( gTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+        TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
     }
 
-    return materialProps.isEmissive ? INF : ( payload.tmin * float( isShadowNeeded ) );
+    return isOpaqueRayNeeded ? payload.tmin : INF * float( materialProps.isEmissive );
+}
+
+float4 CastSoftShadowRay( GeometryProps geometryProps, MaterialProps materialProps )
+{
+    bool isOpaqueRayNeeded = STL::Color::Luminance( materialProps.Lsum ) != 0.0 && !materialProps.isEmissive && gDisableShadowsAndEnableImportanceSampling == 0; // also skips INF rays
+
+    // Sample sun disk
+    float2 rnd = GetRandom( false, 0, gIn_Scrambling_Ranking_1spp, 0, 1, 1 );
+    rnd = STL::ImportanceSampling::Cosine::GetRay( rnd ).xy;
+    rnd *= gTanSunAngularRadius;
+
+    float3x3 mSunBasis = STL::Geometry::GetBasis( gSunDirection ); // TODO: move to CB
+    float3 direction = normalize( mSunBasis[ 0 ] * rnd.x + mSunBasis[ 1 ] * rnd.y + mSunBasis[ 2 ] );
+
+    // Cast opaque ray
+    RayDesc rayDesc;
+    rayDesc.Origin = geometryProps.GetXWithOffset();
+    rayDesc.Direction = direction;
+    rayDesc.TMin = 0.0;
+    rayDesc.TMax = INF * float( isOpaqueRayNeeded );
+
+    float2 mipAndCone = float2( geometryProps.mip, gSunAngularDiameter );
+    Payload payload = InitPayload( mipAndCone );
+    {
+        const uint rayFlags = 0;
+        const uint instanceInclusionMask = isOpaqueRayNeeded ? FLAGS_DEFAULT : 0;
+        const uint rayContributionToHitGroupIndex = 0;
+        const uint multiplierForGeometryContributionToHitGroupIndex = 0;
+        const uint missShaderIndex = 0;
+
+        TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+    }
+
+    float hitDist = payload.tmin;
+
+    // Cast transparent ray
+    bool isTransparentRayNeeded = isOpaqueRayNeeded && hitDist == INF;
+    payload = InitPayload( mipAndCone );
+    {
+        const uint rayFlags = 0;
+        const uint instanceInclusionMask = isTransparentRayNeeded ? FLAGS_ONLY_TRANSPARENT : 0;
+        const uint rayContributionToHitGroupIndex = 0;
+        const uint multiplierForGeometryContributionToHitGroupIndex = 0;
+        const uint missShaderIndex = 0;
+
+        TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+    }
+
+    // Emulate optical thickness
+    float3 translucency = 0;
+    if( isTransparentRayNeeded && payload.tmin != INF )
+    {
+        hitDist = payload.tmin;
+
+        UnpackedPayload unpackedPayload = UnpackPayload( payload, mipAndCone );
+        GeometryProps geometryPropsT = GetGeometryProps( unpackedPayload, rayDesc.Origin, rayDesc.Direction, gPrimaryFullBrdf == 0 );
+
+        float NoV = abs( dot( geometryPropsT.N, rayDesc.Direction ) );
+        translucency = lerp( 0.9, 0.0, STL::Math::Pow01( 1.0 - NoV, 2.5 ) ) * GLASS_TINT;
+    }
+
+    return float4( isOpaqueRayNeeded ? hitDist : INF * float( materialProps.isEmissive ), translucency );
 }
 
 float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps materialProps )
@@ -153,8 +202,9 @@ float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps 
     float diffProb = STL::ImportanceSampling::GetDiffuseProbability( albedo, Rf0 * ( 1.0 - materialProps.roughness * materialProps.roughness ) );
 
     float4 clipPrev = STL::Geometry::ProjectiveTransform( gWorldToClipPrev, geometryProps.X );
-    float2 uvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5;
-    float4 prevLsum = gIn_PrevComposedImage.SampleLevel( gLinearSampler, uvPrev, 0.0 );
+    float2 uvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5 - gJitter;
+
+    float4 prevLsum = gIn_PrevComposedImage.SampleLevel( gNearestMipmapNearestSampler, uvPrev, 0.0 );
     float prevViewZ = prevLsum.w / NRD_FP16_VIEWZ_SCALE;
     float err = abs( abs( prevViewZ ) - clipPrev.w ) * STL::Math::PositiveRcp( min( abs( prevViewZ ), abs( clipPrev.w ) ) );
     float2 f = STL::Math::LinearStep( 0.0, 0.1, uvPrev ) * STL::Math::LinearStep( 1.0, 0.9, uvPrev );
@@ -205,7 +255,7 @@ void ENTRYPOINT( )
             const uint multiplierForGeometryContributionToHitGroupIndex = 0;
             const uint missShaderIndex = 0;
 
-            TraceRay( gTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+            TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
         }
 
         UnpackedPayload unpackedPayload = UnpackPayload( payload, mipAndCone );
@@ -259,7 +309,7 @@ void ENTRYPOINT( )
             const uint multiplierForGeometryContributionToHitGroupIndex = 0;
             const uint missShaderIndex = 0;
 
-            TraceRay( gTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+            TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
         }
 
         UnpackedPayload unpackedPayload = UnpackPayload( payload, mipAndCone );
@@ -268,19 +318,18 @@ void ENTRYPOINT( )
         float4 transparentLayer = 0;
         if( !geometryPropsT0.IsSky() )
         {
-            MaterialProps materialPropsT0 = GetMaterialProps( geometryPropsT0, rayDesc.Direction, gPrimaryFullBrdf == 0 );
-            materialPropsT0.roughness = 0.0;
+           float roughness = 0.0;
 
             GeometryProps geometryPropsT1;
             MaterialProps materialPropsT1;
             {
                 RayDesc rayDesc;
-                rayDesc.Origin = geometryPropsT0.X;
-                rayDesc.Direction = reflect( rayDirection0, materialPropsT0.N );
+                rayDesc.Origin = geometryPropsT0.GetXWithOffset();
+                rayDesc.Direction = reflect( rayDirection0, geometryPropsT0.N );
                 rayDesc.TMin = 0.0;
                 rayDesc.TMax = INF;
 
-                float2 mipAndCone = GetConeAngle( geometryPropsT0.mip, materialPropsT0.roughness );
+                float2 mipAndCone = GetConeAngle( geometryPropsT0.mip, roughness );
                 Payload payload = InitPayload( mipAndCone );
                 {
                     const uint rayFlags = 0;
@@ -289,7 +338,7 @@ void ENTRYPOINT( )
                     const uint multiplierForGeometryContributionToHitGroupIndex = 0;
                     const uint missShaderIndex = 0;
 
-                    TraceRay( gTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+                    TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
                 }
 
                 unpackedPayload = UnpackPayload( payload, mipAndCone );
@@ -297,7 +346,7 @@ void ENTRYPOINT( )
                 materialPropsT1 = GetMaterialProps( geometryPropsT1, rayDesc.Direction, true );
             }
 
-            float NoVT0 = abs( dot( materialPropsT0.N, rayDesc.Direction ) );
+            float NoVT0 = abs( dot( geometryPropsT0.N, rayDesc.Direction ) );
             float FT0 = STL::BRDF::FresnelTerm_Schlick( 0.01, NoVT0 ).x;
 
             float3 Lsum = materialPropsT1.Lsum * float( materialPropsT1.isEmissive );
@@ -306,7 +355,7 @@ void ENTRYPOINT( )
             float4 prevLsum = GetRadianceFromPreviousFrame( geometryPropsT1, materialPropsT1 );
             Lsum = lerp( Lsum, prevLsum.xyz, prevLsum.w );
 
-            transparentLayer.xyz = ( Lsum * FT0 + float3( 0.7, 0.7, 1.0 ) * 0.01 * gAmbient ) * ( 1.0 - FT0 );
+            transparentLayer.xyz = ( Lsum * FT0 + 0.01 * gAmbient ) * ( 1.0 - FT0 ) * GLASS_TINT;
             transparentLayer.w = FT0;
         }
 
@@ -317,7 +366,8 @@ void ENTRYPOINT( )
     if ( geometryProps0.IsSky( ) )
     {
         gOut_DiffB[ pixelPos ] = NRD_INF_DIFF_B;
-        gOut_Shadow[ pixelPos ] = NRD_INF_SHADOW;
+        gOut_Shadow[ pixelPos ] = gSvgf ? 1.0 : NRD_INF_SHADOW;
+        gOut_Translucency[ pixelPos ] = 1.0;
 
         return;
     }
@@ -325,8 +375,9 @@ void ENTRYPOINT( )
     STL::Rng::Initialize( pixelPos, gFrameIndex );
 
     // Sun shadow
-    float distanceToOccluder0 = CastShadowRay( geometryProps0, materialProps0, true );
-    gOut_Shadow[ pixelPos ] = NRD_FrontEnd_PackShadow( geometryProps0.viewZ, distanceToOccluder0, distanceToOccluder0 != INF );
+    float4 shadowData0 = CastSoftShadowRay( geometryProps0, materialProps0 );
+    gOut_Shadow[ pixelPos ] = NRD_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.x != INF ? shadowData0.x : NRD_FP16_MAX );
+    gOut_Translucency[ pixelPos ] = gSvgf ? lerp( shadowData0.yzw, 1.0, float( shadowData0.x == INF ) ) : shadowData0.yzw;
 
     // Secondary rays
     float4 diffIndirectA = 0;
@@ -351,8 +402,8 @@ void ENTRYPOINT( )
         float throughput1 = 0.0;
         uint sampleNum = 0;
 
-    #if( MAX_MONTE_CARLO_VIRTUAL_SAMPLE_NUM > 1 )
-        while( sampleNum < MAX_MONTE_CARLO_VIRTUAL_SAMPLE_NUM && throughput1 == 0.0 )
+    #if( USE_IMPORTANCE_SAMPLING > 0 )
+        while( sampleNum < ZERO_TROUGHPUT_SAMPLE_NUM && throughput1 == 0.0 )
     #endif
         {
             // Get noise which converges to 32spp blue noise over time
@@ -384,7 +435,7 @@ void ENTRYPOINT( )
 
             // But we don't want to cast rays inside the surface
             float NoL = saturate( dot( geometryProps0.N, rayDirection1 ) );
-            throughput1 *= STL::Math::LinearStep( 0.0, 0.01, NoL );
+            throughput1 *= STL::Math::LinearStep( 0.0, 0.001, NoL );
 
             sampleNum++;
         }
@@ -397,7 +448,7 @@ void ENTRYPOINT( )
         MaterialProps materialProps1;
         {
             RayDesc rayDesc;
-            rayDesc.Origin = geometryProps0.X;
+            rayDesc.Origin = geometryProps0.GetXWithOffset();
             rayDesc.Direction = rayDirection1;
             rayDesc.TMin = 0.0;
             rayDesc.TMax = INF * float( isNotCanceled1 );
@@ -411,7 +462,7 @@ void ENTRYPOINT( )
                 const uint multiplierForGeometryContributionToHitGroupIndex = 0;
                 const uint missShaderIndex = 0;
 
-                TraceRay( gTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+                TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
             }
 
             UnpackedPayload unpackedPayload = UnpackPayload( payload, mipAndCone );
@@ -429,7 +480,7 @@ void ENTRYPOINT( )
             materialProps1.Lsum *= float( prevLsum.w != 1.0 );
 
             // 1st bounce (with shadow)
-            float distanceToOccluder1 = CastShadowRay( geometryProps1, materialProps1, false );
+            float distanceToOccluder1 = CastShadowRay( geometryProps1, materialProps1 );
             Clight1 = materialProps1.Lsum * float( distanceToOccluder1 == INF );
 
             // 2nd bounce (can be approximated if data prom the previous frame is invalid or specular is needed)
@@ -448,10 +499,10 @@ void ENTRYPOINT( )
 
                 if( !isDiffuse && isNotCanceled1 && brdfLuma > threshold )
                 {
-                    float3 ggxDominantDirection = STL::ImportanceSampling::GetSpecularDominantDirection( materialProps1.N, -rayDirection1, materialProps1.roughness ); // geometryProps1.N can be used as well!
+                    float3 ggxDominantDirection = STL::ImportanceSampling::GetSpecularDominantDirection( materialProps1.N, -rayDirection1, materialProps1.roughness, STL_SPECULAR_DOMINANT_DIRECTION_G1 ).xyz; // geometryProps1.N can be used as well!
 
                     RayDesc rayDesc;
-                    rayDesc.Origin = geometryProps1.X;
+                    rayDesc.Origin = geometryProps1.GetXWithOffset();
                     rayDesc.Direction = ggxDominantDirection;
                     rayDesc.TMin = 0.0;
                     rayDesc.TMax = INF;
@@ -465,7 +516,7 @@ void ENTRYPOINT( )
                         const uint multiplierForGeometryContributionToHitGroupIndex = 0;
                         const uint missShaderIndex = 0;
 
-                        TraceRay( gTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+                        TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
                     }
 
                     UnpackedPayload unpackedPayload = UnpackPayload( payload, mipAndCone );
@@ -477,7 +528,7 @@ void ENTRYPOINT( )
 
                     if( !materialProps2.isEmissive )
                     {
-                        float distanceToOccluder2 = CastShadowRay( geometryProps2, materialProps2, false );
+                        float distanceToOccluder2 = CastShadowRay( geometryProps2, materialProps2 );
                         Clight2 *= float( distanceToOccluder2 == INF );
 
                         float3 albedo2, Rf02;
@@ -498,16 +549,110 @@ void ENTRYPOINT( )
 
         // Apply throughput1
         Clight1 *= throughput1;
-        float hitDist1 = pathLength * throughput1;
+
+        #if( USE_IMPORTANCE_SAMPLING > 1 )
+            if( gDisableShadowsAndEnableImportanceSampling != 0 )
+            {
+                Payload payload = (Payload)0;
+
+                RayDesc rayDesc;
+                rayDesc.Origin = geometryProps0.GetXWithOffset();
+                rayDesc.Direction = rayDirection1;
+                rayDesc.TMin = 0.0;
+                rayDesc.TMax = INF;
+
+                float2 mipAndCone = GetConeAngle( geometryProps0.mip + 1.0, isDiffuse ? 1.0 : materialProps0.roughness );
+
+                throughput1 = 0.0;
+                sampleNum = 0;
+
+                // Sample emissive surfaces
+                while( sampleNum < IMPORTANCE_SAMPLE_NUM && throughput1 == 0.0 )
+                {
+                    float2 rnd = STL::Rng::GetFloat4( ).xy;
+
+                    if ( isDiffuse )
+                    {
+                        float3 rayLocal = STL::ImportanceSampling::Cosine::GetRay( rnd );
+                        rayDirection1 = STL::Geometry::RotateVectorInverse( mLocalBasis, rayLocal );
+
+                        // No PDF and NoL for diffuse because it gets canceled out by STL::ImportanceSampling::Cosine::GetInversePDF
+                        throughput1 = 1.0;
+                    }
+                    else
+                    {
+                        float3 Hlocal = STL::ImportanceSampling::VNDF::GetRay( rnd, materialProps0.roughness, Vlocal, trimmingFactor );
+                        float3 H = STL::Geometry::RotateVectorInverse( mLocalBasis, Hlocal );
+                        rayDirection1 = reflect( rayDirection0, H );
+
+                        // FIX for non-parallaxed normal mapping - normal maps can easily force rays to go under the surface, it should be avoided for specular rays
+                        float f = 1.0 - STL::Math::SmoothStep( 0.0, 0.3, materialProps0.roughness );
+                        f *= saturate( -dot( rayDirection1, geometryProps0.N ) );
+                        rayDirection1 += 2.0 * geometryProps0.N * f;
+
+                        // It's a part of VNDF sampling - see http://jcgt.org/published/0007/04/01/paper.pdf (paragraph "Usage in Monte Carlo renderer")
+                        float NoL = saturate( dot( materialProps0.N, rayDirection1 ) );
+                        throughput1 = STL::BRDF::GeometryTerm_Smith( materialProps0.roughness, NoL );
+                    }
+
+                    // But we don't want to cast rays inside the surface
+                    float NoL = saturate( dot( geometryProps0.N, rayDirection1 ) );
+                    throughput1 *= STL::Math::LinearStep( 0.0, 0.001, NoL );
+
+                    // Emissive surfaces importance sampling
+                    rayDesc.Direction = rayDirection1;
+
+                    payload = InitPayload( mipAndCone );
+                    {
+                        const uint rayFlags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+                        const uint instanceInclusionMask = throughput1 != 0.0 ? FLAGS_ONLY_EMISSION : 0;
+                        const uint rayContributionToHitGroupIndex = 0;
+                        const uint multiplierForGeometryContributionToHitGroupIndex = 0;
+                        const uint missShaderIndex = 0;
+
+                        TraceRay( gLightTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+                    }
+
+                    throughput1 *= float( payload.tmin != INF );
+                    sampleNum++;
+                }
+
+                throughput1 /= float( sampleNum );
+
+                // Visibility
+                UnpackedPayload unpackedPayload = UnpackPayload( payload, mipAndCone );
+                geometryProps1 = GetGeometryProps( unpackedPayload, rayDesc.Origin, rayDesc.Direction, gIndirectFullBrdf == 0 );
+                materialProps1 = GetMaterialProps( geometryProps1, rayDesc.Direction, gIndirectFullBrdf == 0 );
+
+                rayDesc.TMax = geometryProps1.tmin;
+
+                payload = InitPayload( mipAndCone );
+                {
+                    const uint rayFlags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+                    const uint instanceInclusionMask = throughput1 != 0.0 ? FLAGS_DEFAULT : 0;
+                    const uint rayContributionToHitGroupIndex = 0;
+                    const uint multiplierForGeometryContributionToHitGroupIndex = 0;
+                    const uint missShaderIndex = 0;
+
+                    TraceRay( gWorldTlas, rayFlags, instanceInclusionMask, rayContributionToHitGroupIndex, multiplierForGeometryContributionToHitGroupIndex, missShaderIndex, rayDesc, payload );
+                }
+
+                Clight1 += materialProps1.Lsum * throughput1 * float( payload.tmin == INF );
+                //Clight1 *= 0.5; // TODO: should I do it? This part is direct lighting only but the previous is most likely something else...
+            }
+        #endif
 
         // Store output
         float f = abs( geometryProps0.viewZ ) * gUnitsToMetersMultiplier * HIT_DISTANCE_LINEAR_SCALE;
-        hitDist1 *= gUnitsToMetersMultiplier;
+        pathLength *= gUnitsToMetersMultiplier;
 
         if ( isDiffuse )
         {
-            float normDist = saturate( hitDist1 / ( gDiffHitDistScale + f ) );
+            float normDist = saturate( pathLength / ( gDiffHitDistScale + f ) );
             NRD_FrontEnd_PackDiffuse( Clight1, rayDirection1, geometryProps0.viewZ, normDist, diffIndirectA, diffIndirectB );
+
+            if( gSvgf )
+                diffIndirectA = float4( Clight1, normDist );
         }
         else
         {
@@ -519,8 +664,11 @@ void ENTRYPOINT( )
                 Clight1 = STL::Color::ColorizeZucconi( mipNorm );
             }
 
-            float normDist = saturate( hitDist1 / ( gSpecHitDistScale + f ) );
+            float normDist = saturate( pathLength / ( gSpecHitDistScale + f ) );
             specIndirect = NRD_FrontEnd_PackSpecular( Clight1, materialProps0.roughness, normDist );
+
+            if( gSvgf )
+                specIndirect = float4( Clight1, normDist );
         }
 
 #if ( CHECKERBOARD == 0 )
@@ -533,21 +681,38 @@ void ENTRYPOINT( )
     gOut_DiffB[ pixelPos ] = diffIndirectB;
     gOut_SpecHit[ pixelPos ] = specIndirect;
 #else
-    uint2 pixelPosA = uint2( pixelPos.x & ~0x1, pixelPos.y );
-    uint2 pixelPosB = pixelPosA + uint2( 1, 0 );
-
-    if ( isDiffuse )
+    if( gSvgf )
     {
-        gOut_DiffA[ pixelPosA ] = diffIndirectA;
-        gOut_DiffA[ pixelPosB ] = diffIndirectA;
+        // No checkerboard support
+        uint2 pixelPosA = uint2( pixelPos.x & ~0x1, pixelPos.y );
+        uint2 pixelPosB = pixelPosA + uint2( 1, 0 );
 
-        gOut_DiffB[ pixelPosA ] = diffIndirectB;
-        gOut_DiffB[ pixelPosB ] = diffIndirectB;
+        if ( isDiffuse )
+        {
+            gOut_DiffA[ pixelPosA ] = diffIndirectA;
+            gOut_DiffA[ pixelPosB ] = diffIndirectA;
+
+            gOut_DiffB[ pixelPosA ] = diffIndirectB;
+            gOut_DiffB[ pixelPosB ] = diffIndirectB;
+        }
+        else
+        {
+            gOut_SpecHit[ pixelPosA ] = specIndirect;
+            gOut_SpecHit[ pixelPosB ] = specIndirect;
+        }
     }
     else
     {
-        gOut_SpecHit[ pixelPosA ] = specIndirect;
-        gOut_SpecHit[ pixelPosB ] = specIndirect;
+        pixelPos.x >>= 1;
+
+        if( isDiffuse )
+        {
+            gOut_DiffA[ pixelPos ] = diffIndirectA;
+            gOut_DiffB[ pixelPos ] = diffIndirectB;
+        }
+        else
+            gOut_SpecHit[ pixelPos ] = specIndirect;
     }
+
 #endif
 }

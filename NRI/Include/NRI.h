@@ -15,8 +15,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <cstdint>
 
 #define NRI_VERSION_MAJOR 1
-#define NRI_VERSION_MINOR 58
-#define NRI_VERSION_DATE "3 April 2020"
+#define NRI_VERSION_MINOR 59
+#define NRI_VERSION_DATE "28 August 2020"
 #define NRI_INTERFACE( name ) #name, sizeof(name)
 
 #if _WIN32
@@ -26,7 +26,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 #ifndef NRI_API
-    #define NRI_API extern "C" 
+    #define NRI_API extern "C"
 #endif
 
 #include "NRIDescs.h"
@@ -86,7 +86,7 @@ namespace nri
         void (NRI_CALL *CmdSetDescriptorPool)(CommandBuffer& commandBuffer, const DescriptorPool& descriptorPool);
         void (NRI_CALL *CmdPipelineBarrier)(CommandBuffer& commandBuffer, const TransitionBarrierDesc* transitionBarriers, const AliasingBarrierDesc* aliasingBarriers, BarrierDependency dependency);
 
-        void (NRI_CALL *CmdBeginRenderPass)(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag);
+        void (NRI_CALL *CmdBeginRenderPass)(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag);
         void (NRI_CALL *CmdEndRenderPass)(CommandBuffer& commandBuffer);
         void (NRI_CALL *CmdSetViewports)(CommandBuffer& commandBuffer, const Viewport* viewports, uint32_t viewportNum);
         void (NRI_CALL *CmdSetScissors)(CommandBuffer& commandBuffer, const Rect* rects, uint32_t rectNum);

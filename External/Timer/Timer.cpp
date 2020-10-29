@@ -8,7 +8,7 @@
 
 Timer::Timer() // TODO: do it OS independent!
 {
-    uint64_t ticksPerSecond = 0;
+    uint64_t ticksPerSecond = 1;
     BOOL res = QueryPerformanceFrequency((LARGE_INTEGER*)&ticksPerSecond);
     assert(res == TRUE);
 

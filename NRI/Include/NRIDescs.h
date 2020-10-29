@@ -191,7 +191,7 @@ namespace nri
         INDEX_BUFFER                 = SetBit(3),
         CONSTANT_BUFFER              = SetBit(4),
         ARGUMENT_BUFFER              = SetBit(5),
-        RAY_TRACING_SCRATCH_BUFFER   = SetBit(6),
+        RAY_TRACING_BUFFER           = SetBit(6),
         VIRTUAL_ADDRESS              = SetBit(7)
     };
 
@@ -243,6 +243,8 @@ namespace nri
         CLOSEST_HIT,
         ANY_HIT,
         CALLABLE,
+        MESH_CONTROL,
+        MESH_EVALUATION,
 
         MAX_NUM
     };
@@ -262,7 +264,9 @@ namespace nri
         CLOSEST_HIT           = SetBit(10),
         ANY_HIT               = SetBit(11),
         CALLABLE              = SetBit(12),
-        ALL_GRAPHICS          = VERTEX | TESS_CONTROL | TESS_EVALUATION | GEOMETRY | FRAGMENT,
+        MESH_CONTROL          = SetBit(13),
+        MESH_EVALUATION       = SetBit(14),
+        ALL_GRAPHICS          = VERTEX | TESS_CONTROL | TESS_EVALUATION | GEOMETRY | FRAGMENT | MESH_CONTROL | MESH_EVALUATION,
         ALL_RAY_TRACING       = RAYGEN | MISS | INTERSECTION | CLOSEST_HIT | ANY_HIT | CALLABLE
     };
 
@@ -586,10 +590,10 @@ namespace nri
         MAX_NUM
     };
 
-    enum class FramebufferBindFlag : uint8_t
+    enum class RenderPassBeginFlag : uint8_t
     {
         NONE,
-        SKIP_CLEAR,
+        SKIP_FRAME_BUFFER_CLEAR,
 
         MAX_NUM
     };
@@ -640,7 +644,7 @@ namespace nri
     struct DepthStencilClearValue
     {
         float depth;
-        uint32_t stencil;
+        uint8_t stencil;
     };
 
     union ClearValueDesc
@@ -892,7 +896,8 @@ namespace nri
         uint32_t descriptorNum;
         DescriptorType descriptorType;
         ShaderStage visibility;
-        bool isVariableDescriptorNum;
+        bool isDescriptorNumVariable;
+        bool isArray;
     };
 
     struct DynamicConstantBufferDesc
@@ -1229,6 +1234,19 @@ namespace nri
         uint64_t rayTracingShaderTableMaxStride;
         uint32_t rayTracingMaxRecursionDepth;
         uint32_t rayTracingGeometryObjectMaxNum;
+        uint32_t maxMeshTasksCount;
+        uint32_t maxTaskWorkGroupInvocations;
+        uint32_t maxTaskWorkGroupSize[3];
+        uint32_t maxTaskTotalMemorySize;
+        uint32_t maxTaskOutputCount;
+        uint32_t maxMeshWorkGroupInvocations;
+        uint32_t maxMeshWorkGroupSize[3];
+        uint32_t maxMeshTotalMemorySize;
+        uint32_t maxMeshOutputVertices;
+        uint32_t maxMeshOutputPrimitives;
+        uint32_t maxMeshMultiviewViewCount;
+        uint32_t meshOutputPerVertexGranularity;
+        uint32_t meshOutputPerPrimitiveGranularity;
         uint32_t phyiscalDeviceGroupSize;
         uint8_t conservativeRasterTier;
         bool isAPIValidationEnabled : 1;

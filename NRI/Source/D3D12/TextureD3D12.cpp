@@ -41,6 +41,7 @@ Result TextureD3D12::Create(const TextureDesc& textureDesc)
 Result TextureD3D12::Create(const TextureD3D12Desc& textureDesc)
 {
     Initialize((ID3D12Resource*)textureDesc.d3d12Resource);
+    m_Texture->AddRef();
     return Result::SUCCESS;
 }
 

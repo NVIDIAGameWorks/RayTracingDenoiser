@@ -42,7 +42,7 @@ namespace nri
         void SetDescriptorPool(const DescriptorPool& descriptorPool);
         void PipelineBarrier(const TransitionBarrierDesc* transitionBarriers, const AliasingBarrierDesc* aliasingBarriers, BarrierDependency dependency);
 
-        void BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag);
+        void BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag);
         void EndRenderPass();
         void SetViewports(const Viewport* viewports, uint32_t viewportNum);
         void SetScissors(const Rect* rects, uint32_t rectNum);
@@ -102,6 +102,7 @@ namespace nri
             uint32_t accelerationStructureNum, QueryPool& queryPool, uint32_t queryPoolOffset);
 
         void DispatchRays(const DispatchRaysDesc& dispatchRaysDesc);
+        void DispatchMeshTasks(uint32_t taskNum);
 
     private:
         void FillAliasingBufferBarriers(const AliasingBarrierDesc& aliasing, Barriers& barriers) const;

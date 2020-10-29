@@ -55,9 +55,9 @@ static void NRI_CALL CmdSetConstants(CommandBuffer& commandBuffer, uint32_t push
     ((CommandBufferEmuD3D11&)commandBuffer).SetConstants(pushConstantIndex, data, size);
 }
 
-static void NRI_CALL CmdBeginRenderPass(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+static void NRI_CALL CmdBeginRenderPass(CommandBuffer& commandBuffer, const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
-    ((CommandBufferEmuD3D11&)commandBuffer).BeginRenderPass(frameBuffer, bindFlag);
+    ((CommandBufferEmuD3D11&)commandBuffer).BeginRenderPass(frameBuffer, renderPassBeginFlag);
 }
 
 static void NRI_CALL CmdEndRenderPass(CommandBuffer& commandBuffer)

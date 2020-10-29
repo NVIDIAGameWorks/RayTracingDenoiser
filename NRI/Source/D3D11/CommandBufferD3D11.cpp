@@ -200,10 +200,10 @@ void CommandBufferD3D11::ClearStorageTexture(const ClearStorageTextureDesc& clea
         m_Context->ClearUnorderedAccessViewFloat(descriptor, &clearDesc.value.rgba32f.r);
 }
 
-void CommandBufferD3D11::BeginRenderPass(const FrameBuffer& frameBuffer, FramebufferBindFlag bindFlag)
+void CommandBufferD3D11::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
     m_CurrentFrameBuffer = (FrameBufferD3D11*)&frameBuffer;
-    m_CurrentFrameBuffer->Bind(m_Context, bindFlag);
+    m_CurrentFrameBuffer->Bind(m_Context, renderPassBeginFlag);
 }
 
 void CommandBufferD3D11::EndRenderPass()
@@ -355,6 +355,9 @@ void CommandBufferD3D11::CopyTexture(Texture& dstTexture, const TextureRegionDes
         m_Context->CopyResource(dst, src);
     else
     {
+        assert(dstRegionDesc != nullptr);
+        assert(srcRegionDesc != nullptr);
+
         D3D11_BOX srcBox = {};
         srcBox.left = srcRegionDesc->offset[0];
         srcBox.top = srcRegionDesc->offset[1];

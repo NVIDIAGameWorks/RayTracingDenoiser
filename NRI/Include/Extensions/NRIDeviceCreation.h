@@ -24,12 +24,14 @@ namespace nri
         void* (*Allocate)(void* userArg, size_t size, size_t alignment);
         void* (*Reallocate)(void* userArg, void* memory, size_t size, size_t alignment);
         void (*Free)(void* userArg, void* memory);
+        void* userArg;
     };
 
     struct CallbackInterface
     {
         void (*MessageCallback)(void* userArg, const char* message, Message messageType);
         void (*AbortExecution)(void* userArg);
+        void* userArg;
     };
 
     struct DisplayDesc
@@ -64,9 +66,7 @@ namespace nri
     {
         const PhysicalDeviceGroup* physicalDeviceGroup;
         CallbackInterface callbackInterface;
-        void* callbackInterfaceUserArg;
         MemoryAllocatorInterface memoryAllocatorInterface;
-        void* memoryAllocatorInterfaceUserArg;
         GraphicsAPI graphicsAPI;
         SPIRVBindingOffsets spirvBindingOffsets;
         VulkanExtensions vulkanExtensions;

@@ -26,11 +26,10 @@ DescriptorPoolVK::DescriptorPoolVK(DeviceVK& device) :
 
 DescriptorPoolVK::~DescriptorPoolVK()
 {
-    const auto& lowLevelAllocator = *m_Device.GetStdAllocator().GetInterface();
-    const auto& lowLevelAllocatorArg = m_Device.GetStdAllocator().GetUserArg();
+    const auto& lowLevelAllocator = m_Device.GetStdAllocator().GetInterface();
 
     for (size_t i = m_UsedSets; i < m_AllocatedSets.size(); i++)
-        lowLevelAllocator.Free(lowLevelAllocatorArg, m_AllocatedSets[i]);
+        lowLevelAllocator.Free(lowLevelAllocator.userArg, m_AllocatedSets[i]);
 
     const auto& vk = m_Device.GetDispatchTable();
     if (m_Handle != VK_NULL_HANDLE && m_OwnsNativeObjects)
@@ -54,7 +53,6 @@ Result DescriptorPoolVK::Create(const DescriptorPoolDesc& descriptorPoolDesc)
     const auto& vk = m_Device.GetDispatchTable();
 
     VkDescriptorPoolSize descriptorPoolSizeArray[16] = {};
-
     for (uint32_t i = 0; i < GetCountOf(descriptorPoolSizeArray); i++)
         descriptorPoolSizeArray[i].type = (VkDescriptorType)i;
 
@@ -124,12 +122,11 @@ Result DescriptorPoolVK::AllocateDescriptorSets(const PipelineLayout& pipelineLa
         const uint32_t prevSetNum = (uint32_t)m_AllocatedSets.size();
         m_AllocatedSets.resize(prevSetNum + newSetNum);
 
-        const auto& lowLevelAllocator = *m_Device.GetStdAllocator().GetInterface();
-        const auto& lowLevelAllocatorArg = m_Device.GetStdAllocator().GetUserArg();
+        const auto& lowLevelAllocator = m_Device.GetStdAllocator().GetInterface();
 
         for (size_t i = 0; i < newSetNum; i++)
         {
-            m_AllocatedSets[prevSetNum + i] = (DescriptorSetVK*)lowLevelAllocator.Allocate(lowLevelAllocatorArg,
+            m_AllocatedSets[prevSetNum + i] = (DescriptorSetVK*)lowLevelAllocator.Allocate(lowLevelAllocator.userArg,
                 sizeof(DescriptorSetVK), alignof(DescriptorSetVK));
         }
     }

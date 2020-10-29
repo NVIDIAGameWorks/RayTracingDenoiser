@@ -38,6 +38,10 @@ constexpr D3D12_ROOT_SIGNATURE_FLAGS GetRootSignatureStageFlags(const PipelineLa
         flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
     if (!(pipelineLayoutDesc.stageMask & PipelineLayoutShaderStageBits::FRAGMENT))
         flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    if (!(pipelineLayoutDesc.stageMask & PipelineLayoutShaderStageBits::MESH_CONTROL))
+        flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_AMPLIFICATION_SHADER_ROOT_ACCESS;
+    if (!(pipelineLayoutDesc.stageMask & PipelineLayoutShaderStageBits::MESH_EVALUATION))
+        flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_MESH_SHADER_ROOT_ACCESS;
 
     return flags;
 }
@@ -127,18 +131,18 @@ Result PipelineLayoutD3D12::Create(const PipelineLayoutDesc& pipelineLayoutDesc)
 
         if (descriptorSetDesc.dynamicConstantBufferNum)
         {
-            D3D12_ROOT_PARAMETER1 rootParameter = {};
-            rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-            rootParameter.Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_NONE;
+            D3D12_ROOT_PARAMETER1 rootParameterLocal = {};
+            rootParameterLocal.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+            rootParameterLocal.Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_NONE;
             m_DynamicConstantBufferMappings[i].constantNum = (uint16_t)descriptorSetDesc.dynamicConstantBufferNum;
             m_DynamicConstantBufferMappings[i].rootOffset = (uint16_t)rootParameters.size();
 
             for (uint32_t j = 0; j < descriptorSetDesc.dynamicConstantBufferNum; j++)
             {
-                rootParameter.Descriptor.ShaderRegister = descriptorSetDesc.dynamicConstantBuffers[j].registerIndex;
-                rootParameter.Descriptor.RegisterSpace = i;
-                rootParameter.ShaderVisibility = GetShaderVisibility(descriptorSetDesc.dynamicConstantBuffers[j].visibility);
-                rootParameters.push_back(rootParameter);
+                rootParameterLocal.Descriptor.ShaderRegister = descriptorSetDesc.dynamicConstantBuffers[j].registerIndex;
+                rootParameterLocal.Descriptor.RegisterSpace = i;
+                rootParameterLocal.ShaderVisibility = GetShaderVisibility(descriptorSetDesc.dynamicConstantBuffers[j].visibility);
+                rootParameters.push_back(rootParameterLocal);
             }
         }
         else
@@ -187,15 +191,15 @@ Result PipelineLayoutD3D12::Create(const PipelineLayoutDesc& pipelineLayoutDesc)
     {
         m_PushConstantsBaseIndex = (uint32_t)rootParameters.size();
 
-        D3D12_ROOT_PARAMETER1 rootParameter = {};
-        rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        D3D12_ROOT_PARAMETER1 rootParameterLocal = {};
+        rootParameterLocal.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         for (uint32_t i = 0; i < pipelineLayoutDesc.pushConstantNum; i++)
         {
-            rootParameter.ShaderVisibility = GetShaderVisibility(pipelineLayoutDesc.pushConstants[i].visibility);
-            rootParameter.Constants.ShaderRegister = pipelineLayoutDesc.pushConstants[i].registerIndex;
-            rootParameter.Constants.RegisterSpace = 0;
-            rootParameter.Constants.Num32BitValues = pipelineLayoutDesc.pushConstants[i].size / 4;
-            rootParameters.push_back(rootParameter);
+            rootParameterLocal.ShaderVisibility = GetShaderVisibility(pipelineLayoutDesc.pushConstants[i].visibility);
+            rootParameterLocal.Constants.ShaderRegister = pipelineLayoutDesc.pushConstants[i].registerIndex;
+            rootParameterLocal.Constants.RegisterSpace = 0;
+            rootParameterLocal.Constants.Num32BitValues = pipelineLayoutDesc.pushConstants[i].size / 4;
+            rootParameters.push_back(rootParameterLocal);
         }
     }
 

@@ -26,13 +26,14 @@ workspace "SANDBOX"
     cppdialect "C++17"
     startproject "CompileShaders"
     location (workspaceDir)
-    disablewarnings { "4577" }
+    disablewarnings { "4577", "4324", "4100" }
     startproject "09_RayTracing_NRD"
     debugargs { "Please, install Smart Command Line Arguments for Visual Studio" }
+    warnings "Extra"
 
     filter { "configurations:Release" }
         optimize "Full"
-        flags { "LinkTimeOptimization", "FatalCompileWarnings", "MultiProcessorCompile", "NoPCH", "UndefinedIdentifiers", "NoIncrementalLink" }
+        flags { "FatalCompileWarnings", "MultiProcessorCompile", "NoPCH", "UndefinedIdentifiers", "NoIncrementalLink" }
     filter {}
 
     filter { "configurations:Debug" }
@@ -71,6 +72,7 @@ workspace "SANDBOX"
             location (workspaceDir.."/%{prj.name}")
             files { targetDepsDir.."/%{prj.name}/*"}
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
+            warnings "Default"
 
         project "Detex"
             kind "StaticLib"
@@ -78,13 +80,14 @@ workspace "SANDBOX"
             files { targetDepsDir.."/%{prj.name}/*"}
             vpaths { ["Sources"] = {"**.c", "**.h"} }
             defines { "_CRT_SECURE_NO_WARNINGS" }
+            warnings "Default"
 
     group "NRD"
         project "NRD"
             kind "SharedLib"
             location (workspaceDir.."/%{prj.name}")
             includedirs { "%{prj.name}/Include", "External" }
-            files { "%{prj.name}/Source/**", "%{prj.name}/Include/**", "External/MathLib/mathlib.cpp", "External/Timer/*" }
+            files { "%{prj.name}/Source/**", "%{prj.name}/Include/**", "External/MathLib/mathlib.cpp", "External/Timer/*", "External/StdAllocator/*" }
             vpaths { ["Methods"] = "**.hpp" }
             vpaths { ["Sources"] = {"**.cpp", "**.h", "**.rc"} }
             defines { "WIN32_LEAN_AND_MEAN", "NOMINMAX", "NRD_API=extern \"C\" __declspec(dllexport)" }
@@ -100,7 +103,7 @@ workspace "SANDBOX"
             kind "StaticLib"
             location (workspaceDir.."/%{prj.name}")
             includedirs { incs, targetDepsDir.."/**" }
-            files { src.."D3D11/*", inc.."**.h", src.."Shared/*" }
+            files { src.."D3D11/*", inc.."**.h", src.."Shared/*", "External/StdAllocator/*"  }
             vpaths { ["NRI"] = inc.."**.h" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             defines { defs, "D3D11_NO_HELPERS" }
@@ -109,7 +112,7 @@ workspace "SANDBOX"
             kind "StaticLib"
             location (workspaceDir.."/%{prj.name}")
             includedirs { incs }
-            files { src.."D3D12/*", inc.."**.h", src.."Shared/*" }
+            files { src.."D3D12/*", inc.."**.h", src.."Shared/*", "External/StdAllocator/*"  }
             vpaths { ["NRI"] = inc.."**.h" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             defines { defs }
@@ -119,7 +122,7 @@ workspace "SANDBOX"
             location (workspaceDir.."/%{prj.name}")
             includedirs { incs, VK_SDK_PATH }
             libdirs { VK_SDK_PATH }
-            files { src.."VK/*", inc.."**.h", src.."Shared/*" }
+            files { src.."VK/*", inc.."**.h", src.."Shared/*", "External/StdAllocator/*"  }
             vpaths { ["NRI"] = inc.."**.h" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             defines { defs }
@@ -128,7 +131,7 @@ workspace "SANDBOX"
             kind "StaticLib"
             location (workspaceDir.."/%{prj.name}")
             includedirs { incs }
-            files { src.."Validation/*", inc.."**.h", src.."Shared/*" }
+            files { src.."Validation/*", inc.."**.h", src.."Shared/*", "External/StdAllocator/*"  }
             vpaths { ["NRI"] = inc.."**.h" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             defines { defs }
@@ -276,7 +279,7 @@ workspace "SANDBOX"
             kind "WindowedApp"
             location (workspaceDir.."/%{prj.name}")
             includedirs { inc, "NRD/Include", "NRD/Integration", VK_SDK_PATH }
-            files { dir.."%{prj.name}.cpp" }
+            files { dir.."%{prj.name}.cpp", "NRD/Integration/*.*" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             defines { "PROJECT_NAME=%{prj.name}" }
             links { lnks, "NRD" }

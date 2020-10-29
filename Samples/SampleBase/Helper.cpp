@@ -243,7 +243,7 @@ struct Uploader
 private:
     nri::Result BeginCommandBuffers();
     nri::Result EndCommandBuffersAndSubmit();
-    bool CopyTextureContent(const helper::TextureDataDesc& textureDataDesc, uint32_t& arrayOffset, uint32_t& mipOffset, bool& isCapacityInsufficient);
+    bool CopyTextureContent(const helper::TextureDataDesc& textureDataDesc, uint16_t& arrayOffset, uint16_t& mipOffset, bool& isCapacityInsufficient);
     void CopyTextureSubresourceContent(const helper::TextureSubresource& subresource, uint64_t alignedRowPitch, uint64_t alignedSlicePitch);
     bool CopyBufferContent(const helper::BufferDataDesc& bufferDataDesc, uint64_t& bufferContentOffset);
     template<bool isInitialTransition>
@@ -337,8 +337,8 @@ nri::Result Uploader::UploadTextures(const helper::TextureDataDesc* textureDataD
         return result;
 
     uint32_t i = 0;
-    uint32_t arrayOffset = 0;
-    uint32_t mipOffset = 0;
+    uint16_t arrayOffset = 0;
+    uint16_t mipOffset = 0;
 
     while (i < textureDataDescNum)
     {
@@ -430,7 +430,7 @@ nri::Result Uploader::EndCommandBuffersAndSubmit()
     return nri::Result::SUCCESS;
 }
 
-bool Uploader::CopyTextureContent(const helper::TextureDataDesc& textureDataDesc, uint32_t& arrayOffset, uint32_t& mipOffset, bool& isCapacityInsufficient)
+bool Uploader::CopyTextureContent(const helper::TextureDataDesc& textureDataDesc, uint16_t& arrayOffset, uint16_t& mipOffset, bool& isCapacityInsufficient)
 {
     if (textureDataDesc.subresources == nullptr)
         return true;
@@ -444,7 +444,7 @@ bool Uploader::CopyTextureContent(const helper::TextureDataDesc& textureDataDesc
             const uint32_t sliceRowNum = subresource.slicePitch / subresource.rowPitch;
             const uint32_t alignedRowPitch = helper::GetAlignedSize(subresource.rowPitch, m_DeviceDesc.uploadBufferTextureRowAlignment);
             const uint32_t alignedSlicePitch = helper::GetAlignedSize(sliceRowNum * alignedRowPitch, m_DeviceDesc.uploadBufferTextureSliceAlignment);
-            const uint64_t mipLevelContentSize = alignedSlicePitch * subresource.sliceNum;
+            const uint64_t mipLevelContentSize = uint64_t(alignedSlicePitch) * subresource.sliceNum;
             const uint64_t freeSpace = m_UploadBufferSize - m_UploadBufferOffset;
 
             if (mipLevelContentSize > freeSpace)
@@ -501,6 +501,9 @@ void Uploader::CopyTextureSubresourceContent(const helper::TextureSubresource& s
 
 bool Uploader::CopyBufferContent(const helper::BufferDataDesc& bufferDataDesc, uint64_t& bufferContentOffset)
 {
+    if (bufferDataDesc.dataSize == 0)
+        return true;
+
     const uint64_t freeSpace = m_UploadBufferSize - m_UploadBufferOffset;
     const uint64_t copySize = std::min(bufferDataDesc.dataSize - bufferContentOffset, freeSpace);
 
@@ -603,7 +606,7 @@ nri::Result Uploader::DoTransition(const helper::BufferDataDesc* bufferDataDescs
 
             if (isInitialTransition)
             {
-                bufferTransition.prevAccess = nri::AccessBits::UNKNOWN;
+                bufferTransition.prevAccess = bufferDataDesc.prevAccess;
                 bufferTransition.nextAccess = nri::AccessBits::COPY_DESTINATION;
             }
             else

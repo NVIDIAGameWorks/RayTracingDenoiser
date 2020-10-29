@@ -42,14 +42,18 @@ Result BufferVK::Create(const BufferDesc& bufferDesc)
     m_OwnsNativeObjects = true;
     m_Size = bufferDesc.size;
 
-    VkBufferCreateInfo info = {
-        VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        nullptr,
-        (VkBufferCreateFlags)0,
-        bufferDesc.size,
-        GetBufferUsageFlags(bufferDesc.usageMask, bufferDesc.structureStride),
-        VK_SHARING_MODE_EXCLUSIVE,
-    };
+    const VkSharingMode sharingMode =
+        m_Device.IsConcurrentSharingModeEnabledForBuffers() ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+
+    const Vector<uint32_t>& queueIndices = m_Device.GetConcurrentSharingModeQueueIndices();
+
+    VkBufferCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    info.size = bufferDesc.size;
+    info.usage = GetBufferUsageFlags(bufferDesc.usageMask, bufferDesc.structureStride);
+    info.sharingMode = sharingMode;
+    info.queueFamilyIndexCount = (uint32_t)queueIndices.size();
+    info.pQueueFamilyIndices = queueIndices.data();
 
     const auto& vk = m_Device.GetDispatchTable();
 
@@ -110,7 +114,7 @@ void BufferVK::SetHostMemory(MemoryVK& memory, uint64_t memoryOffset)
 
 void BufferVK::SetDebugName(const char* name)
 {
-    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_BUFFER, (void**)m_Handles, name);
+    m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_BUFFER, (void**)m_Handles.data(), name);
 }
 
 void BufferVK::GetMemoryInfo(MemoryLocation memoryLocation, MemoryDesc& memoryDesc) const

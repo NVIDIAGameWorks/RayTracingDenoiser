@@ -171,7 +171,7 @@ bool UserInterface::Initialize(HWND hwnd, nri::Device& device, const nri::CoreIn
         nri::InputAssemblyDesc inputAssemblyDesc = {};
         inputAssemblyDesc.topology = nri::Topology::TRIANGLE_LIST;
         inputAssemblyDesc.attributes = vertexAttributeDesc;
-        inputAssemblyDesc.attributeNum = helper::GetCountOf(vertexAttributeDesc);
+        inputAssemblyDesc.attributeNum = (uint8_t)helper::GetCountOf(vertexAttributeDesc);
         inputAssemblyDesc.streams = &vertexStreamDesc;
         inputAssemblyDesc.streamNum = 1;
 
@@ -627,34 +627,36 @@ void SampleBase::GetCameraDescFromInputDevices(CameraDesc& cameraDesc)
     if (m_Input.IsButtonPressed(Button::Right))
     {
         if (m_Input.GetMouseWheel() > 0.0f)
-            m_Camera.m_MotionScale *= 1.1f;
+            m_Camera.state.motionScale *= 1.1f;
         else if (m_Input.GetMouseWheel() < 0.0f)
-            m_Camera.m_MotionScale /= 1.1f;
+            m_Camera.state.motionScale /= 1.1f;
+
+        float motionScale = m_Camera.state.motionScale;
 
         cameraDesc.dYaw = -m_Input.GetMouseDx();
         if (m_Input.IsKeyPressed(Key::Right))
-            cameraDesc.dYaw -= m_Camera.m_MotionScale;
+            cameraDesc.dYaw -= motionScale;
         if (m_Input.IsKeyPressed(Key::Left))
-            cameraDesc.dYaw += m_Camera.m_MotionScale;
+            cameraDesc.dYaw += motionScale;
 
         cameraDesc.dPitch = -m_Input.GetMouseDy();
         if (m_Input.IsKeyPressed(Key::Up))
-            cameraDesc.dPitch += m_Camera.m_MotionScale;
+            cameraDesc.dPitch += motionScale;
         if (m_Input.IsKeyPressed(Key::Down))
-            cameraDesc.dPitch -= m_Camera.m_MotionScale;
+            cameraDesc.dPitch -= motionScale;
 
         if (m_Input.IsKeyPressed(Key::W))
-            cameraDesc.dLocal.z += m_Camera.m_MotionScale;
+            cameraDesc.dLocal.z += motionScale;
         if (m_Input.IsKeyPressed(Key::S))
-            cameraDesc.dLocal.z -= m_Camera.m_MotionScale;
+            cameraDesc.dLocal.z -= motionScale;
         if (m_Input.IsKeyPressed(Key::D))
-            cameraDesc.dLocal.x += m_Camera.m_MotionScale;
+            cameraDesc.dLocal.x += motionScale;
         if (m_Input.IsKeyPressed(Key::A))
-            cameraDesc.dLocal.x -= m_Camera.m_MotionScale;
+            cameraDesc.dLocal.x -= motionScale;
         if (m_Input.IsKeyPressed(Key::E))
-            cameraDesc.dLocal.y += m_Camera.m_MotionScale;
+            cameraDesc.dLocal.y += motionScale;
         if (m_Input.IsKeyPressed(Key::Q))
-            cameraDesc.dLocal.y -= m_Camera.m_MotionScale;
+            cameraDesc.dLocal.y -= motionScale;
     }
 }
 

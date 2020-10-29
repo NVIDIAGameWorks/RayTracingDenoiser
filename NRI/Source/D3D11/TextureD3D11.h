@@ -44,7 +44,7 @@ namespace nri
 
         inline uint16_t GetSize(uint32_t dimension, uint32_t mipOffset = 0) const
         {
-            const uint16_t size = GetAlignedSize( std::max(m_Desc.size[dimension] >> mipOffset, 1), GetTexelBlockWidth(m_Desc.format) );
+            const uint16_t size = (uint16_t)GetAlignedSize( std::max(m_Desc.size[dimension] >> mipOffset, 1), GetTexelBlockWidth(m_Desc.format) );
             return (dimension <= (uint32_t)m_Desc.type) ? size : 1;
         }
 

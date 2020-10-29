@@ -38,9 +38,8 @@ namespace nri
 
     private:
         DeviceD3D12& m_Device;
-        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS m_AccelerationStructureInputs = {};
         D3D12_RAYTRACING_GEOMETRY_DESC* m_GeometryDescs = nullptr;
-        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO m_PrebuildInfo;
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO m_PrebuildInfo = {};
         BufferD3D12* m_Buffer = nullptr;
     };
 

@@ -12,8 +12,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
+    float4x4 gViewToClip;
+    float4 gFrustum;
     float2 gInvScreenSize;
+    float2 padding;
+    float gMetersToUnits;
+    float gIsOrtho;
+    float gUnproject;
     float gDebug;
+    float gInf;
+    uint gCheckerboard;
+    uint gFrameIndex;
+    uint gWorldSpaceMotion;
 };
 
 #include "NRD_Common.hlsl"
@@ -35,6 +45,8 @@ NRI_RESOURCE( RWTexture2D<float>, gOut_B_x16, u, 7, 0 );
 groupshared float4 s_TempA[ 17 ][ 17 ];
 groupshared float s_TempB[ 17 ][ 17 ];
 
+// TODO: Since specular values are compressed it would be better to take compression into account, otherwise there is a risk to add high energy ( from
+// high roughness ) to highly compressed value ( for low roughness )... which will be later decompressed ( and will get even more energy on top )
 #define DO_REDUCTION \
 { \
     float4 w = float4( abs( float4( b00, b10, b01, b11 ) ) != NRD_FP16_MAX ); \

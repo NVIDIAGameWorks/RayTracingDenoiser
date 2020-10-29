@@ -174,9 +174,9 @@ Result SwapChainD3D11::Create(const VersionedDevice& device, const SwapChainDesc
         hr = m_SwapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
         RETURN_ON_BAD_HRESULT(m_Device.GetLog(), hr, "IDXGISwapChain::GetBuffer() - FAILED!");
 
-        TextureD3D11Desc desc = {};
-        desc.d3d11Resource = backBuffer;
-        m_RenderTargets[i].Create(m_Device, desc);
+        TextureD3D11Desc textureDesc = {};
+        textureDesc.d3d11Resource = backBuffer;
+        m_RenderTargets[i].Create(m_Device, textureDesc);
 
         m_RenderTargetPointers.push_back((Texture*)&m_RenderTargets[i]);
     }
@@ -194,7 +194,7 @@ inline void SwapChainD3D11::SetDebugName(const char* name)
     SetName(m_SwapChain.ptr, name);
 }
 
-inline Texture* const* const SwapChainD3D11::GetTextures(uint32_t& textureNum, Format& format) const
+inline Texture* const* SwapChainD3D11::GetTextures(uint32_t& textureNum, Format& format) const
 {
     textureNum = m_SwapChainDesc.textureNum;
     format = m_Format;
