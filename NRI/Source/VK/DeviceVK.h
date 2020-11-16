@@ -25,8 +25,9 @@ namespace nri
 
         const DispatchTable& GetDispatchTable() const;
         const VkAllocationCallbacks* GetAllocationCallbacks() const;
-        const auto& GetQueueFamilyIndices() const;
+        const std::array<uint32_t, COMMAND_QUEUE_TYPE_NUM>& GetQueueFamilyIndices() const;
         const SPIRVBindingOffsets& GetSPIRVBindingOffsets() const;
+        const CoreInterface& GetCoreInterface() const;
 
         Result Create(const DeviceCreationVulkanDesc& deviceCreationVulkanDesc);
         Result Create(const DeviceCreationDesc& deviceCreationDesc);
@@ -100,6 +101,9 @@ namespace nri
 
         FormatSupportBits GetFormatSupport(Format format) const;
 
+        uint32_t CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const;
+        Result AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, Memory** allocations);
+
         //================================================================================================================
         // DeviceBase
         //================================================================================================================
@@ -109,6 +113,7 @@ namespace nri
         Result FillFunctionTable(WrapperVKInterface& wrapperVKInterface) const;
         Result FillFunctionTable(RayTracingInterface& rayTracingInterface) const;
         Result FillFunctionTable(MeshShaderInterface& meshShaderInterface) const;
+        Result FillFunctionTable(HelperInterface& helperInterface) const;
 
     private:
         Result CreateInstance(const DeviceCreationDesc& deviceCreationDesc);
@@ -143,6 +148,7 @@ namespace nri
         VkAllocationCallbacks m_AllocationCallbacks = {};
         VkDebugUtilsMessengerEXT m_Messenger = VK_NULL_HANDLE;
         SPIRVBindingOffsets m_SPIRVBindingOffsets = {};
+        CoreInterface m_CoreInterface = {};
         Lock m_Lock;
         bool m_OwnsNativeObjects = false;
         bool m_IsRayTracingExtSupported = false;
@@ -181,7 +187,7 @@ namespace nri
         return m_AllocationCallbackPtr;
     }
 
-    inline const auto& DeviceVK::GetQueueFamilyIndices() const
+    inline const std::array<uint32_t, COMMAND_QUEUE_TYPE_NUM>& DeviceVK::GetQueueFamilyIndices() const
     {
         return m_FamilyIndices;
     }
@@ -189,6 +195,11 @@ namespace nri
     inline const SPIRVBindingOffsets& DeviceVK::GetSPIRVBindingOffsets() const
     {
         return m_SPIRVBindingOffsets;
+    }
+
+    inline const CoreInterface& DeviceVK::GetCoreInterface() const
+    {
+        return m_CoreInterface;
     }
 
     inline uint32_t DeviceVK::GetPhyiscalDeviceGroupSize() const

@@ -95,6 +95,105 @@ namespace nri
     {
         return DESCRIPTOR_TYPE_NAME[(uint32_t)descriptorType];
     }
+
+    constexpr bool IsAccessMaskSupported(BufferUsageBits usageMask, AccessBits accessMask)
+    {
+        BufferUsageBits requiredUsageMask = BufferUsageBits::NONE;
+
+        if (accessMask & AccessBits::VERTEX_BUFFER)
+            requiredUsageMask |= BufferUsageBits::VERTEX_BUFFER;
+
+        if (accessMask & AccessBits::INDEX_BUFFER)
+            requiredUsageMask |= BufferUsageBits::INDEX_BUFFER;
+
+        if (accessMask & AccessBits::CONSTANT_BUFFER)
+            requiredUsageMask |= BufferUsageBits::CONSTANT_BUFFER;
+
+        if (accessMask & AccessBits::ARGUMENT_BUFFER)
+            requiredUsageMask |= BufferUsageBits::ARGUMENT_BUFFER;
+
+        if (accessMask & AccessBits::SHADER_RESOURCE)
+            requiredUsageMask |= BufferUsageBits::SHADER_RESOURCE;
+
+        if (accessMask & AccessBits::SHADER_RESOURCE_STORAGE)
+            requiredUsageMask |= BufferUsageBits::SHADER_RESOURCE_STORAGE;
+
+        if (accessMask & AccessBits::COLOR_ATTACHMENT)
+            return false;
+
+        if (accessMask & AccessBits::DEPTH_STENCIL_WRITE)
+            return false;
+
+        if (accessMask & AccessBits::DEPTH_STENCIL_READ)
+            return false;
+
+        if (accessMask & AccessBits::ACCELERATION_STRUCTURE_READ)
+            return false;
+
+        if (accessMask & AccessBits::ACCELERATION_STRUCTURE_WRITE)
+            return false;
+
+        return (uint32_t)(requiredUsageMask & usageMask) == (uint32_t)requiredUsageMask;
+    }
+
+    constexpr bool IsAccessMaskSupported(TextureUsageBits usageMask, AccessBits accessMask)
+    {
+        TextureUsageBits requiredUsageMask = TextureUsageBits::NONE;
+
+        if (accessMask & AccessBits::VERTEX_BUFFER)
+            return false;
+
+        if (accessMask & AccessBits::INDEX_BUFFER)
+            return false;
+
+        if (accessMask & AccessBits::CONSTANT_BUFFER)
+            return false;
+
+        if (accessMask & AccessBits::ARGUMENT_BUFFER)
+            return false;
+
+        if (accessMask & AccessBits::SHADER_RESOURCE)
+            requiredUsageMask |= TextureUsageBits::SHADER_RESOURCE;
+
+        if (accessMask & AccessBits::SHADER_RESOURCE_STORAGE)
+            requiredUsageMask |= TextureUsageBits::SHADER_RESOURCE_STORAGE;
+
+        if (accessMask & AccessBits::COLOR_ATTACHMENT)
+            requiredUsageMask |= TextureUsageBits::COLOR_ATTACHMENT;
+
+        if (accessMask & AccessBits::DEPTH_STENCIL_WRITE)
+            requiredUsageMask |= TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
+
+        if (accessMask & AccessBits::DEPTH_STENCIL_READ)
+            requiredUsageMask |= TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
+
+        if (accessMask & AccessBits::ACCELERATION_STRUCTURE_READ)
+            return false;
+
+        if (accessMask & AccessBits::ACCELERATION_STRUCTURE_WRITE)
+            return false;
+
+        return (uint32_t)(requiredUsageMask & usageMask) == (uint32_t)requiredUsageMask;
+    }
+
+    constexpr std::array<TextureUsageBits, (size_t)TextureLayout::MAX_NUM> TEXTURE_USAGE_FOR_TEXTURE_LAYOUT_TABLE = {
+        TextureUsageBits::NONE, // GENERAL
+        TextureUsageBits::COLOR_ATTACHMENT, // COLOR_ATTACHMENT
+        TextureUsageBits::DEPTH_STENCIL_ATTACHMENT, // DEPTH_STENCIL
+        TextureUsageBits::DEPTH_STENCIL_ATTACHMENT, // DEPTH_STENCIL_READONLY
+        TextureUsageBits::DEPTH_STENCIL_ATTACHMENT, // DEPTH_READONLY
+        TextureUsageBits::DEPTH_STENCIL_ATTACHMENT, // STENCIL_READONLY
+        TextureUsageBits::SHADER_RESOURCE, // SHADER_RESOURCE
+        TextureUsageBits::NONE, // PRESENT
+        TextureUsageBits::NONE // UNKNOWN
+    };
+
+    constexpr bool IsTextureLayoutSupported(TextureUsageBits usageMask, TextureLayout textureLayout)
+    {
+        const TextureUsageBits requiredMask = TEXTURE_USAGE_FOR_TEXTURE_LAYOUT_TABLE[(size_t)textureLayout];
+
+        return (uint32_t)(requiredMask & usageMask) == (uint32_t)requiredMask;
+    }
 }
 
 #define NRI_GET_IMPL(className, object) \

@@ -15,6 +15,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
+    , public nri::HelperInterface
 {};
 
 struct Frame
@@ -52,7 +53,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (Frame& frame : m_Frames)
     {
@@ -88,6 +89,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // NRI
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     // Command queue
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue) );

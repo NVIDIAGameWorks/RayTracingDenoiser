@@ -57,12 +57,16 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
             methodData.settingsSize = AddMethod_NrdDiffuse(w, h);
         else if (methodDesc.method == Method::NRD_SPECULAR)
             methodData.settingsSize = AddMethod_NrdSpecular(w, h);
+        else if (methodDesc.method == Method::NRD_DIFFUSE_SPECULAR)
+            methodData.settingsSize = AddMethod_NrdDiffuseSpecular(w, h);
         else if (methodDesc.method == Method::NRD_SHADOW)
             methodData.settingsSize = AddMethod_NrdShadow(w, h);
         else if (methodDesc.method == Method::NRD_TRANSLUCENT_SHADOW)
             methodData.settingsSize = AddMethod_NrdTranslucentShadow(w, h);
         else if (methodDesc.method == Method::SVGF)
             methodData.settingsSize = AddMethod_Svgf(w, h);
+        else
+            return Result::INVALID_ARGUMENT;
 
         methodData.dispatchNum = m_Dispatches.size() - methodData.dispatchOffset;
         methodData.constantNum = m_Constants.size() - methodData.constantOffset;
@@ -94,11 +98,12 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
         if (updatePingPong)
             UpdatePingPong(methodData); // TODO: swap only if frameIndex has changed?
 
-
         if (methodData.desc.method == Method::NRD_DIFFUSE)
             UpdateMethod_NrdDiffuse(methodData);
         else if (methodData.desc.method == Method::NRD_SPECULAR)
             UpdateMethod_NrdSpecular(methodData);
+        else if (methodData.desc.method == Method::NRD_DIFFUSE_SPECULAR)
+            UpdateMethod_NrdDiffuseSpecular(methodData);
         else if (methodData.desc.method == Method::NRD_SHADOW)
             UpdateMethod_NrdShadow(methodData);
         else if (methodData.desc.method == Method::NRD_TRANSLUCENT_SHADOW)
@@ -291,24 +296,22 @@ void DenoiserImpl::UpdatePingPong(const MethodData& methodData)
     }
 }
 
-void DenoiserImpl::AddSharedConstants(const MethodData& methodData, CheckerboardMode checkerboardMode, Constant*& data)
+void DenoiserImpl::AddSharedConstants(const MethodData& methodData, Constant*& data)
 {
     float w = float(methodData.desc.fullResolutionWidth);
     float h = float(methodData.desc.fullResolutionHeight);
     float unproject = 1.0f / (0.5f * h * m_ProjectY);
 
-    uint32_t checkerboard = ((uint32_t)checkerboardMode + 2) % 3;
-
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4(data, m_Frustum);
     AddFloat2(data, 1.0f / w, 1.0f / h);
-    AddFloat2(data, 0.0f, 0.0f); // TODO: padding / unused
+    AddFloat2(data, w, h);
     AddFloat(data, m_CommonSettings.metersToUnitsMultiplier);
     AddFloat(data, m_IsOrtho);
     AddFloat(data, unproject);
     AddFloat(data, m_CommonSettings.debug);
     AddFloat(data, m_CommonSettings.denoisingRange);
-    AddUint(data, checkerboard);
+    AddFloat(data, m_CommonSettings.forceReferenceAccumulation ? 1.0f : 0.0f);
     AddUint(data, m_CommonSettings.frameIndex);
     AddUint(data, m_CommonSettings.worldSpaceMotion ? 1 : 0);
 }
@@ -441,6 +444,14 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Specular_PostBlur.cs.dxbc.h"
 
+// NRD_DIFFUSE_SPECULAR
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PreBlur.cs.dxbc.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_HistoryFix.cs.dxbc.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_Blur.cs.dxbc.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalStabilization.cs.dxbc.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PostBlur.cs.dxbc.h"
+
 // NRD_SHADOW
 #include "..\..\_Build\Shaders\NRD_Shadow_PreBlur.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Shadow_Blur.cs.dxbc.h"
@@ -475,6 +486,14 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "..\..\_Build\Shaders\NRD_Specular_Blur.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Specular_PostBlur.cs.dxil.h"
+
+// NRD_DIFFUSE_SPECULAR
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PreBlur.cs.dxil.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_HistoryFix.cs.dxil.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_Blur.cs.dxil.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalStabilization.cs.dxil.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PostBlur.cs.dxil.h"
 
 // NRD_SHADOW
 #include "..\..\_Build\Shaders\NRD_Shadow_PreBlur.cs.dxil.h"
@@ -511,6 +530,14 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Specular_PostBlur.cs.spirv.h"
 
+// NRD_DIFFUSE_SPECULAR
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PreBlur.cs.spirv.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_HistoryFix.cs.spirv.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_Blur.cs.spirv.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
+#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PostBlur.cs.spirv.h"
+
 // NRD_SHADOW
 #include "..\..\_Build\Shaders\NRD_Shadow_PreBlur.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Shadow_Blur.cs.spirv.h"
@@ -530,6 +557,7 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
 #include "Methods/NrdDiffuse.hpp"
 #include "Methods/NrdSpecular.hpp"
+#include "Methods/NrdDiffuseSpecular.hpp"
 #include "Methods/NrdShadow.hpp"
 #include "Methods/NrdTranslucentShadow.hpp"
 #include "Methods/Svgf.hpp"

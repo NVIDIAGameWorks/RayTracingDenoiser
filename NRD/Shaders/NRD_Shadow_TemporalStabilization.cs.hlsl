@@ -15,13 +15,13 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gViewToClip;
     float4 gFrustum;
     float2 gInvScreenSize;
-    float2 padding;
+    float2 gScreenSize;
     float gMetersToUnits;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    uint gCheckerboard;
+    float gReference;
     uint gFrameIndex;
     uint gWorldSpaceMotion;
 
@@ -167,7 +167,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     SHADOW_TYPE historyClamped = clamp( history, inputMin, inputMax );
 
     // Dither
-    STL::Rng::Initialize( pixelPos, gFrameIndex );
+    STL::Rng::Initialize( pixelPos, gFrameIndex + 3 );
     float2 rnd = STL::Rng::GetFloat2( );
     float dither = 1.0 + ( rnd.x * 2.0 - 1.0 ) * 0.01;
     historyClamped *= dither;

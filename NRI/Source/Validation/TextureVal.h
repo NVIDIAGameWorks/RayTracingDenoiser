@@ -22,6 +22,7 @@ namespace nri
         TextureVal(DeviceVal& device, Texture& texture, const TextureVulkanDesc& textureVulkanDesc);
         ~TextureVal();
 
+        void SetBoundToMemory();
         void SetBoundToMemory(MemoryVal& memory);
         bool IsBoundToMemory() const;
 
@@ -35,17 +36,24 @@ namespace nri
 
     private:
         MemoryVal* m_Memory = nullptr;
+        bool m_IsBoundToMemory = false;
         TextureDesc m_TextureDesc = {};
     };
+
+    inline void TextureVal::SetBoundToMemory()
+    {
+        m_IsBoundToMemory = true;
+    }
 
     inline void TextureVal::SetBoundToMemory(MemoryVal& memory)
     {
         m_Memory = &memory;
+        m_IsBoundToMemory = true;
     }
 
     inline bool TextureVal::IsBoundToMemory() const
     {
-        return m_Memory != nullptr;
+        return m_IsBoundToMemory;
     }
 
     inline const TextureDesc& TextureVal::GetDesc() const

@@ -41,6 +41,9 @@ DeviceD3D11::DeviceD3D11(const Log& log, StdAllocator<uint8_t>& stdAllocator) :
     m_CommandQueues(GetStdAllocator())
 {
     PipelineD3D11::CreateNullPipeline(*this);
+
+    if (FillFunctionTable(m_CoreInterface) != Result::SUCCESS)
+        REPORT_ERROR(GetLog(), "Failed to get 'CoreInterface' interface in DeviceD3D11().");
 }
 
 DeviceD3D11::~DeviceD3D11()
@@ -614,11 +617,25 @@ inline void DeviceD3D11::FreeMemory(Memory& memory)
     Deallocate(GetStdAllocator(), (MemoryD3D11*)&memory);
 }
 
-FormatSupportBits DeviceD3D11::GetFormatSupport(Format format) const
+inline FormatSupportBits DeviceD3D11::GetFormatSupport(Format format) const
 {
     const uint32_t offset = std::min((uint32_t)format, (uint32_t)GetCountOf(D3D_FORMAT_SUPPORT_TABLE) - 1);
 
     return D3D_FORMAT_SUPPORT_TABLE[offset];
+}
+
+inline uint32_t DeviceD3D11::CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const
+{
+    HelperDeviceMemoryAllocator allocator(m_CoreInterface, (Device&)*this, m_StdAllocator);
+
+    return allocator.CalculateAllocationNumber(resourceGroupDesc);
+}
+
+inline Result DeviceD3D11::AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, nri::Memory** allocations)
+{
+    HelperDeviceMemoryAllocator allocator(m_CoreInterface, (Device&)*this, m_StdAllocator);
+
+    return allocator.AllocateAndBindMemory(resourceGroupDesc, allocations);
 }
 
 void DeviceD3D11::Destroy()

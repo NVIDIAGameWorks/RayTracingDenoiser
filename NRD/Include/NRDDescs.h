@@ -33,6 +33,10 @@ namespace nrd
         // OUTPUTS - OUT_SPEC_HIT
         NRD_SPECULAR,
 
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFFA, IN_DIFFB, IN_SPEC_HIT
+        // OUTPUTS - OUT_DIFF_HIT, OUT_SPEC_HIT
+        NRD_DIFFUSE_SPECULAR,
+
         // INPUTS - IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SHADOW, OUT_SHADOW
         // OUTPUTS - OUT_SHADOW
         NRD_SHADOW,
@@ -58,7 +62,7 @@ namespace nrd
         // See "NRD.hlsl/_NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+ or R10G10B10A2+ depending on encoding)
         IN_NORMAL_ROUGHNESS,
 
-        // Linear view depth - "+" for LHS, "-" for RHS (R16f+)
+        // Linear view depth for primary rays - "+" for LHS, "-" for RHS (R16f+)
         IN_VIEWZ,
 
         // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
@@ -76,7 +80,9 @@ namespace nrd
 
         // OUTPUTS ==========================================================================================================================
 
-        // IMPORTANT: These textures could potentially be used as history buffers. It's not recommended to reuse them after denoising or clean before denoising.
+        // IMPORTANT: These textures:
+        // - can potentially be used as history buffers
+        // - as intermediate buffers
 
         // .x - shadow (R8+)
         // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackShadow"

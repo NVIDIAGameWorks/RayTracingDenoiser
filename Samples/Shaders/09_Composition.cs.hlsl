@@ -30,9 +30,9 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     // Normal
     float4 normalAndRoughness = gIn_Normal_Roughness[ pixelPos ];
     float isGround = float( dot( normalAndRoughness.xyz, normalAndRoughness.xyz ) != SKY_MARK );
-    normalAndRoughness = UnpackNormalAndRoughness( normalAndRoughness );
-    float3 N = normalAndRoughness.xyz;
-    float roughness = normalAndRoughness.w;
+    float4 t = UnpackNormalAndRoughness( normalAndRoughness );
+    float3 N = t.xyz;
+    float roughness = t.w;
 
     // Material
     float4 baseColorMetalness = gIn_BaseColor_Metalness[ pixelPos ];
@@ -44,17 +44,22 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     albedo *= STL::ImportanceSampling::Cosine::GetInversePDF( ) / STL::Math::Pi( 1.0 );
 
     // Denoised data
-    float4 shadowData = NRD_BackEnd_UnpackShadow( gIn_Shadow[ pixelPos ] );
-    float3 shadow = lerp( shadowData.yzw, 1.0, shadowData.x );
+    float4 shadowData = gIn_Shadow[ pixelPos ];
 
     float4 indirectSpec = gIn_SpecHit[ pixelPos ];
-    if( !gSvgf )
-        indirectSpec = NRD_BackEnd_UnpackSpecular( indirectSpec, roughness );
     indirectSpec.xyz *= gIndirectSpecular;
 
     float4 indirectDiff = gIn_DiffHit[ pixelPos ];
-    indirectDiff = NRD_BackEnd_UnpackDiffuse( indirectDiff );
     indirectDiff.xyz *= gIndirectDiffuse;
+
+    if( !gSvgf )
+    {
+        shadowData = NRD_BackEnd_UnpackShadow( shadowData );
+        indirectSpec = NRD_BackEnd_UnpackSpecular( indirectSpec, roughness );
+        indirectDiff = NRD_BackEnd_UnpackDiffuse( indirectDiff );
+    }
+
+    float3 shadow = gSvgf ? shadowData.xyz : lerp( shadowData.yzw, 1.0, shadowData.x );
 
     // Good denoisers do nothing with sky...
     shadow = lerp( 1.0, shadow, isGround );
@@ -106,5 +111,5 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
         Lsum = gOnScreen == SHOW_MIP_SPECULAR ? indirectSpec.xyz : ( directLighting * isGround );
 
     // Output
-    gOut_ComposedImage[ pixelPos ] = float4( Lsum, viewZ * NRD_FP16_VIEWZ_SCALE );
+    gOut_ComposedImage[ pixelPos ] = float4( Lsum, abs( viewZ ) * NRD_FP16_VIEWZ_SCALE * STL::Math::Sign( dot( N, gSunDirection ) ) );
 }

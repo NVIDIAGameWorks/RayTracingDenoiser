@@ -15,6 +15,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
+    , public nri::HelperInterface
 {};
 
 struct Frame
@@ -48,7 +49,7 @@ private:
     nri::Buffer* m_ReadbackBuffer = nullptr;
 
     std::array<Frame, BUFFERED_FRAME_MAX_NUM> m_Frames = {};
-    std::vector<nri::Memory*> m_Memories;
+    std::vector<nri::Memory*> m_MemoryAllocations;
     std::vector<BackBuffer> m_SwapChainBuffers;
 
     nri::Format m_SwapChainFormat;
@@ -56,7 +57,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (Frame& frame : m_Frames)
     {
@@ -76,8 +77,8 @@ Sample::~Sample()
     NRI.DestroyQueueSemaphore(*m_ReleaseSemaphore);
     NRI.DestroySwapChain(*m_SwapChain);
 
-    for (size_t i = 0; i < m_Memories.size(); i++)
-        NRI.FreeMemory(*m_Memories[i]);
+    for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
+        NRI.FreeMemory(*m_MemoryAllocations[i]);
 
     m_UserInterface.Shutdown();
 
@@ -98,6 +99,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // NRI
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     // Command queue
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue) );
@@ -154,10 +156,16 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         bufferDesc.size = helper::GetAlignedSize(4, deviceDesc.uploadBufferTextureRowAlignment);
         NRI_ABORT_ON_FAILURE( NRI.CreateBuffer(*m_Device, bufferDesc, m_ReadbackBuffer) );
 
-        NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::HOST_READBACK, nullptr, 0, &m_ReadbackBuffer, 1, m_Memories) );
+        nri::ResourceGroupDesc resourceGroupDesc = {};
+        resourceGroupDesc.memoryLocation = nri::MemoryLocation::HOST_READBACK;
+        resourceGroupDesc.bufferNum = 1;
+        resourceGroupDesc.buffers = &m_ReadbackBuffer;
+
+        m_MemoryAllocations.resize(1, nullptr);
+        NRI_ABORT_ON_FAILURE( NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data()) );
     }
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, m_SwapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, m_SwapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)

@@ -15,28 +15,28 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gViewToClip;
     float4 gFrustum;
     float2 gInvScreenSize;
-    float2 padding;
+    float2 gScreenSize;
     float gMetersToUnits;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    uint gCheckerboard;
+    float gReference;
     uint gFrameIndex;
     uint gWorldSpaceMotion;
 
     float4x4 gWorldToView;
-    float4 gScalingParams;
-    float3 gTrimmingParams;
-    float gBlurRadius;
     float4 gRotator;
+    float4 gSpecScalingParams;
+    float3 gSpecTrimmingParams;
+    float gSpecBlurRadius;
 };
 
 #include "NRD_Common.hlsl"
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Signal, t, 2, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 3, 0 );
 
@@ -54,7 +54,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     [branch]
     if( abs( centerZ ) > gInf )
     {
-        #if( SPEC_BLACK_OUT_INF_PIXELS == 1 )
+        #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Signal[ pixelPos ] = 0;
         #endif
         return;
@@ -67,67 +67,70 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float roughness = normalAndRoughness.w;
 
     // Accumulations speeds
-    float2x3 internalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
-    float normAccumSpeed = saturate( internalData[ 0 ].x * STL::Math::PositiveRcp( internalData[ 0 ].y ) );
-    float nonLinearAccumSpeed = 1.0 / ( 1.0 + internalData[ 0 ].x );
+    float3 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
+    float specNormAccumSpeed = saturate( specInternalData.x * STL::Math::PositiveRcp( specInternalData.y ) );
+    float specNonLinearAccumSpeed = 1.0 / ( 1.0 + specInternalData.x );
+
+    // Specular specific - want to use wide blur radius
+    specNonLinearAccumSpeed = lerp( 0.02, 1.0, specNonLinearAccumSpeed );
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
     float4 final = gIn_Signal[ pixelPos ];
-    float centerNormHitDist = final.w;
+    float specCenterNormHitDist = final.w;
 
     // Blur radius
-    float hitDist = GetHitDistance( final.w, centerZ, gScalingParams, roughness );
-    float radius = GetBlurRadius( gBlurRadius, roughness, hitDist, centerPos, nonLinearAccumSpeed );
-    radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gTrimmingParams );
-    float worldRadius = PixelRadiusToWorld( radius, centerZ );
+    float specHitDist = GetHitDistance( final.w, centerZ, gSpecScalingParams, roughness );
+    float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, specNonLinearAccumSpeed );
+    specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
+    float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );
 
     // Tangent basis
-    float3 Tv, Bv;
-    GetKernelBasis( centerPos, Nv, roughness, worldRadius, normAccumSpeed, Tv, Bv );
+    float2x3 specTvBv = GetKernelBasis( centerPos, Nv, specWorldBlurRadius, specNormAccumSpeed, roughness );
 
     // Random rotation
-    float4 rotator = GetBlurKernelRotation( SPEC_BLUR_ROTATOR_MODE, pixelPos, gRotator );
+    float4 rotator = GetBlurKernelRotation( BLUR_ROTATOR_MODE, pixelPos, gRotator );
 
     // Denoising
-    float2 sum = 1.0;
+    float2 specSum = 1.0;
 
-    float geometryWeightParams = GetGeometryWeightParams( gMetersToUnits, centerZ );
-    float2 normalWeightParams = GetNormalWeightParams( roughness, internalData[ 0 ].z, normAccumSpeed );
-    float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
-    float2 hitDistanceWeightParams = GetHitDistanceWeightParams( roughness, centerNormHitDist );
+    float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, gMetersToUnits, centerZ );
+    float2 specNormalWeightParams = GetNormalWeightParams( roughness, specInternalData.z, specNormAccumSpeed );
+    float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
+    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( roughness, specCenterNormHitDist );
 
-    SPEC_UNROLL
-    for( uint s = 0; s < SPEC_POISSON_SAMPLE_NUM; s++ )
+    UNROLL
+    for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
     {
+        float3 offset = POISSON_SAMPLES[ i ];
+
         // Sample coordinates
-        float3 offset = SPEC_POISSON_SAMPLES[ s ];
-        float2 uv = GetKernelSampleCoordinates( offset, centerPos, Tv, Bv, rotator );
+        float2 uv = GetKernelSampleCoordinates( offset, centerPos, specTvBv[ 0 ], specTvBv[ 1 ], rotator );
 
         // Fetch data
-        float4 s = gIn_Signal.SampleLevel( gNearestMirror, uv, 0.0 );
-        float scaledViewZ = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uv, 0.0 ).x;
-        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0.0 );
+        float4 s = gIn_Signal.SampleLevel( gNearestMirror, uv, 0 );
+        float scaledViewZ = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uv, 0 );
+        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0 );
 
         float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, scaledViewZ / NRD_FP16_VIEWZ_SCALE, gIsOrtho );
         normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
         // Sample weight
-        float w = GetGeometryWeight( centerPos, Nv, samplePos, geometryWeightParams );
-        w *= GetNormalWeight( normalWeightParams, N, normal.xyz );
-        w *= GetRoughnessWeight( roughnessWeightParams, normal.w );
+        float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
+        w *= GetNormalWeight( specNormalWeightParams, N, normal.xyz );
+        w *= GetRoughnessWeight( specRoughnessWeightParams, normal.w );
 
         float2 ww = w;
-        ww.x *= GetHitDistanceWeight( hitDistanceWeightParams, s.w );
+        ww.x *= GetHitDistanceWeight( specHitDistanceWeightParams, s.w );
 
         final += s * ww.xxxy;
-        sum += ww;
+        specSum += ww;
     }
 
-    final /= sum.xxxy;
+    final /= specSum.xxxy;
 
     // Special case for hit distance
-    final.w = lerp( final.w, centerNormHitDist, HIT_DIST_INPUT_MIX );
+    final.w = lerp( final.w, specCenterNormHitDist, HIT_DIST_INPUT_MIX );
 
     // Output
     gOut_Signal[ pixelPos ] = final;

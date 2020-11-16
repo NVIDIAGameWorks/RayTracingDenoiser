@@ -40,6 +40,11 @@ namespace nri
         void Submit(const WorkSubmissionDesc& workSubmissionDesc, DeviceSemaphore* deviceSemaphore);
         void Wait(DeviceSemaphore& deviceSemaphore);
 
+        Result ChangeResourceStates(const TransitionBarrierDesc& transitionBarriers);
+        Result UploadData(const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum, 
+            const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum);
+        Result WaitForIdle();
+
     private:
         DeviceD3D12& m_Device;
         ComPtr<ID3D12CommandQueue> m_CommandQueue;

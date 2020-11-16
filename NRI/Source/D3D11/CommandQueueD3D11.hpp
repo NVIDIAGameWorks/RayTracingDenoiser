@@ -33,3 +33,30 @@ void FillFunctionTableCommandQueueD3D11(CoreInterface& coreInterface)
 }
 
 #pragma endregion
+
+#pragma region [  HelperInterface  ]
+
+static Result NRI_CALL ChangeResourceStatesD3D11(CommandQueue& commandQueue, const TransitionBarrierDesc& transitionBarriers)
+{
+    return ((CommandQueueD3D11&)commandQueue).ChangeResourceStates(transitionBarriers);
+}
+
+static nri::Result NRI_CALL UploadDataD3D11(CommandQueue& commandQueue, const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum,
+    const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum)
+{
+    return ((CommandQueueD3D11&)commandQueue).UploadData(textureUploadDescs, textureUploadDescNum, bufferUploadDescs, bufferUploadDescNum);
+}
+
+static nri::Result NRI_CALL WaitForIdleD3D11(CommandQueue& commandQueue)
+{
+    return ((CommandQueueD3D11&)commandQueue).WaitForIdle();
+}
+
+void FillFunctionTableCommandQueueD3D11(HelperInterface& helperInterface)
+{
+    helperInterface.ChangeResourceStates = ChangeResourceStatesD3D11;
+    helperInterface.UploadData = UploadDataD3D11;
+    helperInterface.WaitForIdle = WaitForIdleD3D11;
+}
+
+#pragma endregion

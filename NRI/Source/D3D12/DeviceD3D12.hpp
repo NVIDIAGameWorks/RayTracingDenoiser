@@ -467,3 +467,30 @@ Result DeviceD3D12::FillFunctionTable(MeshShaderInterface& meshShaderInterface) 
 #endif
 
 #pragma endregion
+
+#pragma region [  HelperInterface  ]
+
+static uint32_t NRI_CALL CountAllocationNumD3D12(Device& device, const ResourceGroupDesc& resourceGroupDesc)
+{
+    return ((DeviceD3D12&)device).CalculateAllocationNumber(resourceGroupDesc);
+}
+
+static Result NRI_CALL AllocateAndBindMemoryD3D12(Device& device, const ResourceGroupDesc& resourceGroupDesc, Memory** allocations)
+{
+    return ((DeviceD3D12&)device).AllocateAndBindMemory(resourceGroupDesc, allocations);
+}
+
+void FillFunctionTableCommandQueueD3D12(HelperInterface& helperInterface);
+
+Result DeviceD3D12::FillFunctionTable(HelperInterface& helperInterface) const
+{
+    helperInterface = {};
+
+    helperInterface.CalculateAllocationNumber = ::CountAllocationNumD3D12;
+    helperInterface.AllocateAndBindMemory = ::AllocateAndBindMemoryD3D12;
+    FillFunctionTableCommandQueueD3D12(helperInterface);
+
+    return ValidateFunctionTable(GetLog(), helperInterface);
+}
+
+#pragma endregion

@@ -25,6 +25,7 @@ namespace nri
         virtual Result FillFunctionTable(WrapperVKInterface& table) const { table = {}; return Result::UNSUPPORTED; }
         virtual Result FillFunctionTable(RayTracingInterface& table) const { table = {}; return Result::UNSUPPORTED; }
         virtual Result FillFunctionTable(MeshShaderInterface& table) const { table = {}; return Result::UNSUPPORTED; }
+        virtual Result FillFunctionTable(HelperInterface& table) const { table = {}; return Result::UNSUPPORTED; }
 
         const Log& GetLog() const;
         StdAllocator<uint8_t>& GetStdAllocator();

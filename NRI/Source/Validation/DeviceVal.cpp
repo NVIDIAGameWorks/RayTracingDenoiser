@@ -71,6 +71,7 @@ bool DeviceVal::Create()
     m_IsWrapperVKSupported = deviceBase.FillFunctionTable(m_WrapperVKAPI) == Result::SUCCESS;
     m_IsRayTracingSupported = deviceBase.FillFunctionTable(m_RayTracingAPI) == Result::SUCCESS;
     m_IsMeshShaderExtSupported = deviceBase.FillFunctionTable(m_MeshShaderAPI) == Result::SUCCESS;
+    deviceBase.FillFunctionTable(m_HelperAPI);
 
     return true;
 }
@@ -860,8 +861,9 @@ Result DeviceVal::BindBufferMemory(const BufferMemoryBindingDesc* memoryBindingD
             "Can't bind memory to buffers: 'memoryBindingDescs[%u].offset' is misaligned.", i);
 
         const uint64_t rangeMax = srcDesc.offset + memoryDesc.size;
+        const bool memorySizeIsUnknown = memory.GetSize() == 0;
 
-        RETURN_ON_FAILURE(GetLog(), rangeMax <= memory.GetSize(), Result::INVALID_ARGUMENT,
+        RETURN_ON_FAILURE(GetLog(), memorySizeIsUnknown || rangeMax <= memory.GetSize(), Result::INVALID_ARGUMENT,
             "Can't bind memory to buffers: 'memoryBindingDescs[%u].offset' is invalid.", i);
 
         destDesc = srcDesc;
@@ -923,8 +925,9 @@ Result DeviceVal::BindTextureMemory(const TextureMemoryBindingDesc* memoryBindin
             "Can't bind memory to textures: 'memoryBindingDescs[%u].offset' is misaligned.", i);
 
         const uint64_t rangeMax = srcDesc.offset + memoryDesc.size;
+        const bool memorySizeIsUnknown = memory.GetSize() == 0;
 
-        RETURN_ON_FAILURE(GetLog(), rangeMax <= memory.GetSize(), Result::INVALID_ARGUMENT,
+        RETURN_ON_FAILURE(GetLog(), memorySizeIsUnknown || rangeMax <= memory.GetSize(), Result::INVALID_ARGUMENT,
             "Can't bind memory to textures: 'memoryBindingDescs[%u].offset' is invalid.", i);
 
         destDesc = srcDesc;
@@ -1401,6 +1404,114 @@ ID3D12Device* DeviceVal::GetDeviceD3D12()
     return m_WrapperD3D12API.GetDeviceD3D12(m_Device);
 }
 
+uint32_t DeviceVal::CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const
+{
+    RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.memoryLocation < MemoryLocation::MAX_NUM, 0,
+        "Can't calculate the number of allocations: 'resourceGroupDesc.memoryLocation' is invalid.");
+
+    RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.bufferNum == 0 || resourceGroupDesc.buffers != nullptr, 0,
+        "Can't calculate the number of allocations: 'resourceGroupDesc.buffers' is invalid.");
+
+    RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.textureNum == 0 || resourceGroupDesc.textures != nullptr, 0,
+        "Can't calculate the number of allocations: 'resourceGroupDesc.textures' is invalid.");
+
+    Buffer** buffersImpl = STACK_ALLOC(Buffer*, resourceGroupDesc.bufferNum);
+
+    for (uint32_t i = 0; i < resourceGroupDesc.bufferNum; i++)
+    {
+        RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.buffers[i] != nullptr, 0,
+            "Can't calculate the number of allocations: 'resourceGroupDesc.buffers[%u]' is invalid.", i);
+
+        BufferVal& bufferVal = *(BufferVal*)resourceGroupDesc.buffers[i];
+        buffersImpl[i] = &(bufferVal.GetImpl());
+    }
+
+    Texture** texturesImpl = STACK_ALLOC(Texture*, resourceGroupDesc.textureNum);
+
+    for (uint32_t i = 0; i < resourceGroupDesc.textureNum; i++)
+    {
+        RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.textures[i] != nullptr, 0,
+            "Can't calculate the number of allocations: 'resourceGroupDesc.textures[%u]' is invalid.", i);
+
+        TextureVal& textureVal = *(TextureVal*)resourceGroupDesc.textures[i];
+        texturesImpl[i] = &(textureVal.GetImpl());
+    }
+
+    ResourceGroupDesc resourceGroupDescImpl = resourceGroupDesc;
+    resourceGroupDescImpl.buffers = buffersImpl;
+    resourceGroupDescImpl.textures = texturesImpl;
+
+    return m_HelperAPI.CalculateAllocationNumber(m_Device, resourceGroupDescImpl);
+}
+
+Result DeviceVal::AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, Memory** allocations)
+{
+    RETURN_ON_FAILURE(GetLog(), allocations != nullptr, Result::INVALID_ARGUMENT,
+        "Can't allocate and bind memory: 'allocations' is invalid.");
+
+    RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.memoryLocation < MemoryLocation::MAX_NUM, Result::INVALID_ARGUMENT,
+        "Can't allocate and bind memory: 'resourceGroupDesc.memoryLocation' is invalid.");
+
+    RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.bufferNum == 0 || resourceGroupDesc.buffers != nullptr, Result::INVALID_ARGUMENT,
+        "Can't allocate and bind memory: 'resourceGroupDesc.buffers' is invalid.");
+
+    RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.textureNum == 0 || resourceGroupDesc.textures != nullptr, Result::INVALID_ARGUMENT,
+        "Can't allocate and bind memory: 'resourceGroupDesc.textures' is invalid.");
+
+    Buffer** buffersImpl = STACK_ALLOC(Buffer*, resourceGroupDesc.bufferNum);
+
+    for (uint32_t i = 0; i < resourceGroupDesc.bufferNum; i++)
+    {
+        RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.buffers[i] != nullptr, Result::INVALID_ARGUMENT,
+            "Can't allocate and bind memory: 'resourceGroupDesc.buffers[%u]' is invalid.", i);
+
+        BufferVal& bufferVal = *(BufferVal*)resourceGroupDesc.buffers[i];
+        buffersImpl[i] = &(bufferVal.GetImpl());
+    }
+
+    Texture** texturesImpl = STACK_ALLOC(Texture*, resourceGroupDesc.textureNum);
+
+    for (uint32_t i = 0; i < resourceGroupDesc.textureNum; i++)
+    {
+        RETURN_ON_FAILURE(GetLog(), resourceGroupDesc.textures[i] != nullptr, Result::INVALID_ARGUMENT,
+            "Can't allocate and bind memory: 'resourceGroupDesc.textures[%u]' is invalid.", i);
+
+        TextureVal& textureVal = *(TextureVal*)resourceGroupDesc.textures[i];
+        texturesImpl[i] = &(textureVal.GetImpl());
+    }
+
+    const size_t allocationNum = CalculateAllocationNumber(resourceGroupDesc);
+
+    ResourceGroupDesc resourceGroupDescImpl = resourceGroupDesc;
+    resourceGroupDescImpl.buffers = buffersImpl;
+    resourceGroupDescImpl.textures = texturesImpl;
+
+    const Result result = m_HelperAPI.AllocateAndBindMemory(m_Device, resourceGroupDescImpl, allocations);
+
+    if (result == Result::SUCCESS)
+    {
+        for (uint32_t i = 0; i < resourceGroupDesc.bufferNum; i++)
+        {
+            BufferVal& bufferVal = *(BufferVal*)resourceGroupDesc.buffers[i];
+            bufferVal.SetBoundToMemory();
+        }
+
+        for (uint32_t i = 0; i < resourceGroupDesc.textureNum; i++)
+        {
+            TextureVal& textureVal = *(TextureVal*)resourceGroupDesc.textures[i];
+            textureVal.SetBoundToMemory();
+        }
+
+        for (uint32_t i = 0; i < allocationNum; i++)
+        {
+            RETURN_ON_FAILURE(GetLog(), allocations[i] != nullptr, Result::FAILURE, "Unexpected error: 'memoryImpl' is invalid");
+            allocations[i] = (Memory*)Allocate<MemoryVal>(GetStdAllocator(), *this, *allocations[i], 0, resourceGroupDesc.memoryLocation);
+        }
+    }
+
+    return result;
+}
+
 Result DeviceVal::CreateRayTracingPipeline(const RayTracingPipelineDesc& pipelineDesc, Pipeline*& pipeline)
 {
     RETURN_ON_FAILURE(GetLog(), pipelineDesc.pipelineLayout != nullptr, Result::INVALID_ARGUMENT,
@@ -1511,8 +1622,9 @@ Result DeviceVal::BindAccelerationStructureMemory(const AccelerationStructureMem
             "Can't bind memory to acceleration structures: 'memoryBindingDescs[%u].offset' is misaligned.", i);
 
         const uint64_t rangeMax = srcDesc.offset + memoryDesc.size;
+        const bool memorySizeIsUnknown = memory.GetSize() == 0;
 
-        RETURN_ON_FAILURE(GetLog(), rangeMax <= memory.GetSize(), Result::INVALID_ARGUMENT,
+        RETURN_ON_FAILURE(GetLog(), memorySizeIsUnknown || rangeMax <= memory.GetSize(), Result::INVALID_ARGUMENT,
             "Can't bind memory to acceleration structures: 'memoryBindingDescs[%u].offset' is invalid.", i);
 
         destDesc = srcDesc;

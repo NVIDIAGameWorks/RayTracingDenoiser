@@ -106,8 +106,6 @@ Result SwapChainVK::Create(const SwapChainDesc& swapChainDesc)
 
     VkSurfaceFormatKHR surfaceFormat = {};
 
-    // TODO: Implement swapchain formats
-
     surfaceFormat = surfaceFormats[0];
     m_Format = GetNRIFormat(surfaceFormat.format);
 

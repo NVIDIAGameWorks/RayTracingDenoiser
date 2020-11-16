@@ -78,6 +78,11 @@ Result NRI_CALL nri::GetInterface(const Device& device, const char* interfaceNam
         realInterfaceSize = sizeof(MeshShaderInterface);
         result = deviceBase.FillFunctionTable(*(MeshShaderInterface*)interfacePtr);
     }
+    else if (hash == Hash( NRI_STRINGIFY(nri::HelperInterface) ))
+    {
+        realInterfaceSize = sizeof(HelperInterface);
+        result = deviceBase.FillFunctionTable(*(HelperInterface*)interfacePtr);
+    }
 
     if (result == Result::INVALID_ARGUMENT)
         REPORT_ERROR(deviceBase.GetLog(), "Unknown interface '%s'!", interfaceName);

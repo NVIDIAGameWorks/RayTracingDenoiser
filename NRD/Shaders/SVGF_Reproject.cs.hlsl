@@ -110,10 +110,10 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float4 occlusion = saturate( isInScreen - step( disocclusionThreshold, planeDist ) );
 
     // Compute disocclusion based on normals
-    float4 n00 = _NRD_FrontEnd_UnpackNormalAndRoughness( STL::Packing::UintToRgba( pack1.x, NORMAL_ROUGHNESS_BITS ) );
-    float4 n01 = _NRD_FrontEnd_UnpackNormalAndRoughness( STL::Packing::UintToRgba( pack1.y, NORMAL_ROUGHNESS_BITS ) );
-    float4 n10 = _NRD_FrontEnd_UnpackNormalAndRoughness( STL::Packing::UintToRgba( pack1.z, NORMAL_ROUGHNESS_BITS ) );
-    float4 n11 = _NRD_FrontEnd_UnpackNormalAndRoughness( STL::Packing::UintToRgba( pack1.w, NORMAL_ROUGHNESS_BITS ) );
+    float4 n00 = UnpackNormalRoughness( pack1.x );
+    float4 n01 = UnpackNormalRoughness( pack1.y );
+    float4 n10 = UnpackNormalRoughness( pack1.z );
+    float4 n11 = UnpackNormalRoughness( pack1.w );
 
     float2 normalParams;
     normalParams.x = STL::ImportanceSampling::GetSpecularLobeHalfAngle( 1.0 ); // TODO: yes, use 1.0 instead of roughness for both diffuse and specular

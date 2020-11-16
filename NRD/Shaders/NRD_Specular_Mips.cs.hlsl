@@ -15,13 +15,13 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gViewToClip;
     float4 gFrustum;
     float2 gInvScreenSize;
-    float2 padding;
+    float2 gScreenSize;
     float gMetersToUnits;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    uint gCheckerboard;
+    float gReference;
     uint gFrameIndex;
     uint gWorldSpaceMotion;
 };

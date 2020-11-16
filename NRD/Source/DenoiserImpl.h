@@ -36,6 +36,7 @@ namespace nrd
         // Add settings here
         NrdDiffuseSettings diffuse;
         NrdSpecularSettings specular;
+        NrdDiffuseSpecularSettings diffuseSpecular;
         NrdShadowSettings shadow;
         SvgfSettings svgf;
     };
@@ -72,6 +73,9 @@ namespace nrd
 
         size_t AddMethod_NrdSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_NrdSpecular(const MethodData& methodData);
+
+        size_t AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h);
+        void UpdateMethod_NrdDiffuseSpecular(const MethodData& methodData);
 
         size_t AddMethod_NrdShadow(uint16_t w, uint16_t h);
         void UpdateMethod_NrdShadow(const MethodData& methodData);
@@ -135,7 +139,7 @@ namespace nrd
 
     // Available in methods
     private:
-        void AddSharedConstants(const MethodData& methodData, CheckerboardMode checkerboardMode, Constant*& data);
+        void AddSharedConstants(const MethodData& methodData, Constant*& data);
 
         constexpr uint32_t GetSharedConstantsNum() const
         { return 32; } // must be a multiply of 4

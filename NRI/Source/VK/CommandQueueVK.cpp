@@ -121,4 +121,31 @@ void CommandQueueVK::Wait(DeviceSemaphore& deviceSemaphore)
         "Can't reset a device semaphore: vkResetFences returned %d.", (int32_t)result);
 }
 
+Result CommandQueueVK::ChangeResourceStates(const TransitionBarrierDesc& transitionBarriers)
+{
+    HelperResourceStateChange resourceStateChange(m_Device.GetCoreInterface(), (Device&)m_Device, (CommandQueue&)*this);
+
+    return resourceStateChange.ChangeStates(transitionBarriers);
+}
+
+Result CommandQueueVK::UploadData(const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum,
+    const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum)
+{
+    HelperDataUpload helperDataUpload(m_Device.GetCoreInterface(), (Device&)m_Device, m_Device.GetStdAllocator(), (CommandQueue&)*this);
+
+    return helperDataUpload.UploadData(textureUploadDescs, textureUploadDescNum, bufferUploadDescs, bufferUploadDescNum);
+}
+
+Result CommandQueueVK::WaitForIdle()
+{
+    const auto& vk = m_Device.GetDispatchTable();
+
+    VkResult result = vk.QueueWaitIdle(m_Handle);
+
+    RETURN_ON_FAILURE(m_Device.GetLog(), result == VK_SUCCESS, GetReturnCode(result),
+        "Can't wait for idle: vkQueueWaitIdle returned %d.", (int32_t)result);
+
+    return Result::SUCCESS;
+}
+
 #include "CommandQueueVK.hpp"

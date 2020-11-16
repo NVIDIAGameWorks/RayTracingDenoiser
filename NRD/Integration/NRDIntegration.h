@@ -28,9 +28,7 @@ typedef std::array<NrdTexture, NRD_USER_POOL_SIZE> NrdUserPool;
 
 #define NRD_DEBUG_LOGGING 0
 #define NRD_ASSERT(expr) (assert(expr))
-#define NRD_ABORT_ON_FAILURE(result) \
-    if ((result) != nri::Result::SUCCESS) \
-        NRD_ASSERT(false);
+#define NRD_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_ASSERT(false)
 
 class Nrd
 {
@@ -43,7 +41,7 @@ public:
     { NRD_ASSERT( m_NRI == nullptr ); }
 
     // There is not "Resize" functionallity, because NRD full recreation costs nothing. The main cost comes from render targets resizing which needs to be done in any case
-    bool Initialize(nri::Device& nriDevice, nri::CoreInterface& nriCoreInterface, const nrd::DenoiserCreationDesc& denoiserCreationDesc, bool ignoreNRIProvidedBindingOffsets = true);
+    bool Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCoreInterface, const nri::HelperInterface& nriHelperInterface, const nrd::DenoiserCreationDesc& denoiserCreationDesc, bool ignoreNRIProvidedBindingOffsets = true);
     void Destroy();
 
     void SetMethodSettings(nrd::Method method, const void* methodSettings);
@@ -56,6 +54,7 @@ private:
     Nrd(const Nrd&) = delete;
 
     void CreateResources();
+    void AllocateAndBindMemory();
     void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
 
 private:
@@ -64,9 +63,10 @@ private:
     std::vector<nri::TextureTransitionBarrierDesc> m_ResourceState;
     std::vector<nri::PipelineLayout*> m_PipelineLayouts;
     std::vector<nri::Pipeline*> m_Pipelines;
-    std::vector<nri::Memory*> m_Memories;
+    std::vector<nri::Memory*> m_MemoryAllocations;
     std::array<nri::DescriptorPool*, 16> m_DescriptorPools = {};
-    nri::CoreInterface* m_NRI = nullptr;
+    const nri::CoreInterface* m_NRI = nullptr;
+    const nri::HelperInterface* m_NRIHelper = nullptr;
     nri::Device* m_Device = nullptr;
     nri::Buffer* m_ConstantBuffer = nullptr;
     nri::Descriptor* m_ConstantBufferView = nullptr;

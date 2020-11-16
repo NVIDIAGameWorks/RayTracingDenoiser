@@ -22,6 +22,7 @@ namespace nri
         BufferVal(DeviceVal& device, Buffer& buffer, const BufferVulkanDesc& bufferVulkanDesc);
         ~BufferVal();
 
+        void SetBoundToMemory();
         void SetBoundToMemory(MemoryVal& memory);
         bool IsBoundToMemory() const;
         BufferUsageBits GetUsageMask() const;
@@ -38,17 +39,24 @@ namespace nri
     private:
         MemoryVal* m_Memory = nullptr;
         BufferDesc m_BufferDesc = {};
+        bool m_IsBoundToMemory = false;
         bool m_IsMapped = false;
     };
+
+    inline void BufferVal::SetBoundToMemory()
+    {
+        m_IsBoundToMemory = true;
+    }
 
     inline void BufferVal::SetBoundToMemory(MemoryVal& memory)
     {
         m_Memory = &memory;
+        m_IsBoundToMemory = true;
     }
 
     inline bool BufferVal::IsBoundToMemory() const
     {
-        return m_Memory != nullptr;
+        return m_IsBoundToMemory;
     }
 
     inline BufferUsageBits BufferVal::GetUsageMask() const

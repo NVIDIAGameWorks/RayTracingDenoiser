@@ -46,6 +46,8 @@ namespace nri
     constexpr uint16_t REMAINING_MIP_LEVELS = 0;
     constexpr uint16_t WHOLE_SIZE = 0;
     constexpr uint32_t WHOLE_DEVICE_GROUP = 0;
+    constexpr bool VARIABLE_DESCRIPTOR_NUM = true;
+    constexpr bool DESCRIPTOR_ARRAY = true;
 
     enum class Result
     {
@@ -502,6 +504,7 @@ namespace nri
         RG8_SINT,
 
         BGRA8_UNORM,
+        BGRA8_SRGB,
 
         RGBA8_UNORM,
         RGBA8_SNORM,

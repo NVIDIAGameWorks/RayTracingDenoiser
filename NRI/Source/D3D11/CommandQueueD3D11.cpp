@@ -63,4 +63,26 @@ inline void CommandQueueD3D11::Wait(DeviceSemaphore& deviceSemaphore)
     ((DeviceSemaphoreD3D11&)deviceSemaphore).Wait(m_ImmediateContext);
 }
 
+inline Result CommandQueueD3D11::ChangeResourceStates(const TransitionBarrierDesc& transitionBarriers)
+{
+    HelperResourceStateChange resourceStateChange(m_Device.GetCoreInterface(), (Device&)m_Device, (CommandQueue&)*this);
+
+    return resourceStateChange.ChangeStates(transitionBarriers);
+}
+
+inline Result CommandQueueD3D11::UploadData(const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum,
+    const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum)
+{
+    HelperDataUpload helperDataUpload(m_Device.GetCoreInterface(), (Device&)m_Device, m_Device.GetStdAllocator(), (CommandQueue&)*this);
+
+    return helperDataUpload.UploadData(textureUploadDescs, textureUploadDescNum, bufferUploadDescs, bufferUploadDescNum);
+}
+
+inline Result CommandQueueD3D11::WaitForIdle()
+{
+    HelperWaitIdle helperWaitIdle(m_Device.GetCoreInterface(), (Device&)m_Device, (CommandQueue&)*this);
+
+    return helperWaitIdle.WaitIdle();
+}
+
 #include "CommandQueueD3D11.hpp"

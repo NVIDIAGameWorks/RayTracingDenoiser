@@ -23,6 +23,7 @@ struct Vertex
 struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
+    , public nri::HelperInterface
 {};
 
 class Sample : public SampleBase
@@ -64,14 +65,14 @@ private:
     std::array<nri::CommandBuffer*, BUFFERED_FRAME_MAX_NUM * COMMAND_BUFFER_NUM> m_CommandBufferGraphics = {};
     std::array<nri::CommandBuffer*, BUFFERED_FRAME_MAX_NUM> m_CommandBufferCompute = {};
     std::vector<BackBuffer> m_SwapChainBuffers;
-    std::vector<nri::Memory*> m_Memories;
+    std::vector<nri::Memory*> m_MemoryAllocations;
 
     bool m_IsAsyncMode = true;
 };
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueueGraphics);
+    NRI.WaitForIdle(*m_CommandQueueGraphics);
 
     for (size_t i = 0; i < m_CommandBufferGraphics.size(); i++)
         NRI.DestroyCommandBuffer(*m_CommandBufferGraphics[i]);
@@ -104,8 +105,8 @@ Sample::~Sample()
     NRI.DestroyQueueSemaphore(*m_ComputeSemaphore);
     NRI.DestroySwapChain(*m_SwapChain);
 
-    for (size_t i = 0; i < m_Memories.size(); i++)
-        NRI.FreeMemory(*m_Memories[i]);
+    for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
+        NRI.FreeMemory(*m_MemoryAllocations[i]);
 
     m_UserInterface.Shutdown();
 
@@ -126,6 +127,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // NRI
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     // Command queue
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueueGraphics) );
@@ -278,7 +280,15 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         NRI_ABORT_ON_FAILURE( NRI.CreateBuffer(*m_Device, bufferDesc, m_GeometryBuffer) );
     }
 
-    NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, &m_Texture, 1, &m_GeometryBuffer, 1, m_Memories) );
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_GeometryBuffer;
+    resourceGroupDesc.textureNum = 1;
+    resourceGroupDesc.textures = &m_Texture;
+
+    m_MemoryAllocations.resize(NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data()))
 
     // Descriptor pool
     {
@@ -326,22 +336,22 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
             v2.position[2] = Rand::uf1();
         }
 
-        helper::TextureDataDesc textureData = {};
+        nri::TextureUploadDesc textureData = {};
         textureData.subresources = nullptr;
         textureData.texture = m_Texture;
         textureData.nextLayout = nri::TextureLayout::GENERAL;
         textureData.nextAccess = nri::AccessBits::SHADER_RESOURCE_STORAGE;
 
-        helper::BufferDataDesc bufferData = {};
+        nri::BufferUploadDesc bufferData = {};
         bufferData.buffer = m_GeometryBuffer;
         bufferData.data = &geometryBufferData[0];
         bufferData.dataSize = geometryBufferData.size();
         bufferData.nextAccess = nri::AccessBits::VERTEX_BUFFER;
 
-        NRI_ABORT_ON_FAILURE( helper::UploadData(NRI, *m_Device, &textureData, 1, &bufferData, 1) );
+        NRI_ABORT_ON_FAILURE( NRI.UploadData(*m_CommandQueueGraphics, &textureData, 1, &bufferData, 1) );
     }
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)

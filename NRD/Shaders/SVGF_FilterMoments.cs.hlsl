@@ -40,13 +40,12 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float centerZ = gIn_ViewZ[ pixelPos ];
 
     // Normal and roughness
-    float4 normalAndRoughnessPacked = gIn_Normal_Roughness[ pixelPos ];
-    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( normalAndRoughnessPacked );
+    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
     float roughness = normalAndRoughness.w;
     float3 N = normalAndRoughness.xyz;
 
     // Pack current viewZ, normal and roughness for the next frame
-    gOut_Prev_ViewZ_Normal_Roughness[ pixelPos ] = PackViewZNormalRoughness( centerZ, normalAndRoughnessPacked );
+    gOut_Prev_ViewZ_Normal_Roughness[ pixelPos ] = PackViewZNormalRoughness( centerZ, N, roughness );
 
     // Early out
     [branch]

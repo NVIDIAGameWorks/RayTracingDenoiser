@@ -86,6 +86,8 @@ DeviceVK::DeviceVK(const Log& log, const StdAllocator<uint8_t>& stdAllocator) :
     m_PhysicalDeviceIndices(GetStdAllocator()),
     m_ConcurrentSharingModeQueueIndices(GetStdAllocator())
 {
+    if (FillFunctionTable(m_CoreInterface) != Result::SUCCESS)
+        REPORT_ERROR(GetLog(), "Failed to get 'CoreInterface' interface in DeviceVK().");
 }
 
 DeviceVK::~DeviceVK()
@@ -764,6 +766,20 @@ FormatSupportBits DeviceVK::GetFormatSupport(Format format) const
     return mask;
 }
 
+uint32_t DeviceVK::CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const
+{
+    HelperDeviceMemoryAllocator allocator(m_CoreInterface, (Device&)*this, m_StdAllocator);
+
+    return allocator.CalculateAllocationNumber(resourceGroupDesc);
+}
+
+Result DeviceVK::AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, nri::Memory** allocations)
+{
+    HelperDeviceMemoryAllocator allocator(m_CoreInterface, (Device&)*this, m_StdAllocator);
+
+    return allocator.AllocateAndBindMemory(resourceGroupDesc, allocations);
+}
+
 const char* GetObjectTypeName(VkObjectType objectType)
 {
     switch(objectType)
@@ -881,7 +897,7 @@ VkBool32 VKAPI_PTR DebugUtilsMessenger(
 
     DeviceVK& device = *(DeviceVK*)userData;
 
-    std::string message;
+    String message(device.GetStdAllocator());
     message += std::to_string(callbackData->messageIdNumber);
     message += " ";
     message += callbackData->pMessageIdName;
@@ -1162,7 +1178,7 @@ void DeviceVK::SetDeviceLimits(bool enableValidation)
     uint32_t familyNum = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevices.front(), &familyNum, nullptr);
 
-    std::vector<VkQueueFamilyProperties> familyProperties(familyNum);
+    Vector<VkQueueFamilyProperties> familyProperties(familyNum, m_StdAllocator);
     vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevices.front(), &familyNum, familyProperties.data());
 
     uint32_t copyQueueTimestampValidBits = 0;
@@ -1705,6 +1721,7 @@ Result DeviceVK::ResolveDispatchTable()
     RESOLVE_DEVICE_FUNCTION(BindBufferMemory2);
     RESOLVE_DEVICE_FUNCTION(BindImageMemory2);
 
+    RESOLVE_DEVICE_FUNCTION(QueueWaitIdle);
     RESOLVE_DEVICE_FUNCTION(WaitForFences);
     RESOLVE_DEVICE_FUNCTION(ResetFences);
     RESOLVE_DEVICE_FUNCTION(AcquireNextImageKHR);

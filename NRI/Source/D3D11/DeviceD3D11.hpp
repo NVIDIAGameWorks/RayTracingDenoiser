@@ -429,3 +429,30 @@ Result DeviceD3D11::FillFunctionTable(WrapperD3D11Interface& wrapperD3D11Interfa
 }
 
 #pragma endregion
+
+#pragma region [  HelperInterface  ]
+
+static uint32_t NRI_CALL CountAllocationNumD3D11(Device& device, const ResourceGroupDesc& resourceGroupDesc)
+{
+    return ((DeviceD3D11&)device).CalculateAllocationNumber(resourceGroupDesc);
+}
+
+static Result NRI_CALL AllocateAndBindMemoryD3D11(Device& device, const ResourceGroupDesc& resourceGroupDesc, Memory** allocations)
+{
+    return ((DeviceD3D11&)device).AllocateAndBindMemory(resourceGroupDesc, allocations);
+}
+
+void FillFunctionTableCommandQueueD3D11(HelperInterface& helperInterface);
+
+Result DeviceD3D11::FillFunctionTable(HelperInterface& helperInterface) const
+{
+    helperInterface = {};
+
+    helperInterface.CalculateAllocationNumber = ::CountAllocationNumD3D11;
+    helperInterface.AllocateAndBindMemory = ::AllocateAndBindMemoryD3D11;
+    FillFunctionTableCommandQueueD3D11(helperInterface);
+
+    return ValidateFunctionTable(GetLog(), helperInterface);
+}
+
+#pragma endregion

@@ -33,3 +33,30 @@ void FillFunctionTableCommandQueueVal(CoreInterface& coreInterface)
 }
 
 #pragma endregion
+
+#pragma region [  HelperInterface  ]
+
+static Result NRI_CALL ChangeResourceStatesVal(CommandQueue& commandQueue, const TransitionBarrierDesc& transitionBarriers)
+{
+    return ((CommandQueueVal&)commandQueue).ChangeResourceStates(transitionBarriers);
+}
+
+static nri::Result NRI_CALL UploadDataVal(CommandQueue& commandQueue, const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum,
+    const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum)
+{
+    return ((CommandQueueVal&)commandQueue).UploadData(textureUploadDescs, textureUploadDescNum, bufferUploadDescs, bufferUploadDescNum);
+}
+
+static nri::Result NRI_CALL WaitForIdleVal(CommandQueue& commandQueue)
+{
+    return ((CommandQueueVal&)commandQueue).WaitForIdle();
+}
+
+void FillFunctionTableCommandQueueVal(HelperInterface& helperInterface)
+{
+    helperInterface.ChangeResourceStates = ChangeResourceStatesVal;
+    helperInterface.UploadData = UploadDataVal;
+    helperInterface.WaitForIdle = WaitForIdleVal;
+}
+
+#pragma endregion

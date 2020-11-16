@@ -16,6 +16,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "MathLib/MathLib.h"
 
 #include "NRIDescs.h"
+#include "Extensions/NRIHelper.h"
+
 #include "Helper.h"
 
 #include <string>
@@ -112,13 +114,13 @@ namespace utils
         inline nri::Format GetFormat() const
         { return format; }
 
-        void GetSubresource(helper::TextureSubresource& subresource, uint32_t mipIndex, uint32_t arrayIndex = 0) const
+        void GetSubresource(nri::TextureSubresourceUploadDesc& subresource, uint32_t mipIndex, uint32_t arrayIndex = 0) const
         {
             // TODO: 3D images are not supported, "subresource.slices" needs to be allocated to store pointers to all slices of current mipmap
             assert(GetDepth() == 1);
             PLATFORM_UNUSED(arrayIndex);
 
-            subresource.slices = (const void* const*)&texture[mipIndex]->data;
+            subresource.slices = texture[mipIndex]->data;
             subresource.sliceNum = 1;
             int rowPitch, slicePitch;
             detexComputePitch(texture[mipIndex]->format, texture[mipIndex]->width, texture[mipIndex]->height, &rowPitch, &slicePitch);

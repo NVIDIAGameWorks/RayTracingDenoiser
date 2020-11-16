@@ -418,7 +418,7 @@ MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection
 
     // Shadow fix
     float NoL = dot( geometryProps.N, gSunDirection );
-    float shadow = STL::Math::SmoothStep( -0.03, 0.03, NoL );
+    float shadow = STL::Math::SmoothStep( 0.0, 0.05, NoL );
 
     if( useSimplifiedModel || USE_SIMPLIFIED_BRDF_MODEL )
     {

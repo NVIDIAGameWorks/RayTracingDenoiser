@@ -35,3 +35,30 @@ void FillFunctionTableCommandQueueVK(CoreInterface& coreInterface)
 }
 
 #pragma endregion
+
+#pragma region [  HelperInterface  ]
+
+static Result NRI_CALL ChangeResourceStatesVK(CommandQueue& commandQueue, const TransitionBarrierDesc& transitionBarriers)
+{
+    return ((CommandQueueVK&)commandQueue).ChangeResourceStates(transitionBarriers);
+}
+
+static nri::Result NRI_CALL UploadDataVK(CommandQueue& commandQueue, const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum,
+    const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum)
+{
+    return ((CommandQueueVK&)commandQueue).UploadData(textureUploadDescs, textureUploadDescNum, bufferUploadDescs, bufferUploadDescNum);
+}
+
+static nri::Result NRI_CALL WaitForIdleVK(CommandQueue& commandQueue)
+{
+    return ((CommandQueueVK&)commandQueue).WaitForIdle();
+}
+
+void FillFunctionTableCommandQueueVK(HelperInterface& helperInterface)
+{
+    helperInterface.ChangeResourceStates = ChangeResourceStatesVK;
+    helperInterface.UploadData = UploadDataVK;
+    helperInterface.WaitForIdle = WaitForIdleVK;
+}
+
+#pragma endregion

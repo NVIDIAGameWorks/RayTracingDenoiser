@@ -113,6 +113,7 @@ static constexpr std::array<uint32_t, (size_t)nri::Format::MAX_NUM> TEXEL_BLOCK_
     1, // RG8_SINT
 
     1, // BGRA8_UNORM
+    1, // BGRA8_SRGB
 
     1, // RGBA8_UNORM
     1, // RGBA8_SNORM
@@ -193,7 +194,7 @@ uint32_t GetTexelBlockWidth(nri::Format format)
 }
 
 static constexpr std::array<uint32_t, (size_t)nri::Format::MAX_NUM> TEXEL_BLOCK_SIZE = {
-    0, // UNKNOWN
+    1, // UNKNOWN
 
     1, // R8_UNORM
     1, // R8_SNORM
@@ -206,6 +207,7 @@ static constexpr std::array<uint32_t, (size_t)nri::Format::MAX_NUM> TEXEL_BLOCK_
     2, // RG8_SINT
 
     4, // BGRA8_UNORM
+    4, // BGRA8_SRGB
 
     4, // RGBA8_UNORM
     4, // RGBA8_SNORM
@@ -390,7 +392,7 @@ static constexpr std::array<nri::Format, 100> DXGI_FORMAT_TABLE =
     nri::Format::UNKNOWN,                              // DXGI_FORMAT_B8G8R8X8_UNORM = 88,
     nri::Format::UNKNOWN,                              // DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM = 89,
     nri::Format::UNKNOWN,                              // DXGI_FORMAT_B8G8R8A8_TYPELESS = 90,
-    nri::Format::UNKNOWN,                              // DXGI_FORMAT_B8G8R8A8_UNORM_SRGB = 91,
+    nri::Format::BGRA8_SRGB,                           // DXGI_FORMAT_B8G8R8A8_UNORM_SRGB = 91,
     nri::Format::UNKNOWN,                              // DXGI_FORMAT_B8G8R8X8_TYPELESS = 92,
     nri::Format::UNKNOWN,                              // DXGI_FORMAT_B8G8R8X8_UNORM_SRGB = 93,
     nri::Format::UNKNOWN,                              // DXGI_FORMAT_BC6H_TYPELESS = 94,

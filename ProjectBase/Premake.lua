@@ -83,11 +83,14 @@ workspace "SANDBOX"
             warnings "Default"
 
     group "NRD"
+        local inc = "NRD/Include/"
+
         project "NRD"
             kind "SharedLib"
             location (workspaceDir.."/%{prj.name}")
             includedirs { "%{prj.name}/Include", "External" }
             files { "%{prj.name}/Source/**", "%{prj.name}/Include/**", "External/MathLib/mathlib.cpp", "External/Timer/*", "External/StdAllocator/*" }
+            vpaths { ["NRD"] = inc.."**.h" }
             vpaths { ["Methods"] = "**.hpp" }
             vpaths { ["Sources"] = {"**.cpp", "**.h", "**.rc"} }
             defines { "WIN32_LEAN_AND_MEAN", "NOMINMAX", "NRD_API=extern \"C\" __declspec(dllexport)" }

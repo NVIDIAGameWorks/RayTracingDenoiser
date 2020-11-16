@@ -20,6 +20,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "Extensions/NRIWrapperVK.h"
 #include "Extensions/NRIRayTracing.h"
 #include "Extensions/NRIMeshShader.h"
+#include "Extensions/NRIHelper.h"
 
 #include <array>
 #include <atomic>
@@ -27,11 +28,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <limits>
 #include <cassert>
 #include <cstring>
+#include <map>
 
 #include "Lock.h"
 
 #define _MemoryAllocatorInterface nri::MemoryAllocatorInterface
 #include "StdAllocator/StdAllocator.h"
+
+#include "HelperWaitIdle.h"
+#include "HelperDeviceMemoryAllocator.h"
+#include "HelperDataUpload.h"
+#include "HelperResourceStateChange.h"
 
 constexpr uint32_t PHYSICAL_DEVICE_GROUP_MAX_SIZE = 4;
 constexpr uint32_t COMMAND_QUEUE_TYPE_NUM = (uint32_t)nri::CommandQueueType::MAX_NUM;
@@ -253,6 +260,7 @@ constexpr nri::FormatSupportBits D3D_FORMAT_SUPPORT_TABLE[] = {
     COMMON_SUPPORT_WITHOUT_VERTEX, // RG8_SINT,
 
     COMMON_SUPPORT_WITHOUT_VERTEX, // BGRA8_UNORM,
+    COMMON_SUPPORT_WITHOUT_VERTEX, // BGRA8_SRGB,
 
     COMMON_SUPPORT_WITHOUT_VERTEX, // RGBA8_UNORM,
     COMMON_SUPPORT_WITHOUT_VERTEX, // RGBA8_SNORM,

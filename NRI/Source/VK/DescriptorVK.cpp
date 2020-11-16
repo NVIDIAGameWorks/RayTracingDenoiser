@@ -107,6 +107,10 @@ Result DescriptorVK::CreateTextureView(const T& textureViewDesc)
 {
     const TextureVK& texture = *(const TextureVK*)textureViewDesc.texture;
 
+    VkImageViewUsageCreateInfo imageViewUsageCreateInfo = {};
+    imageViewUsageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+    imageViewUsageCreateInfo.usage = GetImageViewUsage(textureViewDesc.viewType);
+
     m_Type = DescriptorTypeVK::IMAGE_VIEW;
     m_Format = ::GetVkImageViewFormat(textureViewDesc.format);
     m_Extent = texture.GetExtent();
@@ -115,16 +119,12 @@ Result DescriptorVK::CreateTextureView(const T& textureViewDesc)
     VkImageSubresourceRange subresource;
     FillImageSubresourceRange(textureViewDesc, subresource);
 
-    VkImageViewCreateInfo info = {
-        VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        nullptr,
-        (VkImageViewCreateFlags)0,
-        VK_NULL_HANDLE,
-        GetImageViewType(textureViewDesc.viewType),
-        m_Format,
-        VkComponentMapping{},
-        subresource
-    };
+    VkImageViewCreateInfo imageViewCreateInfo = {};
+    imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewCreateInfo.pNext = &imageViewUsageCreateInfo;
+    imageViewCreateInfo.viewType = GetImageViewType(textureViewDesc.viewType);
+    imageViewCreateInfo.format = m_Format;
+    imageViewCreateInfo.subresourceRange = subresource;
 
     const auto& vk = m_Device.GetDispatchTable();
 
@@ -135,9 +135,9 @@ Result DescriptorVK::CreateTextureView(const T& textureViewDesc)
         if ((1 << i) & physicalDeviceMask)
         {
             m_TextureDesc.handles[i] = texture.GetHandle(i);
-            info.image = texture.GetHandle(i);
+            imageViewCreateInfo.image = texture.GetHandle(i);
 
-            const VkResult result = vk.CreateImageView(m_Device, &info, m_Device.GetAllocationCallbacks(), &m_ImageViews[i]);
+            const VkResult result = vk.CreateImageView(m_Device, &imageViewCreateInfo, m_Device.GetAllocationCallbacks(), &m_ImageViews[i]);
 
             RETURN_ON_FAILURE(m_Device.GetLog(), result == VK_SUCCESS, GetReturnCode(result),
                 "Can't create a texture view: vkCreateImageView returned %d.", (int32_t)result);

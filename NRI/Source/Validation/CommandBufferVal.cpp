@@ -29,6 +29,9 @@ using namespace nri;
 
 void ConvertGeometryObjectsVal(GeometryObject* destObjects, const GeometryObject* sourceObjects, uint32_t objectNum);
 
+static bool ValidateBufferTransitionBarrierDesc(const DeviceVal& device, uint32_t i, const BufferTransitionBarrierDesc& bufferTransitionBarrierDesc);
+static bool ValidateTextureTransitionBarrierDesc(const DeviceVal& device, uint32_t i, const TextureTransitionBarrierDesc& textureTransitionBarrierDesc);
+
 CommandBufferVal::CommandBufferVal(DeviceVal& device, CommandBuffer& commandBuffer) :
     DeviceObjectVal(device, commandBuffer),
     m_RayTracingAPI(device.GetRayTracingInterface()),
@@ -445,6 +448,18 @@ void CommandBufferVal::PipelineBarrier(const TransitionBarrierDesc* transitionBa
     {
         transitionBarrierImpl = *transitionBarriers;
 
+        for (uint32_t i = 0; i < transitionBarriers->bufferNum; i++)
+        {
+            if (!ValidateBufferTransitionBarrierDesc(m_Device, i, transitionBarriers->buffers[i]))
+                return;
+        }
+
+        for (uint32_t i = 0; i < transitionBarriers->textureNum; i++)
+        {
+            if (!ValidateTextureTransitionBarrierDesc(m_Device, i, transitionBarriers->textures[i]))
+                return;
+        }
+
         transitionBarrierImpl.buffers = STACK_ALLOC(BufferTransitionBarrierDesc, transitionBarriers->bufferNum);
         memcpy((void*)transitionBarrierImpl.buffers, transitionBarriers->buffers, sizeof(BufferTransitionBarrierDesc) * transitionBarriers->bufferNum);
         for (uint32_t i = 0; i < transitionBarrierImpl.bufferNum; i++)
@@ -758,5 +773,50 @@ VkCommandBuffer CommandBufferVal::GetCommandBufferVK() const
 {
     return m_Device.GetWrapperVKInterface().GetCommandBufferVK(m_ImplObject);
 }
+
+static bool ValidateBufferTransitionBarrierDesc(const DeviceVal& device, uint32_t i, const BufferTransitionBarrierDesc& bufferTransitionBarrierDesc)
+{
+    RETURN_ON_FAILURE(device.GetLog(), bufferTransitionBarrierDesc.buffer != nullptr, false,
+        "Can't record pipeline barrier: 'transitionBarriers->buffers[%u].buffer' is invalid.", i);
+
+    const BufferVal& bufferVal = *(const BufferVal*)bufferTransitionBarrierDesc.buffer;
+
+    RETURN_ON_FAILURE(device.GetLog(), IsAccessMaskSupported(bufferVal.GetUsageMask(), bufferTransitionBarrierDesc.prevAccess), false,
+        "Can't record pipeline barrier: 'transitionBarriers->buffers[%u].prevAccess' is not supported by the usage mask of the buffer ('%s').",
+        i, bufferVal.GetDebugName().c_str());
+
+    RETURN_ON_FAILURE(device.GetLog(), IsAccessMaskSupported(bufferVal.GetUsageMask(), bufferTransitionBarrierDesc.nextAccess), false,
+        "Can't record pipeline barrier: 'transitionBarriers->buffers[%u].nextAccess' is not supported by the usage mask of the buffer ('%s').",
+        i, bufferVal.GetDebugName().c_str());
+
+    return true;
+}
+
+static bool ValidateTextureTransitionBarrierDesc(const DeviceVal& device, uint32_t i, const TextureTransitionBarrierDesc& textureTransitionBarrierDesc)
+{
+    RETURN_ON_FAILURE(device.GetLog(), textureTransitionBarrierDesc.texture != nullptr, false,
+        "Can't record pipeline barrier: 'transitionBarriers->textures[%u].texture' is invalid.", i);
+
+    const TextureVal& textureVal = *(const TextureVal*)textureTransitionBarrierDesc.texture;
+
+    RETURN_ON_FAILURE(device.GetLog(), IsAccessMaskSupported(textureVal.GetDesc().usageMask, textureTransitionBarrierDesc.prevAccess), false,
+        "Can't record pipeline barrier: 'transitionBarriers->textures[%u].prevAccess' is not supported by the usage mask of the texture ('%s').",
+        i, textureVal.GetDebugName().c_str());
+
+    RETURN_ON_FAILURE(device.GetLog(), IsAccessMaskSupported(textureVal.GetDesc().usageMask, textureTransitionBarrierDesc.nextAccess), false,
+        "Can't record pipeline barrier: 'transitionBarriers->textures[%u].nextAccess' is not supported by the usage mask of the texture ('%s').",
+        i, textureVal.GetDebugName().c_str());
+
+    RETURN_ON_FAILURE(device.GetLog(), IsTextureLayoutSupported(textureVal.GetDesc().usageMask, textureTransitionBarrierDesc.prevLayout), false,
+        "Can't record pipeline barrier: 'transitionBarriers->textures[%u].prevLayout' is not supported by the usage mask of the texture ('%s').",
+        i, textureVal.GetDebugName().c_str());
+
+    RETURN_ON_FAILURE(device.GetLog(), IsTextureLayoutSupported(textureVal.GetDesc().usageMask, textureTransitionBarrierDesc.nextLayout), false,
+        "Can't record pipeline barrier: 'transitionBarriers->textures[%u].nextLayout' is not supported by the usage mask of the texture ('%s').",
+        i, textureVal.GetDebugName().c_str());
+
+    return true;
+}
+
 
 #include "CommandBufferVal.hpp"

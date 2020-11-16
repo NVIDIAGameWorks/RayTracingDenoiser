@@ -17,7 +17,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 using namespace nri;
 
 extern DXGI_FORMAT GetFormat(Format format);
-extern uint32_t GetFormatByteSize(Format format);
 extern bool IsFloatingPointFormat(Format format);
 extern D3D12_FILTER GetFilterIsotropic(Filter mip, Filter magnification, Filter minification, FilterExt filterExt, bool useComparison);
 extern D3D12_FILTER GetFilterAnisotropic(FilterExt filterExt, bool useComparison);
@@ -30,7 +29,7 @@ Result DescriptorD3D12::Create(const BufferViewDesc& bufferViewDesc)
     const BufferD3D12& buffer = *((BufferD3D12*)bufferViewDesc.buffer);
     DXGI_FORMAT format = GetFormat(bufferViewDesc.format);
     uint64_t size = bufferViewDesc.size == WHOLE_SIZE ? buffer.GetByteSize() : bufferViewDesc.size;
-    uint32_t elementSize = GetFormatByteSize(bufferViewDesc.format);
+    uint32_t elementSize = GetTexelBlockSize(bufferViewDesc.format);
     uint64_t elementOffset;
     uint32_t elementNum;
 

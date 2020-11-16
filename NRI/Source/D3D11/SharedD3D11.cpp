@@ -29,6 +29,7 @@ static constexpr std::array<FormatInfo, (size_t)nri::Format::MAX_NUM> FORMAT_INF
     {DXGI_FORMAT_R8G8_TYPELESS,                 DXGI_FORMAT_R8G8_SINT,                       sizeof(int8_t) * 2,    true},  // RG8_SINT,
 
     {DXGI_FORMAT_B8G8R8A8_TYPELESS,             DXGI_FORMAT_B8G8R8A8_UNORM,                  sizeof(uint8_t) * 4,   false}, // BGRA8_UNORM,
+    {DXGI_FORMAT_B8G8R8A8_TYPELESS,             DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,             sizeof(uint8_t) * 4,   false}, // BGRA8_SRGB,
 
     {DXGI_FORMAT_R8G8B8A8_TYPELESS,             DXGI_FORMAT_R8G8B8A8_UNORM,                  sizeof(uint8_t) * 4,   false}, // RGBA8_UNORM,
     {DXGI_FORMAT_R8G8B8A8_TYPELESS,             DXGI_FORMAT_R8G8B8A8_SNORM,                  sizeof(int8_t) * 4,    false}, // RGBA8_SNORM,

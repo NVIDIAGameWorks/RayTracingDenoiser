@@ -74,6 +74,7 @@ namespace nri
         ID3D12CommandSignature* GetDispatchCommandSignature() const;
 
         bool IsMeshShaderSupported() const;
+        const CoreInterface& GetCoreInterface() const;
 
         //================================================================================================================
         // NRI
@@ -136,6 +137,9 @@ namespace nri
 
         FormatSupportBits GetFormatSupport(Format format) const;
 
+        uint32_t CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const;
+        Result AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, Memory** allocations);
+
         Result CreateSwapChain(const SwapChainDesc& swapChainDesc, SwapChain*& swapChain);
 
         //================================================================================================================
@@ -151,6 +155,7 @@ namespace nri
 #ifdef __ID3D12GraphicsCommandList6_INTERFACE_DEFINED__
         Result FillFunctionTable(MeshShaderInterface& meshShaderInterface) const;
 #endif
+        Result FillFunctionTable(HelperInterface& helperInterface) const;
 
     private:
         void UpdateDeviceDesc(IDXGIAdapter* adapter, bool enableValidation);
@@ -171,6 +176,7 @@ namespace nri
         UnorderedMap<uint32_t, ComPtr<ID3D12CommandSignature>> m_DrawCommandSignatures;
         UnorderedMap<uint32_t, ComPtr<ID3D12CommandSignature>> m_DrawIndexedCommandSignatures;
         ComPtr<ID3D12CommandSignature> m_DispatchCommandSignature;
+        CoreInterface m_CoreInterface = {};
     };
 
     inline DeviceD3D12::operator ID3D12Device*() const
@@ -188,5 +194,10 @@ namespace nri
     inline bool DeviceD3D12::IsMeshShaderSupported() const
     {
         return m_IsMeshShaderSupported;
+    }
+
+    inline const CoreInterface& DeviceD3D12::GetCoreInterface() const
+    {
+        return m_CoreInterface;
     }
 }

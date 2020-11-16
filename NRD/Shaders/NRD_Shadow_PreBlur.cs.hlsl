@@ -15,13 +15,13 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gViewToClip;
     float4 gFrustum;
     float2 gInvScreenSize;
-    float2 padding;
+    float2 gScreenSize;
     float gMetersToUnits;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    uint gCheckerboard;
+    float gReference;
     uint gFrameIndex;
     uint gWorldSpaceMotion;
 
@@ -186,17 +186,17 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     sum = 1.0;
 
     float centerWeight = STL::Math::LinearStep( 1.0, 0.9, result.x );
-    float geometryWeightParams = SHADOW_PLANE_DISTANCE_SCALE * GetGeometryWeightParams( gMetersToUnits, centerZ );
+    float2 geometryWeightParams = GetGeometryWeightParams( Xv, Nv, gMetersToUnits, centerZ, SHADOW_PLANE_DISTANCE_SCALE );
 
     SHADOW_UNROLL
-    for( uint s = 0; s < SHADOW_POISSON_SAMPLE_NUM; s++ )
+    for( uint i = 0; i < SHADOW_POISSON_SAMPLE_NUM; i++ )
     {
         // Sample coordinates
-        float3 offset = SHADOW_POISSON_SAMPLES[ s ];
+        float3 offset = SHADOW_POISSON_SAMPLES[ i ];
         float2 uv = GetKernelSampleCoordinates( offset, Xv, Tv, Bv, rotator );
 
         // Fetch data
-        float2 data = gIn_Hit_ViewZ.SampleLevel( gNearestMirror, uv, 0.0 ); // yes, nearest to not break shadow unpacking
+        float2 data = gIn_Hit_ViewZ.SampleLevel( gNearestMirror, uv, 0 );
         float h = data.x / NRD_FP16_VIEWZ_SCALE;
         float signNoL = float( data.x != 0.0 );
         float z = data.y / NRD_FP16_VIEWZ_SCALE;
@@ -204,12 +204,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         SHADOW_TYPE s;
         s.x = float( data.x == NRD_FP16_MAX );
         #ifdef TRANSLUCENT_SHADOW
-            s.yzw = gIn_Translucency.SampleLevel( gLinearMirror, uv, 0.0 ).xyz; // TODO: "linear" sampler can be potentially dangerous here
+            s.yzw = gIn_Translucency.SampleLevel( gNearestMirror, uv, 0.0 ).xyz;
         #endif
 
         // Sample weight
         float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
-        float w = GetGeometryWeight( Xv, Nv, samplePos, geometryWeightParams );
+        float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
         w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
 
         #if( USE_SHADOW_BLUR_RADIUS_FIX == 1 )

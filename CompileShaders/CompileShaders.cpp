@@ -136,7 +136,7 @@ void Log(const char* format, ...)
     if (format == nullptr || *format == 0)
         return;
 
-    char buffer[65536];
+    char buffer[8192];
     va_list args;
     va_start(args, format);
     vsnprintf(buffer, sizeof(buffer), format, args);
@@ -144,6 +144,16 @@ void Log(const char* format, ...)
 
     EnterCriticalSection(&g_LogCriticalSection);
     printf("%s", buffer);
+    LeaveCriticalSection(&g_LogCriticalSection);
+}
+
+void LogPreformatted(const char* format)
+{
+    if (format == nullptr || *format == 0)
+        return;
+
+    EnterCriticalSection(&g_LogCriticalSection);
+    printf("%s", format);
     LeaveCriticalSection(&g_LogCriticalSection);
 }
 
@@ -159,17 +169,22 @@ private:
 
     DWORD CompileShader(ShaderStage stage, const std::wstring& sourcePath);
     DWORD ExecuteCommandLine(const std::wstring& commandLine);
+    void CloseInputThread();
+    void Initialize();
 
     const Shader* m_Shaders = nullptr;
     size_t m_ShaderNum = 0;
     std::atomic_size_t* m_CompiledShaderNum = nullptr;
 
-    std::atomic<HANDLE> m_InputPipe = nullptr;
-    HANDLE m_ChildApplicationInputPipe = nullptr;
-    HANDLE m_ChildApplicationOutputPipe = nullptr;
+    std::atomic_bool m_InputStop = false;
     HANDLE m_InputEvent = nullptr;
+    HANDLE m_InputThread = nullptr;
+    HANDLE m_ReadPipes[2] = {};
+    HANDLE m_WritePipes[2] = {};
 
     HANDLE m_WorkerThread = nullptr;
+
+    wchar_t m_CurrentDirectory[MAX_PATH] = {};
 };
 
 CompilationThread::CompilationThread(const Shader* shaders, size_t shaderNum, std::atomic_size_t& compiledShaderNum) :
@@ -177,60 +192,33 @@ CompilationThread::CompilationThread(const Shader* shaders, size_t shaderNum, st
     m_ShaderNum(shaderNum),
     m_CompiledShaderNum(&compiledShaderNum)
 {
+    if (shaderNum == 0)
+        return;
+
     m_WorkerThread = CreateThread(nullptr, 0, &WorkerThread, this, 0, nullptr);
     CHECK_WINAPI(m_WorkerThread != nullptr, "failed to create compilation thread");
 }
 
 CompilationThread::~CompilationThread()
 {
+    if (m_WorkerThread == nullptr)
+        return;
+
     WaitForSingleObject(m_WorkerThread, INFINITE);
     CHECK_WINAPI(CloseHandle(m_WorkerThread), "CloseHandle(m_WorkerThread)");
+
+    CloseInputThread();
 }
 
 DWORD CompilationThread::WorkerThread(void* arg)
 {
     CompilationThread& thread = *(CompilationThread*)arg;
 
-    if (thread.m_ShaderNum == 0)
-        return 0;
-
-    SECURITY_ATTRIBUTES securityAttributes = {};
-    securityAttributes.nLength = sizeof(SECURITY_ATTRIBUTES);
-    securityAttributes.bInheritHandle = TRUE;
-
-    HANDLE readPipes[2] = {};
-    HANDLE writePipes[2] = {};
-    CHECK_WINAPI(CreatePipe(&readPipes[0], &writePipes[0], &securityAttributes, 0), "CreatePipe() failed");
-    CHECK_WINAPI(CreatePipe(&readPipes[1], &writePipes[1], &securityAttributes, 0), "second CreatePipe() failed");
-    CHECK_WINAPI(SetHandleInformation(readPipes[0], HANDLE_FLAG_INHERIT, 0), "SetHandleInformation(readPipes[0]) failed");
-    CHECK_WINAPI(SetHandleInformation(writePipes[1], HANDLE_FLAG_INHERIT, 0), "SetHandleInformation(writePipes[1]) failed");
-
-    thread.m_InputPipe.store(readPipes[0]);
-    thread.m_ChildApplicationInputPipe = readPipes[1];
-    thread.m_ChildApplicationOutputPipe = writePipes[0];
-    thread.m_InputEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    CHECK_WINAPI(thread.m_InputEvent != nullptr, "CreateEventW() failed");
-
-    const HANDLE inputThread = CreateThread(nullptr, 0, &InputThread, &thread, 0, nullptr);
-    CHECK_WINAPI(inputThread != nullptr, "CreateThread() for input thread failed");
+    thread.Initialize();
 
     size_t compiled = 0;
     for (size_t i = 0; i < thread.m_ShaderNum; i++)
         compiled += thread.CompileShader(thread.m_Shaders[i].stage, thread.m_Shaders[i].file) == 0 ? 1 : 0;
-
-    thread.m_InputPipe.store(nullptr);
-    CHECK_WINAPI(CloseHandle(writePipes[0]), "CloseHandle(writePipes[0]) failed");
-    CHECK_WINAPI(CloseHandle(writePipes[1]), "CloseHandle(writePipes[1]) failed");
-    CHECK_WINAPI(CloseHandle(readPipes[0]), "CloseHandle(readPipes[0]) failed");
-    CHECK_WINAPI(CloseHandle(readPipes[1]), "CloseHandle(readPipes[1]) failed");
-    CHECK_WINAPI(SetEvent(thread.m_InputEvent), "SetEvent() failed");
-
-    const DWORD timeout = 30000; // 30 seconds
-    const DWORD waitResult = WaitForSingleObject(inputThread, timeout);
-    CHECK_WINAPI(CloseHandle(inputThread), "CloseHandle(inputThread) failed");
-
-    if (waitResult == WAIT_OBJECT_0)
-        CHECK_WINAPI(CloseHandle(thread.m_InputEvent), "CloseHandle(thread.m_InputEvent) failed");
 
     thread.m_CompiledShaderNum->fetch_add(compiled);
 
@@ -241,45 +229,62 @@ DWORD CompilationThread::InputThread(void* arg)
 {
     CompilationThread& thread = *(CompilationThread*)arg;
 
-    std::vector<char> buffer(65536);
+    std::vector<char> buffer;
+    std::vector<char> tempBuffer(65536);
     DWORD readSize = 1;
 
-    do
+    while (!thread.m_InputStop.load(std::memory_order_relaxed))
     {
         WaitForSingleObject(thread.m_InputEvent, INFINITE);
-        const HANDLE pipe = thread.m_InputPipe.load(std::memory_order_seq_cst);
 
         readSize = 0;
-        while (ReadFile(pipe, buffer.data(), (DWORD)buffer.size(), &readSize, nullptr))
-        {
-            const size_t lastChar = std::min<size_t>(readSize, buffer.size() - 1);
-            buffer[lastChar] = 0;
-
-            if (readSize > 0)
-                Log(buffer.data());
-        }
+        while (ReadFile(thread.m_ReadPipes[0], tempBuffer.data(), (DWORD)tempBuffer.size(), &readSize, nullptr))
+            buffer.insert(buffer.end(), tempBuffer.begin(), tempBuffer.begin() + readSize);
     }
-    while (thread.m_InputPipe.load(std::memory_order_relaxed) != nullptr);
+
+    if (!buffer.empty())
+    {
+        buffer.push_back(0);
+        LogPreformatted(buffer.data());
+    }
 
     return 0;
 }
 
+DWORD CompilationThread::CompileShader(ShaderStage stage, const std::wstring& sourcePath)
+{
+    const std::wstring ext = EXT_ARRAY[(size_t)stage];
+    const std::wstring fileName = GetFileNameWithoutExt(sourcePath) + ext;
+    const std::wstring profilePrefix = HLSL_PROFILE_ARRAY[(size_t)stage];
+    const std::wstring outputPath = g_OutputDir + fileName;
+    const std::wstring outputHeaderPath = g_OutputHeaderDir + fileName;
+    const std::wstring commandLine = L"CompileShader.bat " + profilePrefix + L" \"" + sourcePath + L"\" \"" + outputPath + L"\" \"" + outputHeaderPath + L"\"";
+
+    const DWORD result = ExecuteCommandLine(commandLine);
+
+    if (result != 0)
+    {
+        Log("ERROR: failed to execute the command line: '%ls' (result: %d)\n", commandLine.data(), result);
+        CloseInputThread();
+        std::quick_exit(1);
+    }
+
+    return result;
+}
+
 DWORD CompilationThread::ExecuteCommandLine(const std::wstring& commandLine)
 {
-    wchar_t currentDirectory[MAX_PATH] = {};
-    GetCurrentDirectoryW(_countof(currentDirectory), currentDirectory);
-
     STARTUPINFOW startupInfo = {};
     startupInfo.cb = (DWORD)sizeof(startupInfo);
-    startupInfo.hStdError = m_ChildApplicationOutputPipe;
-    startupInfo.hStdOutput = m_ChildApplicationOutputPipe;
-    startupInfo.hStdInput = m_ChildApplicationInputPipe;
-    startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+    startupInfo.hStdError = m_WritePipes[0];
+    startupInfo.hStdOutput = m_WritePipes[0];
+    startupInfo.hStdInput = m_ReadPipes[1];
+    startupInfo.dwFlags = STARTF_USESTDHANDLES;
 
     PROCESS_INFORMATION processInfo = {};
 
-    const BOOL result = CreateProcessW(nullptr, (wchar_t*)commandLine.data(), nullptr, nullptr,
-        TRUE, 0, nullptr, currentDirectory, &startupInfo, &processInfo);
+    BOOL result = CreateProcessW(nullptr, (wchar_t*)commandLine.data(), nullptr, nullptr,
+        TRUE, 0, nullptr, m_CurrentDirectory, &startupInfo, &processInfo);
 
     if (result == FALSE)
     {
@@ -297,29 +302,65 @@ DWORD CompilationThread::ExecuteCommandLine(const std::wstring& commandLine)
         Log("ERROR: failed to wait for process: %d ('%ls')\n", waitResult, commandLine.data());
 
     DWORD exitCode = 1;
-    GetExitCodeProcess(processInfo.hProcess, &exitCode);
+    result = GetExitCodeProcess(processInfo.hProcess, &exitCode);
 
-    CloseHandle(processInfo.hProcess);
+    if (result == FALSE)
+    {
+        Log("ERROR: failed to get process exit code: %d\n", result);
+    }
+    else if (exitCode == STILL_ACTIVE)
+    {
+        Log("ERROR: the process is still alive: %d\n", result);
+        TerminateProcess(processInfo.hProcess, 1);
+    }
+
     CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
 
-    return exitCode;
+    return result ? exitCode : 1;
 }
 
-DWORD CompilationThread::CompileShader(ShaderStage stage, const std::wstring& sourcePath)
+void CompilationThread::CloseInputThread()
 {
-    const std::wstring ext = EXT_ARRAY[(size_t)stage];
-    const std::wstring fileName = GetFileNameWithoutExt(sourcePath) + ext;
-    const std::wstring profilePrefix = HLSL_PROFILE_ARRAY[(size_t)stage];
-    const std::wstring outputPath = g_OutputDir + fileName;
-    const std::wstring outputHeaderPath = g_OutputHeaderDir + fileName;
-    const std::wstring commandLine = L"CompileShader.bat " + profilePrefix + L" \"" + sourcePath + L"\" \"" + outputPath + L"\" \"" + outputHeaderPath + L"\"";
+    CHECK_WINAPI(CloseHandle(m_WritePipes[0]), "CloseHandle(m_WritePipes[0]) failed");
+    CHECK_WINAPI(CloseHandle(m_WritePipes[1]), "CloseHandle(m_WritePipes[1]) failed");
+    CHECK_WINAPI(CloseHandle(m_ReadPipes[0]), "CloseHandle(m_ReadPipes[0]) failed");
+    CHECK_WINAPI(CloseHandle(m_ReadPipes[1]), "CloseHandle(m_ReadPipes[1]) failed");
 
-    const DWORD result = ExecuteCommandLine(commandLine);
+    m_InputStop.store(true);
+    CHECK_WINAPI(SetEvent(m_InputEvent), "SetEvent(m_InputEvent) failed");
 
-    if (result != 0)
-        Log("ERROR: failed to execute the command line: '%ls' (result: %d)\n", commandLine.data(), result);
+    const DWORD timeout = 30000; // 30 seconds
+    const DWORD waitResult = WaitForSingleObject(m_InputThread, timeout);
 
-    return result;
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        Log("ERROR: the input thread is still running: %d\n", waitResult);
+        TerminateThread(m_InputThread, 1);
+    }
+
+    CHECK_WINAPI(CloseHandle(m_InputThread), "CloseHandle(m_InputThread) failed");
+    CHECK_WINAPI(CloseHandle(m_InputEvent), "CloseHandle(m_InputEvent) failed");
+}
+
+void CompilationThread::Initialize()
+{
+    GetCurrentDirectoryW(_countof(m_CurrentDirectory), m_CurrentDirectory);
+
+    SECURITY_ATTRIBUTES securityAttributes = {};
+    securityAttributes.nLength = sizeof(SECURITY_ATTRIBUTES);
+    securityAttributes.bInheritHandle = TRUE;
+
+    CHECK_WINAPI(CreatePipe(&m_ReadPipes[0], &m_WritePipes[0], &securityAttributes, 0), "CreatePipe() failed");
+    CHECK_WINAPI(CreatePipe(&m_ReadPipes[1], &m_WritePipes[1], &securityAttributes, 0), "second CreatePipe() failed");
+    CHECK_WINAPI(SetHandleInformation(m_ReadPipes[0], HANDLE_FLAG_INHERIT, 0), "SetHandleInformation(readPipes[0]) failed");
+    CHECK_WINAPI(SetHandleInformation(m_WritePipes[1], HANDLE_FLAG_INHERIT, 0), "SetHandleInformation(writePipes[1]) failed");
+
+    m_InputEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    CHECK_WINAPI(m_InputEvent != nullptr, "CreateEventW() failed");
+
+    m_InputThread = CreateThread(nullptr, 0, &InputThread, this, 0, nullptr);
+    CHECK_WINAPI(m_InputThread != nullptr, "CreateThread() for input thread failed");
 }
 
 std::wstring SanitizePath(const std::wstring& path)

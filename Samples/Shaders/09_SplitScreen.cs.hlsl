@@ -47,20 +47,21 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     float s = gIn_Unfiltered_Shadow[ pixelPos ].x;
     float3 translucency = gIn_Unfiltered_Translucency[ pixelPos ];
     float shadow = float( s == NRD_FP16_MAX );
+    float4 shadowData = float4( shadow, translucency );
 
     float4 diffA = gIn_Unfiltered_DiffA[ checkerboardPos ];
     float4 diffB = gIn_Unfiltered_DiffB[ checkerboardPos ];
-    float4 diffHit = _NRD_BackEnd_UnpackDiffuse( diffA, diffB, N );
+    float4 diffHit = _NRD_BackEnd_UnpackDiffuse( diffA, diffB, N, false );
 
     float4 specHit = gIn_Unfiltered_SpecHit[ checkerboardPos ];
 
     if( gSvgf )
     {
-        shadow = 0;
+        shadowData.xyz = translucency;
         diffHit = diffA;
     }
 
-    gOut_Shadow[ pixelPos ] = float4( shadow, translucency );
+    gOut_Shadow[ pixelPos ] = shadowData;
     gOut_DiffHit[ pixelPos ] = diffHit;
     gOut_SpecHit[ pixelPos ] = specHit;
 }

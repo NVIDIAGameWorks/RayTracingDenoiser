@@ -58,6 +58,7 @@ struct DispatchTable
     VULKAN_FUNCTION(BindBufferMemory2);
     VULKAN_FUNCTION(BindImageMemory2);
 
+    VULKAN_FUNCTION(QueueWaitIdle);
     VULKAN_FUNCTION(WaitForFences);
     VULKAN_FUNCTION(ResetFences);
     VULKAN_FUNCTION(AcquireNextImageKHR);

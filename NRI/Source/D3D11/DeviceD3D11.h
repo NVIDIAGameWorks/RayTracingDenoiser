@@ -19,11 +19,9 @@ namespace nri
         DeviceD3D11(const Log& log, StdAllocator<uint8_t>& stdAllocator);
         ~DeviceD3D11();
 
-        inline const VersionedContext& GetImmediateContext() const
-        { return m_ImmediateContext; }
-
-        inline const VersionedDevice& GetDevice() const
-        { return m_Device; }
+        const VersionedContext& GetImmediateContext() const;
+        const VersionedDevice& GetDevice() const;
+        const CoreInterface& GetCoreInterface() const;
 
         Result Create(const DeviceCreationDesc& deviceCreationDesc, IDXGIAdapter* adapter, ID3D11Device* precreatedDevice, AGSContext* agsContext);
 
@@ -69,6 +67,9 @@ namespace nri
 
         FormatSupportBits GetFormatSupport(Format format) const;
 
+        uint32_t CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const;
+        Result AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, Memory** allocations);
+
         //================================================================================================================
         // DeviceBase
         //================================================================================================================
@@ -76,6 +77,7 @@ namespace nri
         Result FillFunctionTable(CoreInterface& table) const;
         Result FillFunctionTable(SwapChainInterface& table) const;
         Result FillFunctionTable(WrapperD3D11Interface& table) const;
+        Result FillFunctionTable(HelperInterface& helperInterface) const;
 
     private:
         void InitVersionedDevice(ID3D11Device* device, bool isDeferredContextsEmulationRequested);
@@ -92,8 +94,24 @@ namespace nri
         Vector<CommandQueueD3D11> m_CommandQueues;
         DeviceDesc m_Desc = {};
         CRITICAL_SECTION m_CriticalSection = {};
+        CoreInterface m_CoreInterface = {};
 
     private:
         void FillLimits(bool isValidationEnabled, Vendor vendor);
     };
+
+    inline const VersionedContext& DeviceD3D11::GetImmediateContext() const
+    {
+        return m_ImmediateContext;
+    }
+    
+    inline const VersionedDevice& DeviceD3D11::GetDevice() const
+    {
+        return m_Device;
+    }
+    
+    inline const CoreInterface& DeviceD3D11::GetCoreInterface() const
+    {
+        return m_CoreInterface;
+    }
 }

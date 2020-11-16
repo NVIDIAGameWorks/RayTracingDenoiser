@@ -121,9 +121,28 @@ namespace nrd
         AntilagSettings antilagSettings = {};
         uint32_t maxAccumulatedFrameNum = NRD_SPECULAR_MAX_HISTORY_FRAME_NUM; // count 0-NRD_SPECULAR_MAX_HISTORY_FRAME_NUM (use 0 for one frame to reset history)
         float disocclusionThreshold = 0.005f; // normalized %
-        float blurRadius = 40.0f; // pixels
-        float postBlurRadiusScale = 0.5f;
+        float blurRadius = 30.0f; // pixels
+        float postBlurMaxAdaptiveRadiusScale = 5.0f; // 0-10
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
+    };
+
+    // NRD_DIFFUSE_SPECULAR
+
+    struct NrdDiffuseSpecularSettings
+    {
+        HitDistanceParameters diffHitDistanceParameters = {};
+        HitDistanceParameters specHitDistanceParameters = {};
+        LobeTrimmingParameters specLobeTrimmingParameters = {};
+        AntilagSettings antilagSettings = {};
+        uint32_t diffMaxAccumulatedFrameNum = NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM; // count 0-NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM (use 0 for one frame to reset history)
+        uint32_t specMaxAccumulatedFrameNum = NRD_SPECULAR_MAX_HISTORY_FRAME_NUM; // count 0-NRD_SPECULAR_MAX_HISTORY_FRAME_NUM (use 0 for one frame to reset history)
+        float disocclusionThreshold = 0.005f; // normalized %
+        float diffBlurRadius = 30.0f; // pixels
+        float specBlurRadius = 30.0f; // pixels
+        float diffPostBlurMaxAdaptiveRadiusScale = 5.0f; // 0-10
+        float specPostBlurMaxAdaptiveRadiusScale = 5.0f; // 0-10
+        CheckerboardMode diffCheckerboardMode = CheckerboardMode::OFF;
+        CheckerboardMode specCheckerboardMode = CheckerboardMode::OFF;
     };
 
     // NRD_SHADOW and NRD_TRANSLUCENT_SHADOW
@@ -131,7 +150,7 @@ namespace nrd
     struct NrdShadowSettings
     {
         float lightSourceAngularDiameter = 0.533f; // deg (0.533 = sun)
-        float blurRadiusScale = 1.0f; // adds bias, but if shadows are still unstable (have you tried blue noise?)... can be set in range [1; 1.5]
+        float blurRadiusScale = 1.0f; // adds bias if > 1, but if shadows are still unstable (have you tried blue noise?)... can be set in range [1; 1.5]
     };
 
     // SVGF

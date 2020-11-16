@@ -57,10 +57,11 @@ void __CRTDECL operator delete[](void* p)
 
 constexpr uint64_t STREAM_BUFFER_SIZE = 8 * 1024 * 1024;
 
-bool UserInterface::Initialize(HWND hwnd, nri::Device& device, const nri::CoreInterface& coreInterface, uint32_t windowWidth, uint32_t windowHeight, uint32_t maxBufferedFrames, nri::Format renderTargetFormat)
+bool UserInterface::Initialize(HWND hwnd, nri::Device& device, const nri::CoreInterface& coreInterface, const nri::HelperInterface& helperInterface, uint32_t windowWidth, uint32_t windowHeight, uint32_t maxBufferedFrames, nri::Format renderTargetFormat)
 {
     m_Device = &device;
     NRI = &coreInterface;
+    m_Helper = &helperInterface;
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -234,11 +235,23 @@ bool UserInterface::Initialize(HWND hwnd, nri::Device& device, const nri::CoreIn
             return false;
     }
 
-    nri::Result result = helper::BindMemory(*NRI, device, nri::MemoryLocation::HOST_UPLOAD, nullptr, 0, &m_GeometryBuffer, 1, m_Memories);
+    m_MemoryAllocations.resize(2, nullptr);
+
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_GeometryBuffer;
+
+    nri::Result result = m_Helper->AllocateAndBindMemory(device, resourceGroupDesc, m_MemoryAllocations.data());
     if (result != nri::Result::SUCCESS)
         return false;
 
-    result = helper::BindMemory(*NRI, device, nri::MemoryLocation::DEVICE, &m_FontTexture, 1, nullptr, 0, m_Memories);
+    resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.textureNum = 1;
+    resourceGroupDesc.textures = &m_FontTexture;
+
+    result = m_Helper->AllocateAndBindMemory(device, resourceGroupDesc, m_MemoryAllocations.data() + 1);
     if (result != nri::Result::SUCCESS)
         return false;
 
@@ -252,12 +265,16 @@ bool UserInterface::Initialize(HWND hwnd, nri::Device& device, const nri::CoreIn
     utils::Texture texture;
     utils::LoadTextureFromMemory(format, fontTextureWidth, fontTextureHeight, fontPixels, texture);
 
+    nri::CommandQueue* commandQueue = nullptr;
+    NRI->GetCommandQueue(device, nri::CommandQueueType::GRAPHICS, commandQueue);
+
     // Upload data
     {
-        helper::TextureSubresource subresource = {};
+
+        nri::TextureSubresourceUploadDesc subresource = {};
         texture.GetSubresource(subresource, 0);
 
-        helper::TextureDataDesc textureData = {};
+        nri::TextureUploadDesc textureData = {};
         textureData.subresources = &subresource;
         textureData.mipNum = 1;
         textureData.arraySize = 1;
@@ -265,7 +282,7 @@ bool UserInterface::Initialize(HWND hwnd, nri::Device& device, const nri::CoreIn
         textureData.nextLayout = nri::TextureLayout::SHADER_RESOURCE;
         textureData.nextAccess = nri::AccessBits::SHADER_RESOURCE;
 
-        if (helper::UploadData(*NRI, device, &textureData, 1, nullptr, 0) != nri::Result::SUCCESS)
+        if ( m_Helper->UploadData(*commandQueue, &textureData, 1, nullptr, 0) != nri::Result::SUCCESS)
             return false;
     }
 
@@ -320,8 +337,8 @@ void UserInterface::Shutdown()
     if (m_GeometryBuffer)
         NRI->DestroyBuffer(*m_GeometryBuffer);
 
-    for (uint32_t i = 0; i < m_Memories.size(); i++)
-        NRI->FreeMemory(*m_Memories[i]);
+    for (uint32_t i = 0; i < m_MemoryAllocations.size(); i++)
+        NRI->FreeMemory(*m_MemoryAllocations[i]);
 }
 
 void UserInterface::Prepare()

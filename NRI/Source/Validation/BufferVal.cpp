@@ -66,7 +66,7 @@ void BufferVal::GetMemoryInfo(MemoryLocation memoryLocation, MemoryDesc& memoryD
 
 void* BufferVal::Map(uint64_t offset, uint64_t size)
 {
-    RETURN_ON_FAILURE(m_Device.GetLog(), m_Memory != nullptr, nullptr,
+    RETURN_ON_FAILURE(m_Device.GetLog(), m_IsBoundToMemory, nullptr,
         "Can't map Buffer: Buffer is not bound to memory.");
 
     RETURN_ON_FAILURE(m_Device.GetLog(), !m_IsMapped, nullptr,

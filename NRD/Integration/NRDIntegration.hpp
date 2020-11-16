@@ -72,7 +72,7 @@ static inline uint64_t CreateDescriptorKey(bool isStorage, uint8_t poolIndex, ui
     return key;
 }
 
-bool Nrd::Initialize(nri::Device& nriDevice, nri::CoreInterface& nriCoreInterface, const nrd::DenoiserCreationDesc& denoiserCreationDesc, bool ignoreNRIProvidedBindingOffsets)
+bool Nrd::Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCoreInterface, const nri::HelperInterface& nriHelperInterface, const nrd::DenoiserCreationDesc& denoiserCreationDesc, bool ignoreNRIProvidedBindingOffsets)
 {
     const nrd::LibraryDesc& libraryDesc = nrd::GetLibraryDesc();
     for (uint32_t i = 0; i < denoiserCreationDesc.requestedMethodNum; i++)
@@ -92,6 +92,7 @@ bool Nrd::Initialize(nri::Device& nriDevice, nri::CoreInterface& nriCoreInterfac
 
     m_Device = &nriDevice;
     m_NRI = &nriCoreInterface;
+    m_NRIHelper = &nriHelperInterface;
 
     CreatePipelines(ignoreNRIProvidedBindingOffsets);
     CreateResources();
@@ -219,6 +220,8 @@ void Nrd::CreateResources()
     }
     m_ResourceState.resize(resourceStateNum); // No reallocation!
 
+    m_TexturePool.resize(poolSize);
+
     // Texture pool
     resourceStateNum = 0;
     for (uint32_t i = 0; i < poolSize; i++)
@@ -229,13 +232,12 @@ void Nrd::CreateResources()
         nri::CTextureDesc textureDesc = nri::CTextureDesc::Texture2D(format, nrdTextureDesc.width, nrdTextureDesc.height, nrdTextureDesc.mipNum, 1, nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE);
         nri::Texture* texture = nullptr;
         NRD_ABORT_ON_FAILURE(m_NRI->CreateTexture(*m_Device, textureDesc, texture));
-        NRD_ABORT_ON_FAILURE( helper::BindMemory(*m_NRI, *m_Device, nri::MemoryLocation::DEVICE, &texture, 1, nullptr, 0, m_Memories) );
 
         NrdTexture nrdTexture = {};
         nrdTexture.texture = texture;
         nrdTexture.states = &m_ResourceState[resourceStateNum];
         nrdTexture.format = format;
-        m_TexturePool.push_back(nrdTexture);
+        m_TexturePool[i] = nrdTexture;
 
         for (uint16_t mip = 0; mip < nrdTextureDesc.mipNum; mip++)
             nrdTexture.states[mip] = nri::TextureTransition(texture, nri::AccessBits::UNKNOWN, nri::TextureLayout::UNKNOWN, mip, 1);
@@ -253,7 +255,8 @@ void Nrd::CreateResources()
     bufferDesc.usageMask = nri::BufferUsageBits::CONSTANT_BUFFER;
 
     NRD_ABORT_ON_FAILURE(m_NRI->CreateBuffer(*m_Device, bufferDesc, m_ConstantBuffer));
-    NRD_ABORT_ON_FAILURE(helper::BindMemory(*m_NRI, *m_Device, nri::MemoryLocation::HOST_UPLOAD, nullptr, 0, &m_ConstantBuffer, 1, m_Memories));
+
+    AllocateAndBindMemory();
 
     nri::BufferViewDesc constantBufferViewDesc = {};
     constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
@@ -272,6 +275,32 @@ void Nrd::CreateResources()
 
     for (nri::DescriptorPool*& descriptorPool : m_DescriptorPools)
         NRD_ABORT_ON_FAILURE(m_NRI->CreateDescriptorPool(*m_Device, descriptorPoolDesc, descriptorPool));
+}
+
+void Nrd::AllocateAndBindMemory()
+{
+    std::vector<nri::Texture*> textures(m_TexturePool.size(), nullptr);
+    for (size_t i = 0; i < m_TexturePool.size(); i++)
+        textures[i] = m_TexturePool[i].texture;
+
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.textureNum = (uint32_t)textures.size();
+    resourceGroupDesc.textures = textures.data();
+
+    size_t baseAllocation = m_MemoryAllocations.size();
+    const size_t allocationNum = m_NRIHelper->CalculateAllocationNumber(*m_Device, resourceGroupDesc);
+    m_MemoryAllocations.resize(baseAllocation + allocationNum, nullptr);
+    NRI_ABORT_ON_FAILURE(m_NRIHelper->AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
+
+    resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_ConstantBuffer;
+
+    baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
+    NRD_ABORT_ON_FAILURE(m_NRIHelper->AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 }
 
 void Nrd::SetMethodSettings(nrd::Method method, const void* methodSettings)
@@ -483,9 +512,9 @@ void Nrd::Destroy()
         m_NRI->DestroyPipelineLayout(*pipelineLayout);
     m_PipelineLayouts.clear();
 
-    for (nri::Memory* memory : m_Memories)
+    for (nri::Memory* memory : m_MemoryAllocations)
         m_NRI->FreeMemory(*memory);
-    m_Memories.clear();
+    m_MemoryAllocations.clear();
 
     for (nri::DescriptorPool* descriptorPool : m_DescriptorPools)
         m_NRI->DestroyDescriptorPool(*descriptorPool);

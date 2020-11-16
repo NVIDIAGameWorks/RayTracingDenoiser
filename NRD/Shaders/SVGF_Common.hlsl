@@ -34,6 +34,7 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define VARIANCE_ESTIMATION_RADIUS              3 // 1-3
 #define ATROUS_RADIUS                           2 // 1-2
 #define NORMAL_BANDING_FIX                      STL::Math::DegToRad( 2.5 ) // mitigate banding introduced by normals stored in RGB8 format
+#define NORMAL_ROUGHNESS_BITS			        11, 11, 10
 
 // CTA size
 
@@ -46,13 +47,25 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 
 // Misc
 
-uint2 PackViewZNormalRoughness( float viewZ, float4 normalAndRoughnessPacked )
+uint2 PackViewZNormalRoughness( float viewZ, float3 N, float roughness )
 {
+    float3 t;
+    t.xy = STL::Packing::EncodeUnitVector( N );
+    t.z = roughness;
+
     uint2 p;
     p.x = asuint( viewZ );
-    p.y = STL::Packing::RgbaToUint( normalAndRoughnessPacked, NORMAL_ROUGHNESS_BITS );
+    p.y = STL::Packing::RgbaToUint( t.xyzz, NORMAL_ROUGHNESS_BITS );
 
     return p;
+}
+
+float4 UnpackNormalRoughness( uint p )
+{
+    float3 t = STL::Packing::UintToRgba( p, NORMAL_ROUGHNESS_BITS ).xyz;
+    float3 N = STL::Packing::DecodeUnitVector( t.xy );
+
+    return float4( N, t.z );
 }
 
 float PackHistoryLength( float p )

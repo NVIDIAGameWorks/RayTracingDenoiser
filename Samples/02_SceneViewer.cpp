@@ -29,6 +29,7 @@ struct GlobalConstantBufferLayout
 struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
+    , public nri::HelperInterface
 {};
 
 class Sample : public SampleBase
@@ -65,7 +66,7 @@ private:
     std::vector<nri::DescriptorSet*> m_DescriptorSets;
     std::vector<nri::Texture*> m_Textures;
     std::vector<nri::Buffer*> m_Buffers;
-    std::vector<nri::Memory*> m_Memories;
+    std::vector<nri::Memory*> m_MemoryAllocations;
     std::vector<nri::Descriptor*> m_Descriptors;
 
     nri::Format m_DepthFormat = nri::Format::UNKNOWN;
@@ -75,7 +76,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (uint32_t i = 0; i < BUFFERED_FRAME_MAX_NUM; i++)
     {
@@ -99,8 +100,8 @@ Sample::~Sample()
     for (size_t i = 0; i < m_Buffers.size(); i++)
         NRI.DestroyBuffer(*m_Buffers[i]);
 
-    for (size_t i = 0; i < m_Memories.size(); i++)
-        NRI.FreeMemory(*m_Memories[i]);
+    for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
+        NRI.FreeMemory(*m_MemoryAllocations[i]);
 
     for (size_t i = 0; i < m_Pipelines.size(); i++)
         NRI.DestroyPipeline(*m_Pipelines[i]);
@@ -128,6 +129,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // NRI
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     // Command queue
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue) );
@@ -374,8 +376,24 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         m_Buffers.push_back(buffer);
     }
 
-    NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::HOST_UPLOAD, nullptr, 0, &m_Buffers[0], 1, m_Memories) );
-    NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, &m_Textures[0], (uint32_t)m_Textures.size(), &m_Buffers[1], 2, m_Memories) );
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_Buffers[0];
+
+    size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
+    NRI_ABORT_ON_FAILURE( NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation) );
+
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = 2;
+    resourceGroupDesc.buffers = &m_Buffers[1];
+    resourceGroupDesc.textureNum = (uint32_t)m_Textures.size();
+    resourceGroupDesc.textures = m_Textures.data();
+
+    baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE( NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation) );
 
     // Create descriptors
     nri::Descriptor* anisotropicSampler;
@@ -506,7 +524,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
     // Upload data
     {
-        std::vector<helper::TextureDataDesc> textureData(1 + textureNum);
+        std::vector<nri::TextureUploadDesc> textureData(1 + textureNum);
 
         uint32_t subresourceNum = 0;
         for (uint32_t i = 0; i < textureNum; i++)
@@ -515,8 +533,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
             subresourceNum += texture.GetArraySize() * texture.GetMipNum();
         }
 
-        std::vector<helper::TextureSubresource> subresources(subresourceNum);
-        helper::TextureSubresource* subresourceBegin = subresources.data();
+        std::vector<nri::TextureSubresourceUploadDesc> subresources(subresourceNum);
+        nri::TextureSubresourceUploadDesc* subresourceBegin = subresources.data();
 
         textureData[0] = {};
         textureData[0].subresources = nullptr;
@@ -546,13 +564,15 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
             subresourceBegin += texture.GetArraySize() * texture.GetMipNum();
         }
 
-        helper::BufferDataDesc bufferData[] =
+        nri::BufferUploadDesc bufferData[] =
         {
             {m_Scene.vertices.data(), helper::GetByteSizeOf(m_Scene.vertices), m_Buffers[VERTEX_BUFFER], 0, nri::AccessBits::UNKNOWN, nri::AccessBits::VERTEX_BUFFER},
             {m_Scene.indices.data(), helper::GetByteSizeOf(m_Scene.indices), m_Buffers[INDEX_BUFFER], 0, nri::AccessBits::UNKNOWN, nri::AccessBits::INDEX_BUFFER},
         };
 
-        NRI_ABORT_ON_FAILURE( helper::UploadData(NRI, *m_Device, textureData.data(), (uint32_t)textureData.size(), bufferData, helper::GetCountOf(bufferData)) );
+
+
+        NRI_ABORT_ON_FAILURE( NRI.UploadData(*m_CommandQueue, textureData.data(), (uint32_t)textureData.size(), bufferData, helper::GetCountOf(bufferData)) );
     }
 
     m_Scene.UnloadResources();

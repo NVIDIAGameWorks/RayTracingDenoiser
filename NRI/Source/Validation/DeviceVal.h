@@ -26,6 +26,7 @@ namespace nri
         const WrapperVKInterface& GetWrapperVKInterface() const;
         const RayTracingInterface& GetRayTracingInterface() const;
         const MeshShaderInterface& GetMeshShaderInterface() const;
+        const HelperInterface& GetHelperInterface() const;
 
         bool Create();
         void RegisterMemoryType(MemoryType memoryType, MemoryLocation memoryLocation);
@@ -98,6 +99,9 @@ namespace nri
         Result CreateMemoryD3D12(const MemoryD3D12Desc& memoryDesc, Memory*& memory);
         ID3D12Device* GetDeviceD3D12();
 
+        uint32_t CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const;
+        Result AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, Memory** allocations);
+
         uint32_t GetPhysicalDeviceNum() const;
         bool IsPhysicalDeviceMaskValid(uint32_t physicalDeviceMask) const;
 
@@ -112,6 +116,7 @@ namespace nri
         Result FillFunctionTable(WrapperVKInterface& table) const;
         Result FillFunctionTable(RayTracingInterface& table) const;
         Result FillFunctionTable(MeshShaderInterface& table) const;
+        Result FillFunctionTable(HelperInterface& table) const;
 
     private:
         Device& m_Device;
@@ -123,6 +128,7 @@ namespace nri
         WrapperVKInterface m_WrapperVKAPI = {};
         RayTracingInterface m_RayTracingAPI = {};
         MeshShaderInterface m_MeshShaderAPI = {};
+        HelperInterface m_HelperAPI = {};
         bool m_IsSwapChainSupported = false;
         bool m_IsWrapperD3D11Supported = false;
         bool m_IsWrapperD3D12Supported = false;
@@ -179,5 +185,10 @@ namespace nri
     inline const MeshShaderInterface& DeviceVal::GetMeshShaderInterface() const
     {
         return m_MeshShaderAPI;
+    }
+
+    inline const HelperInterface& DeviceVal::GetHelperInterface() const
+    {
+        return m_HelperAPI;
     }
 }

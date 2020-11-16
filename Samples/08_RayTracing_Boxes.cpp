@@ -24,6 +24,7 @@ struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
     , public nri::RayTracingInterface
+    , public nri::HelperInterface
 {};
 
 struct Frame
@@ -100,7 +101,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (uint32_t i = 0; i < m_Frames.size(); i++)
     {
@@ -158,6 +159,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::RayTracingInterface), (nri::RayTracingInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue));
     NRI_ABORT_ON_FAILURE( NRI.CreateQueueSemaphore(*m_Device, m_BackBufferAcquireSemaphore));
@@ -176,7 +178,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     CreateShaderTable();
     CreateShaderResources();
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)
@@ -346,7 +348,7 @@ void Sample::CreateRayTracingPipeline()
     {
         {0, 1, nri::DescriptorType::STORAGE_TEXTURE, nri::ShaderStage::RAYGEN},
         {1, 1, nri::DescriptorType::ACCELERATION_STRUCTURE, nri::ShaderStage::RAYGEN},
-        {0, BOX_NUM, nri::DescriptorType::BUFFER, nri::ShaderStage::CLOSEST_HIT, helper::VARIABLE_DESCRIPTOR_NUM, helper::DESCRIPTOR_ARRAY},
+        {0, BOX_NUM, nri::DescriptorType::BUFFER, nri::ShaderStage::CLOSEST_HIT, nri::VARIABLE_DESCRIPTOR_NUM, nri::DESCRIPTOR_ARRAY},
     };
 
     nri::DescriptorSetDesc descriptorSetDescs[] =
@@ -453,13 +455,21 @@ void Sample::CreateShaderResources()
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, indexBufferDesc, m_IndexBuffer));
 
     nri::Buffer* buffers[] = { m_TexCoordBuffer, m_IndexBuffer };
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, nullptr, 0, buffers, helper::GetCountOf(buffers), m_MemoryAllocations));
 
-    helper::BufferDataDesc dataDescArray[] = {
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = helper::GetCountOf(buffers);
+    resourceGroupDesc.buffers = buffers;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
+
+    nri::BufferUploadDesc dataDescArray[] = {
         { texCoords, texCoordBufferDesc.size, m_TexCoordBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::SHADER_RESOURCE },
         { paddedIndices.data(), indexBufferDesc.size, m_IndexBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::SHADER_RESOURCE }
     };
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, dataDescArray, helper::GetCountOf(dataDescArray)));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, nullptr, 0, dataDescArray, helper::GetCountOf(dataDescArray)));
 
     nri::BufferViewDesc texCoordBufferViewDesc = {};
     texCoordBufferViewDesc.buffer = m_TexCoordBuffer;
@@ -650,7 +660,7 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
     NRI.CmdBuildBottomLevelAccelerationStructure(*commandBuffer, objectNum, objects, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.SubmitQueueWork(*m_CommandQueue, workSubmissionDesc, nullptr);
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
@@ -678,7 +688,7 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
     NRI.CmdBuildTopLevelAccelerationStructure(*commandBuffer, instanceNum, instanceBuffer, 0, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.SubmitQueueWork(*m_CommandQueue, workSubmissionDesc, nullptr);
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
@@ -700,18 +710,26 @@ void Sample::CreateShaderTable()
 
     const nri::BufferDesc bufferDesc = { shaderTableSize, 0, (nri::BufferUsageBits)0 };
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ShaderTable));
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, nullptr, 0, &m_ShaderTable, 1, m_MemoryAllocations));
+
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_ShaderTable;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     std::vector<uint8_t> content(shaderTableSize, 0);
     for (uint32_t i = 0; i < 3; i++)
         NRI.WriteShaderGroupIdentifiers(*m_Pipeline, i, 1, content.data() + i * helper::GetAlignedSize(identifierSize, tableAlignment));
 
-    helper::BufferDataDesc dataDesc = {};
+    nri::BufferUploadDesc dataDesc = {};
     dataDesc.data = content.data();
     dataDesc.dataSize = content.size();
     dataDesc.buffer = m_ShaderTable;
     dataDesc.nextAccess = nri::AccessBits::UNKNOWN;
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, &dataDesc, 1));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, nullptr, 0, &dataDesc, 1));
 }
 
 SAMPLE_MAIN(Sample, 0);

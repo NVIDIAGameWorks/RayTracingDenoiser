@@ -16,10 +16,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 using namespace nrd;
 
-static const std::array<Method, 5> g_NrdSupportedMethods =
+static const std::array<Method, 6> g_NrdSupportedMethods =
 {
     Method::NRD_DIFFUSE,
     Method::NRD_SPECULAR,
+    Method::NRD_DIFFUSE_SPECULAR,
     Method::NRD_SHADOW,
     Method::NRD_TRANSLUCENT_SHADOW,
     Method::SVGF,

@@ -178,6 +178,7 @@ namespace nri
         VK_FORMAT_R8G8_SINT,        // RG8_SINT
 
         VK_FORMAT_B8G8R8A8_UNORM,   // BGRA8_UNORM
+        VK_FORMAT_B8G8R8A8_UNORM,   // BGRA8_SRGB
 
         VK_FORMAT_R8G8B8A8_UNORM,   // RGBA8_UNORM
         VK_FORMAT_R8G8B8A8_SNORM,   // RGBA8_SNORM
@@ -266,6 +267,7 @@ namespace nri
         VK_FORMAT_R8G8_SINT,        // RG8_SINT
 
         VK_FORMAT_B8G8R8A8_UNORM,   // BGRA8_UNORM
+        VK_FORMAT_B8G8R8A8_SRGB,    // BGRA8_SRGB
 
         VK_FORMAT_R8G8B8A8_UNORM,   // RGBA8_UNORM
         VK_FORMAT_R8G8B8A8_SNORM,   // RGBA8_SNORM
@@ -340,6 +342,98 @@ namespace nri
         VK_FORMAT_D32_SFLOAT_S8_UINT    // D32_SFLOAT_X8_TYPLESS_X24_TYPELESS
     };
 
+    constexpr std::array<VkImageCreateFlags, (size_t)Format::MAX_NUM> IMAGE_CREATE_FLAGS = {
+        0, // UNKNOWN,
+
+        0, // R8_UNORM,
+        0, // R8_SNORM,
+        0, // R8_UINT,
+        0, // R8_SINT,
+
+        0, // RG8_UNORM,
+        0, // RG8_SNORM,
+        0, // RG8_UINT,
+        0, // RG8_SINT,
+
+        0, // BGRA8_UNORM,
+        VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, // BGRA8_SRGB,
+
+        0, // RGBA8_UNORM,
+        0, // RGBA8_SNORM,
+        0, // RGBA8_UINT,
+        0, // RGBA8_SINT,
+        VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, // RGBA8_SRGB,
+
+        0, // R16_UNORM,
+        0, // R16_SNORM,
+        0, // R16_UINT,
+        0, // R16_SINT,
+        0, // R16_SFLOAT,
+
+        0, // RG16_UNORM,
+        0, // RG16_SNORM,
+        0, // RG16_UINT,
+        0, // RG16_SINT,
+        0, // RG16_SFLOAT,
+
+        0, // RGBA16_UNORM,
+        0, // RGBA16_SNORM,
+        0, // RGBA16_UINT,
+        0, // RGBA16_SINT,
+        0, // RGBA16_SFLOAT,
+
+        0, // R32_UINT,
+        0, // R32_SINT,
+        0, // R32_SFLOAT,
+
+        0, // RG32_UINT,
+        0, // RG32_SINT,
+        0, // RG32_SFLOAT,
+
+        0, // RGB32_UINT,
+        0, // RGB32_SINT,
+        0, // RGB32_SFLOAT,
+
+        0, // RGBA32_UINT,
+        0, // RGBA32_SINT,
+        0, // RGBA32_SFLOAT,
+
+        0, // R10_G10_B10_A2_UNORM,
+        0, // R10_G10_B10_A2_UINT,
+        0, // R11_G11_B10_UFLOAT,
+        0, // R9_G9_B9_E5_UFLOAT,
+
+        0, // BC1_RGBA_UNORM,
+        0, // BC1_RGBA_SRGB,
+        0, // BC2_RGBA_UNORM,
+        0, // BC2_RGBA_SRGB,
+        0, // BC3_RGBA_UNORM,
+        0, // BC3_RGBA_SRGB,
+        0, // BC4_R_UNORM,
+        0, // BC4_R_SNORM,
+        0, // BC5_RG_UNORM,
+        0, // BC5_RG_SNORM,
+        0, // BC6H_RGB_UFLOAT,
+        0, // BC6H_RGB_SFLOAT,
+        0, // BC7_RGBA_UNORM,
+        0, // BC7_RGBA_SRGB,
+
+        0, // D16_UNORM,
+        0, // D24_UNORM_S8_UINT,
+        0, // D32_SFLOAT,
+        0, // D32_SFLOAT_S8_UINT_X24,
+
+        0, // R24_UNORM_X8,
+        0, // X24_R8_UINT,
+        0, // X32_R8_UINT_X24,
+        0  // R32_SFLOAT_X8_X24,
+    };
+
+    constexpr VkImageCreateFlags GetImageCreateFlags(Format format)
+    {
+        return IMAGE_CREATE_FLAGS[(size_t)format];
+    }
+
     constexpr VkFormat GetVkFormat(Format format)
     {
         return VK_FORMAT[(uint32_t)format];
@@ -400,9 +494,9 @@ namespace nri
         Format::UNKNOWN, // VK_FORMAT_B8G8R8A8_SNORM = 45,
         Format::UNKNOWN, // VK_FORMAT_B8G8R8A8_USCALED = 46,
         Format::UNKNOWN, // VK_FORMAT_B8G8R8A8_SSCALED = 47,
-        Format::RGBA8_UINT, // VK_FORMAT_B8G8R8A8_UINT = 48,
-        Format::RGBA8_SINT, // VK_FORMAT_B8G8R8A8_SINT = 49,
-        Format::RGBA8_SRGB, // VK_FORMAT_B8G8R8A8_SRGB = 50,
+        Format::UNKNOWN, // VK_FORMAT_B8G8R8A8_UINT = 48,
+        Format::UNKNOWN, // VK_FORMAT_B8G8R8A8_SINT = 49,
+        Format::BGRA8_SRGB, // VK_FORMAT_B8G8R8A8_SRGB = 50,
         Format::UNKNOWN, // VK_FORMAT_A8B8G8R8_UNORM_PACK32 = 51,
         Format::UNKNOWN, // VK_FORMAT_A8B8G8R8_SNORM_PACK32 = 52,
         Format::UNKNOWN, // VK_FORMAT_A8B8G8R8_USCALED_PACK32 = 53,
@@ -416,11 +510,11 @@ namespace nri
         Format::UNKNOWN, // VK_FORMAT_A2R10G10B10_SSCALED_PACK32 = 61,
         Format::UNKNOWN, // VK_FORMAT_A2R10G10B10_UINT_PACK32 = 62,
         Format::UNKNOWN, // VK_FORMAT_A2R10G10B10_SINT_PACK32 = 63,
-        Format::UNKNOWN, // VK_FORMAT_A2B10G10R10_UNORM_PACK32 = 64,
+        Format::R10_G10_B10_A2_UNORM, // VK_FORMAT_A2B10G10R10_UNORM_PACK32 = 64,
         Format::UNKNOWN, // VK_FORMAT_A2B10G10R10_SNORM_PACK32 = 65,
         Format::UNKNOWN, // VK_FORMAT_A2B10G10R10_USCALED_PACK32 = 66,
         Format::UNKNOWN, // VK_FORMAT_A2B10G10R10_SSCALED_PACK32 = 67,
-        Format::UNKNOWN, // VK_FORMAT_A2B10G10R10_UINT_PACK32 = 68,
+        Format::R10_G10_B10_A2_UINT, // VK_FORMAT_A2B10G10R10_UINT_PACK32 = 68,
         Format::UNKNOWN, // VK_FORMAT_A2B10G10R10_SINT_PACK32 = 69,
         Format::R16_UNORM, // VK_FORMAT_R16_UNORM = 70,
         Format::R16_SNORM, // VK_FORMAT_R16_SNORM = 71,
@@ -950,6 +1044,47 @@ namespace nri
     constexpr VkImageViewType GetImageViewType(Texture3DViewType type)
     {
         return IMAGE_VIEW_TYPE_3D[(uint32_t)type];
+    }
+
+    constexpr std::array<VkImageUsageFlags, (uint32_t)Texture1DViewType::MAX_NUM> IMAGE_VIEW_USAGE_1D = {
+        VK_IMAGE_USAGE_SAMPLED_BIT,                   // SHADER_RESOURCE_1D,
+        VK_IMAGE_USAGE_SAMPLED_BIT,                   // SHADER_RESOURCE_1D_ARRAY,
+        VK_IMAGE_USAGE_STORAGE_BIT,                   // SHADER_RESOURCE_STORAGE_1D,
+        VK_IMAGE_USAGE_STORAGE_BIT,                   // SHADER_RESOURCE_STORAGE_1D_ARRAY,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,          // COLOR_ATTACHMENT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,  // DEPTH_STENCIL_ATTACHMENT
+    };
+
+    constexpr std::array<VkImageUsageFlags, (uint32_t)Texture2DViewType::MAX_NUM> IMAGE_VIEW_USAGE_2D = {
+        VK_IMAGE_USAGE_SAMPLED_BIT,                   // SHADER_RESOURCE_2D,
+        VK_IMAGE_USAGE_SAMPLED_BIT,                   // SHADER_RESOURCE_2D_ARRAY,
+        VK_IMAGE_USAGE_SAMPLED_BIT,                   // SHADER_RESOURCE_CUBE,
+        VK_IMAGE_USAGE_SAMPLED_BIT,                   // SHADER_RESOURCE_CUBE_ARRAY,
+        VK_IMAGE_USAGE_STORAGE_BIT,                   // SHADER_RESOURCE_STORAGE_2D,
+        VK_IMAGE_USAGE_STORAGE_BIT,                   // SHADER_RESOURCE_STORAGE_2D_ARRAY,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,          // COLOR_ATTACHMENT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,  // DEPTH_STENCIL_ATTACHMENT
+    };
+
+    constexpr std::array<VkImageUsageFlags, (uint32_t)Texture3DViewType::MAX_NUM> IMAGE_VIEW_USAGE_3D = {
+        VK_IMAGE_USAGE_SAMPLED_BIT,          // SHADER_RESOURCE_3D,
+        VK_IMAGE_USAGE_STORAGE_BIT,          // SHADER_RESOURCE_STORAGE_3D,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, // COLOR_ATTACHMENT
+    };
+
+    constexpr VkImageUsageFlags GetImageViewUsage(Texture1DViewType type)
+    {
+        return IMAGE_VIEW_USAGE_1D[(uint32_t)type];
+    }
+
+    constexpr VkImageUsageFlags GetImageViewUsage(Texture2DViewType type)
+    {
+        return IMAGE_VIEW_USAGE_2D[(uint32_t)type];
+    }
+
+    constexpr VkImageUsageFlags GetImageViewUsage(Texture3DViewType type)
+    {
+        return IMAGE_VIEW_USAGE_3D[(uint32_t)type];
     }
 
     constexpr std::array<VkImageLayout, (uint32_t)Texture1DViewType::MAX_NUM> IMAGE_LAYOUT_1D = {

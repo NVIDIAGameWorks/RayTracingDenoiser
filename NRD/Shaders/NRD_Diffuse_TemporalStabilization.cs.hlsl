@@ -15,22 +15,21 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gViewToClip;
     float4 gFrustum;
     float2 gInvScreenSize;
-    float2 padding;
+    float2 gScreenSize;
     float gMetersToUnits;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    uint gCheckerboard;
+    float gReference;
     uint gFrameIndex;
     uint gWorldSpaceMotion;
 
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
-    float2 gScreenSize;
     float2 gMotionVectorScale;
     float2 gAntilagRadianceThreshold;
-    uint gAntilag;
+    float gAntilag;
 };
 
 #include "NRD_Common.hlsl"
@@ -39,17 +38,18 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ViewZ, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 2, 0 );
-NRI_RESOURCE( Texture2D<uint>, gIn_InternalData, t, 3, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_History, t, 4, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_Signal, t, 5, 0 );
+NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_DiffHistory, t, 4, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_SignalA, t, 5, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_SignalB, t, 6, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<uint>, gOut_ViewZ_AccumSpeed, u, 0, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Signal, u, 1, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SignalCopy, u, 2, 0 );
+NRI_RESOURCE( RWTexture2D<uint2>, gOut_ViewZ_Normal_Roughness_AccumSpeeds, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffSignal, u, 1, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffSignalCopy, u, 2, 0 );
 
-groupshared float4 s_Signal[ BUFFER_Y ][ BUFFER_X ];
-groupshared float4 s_Data[ BUFFER_Y ][ BUFFER_X ];
+groupshared float4 s_DiffSignal[ BUFFER_Y ][ BUFFER_X ];
+groupshared float4 s_Normal_ViewZ[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( int2 sharedId, int2 globalId )
 {
@@ -58,8 +58,11 @@ void Preload( int2 sharedId, int2 globalId )
     t.xyz = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] ).xyz;
     t.w = gIn_ViewZ[ globalId ];
 
-    s_Signal[ sharedId.y ][ sharedId.x ] = gIn_Signal[ globalId ];
-    s_Data[ sharedId.y ][ sharedId.x ] = t;
+    float4 finalA = gIn_SignalA[ globalId ];
+    float4 finalB = gIn_SignalB[ globalId ];
+
+    s_DiffSignal[ sharedId.y ][ sharedId.x ] = _NRD_BackEnd_UnpackDiffuse( finalA, finalB, t.xyz, false );
+    s_Normal_ViewZ[ sharedId.y ][ sharedId.x ] = t;
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
@@ -69,9 +72,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Debug
     #if ( SHOW_MIPS )
-        float4 s = gIn_Signal[ pixelPos ];
-        gOut_Signal[ pixelPos ] = s;
-        gOut_SignalCopy[ pixelPos ] = s;
+        float4 finalA = gIn_SignalA[ pixelPos ];
+        float4 finalB = gIn_SignalB[ pixelPos ];
+        float3 N = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] ).xyz;
+        float4 s = _NRD_BackEnd_UnpackDiffuse( finalA, finalB, N, false );
+        gOut_DiffSignal[ pixelPos ] = s;
+        gOut_DiffSignalCopy[ pixelPos ] = s;
         return;
     #endif
 
@@ -93,26 +99,26 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Early out
     int2 pos = threadId + BORDER;
-    float4 t = s_Data[ pos.y ][ pos.x ];
-    float3 N = t.xyz;
+    float4 t = s_Normal_ViewZ[ pos.y ][ pos.x ];
     float centerZ = t.w;
 
     [branch]
     if ( abs( centerZ ) > gInf )
     {
-        #if( DIFF_BLACK_OUT_INF_PIXELS == 1 )
-            gOut_Signal[ pixelPos ] = 0;
-            gOut_SignalCopy[ pixelPos ] = 0;
+        #if( BLACK_OUT_INF_PIXELS == 1 )
+            gOut_DiffSignal[ pixelPos ] = 0;
+            gOut_DiffSignalCopy[ pixelPos ] = 0;
         #endif
-        gOut_ViewZ_AccumSpeed[ pixelPos ] = PackViewZAndAccumSpeed( INF, 0 );
+        gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( INF, 0.0, float3( 0, 0, 1 ), 1.0, 0.0 );
         return;
     }
 
-    float2 normalParams;
-    normalParams.x = STL::ImportanceSampling::GetSpecularLobeHalfAngle( 1.0 );
-    normalParams.x += SPEC_NORMAL_BANDING_FIX;
-    //normalParams.x *= LOBE_STRICTNESS_FACTOR * 1.5; // TODO: is it needed? can be dangeroud in this place... use full angle instead? or add "fade" a bit? use GetSpecularLobeHalfAngle with 0.8-0.95 factor?
-    normalParams.y = 1.0;
+    // Normal
+    float3 N = t.xyz;
+
+    // Internal data
+    float3 diffInternalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ] );
+    float diffAccumSpeed = diffInternalData.z;
 
     // Position
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -120,12 +126,14 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Local variance
     float sum = 0;
-    float4 m1 = 0;
-    float4 m2 = 0;
-    float4 input = 0;
 
-    float4 maxInput = -INF;
-    float4 minInput = INF;
+    float4 diffM1 = 0;
+    float4 diffM2 = 0;
+    float4 diffInput = 0;
+    float4 diffMaxInput = -INF;
+    float4 diffMinInput = INF;
+
+    float2 diffNormalParams = GetNormalWeightParamsRoughEstimate( 1.0 );
 
     [unroll]
     for( int dy = 0; dy <= BORDER * 2; dy++ )
@@ -134,43 +142,42 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
             int2 pos = threadId + int2( dx, dy );
-            float4 signal = s_Signal[ pos.y ][ pos.x ];
-            float4 data = s_Data[ pos.y ][ pos.x ];
-            float3 normal = data.xyz;
-            float z = data.w;
+            float4 signal = s_DiffSignal[ pos.y ][ pos.x ];
+            t = s_Normal_ViewZ[ pos.y ][ pos.x ];
 
             float w = 1.0;
             if( dx == BORDER && dy == BORDER )
-                input = signal;
+                diffInput = signal;
             else
             {
-                w = GetBilateralWeight( z, centerZ );
-                w *= GetNormalWeight( normalParams, N, normal );
+                w = GetBilateralWeight( t.w, centerZ );
+                w *= GetNormalWeight( diffNormalParams, N, t.xyz );
 
-                maxInput = max( signal - float( w == 0.0 ) * INF, maxInput );
-                minInput = min( signal + float( w == 0.0 ) * INF, minInput );
+                float a = float( w == 0.0 ) * INF;
+                diffMaxInput = max( signal - a, diffMaxInput );
+                diffMinInput = min( signal + a, diffMinInput );
             }
 
-            m1 += signal * w;
-            m2 += signal * signal * w;
+            diffM1 += signal * w;
+            diffM2 += signal * signal * w;
             sum += w;
         }
     }
 
     float invSum = STL::Math::PositiveRcp( sum );
-    m1 *= invSum;
-    m2 *= invSum;
+    diffM1 *= invSum;
+    diffM2 *= invSum;
 
-    float4 sigma = GetVariance( m1, m2 );
+    float4 diffSigma = GetVariance( diffM1, diffM2 );
 
     // Apply RCRS
     float rcrsWeight = ( sum - 1.0 ) / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) - 1.0 );
     rcrsWeight = STL::Math::Sqrt01( rcrsWeight );
+    rcrsWeight *= 1.0 - gReference;
 
-    float4 rcrsResult = min( input, maxInput );
-    rcrsResult = max( rcrsResult, minInput );
-
-    input = lerp( input, rcrsResult, rcrsWeight );
+    float4 rcrsResult = min( diffInput, diffMaxInput );
+    rcrsResult = max( rcrsResult, diffMinInput );
+    diffInput = lerp( diffInput, rcrsResult, rcrsWeight );
 
     // Compute previous pixel position
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
@@ -179,24 +186,23 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Sample history
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
-    float4 history = BicubicFilterNoCorners( gIn_History, gLinearClamp, pixelPosPrev, gInvScreenSize );
+    float4 diffHistory = BicubicFilterNoCorners( gIn_DiffHistory, gLinearClamp, pixelPosPrev, gInvScreenSize );
 
     // History weight
-    float4 internalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ] );
-    float accumSpeed = internalData.z;
     float motionLength = length( pixelUvPrev - pixelUv );
-    float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, accumSpeed, motionLength );
+    float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffAccumSpeed, motionLength );
 
     // Antilag
     float antiLag = 1.0;
-    if( gAntilag && USE_ANTILAG == 1 )
+    if( gAntilag != 0.0 && USE_ANTILAG == 1 )
     {
-        float2 delta = abs( history.xw - input.xw ) - sigma.xw * 2.0;
+        // TODO: if compression is used delta.x needs to be decompressed, but it doesn't affect the behavior, because heavily compressed values do not lag
+        float2 delta = abs( diffHistory.xw - diffInput.xw ) - diffSigma.xw * 2.0;
         delta = STL::Math::LinearStep( float2( gAntilagRadianceThreshold.y, 0.1 ), float2( gAntilagRadianceThreshold.x, 0.01 ), delta );
         delta = STL::Math::Pow01( delta, float2( 2.0, 8.0 ) );
 
-        float fade = accumSpeed / ( 1.0 + accumSpeed );
-        fade *= temporalAccumulationParams.x;
+        float fade = diffAccumSpeed / ( 1.0 + diffAccumSpeed );
+        fade *= diffTemporalAccumulationParams.x;
         fade *= rcrsWeight;
 
         antiLag = min( delta.x, delta.y );
@@ -204,36 +210,35 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     }
 
     // Clamp history and combine with the current frame
-    float4 colorMin = m1 - sigma * temporalAccumulationParams.y;
-    float4 colorMax = m1 + sigma * temporalAccumulationParams.y;
-    history = clamp( history, colorMin, colorMax );
+    float4 diffMin = diffM1 - diffSigma * diffTemporalAccumulationParams.y;
+    float4 diffMax = diffM1 + diffSigma * diffTemporalAccumulationParams.y;
+    diffHistory = clamp( diffHistory, diffMin, diffMax );
 
     float historyWeight = TS_MAX_HISTORY_WEIGHT * antiLag;
-    float4 result = lerp( input, history, historyWeight * temporalAccumulationParams.x );
+    float4 diffResult = lerp( diffInput, diffHistory, historyWeight * diffTemporalAccumulationParams.x );
 
     // Dither
-    STL::Rng::Initialize( pixelPos, gFrameIndex + 101 );
+    STL::Rng::Initialize( pixelPos, gFrameIndex + 2 );
     float2 rnd = STL::Rng::GetFloat2( );
     float dither = 1.0 + ( rnd.x * 2.0 - 1.0 ) * DITHERING_AMPLITUDE;
-    result *= dither;
+    diffResult *= dither;
 
     // Get rid of possible negative values
-    float4 resultRgb;
-    resultRgb.xyz = _NRD_YCoCgToLinear( result.xyz );
-    resultRgb.w = max( result.w, 0.0 );
-
-    result = resultRgb;
-    result.xyz = _NRD_LinearToYCoCg( resultRgb.xyz );
+    diffResult.xyz = _NRD_YCoCgToLinear( diffResult.xyz );
+    diffResult.w = max( diffResult.w, 0.0 );
+    diffResult.xyz = _NRD_LinearToYCoCg( diffResult.xyz );
 
     // Output
-    gOut_ViewZ_AccumSpeed[ pixelPos ] = PackViewZAndAccumSpeed( centerZ, accumSpeed * antiLag );
-    gOut_Signal[ pixelPos ] = result;
+    diffAccumSpeed *= antiLag;
+
+    gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( centerZ, diffAccumSpeed, N, 1.0, 0.0 );
+    gOut_DiffSignal[ pixelPos ] = diffResult;
 
     #if( SHOW_ACCUM_SPEED == 1 )
-        resultRgb.w = saturate( accumSpeed / MAX_ACCUM_FRAME_NUM );
+        diffResult.w = saturate( diffAccumSpeed / MAX_ACCUM_FRAME_NUM );
     #elif( SHOW_ANTILAG == 1 )
-        resultRgb.w = antiLag;
+        diffResult.w = antiLag;
     #endif
 
-    gOut_SignalCopy[ pixelPos ] = resultRgb;
+    gOut_DiffSignalCopy[ pixelPos ] = diffResult;
 }

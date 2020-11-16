@@ -897,7 +897,7 @@ namespace STL
             const float4 scale = 1.0 / max( float4( Rmask, Gmask, Bmask, Amask ), 1.0 );
 
             uint4 c = p >> uint4( 0, Gshift, Bshift, Ashift );
-            c.xyz &= uint3( Rmask, Gmask, Bmask );
+            c &= uint4( Rmask, Gmask, Bmask, Amask );
 
             return float4( c ) * scale;
         }
@@ -1074,23 +1074,26 @@ namespace STL
             float2 weights[4];
         };
 
-        CatmullRom GetCatmullRomFilter( float2 uv, float2 texSize )
+        CatmullRom GetCatmullRomFilter( float2 uv, float2 texSize, float sharpness = 0.5 )
         {
             float2 tci = uv * texSize;
             float2 tc = floor( tci - 0.5 ) + 0.5;
-            float2 f = tci - tc;
+            float2 f = saturate( tci - tc );
+            float2 f2 = f * f;
+            float2 f3 = f2 * f;
 
             CatmullRom result;
             result.origin = tc - 1.5;
-            result.weights[ 0 ] = f * ( -0.5 + f * ( 1.0 - 0.5 * f ) );
-            result.weights[ 1 ] = 1.0 + f * f * ( -2.5 + 1.5 * f );
-            result.weights[ 2 ] = f * ( 0.5 + f * ( 2.0 - 1.5 *f ) );
-            result.weights[ 3 ] = f * f * ( -0.5 + 0.5 * f );
+            result.weights[ 0 ] = -sharpness * f3 + 2.0 * sharpness * f2 - sharpness * f;
+            result.weights[ 1 ] = ( 2.0 - sharpness ) * f3 - ( 3.0 - sharpness ) * f2 + 1.0;
+            result.weights[ 2 ] = -( 2.0 - sharpness ) * f3 + ( 3.0 - 2.0 * sharpness ) * f2 + sharpness * f;
+            result.weights[ 3 ] = sharpness * f3 - sharpness * f2;
 
             return result;
         }
 
-        float4 ApplyCatmullRomFilterWithCustomWeights( CatmullRom filter, float4 s00, float4 s10, float4 s20, float4 s30, float4 s01, float4 s11, float4 s21, float4 s31, float4 s02, float4 s12, float4 s22, float4 s32, float4 s03, float4 s13, float4 s23, float4 s33, float4 w0, float4 w1, float4 w2, float4 w3 )
+		// IMPORTANT: "sum" can be negative, degradation to linear filter needs to be done manually
+        float4 ApplyCatmullRomFilterWithCustomWeights( CatmullRom filter, float4 s00, float4 s10, float4 s20, float4 s30, float4 s01, float4 s11, float4 s21, float4 s31, float4 s02, float4 s12, float4 s22, float4 s32, float4 s03, float4 s13, float4 s23, float4 s33, float4 w0, float4 w1, float4 w2, float4 w3, out float sum )
         {
             /*
             s00 * w0.x   s10 * w0.y   s20 * w1.x   s30 * w1.y
@@ -1101,7 +1104,7 @@ namespace STL
 
             float w = w0.x * filter.weights[ 0 ].x * filter.weights[ 0 ].y;
             float4 color = s00 * w;
-            float sum = w;
+            sum = w;
 
             w = w0.y * filter.weights[ 1 ].x * filter.weights[ 0 ].y;
             color += s10 * w;
@@ -1169,6 +1172,72 @@ namespace STL
             return color * Math::PositiveRcp( sum );
         }
 
+		// IMPORTANT: "sum" can be negative, degradation to linear filter needs to be done manually
+        float4 ApplyCatmullRomFilterNoCornersWithCustomWeights( CatmullRom filter, float4 s10, float4 s20, float4 s01, float4 s11, float4 s21, float4 s31, float4 s02, float4 s12, float4 s22, float4 s32, float4 s13, float4 s23, float4 w0, float4 w1, float4 w2, float4 w3, out float sum )
+        {
+            /*
+            s00, s30, s03, s33 - are not used
+
+                         s10 * w0.y   s20 * w1.x
+            s01 * w0.z   s11 * w0.w   s21 * w1.z   s31 * w1.w
+            s02 * w2.x   s12 * w2.y   s22 * w3.x   s32 * w3.y
+                         s13 * w2.w   s23 * w3.z
+            */
+
+            float w = w0.y * filter.weights[ 1 ].x * filter.weights[ 0 ].y;
+            float4 color = s10 * w;
+            sum = w;
+
+            w = w1.x * filter.weights[ 2 ].x * filter.weights[ 0 ].y;
+            color += s20 * w;
+            sum += w;
+
+
+            w = w0.z * filter.weights[ 0 ].x * filter.weights[ 1 ].y;
+            color += s01 * w;
+            sum += w;
+
+            w = w0.w * filter.weights[ 1 ].x * filter.weights[ 1 ].y;
+            color += s11 * w;
+            sum += w;
+
+            w = w1.z * filter.weights[ 2 ].x * filter.weights[ 1 ].y;
+            color += s21 * w;
+            sum += w;
+
+            w = w1.w * filter.weights[ 3 ].x * filter.weights[ 1 ].y;
+            color += s31 * w;
+            sum += w;
+
+
+            w = w2.x * filter.weights[ 0 ].x * filter.weights[ 2 ].y;
+            color += s02 * w;
+            sum += w;
+
+            w = w2.y * filter.weights[ 1 ].x * filter.weights[ 2 ].y;
+            color += s12 * w;
+            sum += w;
+
+            w = w3.x * filter.weights[ 2 ].x * filter.weights[ 2 ].y;
+            color += s22 * w;
+            sum += w;
+
+            w = w3.y * filter.weights[ 3 ].x * filter.weights[ 2 ].y;
+            color += s32 * w;
+            sum += w;
+
+
+            w = w2.w * filter.weights[ 1 ].x * filter.weights[ 3 ].y;
+            color += s13 * w;
+            sum += w;
+
+            w = w3.z * filter.weights[ 2 ].x * filter.weights[ 3 ].y;
+            color += s23 * w;
+            sum += w;
+
+            return color * Math::PositiveRcp( sum );
+        }
+
         // Blur 1D
         // offsets = { -offsets.xy, offsets.zw, 0, offsets.xy, offsets.zw };
         float4 GetBlurOffsets1D( float2 directionDivTexSize )
@@ -1178,66 +1247,6 @@ namespace STL
         // offsets = { 0, offsets.xy, offsets.zw, offsets.wx, offsets.yz };
         float4 GetBlurOffsets2D( float2 invTexSize )
         { return float4( 0.4, 0.9, -0.4, -0.9 ) * invTexSize.xyxy; }
-    };
-
-    //=======================================================================================================================
-    // Random number generation
-    //=======================================================================================================================
-
-    namespace Rng
-    {
-        static uint2 g_Seed;
-
-        #define STL_RNG_UTOF 0
-        #define STL_RNG_MANTISSA_BITS 1
-
-        void Initialize( uint2 samplePos, uint frameIndex, uint spinNum = 16 )
-        {
-            uint2 tile = samplePos & 511;
-
-            g_Seed.x = tile.y * 512 + tile.x;
-            g_Seed.y = frameIndex;
-
-            uint s = 0;
-            [unroll]
-            for( uint n = 0; n < spinNum; n++ )
-            {
-                s += 0x9e3779b9;
-                g_Seed.x += ( ( g_Seed.y << 4 ) + 0xa341316c ) ^ ( g_Seed.y + s ) ^ ( ( g_Seed.y >> 5 ) + 0xc8013ea4 );
-                g_Seed.y += ( ( g_Seed.x << 4 ) + 0xad90777d ) ^ ( g_Seed.x + s ) ^ ( ( g_Seed.x >> 5 ) + 0x7e95761e );
-            }
-        }
-
-        uint2 GetUint2( )
-        {
-            // http://en.wikipedia.org/wiki/Linear_congruential_generator
-            g_Seed = 1664525u * g_Seed + 1013904223u;
-
-            return g_Seed;
-        }
-
-        // RESULT: [0; 1)
-        float2 GetFloat2( compiletime const uint mode = STL_RNG_DEFAULT )
-        {
-            uint2 r = GetUint2( );
-
-            if ( mode == STL_RNG_MANTISSA_BITS )
-                return 2.0 - asfloat( ( r >> 9 ) | 0x3F800000 );
-
-            return float2( r >> 8 ) * ( 1.0 / float( 1 << 24 ) );
-        }
-
-        float4 GetFloat4( compiletime const uint mode = STL_RNG_DEFAULT )
-        {
-            uint4 r;
-            r.xy = GetUint2( );
-            r.zw = GetUint2( );
-
-            if ( mode == STL_RNG_MANTISSA_BITS )
-                return 2.0 - asfloat( ( r >> 9 ) | 0x3F800000 );
-
-            return float4( r >> 8 ) * ( 1.0 / float( 1 << 24 ) );
-        }
     };
 
     //=======================================================================================================================
@@ -1293,23 +1302,93 @@ namespace STL
 
             return ( a ^ frameIndex ) & 0x1;
         }
+
+        uint IntegerExplode( uint x )
+        {
+            x = ( x | ( x << 8 ) ) & 0x00FF00FF;
+            x = ( x | ( x << 4 ) ) & 0x0F0F0F0F;
+            x = ( x | ( x << 2 ) ) & 0x33333333;
+            x = ( x | ( x << 1 ) ) & 0x55555555;
+            return x;
+        }
+
+        uint Zorder( uint2 xy )
+        {
+            return IntegerExplode( xy.x ) | ( IntegerExplode( xy.y ) << 1 );
+        }
     };
 
     //=======================================================================================================================
-    // ImportanceSampling
+    // RNG
+    //=======================================================================================================================
+
+    namespace Rng
+    {
+        static uint2 g_Seed;
+
+        #define STL_RNG_UTOF 0
+        #define STL_RNG_MANTISSA_BITS 1
+
+        void Initialize( uint2 samplePos, uint frameIndex, uint spinNum = 16 )
+        {
+            g_Seed.x = Sequence::Zorder( samplePos );
+            g_Seed.y = frameIndex;
+
+            uint s = 0;
+            [unroll]
+            for( uint n = 0; n < spinNum; n++ )
+            {
+                s += 0x9E3779B9;
+                g_Seed.x += ( ( g_Seed.y << 4 ) + 0xA341316C ) ^ ( g_Seed.y + s ) ^ ( ( g_Seed.y >> 5 ) + 0xC8013EA4 );
+                g_Seed.y += ( ( g_Seed.x << 4 ) + 0xAD90777D ) ^ ( g_Seed.x + s ) ^ ( ( g_Seed.x >> 5 ) + 0x7E95761E );
+            }
+        }
+
+        uint2 GetUint2( )
+        {
+            #if 0
+                // http://en.wikipedia.org/wiki/Linear_congruential_generator
+                g_Seed = 1664525u * g_Seed + 1013904223u;
+            #else
+                // Xorshift algorithm from George Marsaglia's paper
+                g_Seed ^= g_Seed << 13;
+                g_Seed ^= g_Seed >> 17;
+                g_Seed ^= g_Seed << 5;
+            #endif
+
+            return g_Seed;
+        }
+
+        // RESULT: [0; 1)
+        float2 GetFloat2( compiletime const uint mode = STL_RNG_DEFAULT )
+        {
+            uint2 r = GetUint2( );
+
+            if ( mode == STL_RNG_MANTISSA_BITS )
+                return 2.0 - asfloat( ( r >> 9 ) | 0x3F800000 );
+
+            return float2( r >> 8 ) * ( 1.0 / float( 1 << 24 ) );
+        }
+
+        float4 GetFloat4( compiletime const uint mode = STL_RNG_DEFAULT )
+        {
+            uint4 r;
+            r.xy = GetUint2( );
+            r.zw = GetUint2( );
+
+            if ( mode == STL_RNG_MANTISSA_BITS )
+                return 2.0 - asfloat( ( r >> 9 ) | 0x3F800000 );
+
+            return float4( r >> 8 ) * ( 1.0 / float( 1 << 24 ) );
+        }
+    };
+
+    //=======================================================================================================================
+    // IMPORTANCE SAMPLING
     //=======================================================================================================================
 
     namespace ImportanceSampling
     {
-        float GetDiffuseProbability( float3 albedo, float3 Rf0 )
-        {
-            float lumAlbedo = Color::Luminance( albedo );
-            float lumRf0 = Color::Luminance( Rf0 );
-            float probability = lumAlbedo * Math::PositiveRcp( lumAlbedo + lumRf0 );
-
-            return saturate( probability );
-        }
-
         // Defines a cone angle, where micro-normals are distributed
         float GetSpecularLobeHalfAngle( float linearRoughness, float percentOfVolume = 0.75 )
         {

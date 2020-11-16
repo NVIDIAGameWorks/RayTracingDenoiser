@@ -39,6 +39,7 @@ static const uint16_t g_IndexData[] = { 0, 1, 2 };
 struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
+    , public nri::HelperInterface
 {};
 
 struct Frame
@@ -84,7 +85,7 @@ private:
 
     std::array<Frame, BUFFERED_FRAME_MAX_NUM> m_Frames = {};
     std::vector<BackBuffer> m_SwapChainBuffers;
-    std::vector<nri::Memory*> m_Memories;
+    std::vector<nri::Memory*> m_MemoryAllocations;
 
     uint64_t m_GeometryOffset = 0;
     float m_Transparency = 1.0f;
@@ -93,7 +94,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (Frame& frame : m_Frames)
     {
@@ -121,7 +122,7 @@ Sample::~Sample()
     NRI.DestroyQueueSemaphore(*m_ReleaseSemaphore);
     NRI.DestroySwapChain(*m_SwapChain);
 
-    for (nri::Memory* memory : m_Memories)
+    for (nri::Memory* memory : m_MemoryAllocations)
         NRI.FreeMemory(*memory);
 
     m_UserInterface.Shutdown();
@@ -143,6 +144,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // NRI
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     // Command queue
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue) );
@@ -330,8 +332,22 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         m_GeometryOffset = indexDataAlignedSize;
     }
 
-    NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::HOST_UPLOAD, nullptr, 0, &m_ConstantBuffer, 1, m_Memories) );
-    NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, &m_Texture, 1, &m_GeometryBuffer, 1, m_Memories) );
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_ConstantBuffer;
+
+    m_MemoryAllocations.resize(1, nullptr);
+    NRI_ABORT_ON_FAILURE( NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data()) );
+
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_GeometryBuffer;
+    resourceGroupDesc.textureNum = 1;
+    resourceGroupDesc.textures = &m_Texture;
+
+    m_MemoryAllocations.resize(1 + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE( NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + 1) );
 
     // Descriptors
     {
@@ -393,11 +409,11 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         memcpy(&geometryBufferData[0], g_IndexData, indexDataSize);
         memcpy(&geometryBufferData[indexDataAlignedSize], g_VertexData, vertexDataSize);
 
-        std::array<helper::TextureSubresource, 16> subresources;
+        std::array<nri::TextureSubresourceUploadDesc, 16> subresources;
         for (uint32_t mip = 0; mip < texture.GetMipNum(); mip++)
             texture.GetSubresource(subresources[mip], mip);
 
-        helper::TextureDataDesc textureData = {};
+        nri::TextureUploadDesc textureData = {};
         textureData.subresources = subresources.data();
         textureData.mipNum = texture.GetMipNum();
         textureData.arraySize = 1;
@@ -405,17 +421,17 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         textureData.nextLayout = nri::TextureLayout::SHADER_RESOURCE;
         textureData.nextAccess = nri::AccessBits::SHADER_RESOURCE;
 
-        helper::BufferDataDesc bufferData = {};
+        nri::BufferUploadDesc bufferData = {};
         bufferData.buffer = m_GeometryBuffer;
         bufferData.data = &geometryBufferData[0];
         bufferData.dataSize = geometryBufferData.size();
         bufferData.nextAccess = nri::AccessBits::INDEX_BUFFER | nri::AccessBits::VERTEX_BUFFER;
 
-        NRI_ABORT_ON_FAILURE( helper::UploadData(NRI, *m_Device, &textureData, 1, &bufferData, 1) );
+        NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, &textureData, 1, &bufferData, 1));
     }
 
     // User interface
-    bool initialized = m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    bool initialized = m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 
     return initialized;
 }

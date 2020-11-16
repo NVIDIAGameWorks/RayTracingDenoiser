@@ -84,7 +84,7 @@ void Preload( int2 sharedId, int2 globalId )
     // TODO: use w = 0 if outside of the screen or use SampleLevel with Clamp sampler
     float4 color_viewZ = gIn_ComposedLighting_ViewZ[ globalId ];
     color_viewZ.xyz = ApplyPostLightingComposition( globalId, color_viewZ.xyz, gIn_TransparentLighting );
-    color_viewZ.w /= NRD_FP16_VIEWZ_SCALE;
+    color_viewZ.w = abs( color_viewZ.w ) * STL::Math::Sign( gNearZ ) / NRD_FP16_VIEWZ_SCALE;
 
     s_Data[ sharedId.y ][ sharedId.x ] = color_viewZ;
     s_Normal[ sharedId.y ][ sharedId.x ] = UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] );
@@ -211,7 +211,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         disocclusion *= STL::Math::SmoothStep( 0.0, 1.5, parallaxInPixels );
     }
 
-    float scale = 1.0 + edge * 1.03 / ( STL::Math::Pow01( disocclusion, 0.5 ) + 0.03 );
+    float scale = 1.0 + edge * 1.1 / ( STL::Math::Pow01( disocclusion, 0.5 ) + 0.1 );
     float3 historyClamped = ClipAABB( aabbCenter, aabbExtents * scale, history );
 
     // History weight
@@ -223,7 +223,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     bool isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
     float motionAmount = saturate( length( motion ) / TAA_MOTION_MAX_REUSE );
     float historyWeight = lerp( TAA_MAX_HISTORY_WEIGHT, TAA_MIN_HISTORY_WEIGHT, motionAmount );
-    historyWeight *= lerp( 1.0, 0.5, ld );
+    historyWeight *= lerp( 1.0, 0.75, ld );
     historyWeight *= float( gMipBias != 0.0 && isInScreen );
 
     // Dithering

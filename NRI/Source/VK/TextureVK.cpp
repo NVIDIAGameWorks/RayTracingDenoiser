@@ -55,7 +55,7 @@ Result TextureVK::Create(const TextureDesc& textureDesc)
     const VkImageType imageType = ::GetImageType(textureDesc.type);
 
     const VkSharingMode sharingMode =
-        m_Device.IsConcurrentSharingModeEnabledForBuffers() ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+        m_Device.IsConcurrentSharingModeEnabledForImages() ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
 
     const Vector<uint32_t>& queueIndices = m_Device.GetConcurrentSharingModeQueueIndices();
 
@@ -74,6 +74,7 @@ Result TextureVK::Create(const TextureDesc& textureDesc)
     info.sharingMode = sharingMode;
     info.queueFamilyIndexCount = (uint32_t)queueIndices.size();
     info.pQueueFamilyIndices = queueIndices.data();
+    info.flags = GetImageCreateFlags(m_Format);
 
     m_ImageAspectFlags = ::GetImageAspectFlags(textureDesc.format);
 

@@ -586,3 +586,30 @@ Result DeviceVal::FillFunctionTable(MeshShaderInterface& meshShaderInterface) co
 }
 
 #pragma endregion
+
+#pragma region [  HelperInterface  ]
+
+static uint32_t NRI_CALL CountAllocationNumVal(Device& device, const ResourceGroupDesc& resourceGroupDesc)
+{
+    return ((DeviceVal&)device).CalculateAllocationNumber(resourceGroupDesc);
+}
+
+static Result NRI_CALL AllocateAndBindMemoryVal(Device& device, const ResourceGroupDesc& resourceGroupDesc, Memory** allocations)
+{
+    return ((DeviceVal&)device).AllocateAndBindMemory(resourceGroupDesc, allocations);
+}
+
+void FillFunctionTableCommandQueueVal(HelperInterface& helperInterface);
+
+Result DeviceVal::FillFunctionTable(HelperInterface& helperInterface) const
+{
+    helperInterface = {};
+
+    helperInterface.CalculateAllocationNumber = ::CountAllocationNumVal;
+    helperInterface.AllocateAndBindMemory = ::AllocateAndBindMemoryVal;
+    FillFunctionTableCommandQueueVal(helperInterface);
+
+    return ValidateFunctionTable(GetLog(), helperInterface);
+}
+
+#pragma endregion

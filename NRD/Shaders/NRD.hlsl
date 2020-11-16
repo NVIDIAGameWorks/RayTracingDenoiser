@@ -63,8 +63,16 @@ float normHitDist:
 // This function can be tuned at any time (NRD doesn't use NRD_FrontEnd_PackSpecular and NRD_BackEnd_UnpackSpecular internally)
 float NRD_GetColorCompressionExposure( float linearRoughness )
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMzNFRDBFIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMC41Il0sInNpemUiOlsxNTAwLDY1MF19XQ--
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNiooMS14KngpLygxKzQwMCp4KngpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMSJdLCJzaXplIjpbMjk1MCw5NTBdfV0-
+
+    // Moderate compression
+    //return 0.5 / ( 1.0 + 50.0 * linearRoughness );
+
+    // Less compression for mid-high roughness
     return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
+
+    // Close to the previous one, but offers more compression for low roughness
+    //return 0.6 * ( 1.0 - linearRoughness * linearRoughness ) / ( 1.0 + 400.0 * linearRoughness * linearRoughness );
 }
 
 //=================================================================================================================================
@@ -74,14 +82,8 @@ float NRD_GetColorCompressionExposure( float linearRoughness )
 #define NRD_EPS                                 0.01
 #define NRD_FP16_VIEWZ_SCALE                    0.0125
 #define NRD_FP16_MAX                            65504.0
-#define NRD_USE_SQRT_LINEAR_ROUGHNESS           1
-#define NRD_USE_OCT_PACKED_NORMALS              1
-
-#if( NRD_USE_OCT_PACKED_NORMALS == 1 )
-    #define NORMAL_ROUGHNESS_BITS               10, 10, 10, 2
-#else
-    #define NORMAL_ROUGHNESS_BITS               8, 8, 8, 8
-#endif
+#define NRD_USE_SQRT_LINEAR_ROUGHNESS           0
+#define NRD_USE_OCT_PACKED_NORMALS              0
 
 float3 _NRD_LinearToYCoCg( float3 color )
 {
@@ -107,8 +109,19 @@ float3 _NRD_YCoCgToLinear( float3 color )
     return res;
 }
 
-// NRD diffuse output is already unpacked! But the function below can be useful if you need to unpack
-// packed NRD input in one of your own passes (for example, to show noisy input as is)
+float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool bNormalize = true )
+{
+    p = bSigned ? p : ( p * 2.0 - 1.0 );
+
+    // https://twitter.com/Stubbesaurus/status/937994790553227264
+    float3 n = float3( p.xy, 1.0 - abs( p.x ) - abs( p.y ) );
+    float t = saturate( -n.z );
+    n.xy += n.xy >= 0.0 ? -t : t;
+
+    return bNormalize ? normalize( n ) : n;
+}
+
+// This function can be useful if you need to unpack packed NRD input in one of your own passes (for example, to show noisy input as is)
 float4 _NRD_BackEnd_UnpackDiffuse( float4 diffA, float4 diffB, float3 normal, bool rgb = true )
 {
     float3 c1 = diffA.xyz;
@@ -145,7 +158,7 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
         const bool bSigned = true;
         const bool bNormalize = false;
         p.xy = p.xy * 2.0 - 1.0;
-        r.xyz = STL::Packing::DecodeUnitVector( p.xy, bSigned, bNormalize );
+        r.xyz = _NRD_DecodeUnitVector( p.xy, bSigned, bNormalize );
         r.w = p.z;
     #else
         r.xyz = p.xyz * 2.0 - 1.0;
@@ -228,5 +241,11 @@ float4 NRD_BackEnd_UnpackSpecular( float4 color, float linearRoughness )
     return color;
 }
 
-#define NRD_BackEnd_UnpackDiffuse( color )  ( color )
+float4 NRD_BackEnd_UnpackDiffuse( float4 color )
+{
+    color.xyz = _NRD_YCoCgToLinear( color.xyz );
+
+    return color;
+}
+
 #define NRD_BackEnd_UnpackShadow( color )  ( color * color )

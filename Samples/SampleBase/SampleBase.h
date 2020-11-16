@@ -25,6 +25,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "Extensions/NRISwapChain.h"
 #include "Extensions/NRIWrapperD3D11.h"
 #include "Extensions/NRIWrapperD3D12.h"
+#include "Extensions/NRIHelper.h"
 
 #include "Helper.h"
 #include "Utils.h"
@@ -67,7 +68,7 @@ public:
     inline bool IsInitialized() const
     { return NRI != nullptr; }
 
-    bool Initialize(HWND hwnd, nri::Device& device, const nri::CoreInterface& coreInterface, uint32_t windowWidth, uint32_t windowHeight, uint32_t maxBufferedFrames, nri::Format renderTargetFormat);
+    bool Initialize(HWND hwnd, nri::Device& device, const nri::CoreInterface& coreInterface, const nri::HelperInterface& helperInterface, uint32_t windowWidth, uint32_t windowHeight, uint32_t maxBufferedFrames, nri::Format renderTargetFormat);
     void Shutdown();
     void Prepare();
     void Render(nri::CommandBuffer& commandBuffer);
@@ -77,8 +78,9 @@ private:
     bool ProcessMessages(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 private:
-    std::vector<nri::Memory*> m_Memories;
+    std::vector<nri::Memory*> m_MemoryAllocations;
     const nri::CoreInterface* NRI = nullptr;
+    const nri::HelperInterface* m_Helper = nullptr;
     nri::Device* m_Device = nullptr;
     nri::DescriptorPool* m_DescriptorPool = nullptr;
     nri::DescriptorSet* m_DescriptorSet = nullptr;

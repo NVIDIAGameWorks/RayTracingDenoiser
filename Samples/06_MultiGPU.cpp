@@ -27,6 +27,7 @@ constexpr uint32_t BOX_NUM = 1000;
 struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
+    , public nri::HelperInterface
 {
 };
 
@@ -101,7 +102,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (uint32_t i = 0; i < m_Frames.size(); i++)
     {
@@ -170,6 +171,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
     NRI_ABORT_ON_FAILURE(nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI));
     NRI_ABORT_ON_FAILURE(nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI));
+    NRI_ABORT_ON_FAILURE(nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI));
 
     NRI_ABORT_ON_FAILURE(NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue));
     NRI_ABORT_ON_FAILURE(NRI.CreateQueueSemaphore(*m_Device, m_BackBufferAcquireSemaphore));
@@ -193,7 +195,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     CreateDescriptorSet();
     CreateGeometry();
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)
@@ -386,17 +388,30 @@ void Sample::CreateMainFrameBuffer(nri::Format swapChainFormat)
 
     nri::Texture* textures[] = { m_DepthTexture, m_ColorTexture };
 
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, textures,
-        helper::GetCountOf(textures), nullptr, 0, m_MemoryAllocations));
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.textureNum = 2;
+    resourceGroupDesc.textures = textures;
 
-    helper::TextureDataDesc textureData[2] = {};
-    textureData[0].texture = m_DepthTexture;
-    textureData[0].nextLayout = nri::TextureLayout::DEPTH_STENCIL;
-    textureData[0].nextAccess = nri::AccessBits::DEPTH_STENCIL_WRITE;
-    textureData[1].texture = m_ColorTexture;
-    textureData[1].nextLayout = nri::TextureLayout::GENERAL;
-    textureData[1].nextAccess = nri::AccessBits::COPY_SOURCE;
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, textureData, 2, nullptr, 0));
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
+
+    nri::TextureTransitionBarrierDesc textureTransitionBarriers[2] = {};
+    textureTransitionBarriers[0].texture = m_DepthTexture;
+    textureTransitionBarriers[0].prevLayout = nri::TextureLayout::UNKNOWN;
+    textureTransitionBarriers[0].nextLayout = nri::TextureLayout::DEPTH_STENCIL;
+    textureTransitionBarriers[0].nextAccess = nri::AccessBits::DEPTH_STENCIL_WRITE;
+    textureTransitionBarriers[1].texture = m_ColorTexture;
+    textureTransitionBarriers[1].prevLayout = nri::TextureLayout::UNKNOWN;
+    textureTransitionBarriers[1].nextLayout = nri::TextureLayout::GENERAL;
+    textureTransitionBarriers[1].nextAccess = nri::AccessBits::COPY_SOURCE;
+
+    nri::TransitionBarrierDesc transitionBarrierDesc = {};
+    transitionBarrierDesc.textureNum = helper::GetCountOf(textureTransitionBarriers);
+    transitionBarrierDesc.textures = textureTransitionBarriers;
+
+    NRI_ABORT_ON_FAILURE(NRI.ChangeResourceStates(*m_CommandQueue, transitionBarrierDesc));
 
     nri::Texture2DViewDesc depthViewDesc = {m_DepthTexture, nri::Texture2DViewType::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
     NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(depthViewDesc, m_DepthTextureView));
@@ -581,8 +596,15 @@ void Sample::CreateGeometry()
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, transformBufferDesc, m_TransformBuffer));
 
     nri::Buffer* buffers[] = { m_VertexBuffer, m_IndexBuffer, m_TransformBuffer };
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, nullptr, 0, buffers,
-        helper::GetCountOf(buffers), m_MemoryAllocations));
+
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = helper::GetCountOf(buffers);
+    resourceGroupDesc.buffers = buffers;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation))
 
     std::vector<uint8_t> transforms(transformBufferDesc.size);
 
@@ -604,12 +626,12 @@ void Sample::CreateGeometry()
         transform = projViewMatrix * matrix;
     }
 
-    helper::BufferDataDesc dataDescArray[] = {
+    nri::BufferUploadDesc dataDescArray[] = {
         { vertexData.data(), vertexBufferDesc.size, m_VertexBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::VERTEX_BUFFER },
         { box.indices.data(), indexBufferDesc.size, m_IndexBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::INDEX_BUFFER },
         { transforms.data(), transformBufferDesc.size, m_TransformBuffer, 0, nri::AccessBits::UNKNOWN, nri::AccessBits::CONSTANT_BUFFER }
     };
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, dataDescArray, helper::GetCountOf(dataDescArray)));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, nullptr, 0, dataDescArray, helper::GetCountOf(dataDescArray)));
 
     nri::BufferViewDesc bufferViewDesc = { };
     bufferViewDesc.buffer = m_TransformBuffer;

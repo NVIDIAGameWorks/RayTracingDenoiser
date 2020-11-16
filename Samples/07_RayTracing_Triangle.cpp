@@ -19,6 +19,7 @@ struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
     , public nri::RayTracingInterface
+    , public nri::HelperInterface
 {};
 
 struct Frame
@@ -92,7 +93,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (uint32_t i = 0; i < m_Frames.size(); i++)
     {
@@ -149,6 +150,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::RayTracingInterface), (nri::RayTracingInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue));
     NRI_ABORT_ON_FAILURE( NRI.CreateQueueSemaphore(*m_Device, m_BackBufferAcquireSemaphore));
@@ -166,7 +168,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     CreateTopLevelAccelerationStructure();
     CreateShaderTable();
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)
@@ -565,7 +567,7 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
     NRI.CmdBuildBottomLevelAccelerationStructure(*commandBuffer, objectNum, objects, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.SubmitQueueWork(*m_CommandQueue, workSubmissionDesc, nullptr);
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
@@ -593,7 +595,7 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
     NRI.CmdBuildTopLevelAccelerationStructure(*commandBuffer, instanceNum, instanceBuffer, 0, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.SubmitQueueWork(*m_CommandQueue, workSubmissionDesc, nullptr);
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
@@ -646,7 +648,7 @@ void Sample::CreateShaderTable()
     NRI.CmdCopyBuffer(*commandBuffer, *m_ShaderTable, 0, 0, *buffer, 0, 0, shaderTableSize);
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.SubmitQueueWork(*m_CommandQueue, workSubmissionDesc, nullptr);
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);

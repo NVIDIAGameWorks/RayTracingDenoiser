@@ -477,3 +477,30 @@ Result DeviceVK::FillFunctionTable(MeshShaderInterface& meshShaderInterface) con
 }
 
 #pragma endregion
+
+#pragma region [  HelperInterface  ]
+
+static uint32_t NRI_CALL CountAllocationNumVK(Device& device, const ResourceGroupDesc& resourceGroupDesc)
+{
+    return ((DeviceVK&)device).CalculateAllocationNumber(resourceGroupDesc);
+}
+
+static Result NRI_CALL AllocateAndBindMemoryVK(Device& device, const ResourceGroupDesc& resourceGroupDesc, Memory** allocations)
+{
+    return ((DeviceVK&)device).AllocateAndBindMemory(resourceGroupDesc, allocations);
+}
+
+void FillFunctionTableCommandQueueVK(HelperInterface& helperInterface);
+
+Result DeviceVK::FillFunctionTable(HelperInterface& helperInterface) const
+{
+    helperInterface = {};
+
+    helperInterface.CalculateAllocationNumber = ::CountAllocationNumVK;
+    helperInterface.AllocateAndBindMemory = ::AllocateAndBindMemoryVK;
+    FillFunctionTableCommandQueueVK(helperInterface);
+
+    return ValidateFunctionTable(GetLog(), helperInterface);
+}
+
+#pragma endregion

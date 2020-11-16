@@ -45,6 +45,9 @@ DeviceD3D12::DeviceD3D12(const Log& log, StdAllocator<uint8_t>& stdAllocator)
     , m_DescriptorPool(GetStdAllocator())
 {
     m_DescriptorPool.resize(m_DescriptorHeapTypeNum, Vector<DescriptorHandle>(GetStdAllocator()));
+
+    if (FillFunctionTable(m_CoreInterface) != Result::SUCCESS)
+        REPORT_ERROR(GetLog(), "Failed to get 'CoreInterface' interface in DeviceD3D12().");
 }
 
 DeviceD3D12::~DeviceD3D12()
@@ -220,7 +223,7 @@ void DeviceD3D12::GetMemoryInfo(MemoryLocation memoryLocation, const D3D12_RESOU
 {
     memoryDesc.type = GetMemoryType(memoryLocation, resourceDesc);
 
-    D3D12_RESOURCE_ALLOCATION_INFO resourceAllocationInfo = ((ID3D12Device*)m_Device)->GetResourceAllocationInfo(NRI_TEMP_NODE_MASK, 1, &resourceDesc);
+    D3D12_RESOURCE_ALLOCATION_INFO resourceAllocationInfo = m_Device->GetResourceAllocationInfo(NRI_TEMP_NODE_MASK, 1, &resourceDesc);
     memoryDesc.size = (uint64_t)resourceAllocationInfo.SizeInBytes;
     memoryDesc.alignment = (uint32_t)resourceAllocationInfo.Alignment;
 
@@ -540,11 +543,25 @@ inline void DeviceD3D12::FreeMemory(Memory& memory)
     Deallocate(GetStdAllocator(), (MemoryD3D12*)&memory);
 }
 
-FormatSupportBits DeviceD3D12::GetFormatSupport(Format format) const
+inline FormatSupportBits DeviceD3D12::GetFormatSupport(Format format) const
 {
     const uint32_t offset = std::min((uint32_t)format, (uint32_t)GetCountOf(D3D_FORMAT_SUPPORT_TABLE) - 1);
 
     return D3D_FORMAT_SUPPORT_TABLE[offset];
+}
+
+inline uint32_t DeviceD3D12::CalculateAllocationNumber(const ResourceGroupDesc& resourceGroupDesc) const
+{
+    HelperDeviceMemoryAllocator allocator(m_CoreInterface, (Device&)*this, m_StdAllocator);
+
+    return allocator.CalculateAllocationNumber(resourceGroupDesc);
+}
+
+inline Result DeviceD3D12::AllocateAndBindMemory(const ResourceGroupDesc& resourceGroupDesc, nri::Memory** allocations)
+{
+    HelperDeviceMemoryAllocator allocator(m_CoreInterface, (Device&)*this, m_StdAllocator);
+
+    return allocator.AllocateAndBindMemory(resourceGroupDesc, allocations);
 }
 
 template<typename Implementation, typename Interface, typename ... Args>

@@ -102,8 +102,8 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 #define SKY_MARK                            0.0
 
 // Settings
-#define USE_SQRT_ROUGHNESS                  1
-#define USE_OCT_PACKED_NORMALS              1
+#define USE_SQRT_ROUGHNESS                  0
+#define USE_OCT_PACKED_NORMALS              0
 #define USE_BEST_FIT_NORMALS                1
 
 #define USE_SIMPLE_MIP_SELECTION            1

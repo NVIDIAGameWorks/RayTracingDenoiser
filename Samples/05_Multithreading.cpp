@@ -47,6 +47,7 @@ struct ThreadContext
 struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
+    , public nri::HelperInterface
 {};
 
 class Sample : public SampleBase
@@ -136,7 +137,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     for (size_t i = 1; m_IsMultithreadingEnabled && i < m_ThreadNum; i++)
     {
@@ -238,6 +239,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     // NRI
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue));
     NRI_ABORT_ON_FAILURE( NRI.CreateQueueSemaphore(*m_Device, m_BackBufferAcquireSemaphore));
@@ -269,7 +271,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
             m_ThreadContexts[i].thread = std::thread(&Sample::ThreadEntryPoint, this, i);
     }
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, GetWindowWidth(), GetWindowHeight(), BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex)
@@ -689,17 +691,23 @@ void Sample::CreateDepthTexture()
 
     NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, m_DepthTexture));
 
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, &m_DepthTexture, 1,
-        nullptr, 0, m_MemoryAllocations));
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.textureNum = 1;
+    resourceGroupDesc.textures = &m_DepthTexture;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     nri::Texture2DViewDesc texture2DViewDesc = {m_DepthTexture, nri::Texture2DViewType::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
     NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_DepthTextureView));
 
-    helper::TextureDataDesc textureData = {};
+    nri::TextureUploadDesc textureData = {};
     textureData.texture = m_DepthTexture;
     textureData.nextLayout = nri::TextureLayout::DEPTH_STENCIL;
     textureData.nextAccess = nri::AccessBits::DEPTH_STENCIL_WRITE;
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, &textureData, 1, nullptr, 0));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, &textureData, 1, nullptr, 0));
 }
 
 void Sample::CreateVertexBuffer()
@@ -744,22 +752,30 @@ void Sample::CreateVertexBuffer()
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_IndexBuffer));
 
     nri::Buffer* const buffers[] = { m_VertexBuffer, m_IndexBuffer };
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, nullptr, 0, buffers, helper::GetCountOf(buffers), m_MemoryAllocations));
 
-    helper::BufferDataDesc vertexBufferUpdate = {};
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = helper::GetCountOf(buffers);
+    resourceGroupDesc.buffers = buffers;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
+
+    nri::BufferUploadDesc vertexBufferUpdate = {};
     vertexBufferUpdate.buffer = m_VertexBuffer;
     vertexBufferUpdate.data = vertices.data();
     vertexBufferUpdate.dataSize = helper::GetByteSizeOf(vertices);
     vertexBufferUpdate.nextAccess = nri::AccessBits::VERTEX_BUFFER;
 
-    helper::BufferDataDesc indexBufferUpdate = {};
+    nri::BufferUploadDesc indexBufferUpdate = {};
     indexBufferUpdate.buffer = m_IndexBuffer;
     indexBufferUpdate.data = indices.data();
     indexBufferUpdate.dataSize = helper::GetByteSizeOf(indices);
     indexBufferUpdate.nextAccess = nri::AccessBits::INDEX_BUFFER;
 
-    const helper::BufferDataDesc bufferUpdates[] = { vertexBufferUpdate, indexBufferUpdate };
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, bufferUpdates, helper::GetCountOf(bufferUpdates)));
+    const nri::BufferUploadDesc bufferUpdates[] = { vertexBufferUpdate, indexBufferUpdate };
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, nullptr, 0, bufferUpdates, helper::GetCountOf(bufferUpdates)));
 }
 
 void Sample::CreateTransformConstantBuffer()
@@ -774,8 +790,14 @@ void Sample::CreateTransformConstantBuffer()
     bufferDesc.usageMask = nri::BufferUsageBits::CONSTANT_BUFFER;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_TransformConstantBuffer));
 
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, nullptr, 0,
-        &m_TransformConstantBuffer, 1, m_MemoryAllocations));
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_TransformConstantBuffer;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     nri::BufferViewDesc constantBufferViewDesc = {};
     constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
@@ -806,12 +828,12 @@ void Sample::CreateTransformConstantBuffer()
         dynamicConstantBufferOffset += alignedMatrixSize;
     }
 
-    helper::BufferDataDesc bufferUpdate = {};
+    nri::BufferUploadDesc bufferUpdate = {};
     bufferUpdate.buffer = m_TransformConstantBuffer;
     bufferUpdate.data = bufferContent.data();
     bufferUpdate.dataSize = bufferContent.size();
     bufferUpdate.nextAccess = nri::AccessBits::CONSTANT_BUFFER;
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, &bufferUpdate, 1));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, nullptr, 0, &bufferUpdate, 1));
 }
 
 void Sample::CreateDescriptorSets()
@@ -887,12 +909,18 @@ void Sample::LoadTextures()
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, m_Textures[i]));
     }
 
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, m_Textures.data(), (uint32_t)m_Textures.size(),
-        nullptr, 0, m_MemoryAllocations));
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.textureNum = (uint32_t)m_Textures.size();
+    resourceGroupDesc.textures = m_Textures.data();
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     constexpr uint32_t MAX_MIP_NUM = 16;
-    std::vector<helper::TextureDataDesc> textureUpdates(m_Textures.size());
-    std::vector<helper::TextureSubresource> subresources(m_Textures.size() * MAX_MIP_NUM);
+    std::vector<nri::TextureUploadDesc> textureUpdates(m_Textures.size());
+    std::vector<nri::TextureSubresourceUploadDesc> subresources(m_Textures.size() * MAX_MIP_NUM);
 
     for (size_t i = 0; i < textureUpdates.size(); i++)
     {
@@ -902,7 +930,7 @@ void Sample::LoadTextures()
         for (uint32_t mip = 0; mip < texture.GetMipNum(); mip++)
             texture.GetSubresource(subresources[subresourceOffset + mip], mip);
 
-        helper::TextureDataDesc& textureUpdate = textureUpdates[i];
+        nri::TextureUploadDesc& textureUpdate = textureUpdates[i];
         textureUpdate.subresources = &subresources[subresourceOffset];
         textureUpdate.mipNum = texture.GetMipNum();
         textureUpdate.arraySize = texture.GetArraySize();
@@ -911,7 +939,7 @@ void Sample::LoadTextures()
         textureUpdate.nextAccess = nri::AccessBits::SHADER_RESOURCE;
     }
 
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, textureUpdates.data(), (uint32_t)textureUpdates.size(), nullptr, 0));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, textureUpdates.data(), (uint32_t)textureUpdates.size(), nullptr, 0));
 
     m_TextureViews.resize(m_Textures.size());
     for (size_t i = 0; i < m_Textures.size(); i++)
@@ -935,8 +963,14 @@ void Sample::CreateFakeConstantBuffers()
     bufferDesc.usageMask = nri::BufferUsageBits::CONSTANT_BUFFER;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_FakeConstantBuffer));
 
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, nullptr, 0,
-        &m_FakeConstantBuffer, 1, m_MemoryAllocations));
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_FakeConstantBuffer;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     nri::BufferViewDesc constantBufferViewDesc = {};
     constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
@@ -952,12 +986,12 @@ void Sample::CreateFakeConstantBuffers()
 
     std::vector<uint8_t> bufferContent(bufferDesc.size, 0);
 
-    helper::BufferDataDesc bufferUpdate = {};
+    nri::BufferUploadDesc bufferUpdate = {};
     bufferUpdate.buffer = m_FakeConstantBuffer;
     bufferUpdate.data = bufferContent.data();
     bufferUpdate.dataSize = bufferContent.size();
     bufferUpdate.nextAccess = nri::AccessBits::CONSTANT_BUFFER;
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, &bufferUpdate, 1));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, nullptr, 0, &bufferUpdate, 1));
 }
 
 void Sample::CreateViewConstantBuffer()
@@ -971,8 +1005,14 @@ void Sample::CreateViewConstantBuffer()
     bufferDesc.usageMask = nri::BufferUsageBits::CONSTANT_BUFFER;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ViewConstantBuffer));
 
-    NRI_ABORT_ON_FAILURE(helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, nullptr, 0,
-        &m_ViewConstantBuffer, 1, m_MemoryAllocations));
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = 1;
+    resourceGroupDesc.buffers = &m_ViewConstantBuffer;
+
+    const size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
+    NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     nri::BufferViewDesc constantBufferViewDesc = {};
     constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
@@ -983,12 +1023,12 @@ void Sample::CreateViewConstantBuffer()
     std::vector<uint8_t> bufferContent(bufferDesc.size, 0);
     SetupProjViewMatrix(*(float4x4*)(bufferContent.data()));
 
-    helper::BufferDataDesc bufferUpdate = {};
+    nri::BufferUploadDesc bufferUpdate = {};
     bufferUpdate.buffer = m_ViewConstantBuffer;
     bufferUpdate.data = bufferContent.data();
     bufferUpdate.dataSize = bufferContent.size();
     bufferUpdate.nextAccess = nri::AccessBits::CONSTANT_BUFFER;
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, nullptr, 0, &bufferUpdate, 1));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, nullptr, 0, &bufferUpdate, 1));
 }
 
 void Sample::SetupProjViewMatrix(float4x4& projViewMatrix)

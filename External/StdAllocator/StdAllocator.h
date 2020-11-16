@@ -199,7 +199,6 @@ template<typename U, typename T>
 using UnorderedMap = std::unordered_map<U, T, std::hash<U>, std::equal_to<U>, StdAllocator<std::pair<U, T>>>;
 
 using String = std::basic_string<char, std::char_traits<char>, StdAllocator<char>>;
-using WString = std::basic_string<wchar_t, std::char_traits<wchar_t>, StdAllocator<wchar_t>>;
 
 //==============================================================================================================================
 

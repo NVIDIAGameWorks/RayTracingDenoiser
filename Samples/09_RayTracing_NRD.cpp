@@ -15,6 +15,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <array>
 #include <io.h>
 
+#define NRD_COMBINED 1
+
 constexpr auto BUILD_FLAGS = nri::AccelerationStructureBuildBits::PREFER_FAST_TRACE;
 constexpr uint32_t TEXTURES_PER_MATERIAL = 4;
 constexpr uint32_t FG_TEX_SIZE = 256;
@@ -24,9 +26,10 @@ constexpr bool CAMERA_RELATIVE = true;
 constexpr bool CAMERA_LEFT_HANDED = true;
 constexpr uint32_t ANIMATED_INSTANCE_MAX_NUM = 512;
 
-// Use R10_G10_B10_A2_UNORM ( or RGBA16_SFLOAT ) for octahedron encoded normals ( USE_OCT_PACKED_NORMALS and NRD_USE_OCT_PACKED_NORMALS must be set to 1 )
-// Use RGBA8_UNORM ( or RGBA16_SFLOAT ) for simple encoded normals ( USE_OCT_PACKED_NORMALS and NRD_USE_OCT_PACKED_NORMALS must be set to 0 )
-#define NORMAL_FORMAT nri::Format::R10_G10_B10_A2_UNORM
+// if( USE_OCT_PACKED_NORMALS == 1 && NRD_USE_OCT_PACKED_NORMALS == 1 )
+// #define NORMAL_FORMAT nri::Format::R10_G10_B10_A2_UNORM
+// else
+#define NORMAL_FORMAT nri::Format::RGBA8_UNORM
 
 // See HLSL
 #define FLAG_FIRST_BIT                  20
@@ -167,6 +170,7 @@ struct NRIInterface
     : public nri::CoreInterface
     , public nri::SwapChainInterface
     , public nri::RayTracingInterface
+    , public nri::HelperInterface
 {};
 
 struct Frame
@@ -228,8 +232,8 @@ struct NrdSettings
 {
     float diffBlurRadius = 30.0f;
     float diffAdaptiveRadiusScale = 5.0f;
-    float specBlurRadius = 40.0f;
-    float specAdaptiveRadiusScale = 0.5f;
+    float specBlurRadius = 30.0f;
+    float specAdaptiveRadiusScale = 5.0f;
     float antilagIntensityThreshold = 1.0f;
     float disocclusionThreshold = 0.5f;
 
@@ -430,6 +434,9 @@ public:
     inline nri::TextureTransitionBarrierDesc& GetState(Texture index)
     { return m_TextureStates[(uint32_t)index]; }
 
+    inline nri::Format GetFormat(Texture index)
+    { return m_TextureFormats[(uint32_t)index]; }
+
     inline nri::Buffer*& Get(Buffer index)
     { return m_Buffers[(uint32_t)index]; }
 
@@ -502,8 +509,9 @@ private:
     std::array<Frame, BUFFERED_FRAME_MAX_NUM> m_Frames = {};
     std::vector<nri::Texture*> m_Textures;
     std::vector<nri::TextureTransitionBarrierDesc> m_TextureStates;
+    std::vector<nri::Format> m_TextureFormats;
     std::vector<nri::Buffer*> m_Buffers;
-    std::vector<nri::Memory*> m_Memories;
+    std::vector<nri::Memory*> m_MemoryAllocations;
     std::vector<nri::Descriptor*> m_Descriptors;
     std::vector<nri::DescriptorSet*> m_DescriptorSets;
     std::vector<nri::PipelineLayout*> m_PipelineLayouts;
@@ -533,7 +541,7 @@ private:
 
 Sample::~Sample()
 {
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     m_NRD.Destroy();
 
@@ -581,8 +589,8 @@ Sample::~Sample()
     NRI.DestroyQueueSemaphore(*m_BackBufferReleaseSemaphore);
     NRI.DestroySwapChain(*m_SwapChain);
 
-    for (size_t i = 0; i < m_Memories.size(); i++)
-        NRI.FreeMemory(*m_Memories[i]);
+    for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
+        NRI.FreeMemory(*m_MemoryAllocations[i]);
 
     m_UserInterface.Shutdown();
 
@@ -601,6 +609,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI) );
     NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::RayTracingInterface), (nri::RayTracingInterface*)&NRI) );
+    NRI_ABORT_ON_FAILURE( nri::GetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) );
 
     NRI_ABORT_ON_FAILURE( NRI.GetCommandQueue(*m_Device, nri::CommandQueueType::GRAPHICS, m_CommandQueue));
     NRI_ABORT_ON_FAILURE( NRI.CreateQueueSemaphore(*m_Device, m_BackBufferAcquireSemaphore));
@@ -628,17 +637,25 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
     // NRD
     {
-        const nrd::MethodDesc methodDescs[] =
-        {
-            { nrd::Method::NRD_DIFFUSE, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-            { nrd::Method::NRD_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-            { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-        };
+        #if( NRD_COMBINED == 1 )
+            const nrd::MethodDesc methodDescs[] =
+            {
+                { nrd::Method::NRD_DIFFUSE_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+            };
+        #else
+            const nrd::MethodDesc methodDescs[] =
+            {
+                { nrd::Method::NRD_DIFFUSE, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::NRD_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+            };
+        #endif
 
         nrd::DenoiserCreationDesc denoiserCreationDesc = {};
         denoiserCreationDesc.requestedMethods = methodDescs;
         denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs);
-        NRI_ABORT_ON_FALSE( m_NRD.Initialize(*m_Device, NRI, denoiserCreationDesc, false) );
+        NRI_ABORT_ON_FALSE( m_NRD.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
     }
 
     // SVGF
@@ -652,9 +669,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         denoiserCreationDesc.requestedMethods = methodDescs;
         denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs);
 
-        NRI_ABORT_ON_FALSE( m_SVGF_Diff.Initialize(*m_Device, NRI, denoiserCreationDesc, false) );
-        NRI_ABORT_ON_FALSE( m_SVGF_Spec.Initialize(*m_Device, NRI, denoiserCreationDesc, false) );
-        NRI_ABORT_ON_FALSE( m_SVGF_Shadow.Initialize(*m_Device, NRI, denoiserCreationDesc, false) );
+        NRI_ABORT_ON_FALSE( m_SVGF_Diff.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
+        NRI_ABORT_ON_FALSE( m_SVGF_Spec.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
+        NRI_ABORT_ON_FALSE( m_SVGF_Shadow.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
     }
 
     m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, CAMERA_RELATIVE);
@@ -662,7 +679,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
 
     m_DefaultSettings = m_Settings;
 
-    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, m_OutputResolution.x, m_OutputResolution.y, BUFFERED_FRAME_MAX_NUM, swapChainFormat);
+    return m_UserInterface.Initialize(m_hWnd, *m_Device, NRI, NRI, m_OutputResolution.x, m_OutputResolution.y, BUFFERED_FRAME_MAX_NUM, swapChainFormat);
 }
 
 void Sample::SetupAnimatedObjects()
@@ -951,7 +968,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             {
                                 ImGui::SliderInt("History frames", &m_Settings.nrdSettings.diffMaxAccumulatedFrameNum, 0, nrd::NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM);
                                 ImGui::SliderFloat("Blur radius (px)", &m_Settings.nrdSettings.diffBlurRadius, 0.0f, 150.0f, "%.1f");
-                                ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.diffAdaptiveRadiusScale, 0.0f, 10.0f, "%.3f");
+                                ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.diffAdaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
                             }
                             ImGui::PopID();
                             ImGui::Text("SPECULAR:");
@@ -959,7 +976,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             {
                                 ImGui::SliderInt("History frames", &m_Settings.nrdSettings.specMaxAccumulatedFrameNum, 0, nrd::NRD_SPECULAR_MAX_HISTORY_FRAME_NUM);
                                 ImGui::SliderFloat("Blur radius (px)", &m_Settings.nrdSettings.specBlurRadius, 0.0f, 150.0f, "%.1f");
-                                ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.specAdaptiveRadiusScale, 0.0f, 1.0f, "%.2f");
+                                ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.specAdaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
                                 ImGui::Checkbox("Reference accumulation", &m_Settings.nrdSettings.referenceAccumulation);
                                 ImGui::SameLine();
                                 ImGui::Checkbox("Antilag", &m_Settings.nrdSettings.antilag);
@@ -1310,6 +1327,7 @@ void Sample::CreateTexture(std::vector<DescriptorDesc>& descriptorDescs, const c
     {
         nri::TextureTransitionBarrierDesc transition = nri::TextureTransition(texture, state, state == nri::AccessBits::SHADER_RESOURCE ? nri::TextureLayout::SHADER_RESOURCE : nri::TextureLayout::GENERAL);
         m_TextureStates.push_back(transition);
+        m_TextureFormats.push_back(format);
     }
 
     descriptorDescs.push_back( {debugName, texture, format, usage, nri::BufferUsageBits::NONE, arraySize > 1} );
@@ -1338,6 +1356,7 @@ inline nri::Format ConvertFormatToTextureStorageCompatible(nri::Format format)
         case nri::Format::D32_SFLOAT:               return nri::Format::R32_SFLOAT;
         case nri::Format::D32_SFLOAT_S8_UINT_X24:   return nri::Format::R32_SFLOAT_X8_X24;
         case nri::Format::RGBA8_SRGB:               return nri::Format::RGBA8_UNORM;
+        case nri::Format::BGRA8_SRGB:               return nri::Format::BGRA8_UNORM;
     }
 
     return format;
@@ -1375,13 +1394,13 @@ void Sample::CreateDescriptors(const std::vector<DescriptorDesc>& descriptorDesc
         }
         else
         {
-            nri::Format sanitizedFormat = ConvertFormatToTextureStorageCompatible(desc.format);
-            nri::Texture2DViewDesc viewDesc = {(nri::Texture*)desc.resource, desc.isArray ? nri::Texture2DViewType::SHADER_RESOURCE_2D_ARRAY : nri::Texture2DViewType::SHADER_RESOURCE_2D, sanitizedFormat};
+            nri::Texture2DViewDesc viewDesc = {(nri::Texture*)desc.resource, desc.isArray ? nri::Texture2DViewType::SHADER_RESOURCE_2D_ARRAY : nri::Texture2DViewType::SHADER_RESOURCE_2D, desc.format};
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(viewDesc, descriptor));
             m_Descriptors.push_back(descriptor);
 
             if (desc.textureUsage & nri::TextureUsageBits::SHADER_RESOURCE_STORAGE)
             {
+                viewDesc.format = ConvertFormatToTextureStorageCompatible(desc.format);
                 viewDesc.viewType = desc.isArray ? nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D_ARRAY : nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D;
                 NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(viewDesc, descriptor));
                 m_Descriptors.push_back(descriptor);
@@ -1427,7 +1446,7 @@ void Sample::CreateResources(nri::Format swapChainFormat)
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Normal_Roughness", NORMAL_FORMAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::BaseColor_Metalness", nri::Format::RGBA8_UNORM, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::BaseColor_Metalness", nri::Format::RGBA8_SRGB, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Shadow", nri::Format::RGBA8_UNORM, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
@@ -1443,13 +1462,13 @@ void Sample::CreateResources(nri::Format swapChainFormat)
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Unfiltered_SpecHit", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::Unfiltered_Translucency", nri::Format::RGBA8_UNORM, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::Unfiltered_Translucency", nri::Format::R10_G10_B10_A2_UNORM, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::ComposedLighting_ViewZ", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE_STORAGE);
-    CreateTexture(descriptorDescs, "Texture::TaaHistory", nri::Format::RGBA8_SRGB, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::TaaHistory", swapChainFormat, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::TaaHistoryPrev", nri::Format::RGBA8_SRGB, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::TaaHistoryPrev", swapChainFormat, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE_STORAGE);
     CreateTexture(descriptorDescs, "Texture::Final", swapChainFormat, (uint16_t)m_OutputResolution.x, (uint16_t)m_OutputResolution.y, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::COPY_SOURCE);
@@ -1458,10 +1477,26 @@ void Sample::CreateResources(nri::Format swapChainFormat)
     for (const utils::Texture* textureData : m_Scene.textures)
         CreateTexture(descriptorDescs, "", textureData->GetFormat(), textureData->GetWidth(), textureData->GetHeight(), textureData->GetMipNum(), textureData->GetArraySize(), nri::TextureUsageBits::SHADER_RESOURCE, nri::AccessBits::UNKNOWN);
 
-    // Bind memory
     constexpr uint32_t offset = uint32_t(Buffer::UploadHeapBufferNum);
-    NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::HOST_UPLOAD, nullptr, 0, m_Buffers.data(), offset, m_Memories) );
-    NRI_ABORT_ON_FAILURE( helper::BindMemory(NRI, *m_Device, nri::MemoryLocation::DEVICE, m_Textures.data(), helper::GetCountOf(m_Textures), m_Buffers.data() + offset, helper::GetCountOf(m_Buffers) - offset, m_Memories) );
+
+    nri::ResourceGroupDesc resourceGroupDesc = {};
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
+    resourceGroupDesc.bufferNum = offset;
+    resourceGroupDesc.buffers = m_Buffers.data();
+
+    size_t baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE( NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
+
+    resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
+    resourceGroupDesc.bufferNum = helper::GetCountOf(m_Buffers) - offset;
+    resourceGroupDesc.buffers = m_Buffers.data() + offset;
+    resourceGroupDesc.textureNum = helper::GetCountOf(m_Textures);
+    resourceGroupDesc.textures = m_Textures.data();
+
+    baseAllocation = m_MemoryAllocations.size();
+    m_MemoryAllocations.resize(baseAllocation + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
+    NRI_ABORT_ON_FAILURE( NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     CreateDescriptors(descriptorDescs);
 }
@@ -1470,7 +1505,7 @@ void Sample::CreatePipelines()
 {
     if (!m_Pipelines.empty())
     {
-        helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+        NRI.WaitForIdle(*m_CommandQueue);
 
         for (uint32_t i = 0; i < m_Pipelines.size(); i++)
             NRI.DestroyPipeline(*m_Pipelines[i]);
@@ -1557,7 +1592,7 @@ void Sample::CreatePipelines()
         {
             { 0, 2, nri::DescriptorType::ACCELERATION_STRUCTURE, nri::ShaderStage::RAYGEN },
             { 2, 2, nri::DescriptorType::BUFFER, nri::ShaderStage::ALL },
-            { 4, textureNum, nri::DescriptorType::TEXTURE, nri::ShaderStage::ALL, helper::VARIABLE_DESCRIPTOR_NUM, helper::DESCRIPTOR_ARRAY },
+            { 4, textureNum, nri::DescriptorType::TEXTURE, nri::ShaderStage::ALL, nri::VARIABLE_DESCRIPTOR_NUM, nri::DESCRIPTOR_ARRAY },
         };
 
         const nri::DescriptorSetDesc descriptorSetDesc[] =
@@ -2019,11 +2054,11 @@ void Sample::UploadStaticData()
     for (const utils::Texture* texture : m_Scene.textures)
         subresourceNum += texture->GetArraySize() * texture->GetMipNum();
 
-    std::vector<helper::TextureDataDesc> textureData( m_Scene.textures.size() );
-    std::vector<helper::TextureSubresource> subresources( subresourceNum );
+    std::vector<nri::TextureUploadDesc> textureData( m_Scene.textures.size() );
+    std::vector<nri::TextureSubresourceUploadDesc> subresources( subresourceNum );
     uint32_t subresourceOffset = 0;
 
-    helper::TextureDataDesc* textureDataDesc = textureData.data();
+    nri::TextureUploadDesc* textureDataDesc = textureData.data();
     for (const utils::Texture* texture : m_Scene.textures)
     {
         for (uint32_t layer = 0; layer < texture->GetArraySize(); layer++)
@@ -2043,7 +2078,7 @@ void Sample::UploadStaticData()
 
     for (const nri::TextureTransitionBarrierDesc& state : m_TextureStates)
     {
-        helper::TextureDataDesc desc = {};
+        nri::TextureUploadDesc desc = {};
         desc.nextAccess = state.nextAccess;
         desc.nextLayout = state.nextLayout;
         desc.texture = (nri::Texture*)state.texture;
@@ -2052,12 +2087,12 @@ void Sample::UploadStaticData()
     }
 
     // Buffer data
-    helper::BufferDataDesc dataDescArray[] =
+    nri::BufferUploadDesc dataDescArray[] =
     {
         { primitiveData.data(), helper::GetByteSizeOf(primitiveData), Get(Buffer::PrimitiveData), 0, nri::AccessBits::SHADER_RESOURCE },
     };
 
-    NRI_ABORT_ON_FAILURE(helper::UploadData(NRI, *m_Device, textureData.data(), helper::GetCountOf(textureData), dataDescArray, helper::GetCountOf(dataDescArray)));
+    NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_CommandQueue, textureData.data(), helper::GetCountOf(textureData), dataDescArray, helper::GetCountOf(dataDescArray)));
 }
 
 void Sample::CreateBottomLevelAccelerationStructures()
@@ -2104,7 +2139,7 @@ void Sample::CreateBottomLevelAccelerationStructures()
 
         nri::Memory* memory = nullptr;
         NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, nri::WHOLE_DEVICE_GROUP, memoryDesc.type, memoryDesc.size, memory));
-        m_Memories.push_back(memory);
+        m_MemoryAllocations.push_back(memory);
 
         const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = { memory, blas };
         NRI_ABORT_ON_FAILURE(NRI.BindAccelerationStructureMemory(*m_Device, &memoryBindingDesc, 1));
@@ -2131,7 +2166,7 @@ void Sample::CreateTopLevelAccelerationStructure()
 
         nri::Memory* memory = nullptr;
         NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, nri::WHOLE_DEVICE_GROUP, memoryDesc.type, memoryDesc.size, memory));
-        m_Memories.push_back(memory);
+        m_MemoryAllocations.push_back(memory);
 
         const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = { memory, m_WorldTlas };
         NRI_ABORT_ON_FAILURE(NRI.BindAccelerationStructureMemory(*m_Device, &memoryBindingDesc, 1));
@@ -2155,7 +2190,7 @@ void Sample::CreateTopLevelAccelerationStructure()
 
         nri::Memory* memory = nullptr;
         NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, nri::WHOLE_DEVICE_GROUP, memoryDesc.type, memoryDesc.size, memory));
-        m_Memories.push_back(memory);
+        m_MemoryAllocations.push_back(memory);
 
         const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = { memory, m_LightTlas };
         NRI_ABORT_ON_FAILURE(NRI.BindAccelerationStructureMemory(*m_Device, &memoryBindingDesc, 1));
@@ -2220,7 +2255,7 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
     workSubmissionDesc.commandBufferNum = 1;
     NRI.SubmitQueueWork(*m_CommandQueue, workSubmissionDesc, nullptr);
 
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
@@ -2379,7 +2414,7 @@ void Sample::UpdateShaderTable()
     workSubmissionDesc.commandBufferNum = 1;
     NRI.SubmitQueueWork(*m_CommandQueue, workSubmissionDesc, nullptr);
 
-    helper::WaitIdle(NRI, *m_Device, *m_CommandQueue);
+    NRI.WaitForIdle(*m_CommandQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
@@ -2705,13 +2740,13 @@ void Sample::RenderFrame(uint32_t frameIndex)
             NrdUserPool userPool =
             {{
                 // IN_MV
-                {Get(Texture::ObjectMotion), &GetState(Texture::ObjectMotion), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::ObjectMotion), &GetState(Texture::ObjectMotion), GetFormat(Texture::ObjectMotion)},
 
                 // IN_NORMAL_ROUGHNESS
-                {Get(Texture::Normal_Roughness), &GetState(Texture::Normal_Roughness), NORMAL_FORMAT},
+                {Get(Texture::Normal_Roughness), &GetState(Texture::Normal_Roughness), GetFormat(Texture::Normal_Roughness)},
 
                 // IN_VIEWZ
-                {Get(Texture::ViewZ), &GetState(Texture::ViewZ), nri::Format::R32_SFLOAT},
+                {Get(Texture::ViewZ), &GetState(Texture::ViewZ), GetFormat(Texture::ViewZ)},
 
                 // IN_SHADOW
                 {nullptr, nullptr, nri::Format::UNKNOWN},
@@ -2723,7 +2758,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 {nullptr, nullptr, nri::Format::UNKNOWN},
 
                 // IN_SVGF
-                {Get(Texture::Unfiltered_DiffA), &GetState(Texture::Unfiltered_DiffA), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::Unfiltered_DiffA), &GetState(Texture::Unfiltered_DiffA), GetFormat(Texture::Unfiltered_DiffA)},
 
                 // IN_TRANSLUCENCY
                 {nullptr, nullptr, nri::Format::UNKNOWN},
@@ -2738,7 +2773,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 {nullptr, nullptr, nri::Format::UNKNOWN},
 
                 // OUT_SVGF
-                {Get(Texture::DiffHit), &GetState(Texture::DiffHit), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::DiffHit), &GetState(Texture::DiffHit), GetFormat(Texture::DiffHit)},
             }};
 
             nrd::SvgfSettings svgfSettings = {};
@@ -2753,21 +2788,23 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
             svgfSettings.isDiffuse = false;
             svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_SpecHit), &GetState(Texture::Unfiltered_SpecHit), nri::Format::RGBA16_SFLOAT};
-            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::SpecHit), &GetState(Texture::SpecHit), nri::Format::RGBA16_SFLOAT};
+            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_SpecHit), &GetState(Texture::Unfiltered_SpecHit), GetFormat(Texture::Unfiltered_SpecHit)};
+            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::SpecHit), &GetState(Texture::SpecHit), GetFormat(Texture::SpecHit)};
             m_SVGF_Spec.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
             m_SVGF_Spec.Denoise(commandBuffer2, commonSettings, userPool);
 
             svgfSettings.isDiffuse = true;
             svgfSettings.maxAccumulatedFrameNum =uint32_t(m_Settings.svgfSettings.shadowMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_Translucency), &GetState(Texture::Unfiltered_Translucency), nri::Format::RGBA8_UNORM};
-            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::Shadow), &GetState(Texture::Shadow), nri::Format::RGBA8_UNORM};
+            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_Translucency), &GetState(Texture::Unfiltered_Translucency), GetFormat(Texture::Unfiltered_Translucency)};
+            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::Shadow), &GetState(Texture::Shadow), GetFormat(Texture::Shadow)};
             m_SVGF_Shadow.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
             m_SVGF_Shadow.Denoise(commandBuffer2, commonSettings, userPool);
         }
         else
         {
             helper::Annotation annotation(NRI, commandBuffer2, "NRD denoising");
+
+            const float3 trimmingParams = GetTrimmingParams();
 
             // TODO: replace with "a portion of the average intensity of the previous frame"
             float threshold0 = m_Settings.nrdSettings.antilagIntensityThreshold * m_Settings.emissionIntensity * m_Settings.exposure * 0.01f;
@@ -2780,28 +2817,44 @@ void Sample::RenderFrame(uint32_t frameIndex)
             antilagSettings.intensityThresholdMin = threshold0;
             antilagSettings.intensityThresholdMax = 3.0f * threshold0;
 
-            nrd::NrdDiffuseSettings diffuseSettings = {};
-            diffuseSettings.hitDistanceParameters = { m_Settings.diffHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
-            diffuseSettings.antilagSettings = antilagSettings;
-            diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            diffuseSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
-            diffuseSettings.blurRadius = m_Settings.nrdSettings.diffBlurRadius;
-            diffuseSettings.postBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
-            diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
-            m_NRD.SetMethodSettings(nrd::Method::NRD_DIFFUSE, &diffuseSettings);
+            #if( NRD_COMBINED == 1 )
+                nrd::NrdDiffuseSpecularSettings diffuseSpecularSettings = {};
+                diffuseSpecularSettings.antilagSettings = antilagSettings;
+                diffuseSpecularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
+                diffuseSpecularSettings.diffHitDistanceParameters = { m_Settings.diffHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                diffuseSpecularSettings.diffMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSpecularSettings.diffBlurRadius = m_Settings.nrdSettings.diffBlurRadius;
+                diffuseSpecularSettings.diffPostBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
+                diffuseSpecularSettings.diffCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
+                diffuseSpecularSettings.specHitDistanceParameters = { m_Settings.specHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                diffuseSpecularSettings.specLobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
+                diffuseSpecularSettings.specMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSpecularSettings.specBlurRadius = m_Settings.nrdSettings.specBlurRadius;
+                diffuseSpecularSettings.specPostBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
+                diffuseSpecularSettings.specCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
+                m_NRD.SetMethodSettings(nrd::Method::NRD_DIFFUSE_SPECULAR, &diffuseSpecularSettings);
+            #else
+                nrd::NrdDiffuseSettings diffuseSettings = {};
+                diffuseSettings.hitDistanceParameters = { m_Settings.diffHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                diffuseSettings.antilagSettings = antilagSettings;
+                diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
+                diffuseSettings.blurRadius = m_Settings.nrdSettings.diffBlurRadius;
+                diffuseSettings.postBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
+                diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
+                m_NRD.SetMethodSettings(nrd::Method::NRD_DIFFUSE, &diffuseSettings);
 
-            const float3 trimmingParams = GetTrimmingParams();
-
-            nrd::NrdSpecularSettings specularSettings = {};
-            specularSettings.hitDistanceParameters = { m_Settings.specHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
-            specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
-            specularSettings.antilagSettings = antilagSettings;
-            specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            specularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
-            specularSettings.blurRadius = m_Settings.nrdSettings.specBlurRadius;
-            specularSettings.postBlurRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
-            specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
-            m_NRD.SetMethodSettings(nrd::Method::NRD_SPECULAR, &specularSettings);
+                nrd::NrdSpecularSettings specularSettings = {};
+                specularSettings.hitDistanceParameters = { m_Settings.specHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
+                specularSettings.antilagSettings = antilagSettings;
+                specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                specularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
+                specularSettings.blurRadius = m_Settings.nrdSettings.specBlurRadius;
+                specularSettings.postBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
+                specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
+                m_NRD.SetMethodSettings(nrd::Method::NRD_SPECULAR, &specularSettings);
+            #endif
 
             nrd::NrdShadowSettings shadowSettings = {};
             shadowSettings.lightSourceAngularDiameter = m_Settings.sunAngularDiameter;
@@ -2810,40 +2863,40 @@ void Sample::RenderFrame(uint32_t frameIndex)
             NrdUserPool userPool =
             {{
                 // IN_MV
-                {Get(Texture::ObjectMotion), &GetState(Texture::ObjectMotion), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::ObjectMotion), &GetState(Texture::ObjectMotion), GetFormat(Texture::ObjectMotion)},
 
                 // IN_NORMAL_ROUGHNESS
-                {Get(Texture::Normal_Roughness), &GetState(Texture::Normal_Roughness), NORMAL_FORMAT},
+                {Get(Texture::Normal_Roughness), &GetState(Texture::Normal_Roughness), GetFormat(Texture::Normal_Roughness)},
 
                 // IN_VIEWZ
-                {Get(Texture::ViewZ), &GetState(Texture::ViewZ), nri::Format::R32_SFLOAT},
+                {Get(Texture::ViewZ), &GetState(Texture::ViewZ), GetFormat(Texture::ViewZ)},
 
                 // IN_SHADOW
-                {Get(Texture::Unfiltered_Shadow), &GetState(Texture::Unfiltered_Shadow), nri::Format::RG16_SFLOAT},
+                {Get(Texture::Unfiltered_Shadow), &GetState(Texture::Unfiltered_Shadow), GetFormat(Texture::Unfiltered_Shadow)},
 
                 // IN_DIFFA
-                {Get(Texture::Unfiltered_DiffA), &GetState(Texture::Unfiltered_DiffA), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::Unfiltered_DiffA), &GetState(Texture::Unfiltered_DiffA), GetFormat(Texture::Unfiltered_DiffA)},
 
                 // IN_DIFFB
-                {Get(Texture::Unfiltered_DiffB), &GetState(Texture::Unfiltered_DiffB), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::Unfiltered_DiffB), &GetState(Texture::Unfiltered_DiffB), GetFormat(Texture::Unfiltered_DiffB)},
 
                 // IN_SPEC_HIT
-                {Get(Texture::Unfiltered_SpecHit), &GetState(Texture::Unfiltered_SpecHit), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::Unfiltered_SpecHit), &GetState(Texture::Unfiltered_SpecHit), GetFormat(Texture::Unfiltered_SpecHit)},
 
                 // IN_TRANSLUCENCY
-                {Get(Texture::Unfiltered_Translucency), &GetState(Texture::Unfiltered_Translucency), nri::Format::RGBA8_UNORM},
+                {Get(Texture::Unfiltered_Translucency), &GetState(Texture::Unfiltered_Translucency), GetFormat(Texture::Unfiltered_Translucency)},
 
                 // OUT_SHADOW
                 {nullptr, nullptr, nri::Format::UNKNOWN},
 
                 // OUT_SHADOW_TRANSLUCENCY
-                {Get(Texture::Shadow), &GetState(Texture::Shadow), nri::Format::RGBA8_UNORM},
+                {Get(Texture::Shadow), &GetState(Texture::Shadow), GetFormat(Texture::Shadow)},
 
                 // OUT_DIFF_HIT
-                {Get(Texture::DiffHit), &GetState(Texture::DiffHit), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::DiffHit), &GetState(Texture::DiffHit), GetFormat(Texture::DiffHit)},
 
                 // OUT_SPEC_HIT
-                {Get(Texture::SpecHit), &GetState(Texture::SpecHit), nri::Format::RGBA16_SFLOAT},
+                {Get(Texture::SpecHit), &GetState(Texture::SpecHit), GetFormat(Texture::SpecHit)},
             }};
 
             m_NRD.Denoise(commandBuffer2, commonSettings, userPool);

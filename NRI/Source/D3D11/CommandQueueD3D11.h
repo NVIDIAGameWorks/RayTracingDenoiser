@@ -29,6 +29,11 @@ namespace nri
         void Submit(const WorkSubmissionDesc& workSubmissions, DeviceSemaphore* deviceSemaphore);
         void Wait(DeviceSemaphore& deviceSemaphore);
 
+        Result ChangeResourceStates(const TransitionBarrierDesc& transitionBarriers);
+        Result UploadData(const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum, 
+            const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum);
+        Result WaitForIdle();
+
     private:
         const VersionedContext& m_ImmediateContext;
         CommandQueueType m_Type = CommandQueueType::GRAPHICS;
