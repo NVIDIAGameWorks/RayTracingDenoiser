@@ -81,7 +81,6 @@ float3 ClipAABB( float3 center, float3 extents, float3 prevSample )
 
 void Preload( int2 sharedId, int2 globalId )
 {
-    // TODO: use w = 0 if outside of the screen or use SampleLevel with Clamp sampler
     float4 color_viewZ = gIn_ComposedLighting_ViewZ[ globalId ];
     color_viewZ.xyz = ApplyPostLightingComposition( globalId, color_viewZ.xyz, gIn_TransparentLighting );
     color_viewZ.w = abs( color_viewZ.w ) * STL::Math::Sign( gNearZ ) / NRD_FP16_VIEWZ_SCALE;
@@ -104,12 +103,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     int2 groupBase = pixelPos - threadId - BORDER;
 
     // Preload into shared memory
-    if ( newId.y < RENAMED_GROUP_Y )
+    if( newId.y < RENAMED_GROUP_Y )
         Preload( newId, groupBase + newId );
 
     newId.y += RENAMED_GROUP_Y;
 
-    if ( newId.y < BUFFER_Y )
+    if( newId.y < BUFFER_Y )
         Preload( newId, groupBase + newId );
 
     GroupMemoryBarrierWithGroupSync( );
@@ -132,8 +131,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
             int2 t = int2( dx, dy );
-            int2 pos = threadId + t;
-            float4 data = s_Data[ pos.y ][ pos.x ];
+            int2 smemPos = threadId + t;
+            float4 data = s_Data[ smemPos.y ][ smemPos.x ];
 
             if( dx == BORDER && dy == BORDER )
                 input = data.xyz;

@@ -17,4 +17,5 @@ setlocal
 
 call "%~dp0\packman" init
 set "PYTHONPATH=%PM_MODULE_DIR%;%PYTHONPATH%"
+set PYTHONNOUSERSITE=1
 "%PM_PYTHON%" -u %*

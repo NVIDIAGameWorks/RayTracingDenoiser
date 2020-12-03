@@ -36,36 +36,43 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 1, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_SignalA, t, 2, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_SignalB, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SignalA, u, 0, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SignalB, u, 1, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 0, 0 );
+
+void Preload( int2 sharedId, int2 globalId )
+{
+    s_Normal_Roughness[ sharedId.y ][ sharedId.x ] = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] );
+    s_ViewZ[ sharedId.y ][ sharedId.x ] = gIn_ScaledViewZ[ globalId ] / NRD_FP16_VIEWZ_SCALE;
+}
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( uint2 pixelPos : SV_DispatchThreadId )
+void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
 
+    PRELOAD_INTO_SMEM;
+
     // Early out
-    float4 finalB = gIn_SignalB[ pixelPos ];
-    float centerZ = finalB.w / NRD_FP16_VIEWZ_SCALE;
+    int2 smemPos = threadId + BORDER;
+    float centerZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
     [branch]
-    if ( abs( centerZ ) > gInf )
+    if( abs( centerZ ) > gInf )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
-            gOut_SignalA[ pixelPos ] = 0;
+            gOut_Diff[ pixelPos ] = 0;
         #endif
-        gOut_SignalB[ pixelPos ] = NRD_INF_DIFF_B;
         return;
     }
 
-    // Normal
-    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
+    // Normal and roughness
+    float4 normalAndRoughness = s_Normal_Roughness[ smemPos.y ][ smemPos.x ];
     float3 N = normalAndRoughness.xyz;
     float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
+    float roughness = normalAndRoughness.w;
 
     // Accumulations speeds
     float3 diffInternalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ] );
@@ -74,11 +81,11 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
-    float4 finalA = gIn_SignalA[ pixelPos ];
-    float diffCenterNormHitDist = finalA.w;
+    float4 diff = gIn_Diff[ pixelPos ];
+    float diffCenterNormHitDist = diff.w;
 
     // Blur radius
-    float diffHitDist = GetHitDistance( finalA.w, centerZ, gDiffScalingParams );
+    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffScalingParams );
     float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffNonLinearAccumSpeed );
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
@@ -88,11 +95,14 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     // Random rotation
     float4 rotator = GetBlurKernelRotation( BLUR_ROTATOR_MODE, pixelPos, gRotator );
 
+    // Edge detection
+    float edge = DetectEdge( N, smemPos );
+
     // Denoising
     float diffSum = 1.0;
 
     float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, gMetersToUnits, centerZ );
-    float2 diffNormalWeightParams = GetNormalWeightParams( 1.0, diffInternalData.z, diffNormAccumSpeed );
+    float diffNormalWeightParams = GetNormalWeightParams( 1.0, edge, diffNormAccumSpeed );
 
     UNROLL
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
@@ -103,31 +113,26 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
         float2 uv = GetKernelSampleCoordinates( offset, centerPos, diffTvBv[ 0 ], diffTvBv[ 1 ], rotator );
 
         // Fetch data
-        float4 sA = gIn_SignalA.SampleLevel( gNearestMirror, uv, 0 );
-        float4 sB = gIn_SignalB.SampleLevel( gNearestMirror, uv, 0 );
+        float4 d = gIn_Diff.SampleLevel( gNearestMirror, uv, 0 );
+        float scaledViewZ = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uv, 0 );
         float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0 );
 
-        float z = sB.w / NRD_FP16_VIEWZ_SCALE;
-        float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
+        float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, scaledViewZ / NRD_FP16_VIEWZ_SCALE, gIsOrtho );
         normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
         // Sample weight
         float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
         w *= GetNormalWeight( diffNormalWeightParams, N, normal.xyz );
 
-        finalA += sA * w;
-        finalB.xyz += sB.xyz * w;
+        diff += d * w;
         diffSum += w;
     }
 
-    float invSum = 1.0 / diffSum;
-    finalA *= invSum;
-    finalB.xyz *= invSum;
+    diff *= STL::Math::PositiveRcp( diffSum );
 
     // Special case for hit distance
-    finalA.w = lerp( finalA.w, diffCenterNormHitDist, HIT_DIST_INPUT_MIX );
+    diff.w = lerp( diff.w, diffCenterNormHitDist, HIT_DIST_INPUT_MIX );
 
     // Output
-    gOut_SignalA[ pixelPos ] = finalA;
-    gOut_SignalB[ pixelPos ] = finalB;
+    gOut_Diff[ pixelPos ] = diff;
 }

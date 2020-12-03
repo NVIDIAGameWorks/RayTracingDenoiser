@@ -8,7 +8,10 @@ public:
     Timer();
 
     double GetTimeStamp();
+    void UpdateElapsedTimeSinceLastSave();
+    void SaveCurrentTime();
 
+    // In milliseconds
     inline float GetElapsedTime()
     { return m_Delta; }
 
@@ -17,9 +20,6 @@ public:
 
     inline float GetVerySmoothedElapsedTime()
     { return m_VerySmoothedDelta; }
-
-    void UpdateElapsedTimeSinceLastSave();
-    void SaveCurrentTime();
 
 private:
 

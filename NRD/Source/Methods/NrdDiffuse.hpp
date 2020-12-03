@@ -15,14 +15,12 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
     enum class Permanent
     {
         PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS = PERMANENT_POOL_START,
-        A_HISTORY,
-        B_HISTORY,
-        RESOLVED_HISTORY_1,
-        RESOLVED_HISTORY_2,
+        HISTORY,
+        STABILIZED_HISTORY_1,
+        STABILIZED_HISTORY_2,
     };
 
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
@@ -30,27 +28,25 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
     enum class Transient
     {
         INTERNAL_DATA = TRANSIENT_POOL_START,
-        A_ACCUMULATED,
-        B_ACCUMULATED,
+        ACCUMULATED,
+        SCALED_VIEWZ,
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
+    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 5} );
 
     // Tricks to save memory
-    #define A_TEMP AsUint(ResourceType::OUT_DIFF_HIT)
-    #define B_TEMP AsUint(Permanent::RESOLVED_HISTORY_1), 0, 1, AsUint(Permanent::RESOLVED_HISTORY_2)
+    #define TEMP AsUint(Permanent::STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::STABILIZED_HISTORY_2)
 
     PushPass("Diffuse - pre-blur");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_DIFFA) );
-        PushInput( AsUint(ResourceType::IN_DIFFB) );
+        PushInput( AsUint(ResourceType::IN_DIFF_HIT) );
 
-        PushOutput( A_TEMP );
-        PushOutput( B_TEMP );
+        PushOutput( TEMP );
+        PushOutput( AsUint(Transient::SCALED_VIEWZ) );
 
         desc.constantBufferDataSize = SumConstants(1, 2, 0, 2);
 
@@ -62,15 +58,12 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
-        PushInput( AsUint(Permanent::A_HISTORY) );
-        PushInput( AsUint(Permanent::B_HISTORY) );
-        PushInput( A_TEMP );
-        PushInput( B_TEMP );
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
+        PushInput( AsUint(Permanent::HISTORY) ); // TODO: STABILIZED_HISTORY can be used here - it looks better, but adds lag because TS uses wide variance clamping
+        PushInput( TEMP );
 
-        PushOutput( AsUint(Transient::A_ACCUMULATED) );
-        PushOutput( AsUint(Transient::B_ACCUMULATED) );
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
+        PushOutput( AsUint(Transient::ACCUMULATED) );
 
         desc.constantBufferDataSize = SumConstants(4, 1, 1, 4);
 
@@ -79,31 +72,30 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
 
     PushPass("Diffuse - mip generation");
     {
-        PushInput( AsUint(Transient::A_ACCUMULATED) );
-        PushInput( AsUint(Transient::B_ACCUMULATED) );
+        PushInput( AsUint(Transient::ACCUMULATED) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ) );
 
-        PushOutput( AsUint(Transient::A_ACCUMULATED), 1, 1 );
-        PushOutput( AsUint(Transient::B_ACCUMULATED), 1, 1 );
-        PushOutput( AsUint(Transient::A_ACCUMULATED), 2, 1 );
-        PushOutput( AsUint(Transient::B_ACCUMULATED), 2, 1 );
-        PushOutput( AsUint(Transient::A_ACCUMULATED), 3, 1 );
-        PushOutput( AsUint(Transient::B_ACCUMULATED), 3, 1 );
-        PushOutput( AsUint(Transient::A_ACCUMULATED), 4, 1 );
-        PushOutput( AsUint(Transient::B_ACCUMULATED), 4, 1 );
+        PushOutput( AsUint(Transient::ACCUMULATED), 1, 1 );
+        PushOutput( AsUint(Transient::SCALED_VIEWZ), 1, 1 );
+        PushOutput( AsUint(Transient::ACCUMULATED), 2, 1 );
+        PushOutput( AsUint(Transient::SCALED_VIEWZ), 2, 1 );
+        PushOutput( AsUint(Transient::ACCUMULATED), 3, 1 );
+        PushOutput( AsUint(Transient::SCALED_VIEWZ), 3, 1 );
+        PushOutput( AsUint(Transient::ACCUMULATED), 4, 1 );
+        PushOutput( AsUint(Transient::SCALED_VIEWZ), 4, 1 );
 
         desc.constantBufferDataSize = SumConstants(0, 0, 0, 0);
 
-        AddDispatchWithExplicitCTASize(desc, NRD_Diffuse_Mips, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
+        AddDispatchWithExplicitCTASize(desc, NRD_MipGeneration_Float4_Float, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
     }
 
     PushPass("Diffuse - history fix");
     {
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::A_ACCUMULATED), 1, 4 );
-        PushInput( AsUint(Transient::B_ACCUMULATED), 1, 4 );
+        PushInput( AsUint(Transient::SCALED_VIEWZ), 0, 5 );
+        PushInput( AsUint(Transient::ACCUMULATED), 1, 4 );
 
-        PushOutput( AsUint(Transient::A_ACCUMULATED) );
-        PushOutput( AsUint(Transient::B_ACCUMULATED) );
+        PushOutput( AsUint(Transient::ACCUMULATED) );
 
         desc.constantBufferDataSize = SumConstants(0, 0, 1, 0);
 
@@ -114,11 +106,10 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::A_ACCUMULATED) );
-        PushInput( AsUint(Transient::B_ACCUMULATED) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        PushInput( AsUint(Transient::ACCUMULATED) );
 
-        PushOutput( A_TEMP );
-        PushOutput( B_TEMP );
+        PushOutput( TEMP );
 
         desc.constantBufferDataSize = SumConstants(1, 2, 0, 1);
 
@@ -129,12 +120,11 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( A_TEMP );
-        PushInput( B_TEMP );
-        PushInput( AsUint(Transient::B_ACCUMULATED) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        PushInput( TEMP );
+        PushInput( AsUint(Transient::ACCUMULATED) );
 
-        PushOutput( AsUint(Permanent::A_HISTORY) );
-        PushOutput( AsUint(Permanent::B_HISTORY) );
+        PushOutput( AsUint(Permanent::HISTORY) );
 
         desc.constantBufferDataSize = SumConstants(1, 2, 0, 2);
 
@@ -147,12 +137,11 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Permanent::RESOLVED_HISTORY_2), 0, 1, AsUint(Permanent::RESOLVED_HISTORY_1) );
-        PushInput( AsUint(Permanent::A_HISTORY) );
-        PushInput( AsUint(Permanent::B_HISTORY) );
+        PushInput( AsUint(Permanent::STABILIZED_HISTORY_2), 0, 1, AsUint(Permanent::STABILIZED_HISTORY_1) );
+        PushInput( AsUint(Permanent::HISTORY) );
 
         PushOutput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
-        PushOutput( AsUint(Permanent::RESOLVED_HISTORY_1), 0, 1, AsUint(Permanent::RESOLVED_HISTORY_2) );
+        PushOutput( AsUint(Permanent::STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::STABILIZED_HISTORY_2) );
         PushOutput( AsUint(ResourceType::OUT_DIFF_HIT) );
 
         desc.constantBufferDataSize = SumConstants(2, 0, 2, 1);
@@ -160,8 +149,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
         AddDispatch(desc, NRD_Diffuse_TemporalStabilization, w, h);
     }
 
-    #undef A_TEMP
-    #undef B_TEMP
+    #undef TEMP
 
     return sizeof(NrdDiffuseSettings);
 }

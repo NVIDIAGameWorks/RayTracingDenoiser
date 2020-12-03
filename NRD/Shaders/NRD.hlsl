@@ -57,21 +57,24 @@ float normHitDist:
 // PUBLIC
 //=================================================================================================================================
 
-// If "0" - skips spherical harmonics resolve, worsens IQ, but can be used to understand the benefits of SH usage
-#define NRD_SH                                  1
-
-// This function can be tuned at any time (NRD doesn't use NRD_FrontEnd_PackSpecular and NRD_BackEnd_UnpackSpecular internally)
+// This function can be tuned at any time ( NRD doesn't use NRD_FrontEnd_PackSpecular and NRD_BackEnd_UnpackSpecular internally )
 float NRD_GetColorCompressionExposure( float linearRoughness )
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNiooMS14KngpLygxKzQwMCp4KngpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMSJdLCJzaXplIjpbMjk1MCw5NTBdfV0-
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
+
+    // No compression
+    //return 0;
 
     // Moderate compression
     //return 0.5 / ( 1.0 + 50.0 * linearRoughness );
 
     // Less compression for mid-high roughness
-    return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
+    //return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
 
     // Close to the previous one, but offers more compression for low roughness
+    return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 1000.0 * linearRoughness * linearRoughness ) + ( 1.0 - sqrt( saturate( linearRoughness ) ) ) * 0.03;
+
+    // A modification of the preious one ( simpler )
     //return 0.6 * ( 1.0 - linearRoughness * linearRoughness ) / ( 1.0 + 400.0 * linearRoughness * linearRoughness );
 }
 
@@ -121,36 +124,6 @@ float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool b
     return bNormalize ? normalize( n ) : n;
 }
 
-// This function can be useful if you need to unpack packed NRD input in one of your own passes (for example, to show noisy input as is)
-float4 _NRD_BackEnd_UnpackDiffuse( float4 diffA, float4 diffB, float3 normal, bool rgb = true )
-{
-    float3 c1 = diffA.xyz;
-    float c0 = max( diffB.x, 1e-6 );
-    float2 CoCg = diffB.yz;
-
-    float d = dot( c1, normal );
-    float Y = 2.0 * ( 1.023326 * d + 0.886226 * c0 );
-
-    // Ignore negative values ( minor deviations are possible )
-    Y = max( Y, 0 );
-
-    float modifier = 0.282095 * Y * rcp( c0 );
-    CoCg *= saturate( modifier );
-
-    #if( NRD_SH == 0 )
-        Y = c0 / 0.282095;
-    #endif
-
-    float4 color;
-    color.xyz = float3( Y, CoCg );
-    color.w = diffA.w;
-
-    if( rgb )
-        color.xyz = _NRD_YCoCgToLinear( color.xyz );
-
-    return color;
-}
-
 float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 {
     float4 r;
@@ -179,36 +152,22 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 // FRONT-END PACKING
 //=================================================================================================================================
 
-// Must be used to "clear" INF pixels ( missed value means "don't care" )
-#define NRD_INF_DIFF_B                  float4( 0, 0, 0, NRD_FP16_MAX )
+// Recommended to be used to "clear" INF pixels
+#define NRD_INF_DIFF                    0
+#define NRD_INF_SPEC                    0
+
+// Must be used to "clear" INF pixels
 #define NRD_INF_SHADOW                  float2( NRD_FP16_MAX, NRD_FP16_MAX )
 
-float4 NRD_FrontEnd_PackSpecular( float3 radiance, float linearRoughness, float normHitDist )
+float4 NRD_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float linearRoughness = 1.0 )
 {
-    float4 r;
-    r.xyz = _NRD_LinearToYCoCg( radiance );
-    r.w = normHitDist;
+    float3 ycocg = _NRD_LinearToYCoCg( radiance );
 
     float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float k = r.x * exposure;
-    r.xyz /= 1.0 + k + NRD_EPS;
+    float k = ycocg.x * exposure;
+    float3 compressedYcocg = ycocg / ( 1.0 + k );
 
-    return r;
-}
-
-void NRD_FrontEnd_PackDiffuse( float3 radiance, float3 direction, float viewZ, float normHitDist, out float4 diffA, out float4 diffB )
-{
-    radiance = _NRD_LinearToYCoCg( radiance );
-
-    float c0 = 0.282095 * radiance.x;
-    float3 c1 = 0.488603 * radiance.x * direction;
-
-    diffA.xyz = c1;
-    diffA.w = normHitDist;
-
-    diffB.x = c0;
-    diffB.yz = radiance.yz;
-    diffB.w = clamp( viewZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
+    return float4( compressedYcocg, normHitDist );
 }
 
 float2 NRD_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
@@ -230,22 +189,15 @@ float2 NRD_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
 // BACK-END UNPACKING
 //=================================================================================================================================
 
-float4 NRD_BackEnd_UnpackSpecular( float4 color, float linearRoughness )
+float4 NRD_BackEnd_UnpackRadiance( float4 compressedYcocg_normHitDist, float linearRoughness = 1.0 )
 {
     float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float k = color.x * exposure;
-    color.xyz /= max( 1.0, k ) - k + NRD_EPS;
+    float k = compressedYcocg_normHitDist.x * exposure;
+    float3 ycocg = compressedYcocg_normHitDist.xyz / max( 1.0 - k, NRD_EPS );
 
-    color.xyz = _NRD_YCoCgToLinear( color.xyz );
+    float3 radiance = _NRD_YCoCgToLinear( ycocg );
 
-    return color;
-}
-
-float4 NRD_BackEnd_UnpackDiffuse( float4 color )
-{
-    color.xyz = _NRD_YCoCgToLinear( color.xyz );
-
-    return color;
+    return float4( radiance, compressedYcocg_normHitDist.w );
 }
 
 #define NRD_BackEnd_UnpackShadow( color )  ( color * color )

@@ -12,14 +12,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 1 );
 NRI_RESOURCE( Texture2D<float2>, gIn_Unfiltered_Shadow, t, 1, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_Unfiltered_DiffA, t, 2, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_Unfiltered_DiffB, t, 3, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_Unfiltered_SpecHit, t, 4, 1 );
-NRI_RESOURCE( Texture2D<float3>, gIn_Unfiltered_Translucency, t, 5, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Unfiltered_Diff, t, 2, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Unfiltered_Spec, t, 3, 1 );
+NRI_RESOURCE( Texture2D<float3>, gIn_Unfiltered_Translucency, t, 4, 1 );
 
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Shadow, u, 6, 1 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffHit, u, 7, 1 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SpecHit, u, 8, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Shadow, u, 5, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 6, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 7, 1 );
 
 [numthreads( 16, 16, 1)]
 void main( uint2 pixelPos : SV_DISPATCHTHREADID)
@@ -49,19 +48,13 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     float shadow = float( s == NRD_FP16_MAX );
     float4 shadowData = float4( shadow, translucency );
 
-    float4 diffA = gIn_Unfiltered_DiffA[ checkerboardPos ];
-    float4 diffB = gIn_Unfiltered_DiffB[ checkerboardPos ];
-    float4 diffHit = _NRD_BackEnd_UnpackDiffuse( diffA, diffB, N, false );
-
-    float4 specHit = gIn_Unfiltered_SpecHit[ checkerboardPos ];
+    float4 diff = gIn_Unfiltered_Diff[ checkerboardPos ];
+    float4 spec = gIn_Unfiltered_Spec[ checkerboardPos ];
 
     if( gSvgf )
-    {
         shadowData.xyz = translucency;
-        diffHit = diffA;
-    }
 
     gOut_Shadow[ pixelPos ] = shadowData;
-    gOut_DiffHit[ pixelPos ] = diffHit;
-    gOut_SpecHit[ pixelPos ] = specHit;
+    gOut_Diff[ pixelPos ] = diff;
+    gOut_Spec[ pixelPos ] = spec;
 }

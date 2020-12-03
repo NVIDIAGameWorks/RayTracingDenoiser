@@ -15,8 +15,8 @@ NRI_RESOURCE( Texture2D<float3>, gIn_DirectLighting, t, 1, 1 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 2, 1 );
 NRI_RESOURCE( Texture2D<float4>, gIn_BaseColor_Metalness, t, 3, 1 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Shadow, t, 4, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_DiffHit, t, 5, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_SpecHit, t, 6, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 5, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 6, 1 );
 NRI_RESOURCE( Texture2D<float2>, gIn_IntegratedBRDF, t, 7, 1 );
 
 NRI_RESOURCE( RWTexture2D<float4>, gOut_ComposedImage, u, 8, 1 );
@@ -46,17 +46,17 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     // Denoised data
     float4 shadowData = gIn_Shadow[ pixelPos ];
 
-    float4 indirectSpec = gIn_SpecHit[ pixelPos ];
+    float4 indirectSpec = gIn_Spec[ pixelPos ];
     indirectSpec.xyz *= gIndirectSpecular;
 
-    float4 indirectDiff = gIn_DiffHit[ pixelPos ];
+    float4 indirectDiff = gIn_Diff[ pixelPos ];
     indirectDiff.xyz *= gIndirectDiffuse;
 
     if( !gSvgf )
     {
         shadowData = NRD_BackEnd_UnpackShadow( shadowData );
-        indirectSpec = NRD_BackEnd_UnpackSpecular( indirectSpec, roughness );
-        indirectDiff = NRD_BackEnd_UnpackDiffuse( indirectDiff );
+        indirectSpec = NRD_BackEnd_UnpackRadiance( indirectSpec, roughness );
+        indirectDiff = NRD_BackEnd_UnpackRadiance( indirectDiff );
     }
 
     float3 shadow = gSvgf ? shadowData.xyz : lerp( shadowData.yzw, 1.0, shadowData.x );
@@ -93,21 +93,21 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     Lsum += indirectSpec.xyz * F;
 
     // Debug
-    if ( gOnScreen == SHOW_AMBIENT_OCCLUSION )
+    if( gOnScreen == SHOW_AMBIENT_OCCLUSION )
         Lsum = indirectDiff.w;
-    else if ( gOnScreen == SHOW_SPECULAR_OCCLUSION )
+    else if( gOnScreen == SHOW_SPECULAR_OCCLUSION )
         Lsum = indirectSpec.w;
-    else if ( gOnScreen == SHOW_SHADOW )
+    else if( gOnScreen == SHOW_SHADOW )
         Lsum = shadow;
-    else if ( gOnScreen == SHOW_BASE_COLOR )
+    else if( gOnScreen == SHOW_BASE_COLOR )
         Lsum = baseColorMetalness.xyz;
-    else if ( gOnScreen == SHOW_NORMAL )
+    else if( gOnScreen == SHOW_NORMAL )
         Lsum = N * 0.5 + 0.5;
-    else if ( gOnScreen == SHOW_ROUGHNESS )
+    else if( gOnScreen == SHOW_ROUGHNESS )
         Lsum = roughness;
-    else if ( gOnScreen == SHOW_METALNESS )
+    else if( gOnScreen == SHOW_METALNESS )
         Lsum = baseColorMetalness.w;
-    else if ( gOnScreen >= SHOW_WORLD_UNITS )
+    else if( gOnScreen >= SHOW_WORLD_UNITS )
         Lsum = gOnScreen == SHOW_MIP_SPECULAR ? indirectSpec.xyz : ( directLighting * isGround );
 
     // Output

@@ -15,8 +15,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
     enum class Permanent
     {
         PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS = PERMANENT_POOL_START,
-        DIFFA_HISTORY,
-        DIFFB_HISTORY,
+        DIFF_HISTORY,
         DIFF_STABILIZED_HISTORY_1,
         DIFF_STABILIZED_HISTORY_2,
         SPEC_HISTORY,
@@ -31,13 +30,11 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
 
     enum class Transient
     {
         INTERNAL_DATA = TRANSIENT_POOL_START,
-        DIFFA_ACCUMULATED,
-        DIFFB_ACCUMULATED,
+        DIFF_ACCUMULATED,
         SPEC_ACCUMULATED,
         SCALED_VIEWZ,
     };
@@ -45,24 +42,20 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::R32_UINT, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 5} );
 
     // Tricks to save memory
-    #define DIFFA_TEMP AsUint(ResourceType::OUT_DIFF_HIT)
-    #define DIFFB_TEMP AsUint(Permanent::DIFF_STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::DIFF_STABILIZED_HISTORY_2)
+    #define DIFF_TEMP AsUint(Permanent::DIFF_STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::DIFF_STABILIZED_HISTORY_2)
     #define SPEC_TEMP AsUint(Permanent::SPEC_STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::SPEC_STABILIZED_HISTORY_2)
 
     PushPass("DiffuseSpecular - pre-blur");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_DIFFA) );
-        PushInput( AsUint(ResourceType::IN_DIFFB) );
+        PushInput( AsUint(ResourceType::IN_DIFF_HIT) );
         PushInput( AsUint(ResourceType::IN_SPEC_HIT) );
 
-        PushOutput( DIFFA_TEMP );
-        PushOutput( DIFFB_TEMP );
+        PushOutput( DIFF_TEMP );
         PushOutput( SPEC_TEMP );
         PushOutput( AsUint(Transient::SCALED_VIEWZ) );
 
@@ -77,16 +70,13 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
-        PushInput( AsUint(Permanent::DIFFA_HISTORY) );
-        PushInput( AsUint(Permanent::DIFFB_HISTORY) );
+        PushInput( AsUint(Permanent::DIFF_HISTORY) );
         PushInput( AsUint(Permanent::SPEC_HISTORY) );
-        PushInput( DIFFA_TEMP );
-        PushInput( DIFFB_TEMP );
+        PushInput( DIFF_TEMP );
         PushInput( SPEC_TEMP );
 
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
-        PushOutput( AsUint(Transient::DIFFA_ACCUMULATED) );
-        PushOutput( AsUint(Transient::DIFFB_ACCUMULATED) );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
 
         desc.constantBufferDataSize = SumConstants(4, 4, 1, 6);
@@ -94,26 +84,22 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         AddDispatch(desc, NRD_DiffuseSpecular_TemporalAccumulation, w, h);
     }
 
-    PushPass("Diffuse - mip generation");
+    PushPass("DiffuseSpecular - diff mip generation");
     {
-        PushInput( AsUint(Transient::DIFFA_ACCUMULATED) );
-        PushInput( AsUint(Transient::DIFFB_ACCUMULATED) );
+        PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ) );
 
-        PushOutput( AsUint(Transient::DIFFA_ACCUMULATED), 1, 1 );
-        PushOutput( AsUint(Transient::DIFFB_ACCUMULATED), 1, 1 );
-        PushOutput( AsUint(Transient::DIFFA_ACCUMULATED), 2, 1 );
-        PushOutput( AsUint(Transient::DIFFB_ACCUMULATED), 2, 1 );
-        PushOutput( AsUint(Transient::DIFFA_ACCUMULATED), 3, 1 );
-        PushOutput( AsUint(Transient::DIFFB_ACCUMULATED), 3, 1 );
-        PushOutput( AsUint(Transient::DIFFA_ACCUMULATED), 4, 1 );
-        PushOutput( AsUint(Transient::DIFFB_ACCUMULATED), 4, 1 );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED), 1, 1 );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED), 2, 1 );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED), 3, 1 );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED), 4, 1 );
 
         desc.constantBufferDataSize = SumConstants(0, 0, 0, 0);
 
-        AddDispatchWithExplicitCTASize(desc, NRD_Diffuse_Mips, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
+        AddDispatchWithExplicitCTASize(desc, NRD_MipGeneration_Float4, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
     }
 
-    PushPass("Specular - mip generation");
+    PushPass("DiffuseSpecular - spec mip generation");
     {
         PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
@@ -129,7 +115,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
 
         desc.constantBufferDataSize = SumConstants(0, 0, 0, 0);
 
-        AddDispatchWithExplicitCTASize(desc, NRD_Specular_Mips, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
+        AddDispatchWithExplicitCTASize(desc, NRD_MipGeneration_Float4_Float, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
     }
 
     PushPass("DiffuseSpecular - history fix");
@@ -137,12 +123,10 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ), 0, 5 );
-        PushInput( AsUint(Transient::DIFFA_ACCUMULATED), 1, 4 );
-        PushInput( AsUint(Transient::DIFFB_ACCUMULATED), 1, 4 );
+        PushInput( AsUint(Transient::DIFF_ACCUMULATED), 1, 4 );
         PushInput( AsUint(Transient::SPEC_ACCUMULATED), 1, 4 );
 
-        PushOutput( AsUint(Transient::DIFFA_ACCUMULATED) );
-        PushOutput( AsUint(Transient::DIFFB_ACCUMULATED) );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
 
         desc.constantBufferDataSize = SumConstants(0, 0, 1, 0);
@@ -155,12 +139,10 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
-        PushInput( AsUint(Transient::DIFFA_ACCUMULATED) );
-        PushInput( AsUint(Transient::DIFFB_ACCUMULATED) );
+        PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        PushOutput( DIFFA_TEMP );
-        PushOutput( DIFFB_TEMP );
+        PushOutput( DIFF_TEMP );
         PushOutput( SPEC_TEMP );
 
         desc.constantBufferDataSize = SumConstants(1, 4, 0, 1);
@@ -173,14 +155,12 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
-        PushInput( DIFFA_TEMP );
-        PushInput( DIFFB_TEMP );
-        PushInput( AsUint(Transient::DIFFB_ACCUMULATED) );
+        PushInput( DIFF_TEMP );
+        PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushInput( SPEC_TEMP );
         PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        PushOutput( AsUint(Permanent::DIFFA_HISTORY) );
-        PushOutput( AsUint(Permanent::DIFFB_HISTORY) );
+        PushOutput( AsUint(Permanent::DIFF_HISTORY) );
         PushOutput( AsUint(Permanent::SPEC_HISTORY) );
 
         desc.constantBufferDataSize = SumConstants(1, 4, 0, 3);
@@ -195,8 +175,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Permanent::DIFF_STABILIZED_HISTORY_2), 0, 1, AsUint(Permanent::DIFF_STABILIZED_HISTORY_1) );
-        PushInput( AsUint(Permanent::DIFFA_HISTORY) );
-        PushInput( AsUint(Permanent::DIFFB_HISTORY) );
+        PushInput( AsUint(Permanent::DIFF_HISTORY) );
         PushInput( AsUint(Permanent::SPEC_STABILIZED_HISTORY_2), 0, 1, AsUint(Permanent::SPEC_STABILIZED_HISTORY_1) );
         PushInput( AsUint(Permanent::SPEC_HISTORY) );
 
@@ -211,8 +190,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         AddDispatch(desc, NRD_DiffuseSpecular_TemporalStabilization, w, h);
     }
 
-    #undef DIFFA_TEMP
-    #undef DIFFB_TEMP
+    #undef DIFF_TEMP
     #undef SPEC_TEMP
 
     return sizeof(NrdDiffuseSpecularSettings);

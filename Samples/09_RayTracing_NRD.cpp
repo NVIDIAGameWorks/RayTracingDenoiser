@@ -83,12 +83,11 @@ enum class Texture : uint32_t
     Normal_Roughness,
     BaseColor_Metalness,
     Shadow,
-    DiffHit,
-    SpecHit,
+    Diff,
+    Spec,
     Unfiltered_Shadow,
-    Unfiltered_DiffA,
-    Unfiltered_DiffB,
-    Unfiltered_SpecHit,
+    Unfiltered_Diff,
+    Unfiltered_Spec,
     Unfiltered_Translucency,
     ComposedLighting_ViewZ,
     TaaHistory,
@@ -130,18 +129,16 @@ enum class Descriptor : uint32_t
     BaseColor_Metalness_StorageTexture,
     Shadow_Texture,
     Shadow_StorageTexture,
-    DiffHit_Texture,
-    DiffHit_StorageTexture,
-    SpecHit_Texture,
-    SpecHit_StorageTexture,
+    Diff_Texture,
+    Diff_StorageTexture,
+    Spec_Texture,
+    Spec_StorageTexture,
     Unfiltered_Shadow_Texture,
     Unfiltered_Shadow_StorageTexture,
-    Unfiltered_DiffA_Texture,
-    Unfiltered_DiffA_StorageTexture,
-    Unfiltered_DiffB_Texture,
-    Unfiltered_DiffB_StorageTexture,
-    Unfiltered_SpecHit_Texture,
-    Unfiltered_SpecHit_StorageTexture,
+    Unfiltered_Diff_Texture,
+    Unfiltered_Diff_StorageTexture,
+    Unfiltered_Spec_Texture,
+    Unfiltered_Spec_StorageTexture,
     Unfiltered_Translucency_Texture,
     Unfiltered_Translucency_StorageTexture,
     ComposedLighting_ViewZ_Texture,
@@ -202,8 +199,8 @@ struct GlobalConstantBufferData
     float gSeparator;
     float gRoughnessOverride;
     float gMetalnessOverride;
-    float gDiffHitDistScale;
-    float gSpecHitDistScale;
+    float gDiffDistScale;
+    float gSpecDistScale;
     float gUnitsToMetersMultiplier;
     float gIndirectDiffuse;
     float gIndirectSpecular;
@@ -1450,17 +1447,15 @@ void Sample::CreateResources(nri::Format swapChainFormat)
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Shadow", nri::Format::RGBA8_UNORM, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::DiffHit", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::Diff", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::SpecHit", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::Spec", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Unfiltered_Shadow", nri::Format::RG16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::Unfiltered_DiffA", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::Unfiltered_Diff", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::Unfiltered_DiffB", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
-        nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::Unfiltered_SpecHit", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::Unfiltered_Spec", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Unfiltered_Translucency", nri::Format::R10_G10_B10_A2_UNORM, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
@@ -1584,7 +1579,7 @@ void Sample::CreatePipelines()
         const nri::DescriptorRangeDesc descriptorRanges1[] =
         {
             { 0, 5, nri::DescriptorType::TEXTURE, nri::ShaderStage::RAYGEN },
-            { 5, 11, nri::DescriptorType::STORAGE_TEXTURE, nri::ShaderStage::RAYGEN },
+            { 5, 10, nri::DescriptorType::STORAGE_TEXTURE, nri::ShaderStage::RAYGEN },
         };
 
         const uint32_t textureNum = helper::GetCountOf(m_Scene.materials) * TEXTURES_PER_MATERIAL;
@@ -1651,8 +1646,8 @@ void Sample::CreatePipelines()
     { // Pipeline::SplitScreen
         const nri::DescriptorRangeDesc descriptorRanges[] =
         {
-            { 0, 6, nri::DescriptorType::TEXTURE, nri::ShaderStage::ALL },
-            { 6, 3, nri::DescriptorType::STORAGE_TEXTURE, nri::ShaderStage::ALL }
+            { 0, 5, nri::DescriptorType::TEXTURE, nri::ShaderStage::ALL },
+            { 5, 3, nri::DescriptorType::STORAGE_TEXTURE, nri::ShaderStage::ALL }
         };
 
         const nri::DescriptorSetDesc descriptorSetDesc[] =
@@ -1863,9 +1858,8 @@ void Sample::CreateDescriptorSets()
             Get(Descriptor::Normal_Roughness_StorageTexture),
             Get(Descriptor::BaseColor_Metalness_StorageTexture),
             Get(Descriptor::Unfiltered_Shadow_StorageTexture),
-            Get(Descriptor::Unfiltered_DiffA_StorageTexture),
-            Get(Descriptor::Unfiltered_DiffB_StorageTexture),
-            Get(Descriptor::Unfiltered_SpecHit_StorageTexture),
+            Get(Descriptor::Unfiltered_Diff_StorageTexture),
+            Get(Descriptor::Unfiltered_Spec_StorageTexture),
             Get(Descriptor::Unfiltered_Translucency_StorageTexture),
         };
 
@@ -1886,17 +1880,16 @@ void Sample::CreateDescriptorSets()
         {
             Get(Descriptor::Normal_Roughness_Texture),
             Get(Descriptor::Unfiltered_Shadow_Texture),
-            Get(Descriptor::Unfiltered_DiffA_Texture),
-            Get(Descriptor::Unfiltered_DiffB_Texture),
-            Get(Descriptor::Unfiltered_SpecHit_Texture),
+            Get(Descriptor::Unfiltered_Diff_Texture),
+            Get(Descriptor::Unfiltered_Spec_Texture),
             Get(Descriptor::Unfiltered_Translucency_Texture),
         };
 
         const nri::Descriptor* storageTextures[] =
         {
             Get(Descriptor::Shadow_StorageTexture),
-            Get(Descriptor::DiffHit_StorageTexture),
-            Get(Descriptor::SpecHit_StorageTexture),
+            Get(Descriptor::Diff_StorageTexture),
+            Get(Descriptor::Spec_StorageTexture),
         };
 
         const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc[] =
@@ -1919,8 +1912,8 @@ void Sample::CreateDescriptorSets()
             Get(Descriptor::Normal_Roughness_Texture),
             Get(Descriptor::BaseColor_Metalness_Texture),
             Get(Descriptor::Shadow_Texture),
-            Get(Descriptor::DiffHit_Texture),
-            Get(Descriptor::SpecHit_Texture),
+            Get(Descriptor::Diff_Texture),
+            Get(Descriptor::Spec_Texture),
             Get(Descriptor::IntegrateBRDF_Texture),
         };
 
@@ -2465,8 +2458,8 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gSeparator = m_Settings.separator;
         data->gRoughnessOverride = m_Settings.roughnessOverride;
         data->gMetalnessOverride = m_Settings.metalnessOverride;
-        data->gDiffHitDistScale = m_Settings.diffHitDistScale;
-        data->gSpecHitDistScale = m_Settings.specHitDistScale;
+        data->gDiffDistScale = m_Settings.diffHitDistScale;
+        data->gSpecDistScale = m_Settings.specHitDistScale;
         data->gUnitsToMetersMultiplier = m_Settings.unitsToMetersMultiplier;
         data->gIndirectDiffuse = m_Settings.indirectDiffuse ? 1.0f : 0.0f;
         data->gIndirectSpecular = m_Settings.indirectSpecular ? 1.0f : 0.0f;
@@ -2665,9 +2658,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 {Texture::Normal_Roughness, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
                 {Texture::BaseColor_Metalness, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
                 {Texture::Unfiltered_Shadow, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::Unfiltered_DiffA, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::Unfiltered_DiffB, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::Unfiltered_SpecHit, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
+                {Texture::Unfiltered_Diff, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
+                {Texture::Unfiltered_Spec, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
                 {Texture::Unfiltered_Translucency, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
             };
             transitionBarriers.textures = optimizedTransitions.data();
@@ -2751,14 +2743,11 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 // IN_SHADOW
                 {nullptr, nullptr, nri::Format::UNKNOWN},
 
-                // IN_DIFFA
-                {nullptr, nullptr, nri::Format::UNKNOWN},
-
-                // IN_DIFFB
+                // IN_DIFF
                 {nullptr, nullptr, nri::Format::UNKNOWN},
 
                 // IN_SVGF
-                {Get(Texture::Unfiltered_DiffA), &GetState(Texture::Unfiltered_DiffA), GetFormat(Texture::Unfiltered_DiffA)},
+                {Get(Texture::Unfiltered_Diff), &GetState(Texture::Unfiltered_Diff), GetFormat(Texture::Unfiltered_Diff)},
 
                 // IN_TRANSLUCENCY
                 {nullptr, nullptr, nri::Format::UNKNOWN},
@@ -2773,7 +2762,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 {nullptr, nullptr, nri::Format::UNKNOWN},
 
                 // OUT_SVGF
-                {Get(Texture::DiffHit), &GetState(Texture::DiffHit), GetFormat(Texture::DiffHit)},
+                {Get(Texture::Diff), &GetState(Texture::Diff), GetFormat(Texture::Diff)},
             }};
 
             nrd::SvgfSettings svgfSettings = {};
@@ -2788,8 +2777,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
             svgfSettings.isDiffuse = false;
             svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_SpecHit), &GetState(Texture::Unfiltered_SpecHit), GetFormat(Texture::Unfiltered_SpecHit)};
-            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::SpecHit), &GetState(Texture::SpecHit), GetFormat(Texture::SpecHit)};
+            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_Spec), &GetState(Texture::Unfiltered_Spec), GetFormat(Texture::Unfiltered_Spec)};
+            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::Spec), &GetState(Texture::Spec), GetFormat(Texture::Spec)};
             m_SVGF_Spec.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
             m_SVGF_Spec.Denoise(commandBuffer2, commonSettings, userPool);
 
@@ -2874,14 +2863,11 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 // IN_SHADOW
                 {Get(Texture::Unfiltered_Shadow), &GetState(Texture::Unfiltered_Shadow), GetFormat(Texture::Unfiltered_Shadow)},
 
-                // IN_DIFFA
-                {Get(Texture::Unfiltered_DiffA), &GetState(Texture::Unfiltered_DiffA), GetFormat(Texture::Unfiltered_DiffA)},
-
-                // IN_DIFFB
-                {Get(Texture::Unfiltered_DiffB), &GetState(Texture::Unfiltered_DiffB), GetFormat(Texture::Unfiltered_DiffB)},
+                // IN_DIFF_HIT
+                {Get(Texture::Unfiltered_Diff), &GetState(Texture::Unfiltered_Diff), GetFormat(Texture::Unfiltered_Diff)},
 
                 // IN_SPEC_HIT
-                {Get(Texture::Unfiltered_SpecHit), &GetState(Texture::Unfiltered_SpecHit), GetFormat(Texture::Unfiltered_SpecHit)},
+                {Get(Texture::Unfiltered_Spec), &GetState(Texture::Unfiltered_Spec), GetFormat(Texture::Unfiltered_Spec)},
 
                 // IN_TRANSLUCENCY
                 {Get(Texture::Unfiltered_Translucency), &GetState(Texture::Unfiltered_Translucency), GetFormat(Texture::Unfiltered_Translucency)},
@@ -2893,10 +2879,10 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 {Get(Texture::Shadow), &GetState(Texture::Shadow), GetFormat(Texture::Shadow)},
 
                 // OUT_DIFF_HIT
-                {Get(Texture::DiffHit), &GetState(Texture::DiffHit), GetFormat(Texture::DiffHit)},
+                {Get(Texture::Diff), &GetState(Texture::Diff), GetFormat(Texture::Diff)},
 
                 // OUT_SPEC_HIT
-                {Get(Texture::SpecHit), &GetState(Texture::SpecHit), GetFormat(Texture::SpecHit)},
+                {Get(Texture::Spec), &GetState(Texture::Spec), GetFormat(Texture::Spec)},
             }};
 
             m_NRD.Denoise(commandBuffer2, commonSettings, userPool);
@@ -2919,14 +2905,13 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 // Input
                 {Texture::Normal_Roughness, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
                 {Texture::Unfiltered_Shadow, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::Unfiltered_DiffA, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::Unfiltered_DiffB, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::Unfiltered_SpecHit, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
+                {Texture::Unfiltered_Diff, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
+                {Texture::Unfiltered_Spec, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
                 {Texture::Unfiltered_Translucency, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
                 // Output
                 {Texture::Shadow, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::DiffHit, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::SpecHit, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
+                {Texture::Diff, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
+                {Texture::Spec, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
             };
             transitionBarriers.textures = optimizedTransitions.data();
             transitionBarriers.textureNum = BuildOptimizedTransitions(transitions, helper::GetCountOf(transitions), optimizedTransitions.data(), helper::GetCountOf(optimizedTransitions));
@@ -2954,8 +2939,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 {Texture::Normal_Roughness, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
                 {Texture::BaseColor_Metalness, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
                 {Texture::Shadow, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::DiffHit, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::SpecHit, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
+                {Texture::Diff, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
+                {Texture::Spec, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
                 // Output
                 {Texture::ComposedLighting_ViewZ, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
             };

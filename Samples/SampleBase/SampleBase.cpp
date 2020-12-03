@@ -351,7 +351,7 @@ void UserInterface::Prepare()
     // Setup time step
     m_Timer.UpdateElapsedTimeSinceLastSave();
     m_Timer.SaveCurrentTime();
-    io.DeltaTime = m_Timer.GetElapsedTime();
+    io.DeltaTime = m_Timer.GetElapsedTime() * 0.001f;
 
     // Read keyboard modifiers inputs
     io.KeyCtrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;

@@ -42,49 +42,51 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<uint>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_SignalA, t, 3, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_SignalB, t, 4, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_DiffTemporalAccumulationOutput, t, 5, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_Signal, t, 6, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_SpecTemporalAccumulationOutput, t, 7, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_DiffTemporalAccumulationOutput, t, 4, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 5, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_SpecTemporalAccumulationOutput, t, 6, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SignalA, u, 0, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SignalB, u, 1, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Signal, u, 2, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 1, 0 );
+
+void Preload( int2 sharedId, int2 globalId )
+{
+    s_Normal_Roughness[ sharedId.y ][ sharedId.x ] = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] );
+    s_ViewZ[ sharedId.y ][ sharedId.x ] = gIn_ScaledViewZ[ globalId ] / NRD_FP16_VIEWZ_SCALE;
+}
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( uint2 pixelPos : SV_DispatchThreadId )
+void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
 
-    #if ( SHOW_MIPS )
-        float4 tempA = gIn_SignalA[ pixelPos ];
-        float4 tempB = gIn_SignalB[ pixelPos ];
-        float3 tempN = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] ).xyz;
-        gOut_SignalA[ pixelPos ] = tempA;
-        gOut_SignalB[ pixelPos ] = tempB;
-        gOut_Signal[ pixelPos ] = gIn_Signal[ pixelPos ];
+    PRELOAD_INTO_SMEM;
+
+    // Debug
+    #if( SHOW_MIPS )
+        gOut_Diff[ pixelPos ] = gIn_Diff[ pixelPos ];
+        gOut_Spec[ pixelPos ] = gIn_Spec[ pixelPos ];
         return;
     #endif
 
     // Early out
-    float4 finalB = gIn_SignalB[ pixelPos ];
-    float centerZ = finalB.w / NRD_FP16_VIEWZ_SCALE;
+    int2 smemPos = threadId + BORDER;
+    float centerZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
     [branch]
-    if ( abs( centerZ ) > gInf )
+    if( abs( centerZ ) > gInf )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
-            gOut_SignalA[ pixelPos ] = 0;
-            gOut_SignalB[ pixelPos ] = float4( 0, 0, 0, finalB.w );
-            gOut_Signal[ pixelPos ] = 0;
+            gOut_Diff[ pixelPos ] = 0;
+            gOut_Spec[ pixelPos ] = 0;
         #endif
         return;
     }
 
-    // Normal
-    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] );
+    // Normal and roughness
+    float4 normalAndRoughness = s_Normal_Roughness[ smemPos.y ][ smemPos.x ];
     float3 N = normalAndRoughness.xyz;
     float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
     float roughness = normalAndRoughness.w;
@@ -105,19 +107,19 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
-    float4 finalA = gIn_SignalA[ pixelPos ];
-    float4 final = gIn_Signal[ pixelPos ];
-    float diffCenterNormHitDist = finalA.w;
-    float specCenterNormHitDist = final.w;
+    float4 diff = gIn_Diff[ pixelPos ];
+    float4 spec = gIn_Spec[ pixelPos ];
+    float diffCenterNormHitDist = diff.w;
+    float specCenterNormHitDist = spec.w;
 
     // Blur radius
-    float diffHitDist = GetHitDistance( finalA.w, centerZ, gDiffScalingParams );
+    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffScalingParams );
     float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffNonLinearAccumSpeed );
     diffBlurRadius *= DIFF_POST_BLUR_RADIUS_SCALE;
 
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
-    float specHitDist = GetHitDistance( final.w, centerZ, gSpecScalingParams, roughness );
+    float specHitDist = GetHitDistance( spec.w, centerZ, gSpecScalingParams, roughness );
     float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, specNonLinearAccumSpeed );
     specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
     specBlurRadius *= SPEC_POST_BLUR_RADIUS_SCALE;
@@ -125,15 +127,15 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );
 
     // Blur radius scale
-    float luma = finalB.x;
+    float luma = diff.x;
     float lumaPrev = gIn_DiffTemporalAccumulationOutput[ pixelPos ].x;
-    float error = abs( luma - lumaPrev ) * STL::Math::PositiveRcp( min( luma, lumaPrev ) );
+    float error = abs( luma - lumaPrev ) * STL::Math::PositiveRcp( max( luma, lumaPrev ) );
     error = STL::Math::SmoothStep( 0.0, 0.1, error );
     error *= 1.0 - diffNonLinearAccumSpeed;
     float diffBlurRadiusScale = 1.0 + error * gDiffBlurRadiusScale / DIFF_POST_BLUR_RADIUS_SCALE;
     diffWorldBlurRadius *= diffBlurRadiusScale;
 
-    luma = final.x;
+    luma = spec.x;
     lumaPrev = gIn_SpecTemporalAccumulationOutput[ pixelPos ].x;
     error = abs( luma - lumaPrev ) * STL::Math::PositiveRcp( max( luma, lumaPrev ) );
     error = STL::Math::SmoothStep( 0.0, 0.1, error );
@@ -149,13 +151,16 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     // Random rotation
     float4 rotator = GetBlurKernelRotation( POST_BLUR_ROTATOR_MODE, pixelPos, gRotator );
 
+    // Edge detection
+    float edge = DetectEdge( N, smemPos );
+
     // Denoising
     float diffSum = 1.0;
     float specSum = 1.0; // yes, apply hit distance weight to SO in this pass
 
     float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, gMetersToUnits, centerZ );
-    float2 diffNormalWeightParams = GetNormalWeightParams( 1.0, diffInternalData.z, diffNormAccumSpeed );
-    float2 specNormalWeightParams = GetNormalWeightParams( roughness, specInternalData.z, specNormAccumSpeed );
+    float diffNormalWeightParams = GetNormalWeightParams( 1.0, edge, diffNormAccumSpeed );
+    float specNormalWeightParams = GetNormalWeightParams( roughness, edge, specNormAccumSpeed );
     float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
     float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( roughness, specCenterNormHitDist );
 
@@ -170,20 +175,18 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
             float2 uv = GetKernelSampleCoordinates( offset, centerPos, diffTvBv[ 0 ], diffTvBv[ 1 ], rotator );
 
             // Fetch data
-            float4 sA = gIn_SignalA.SampleLevel( gNearestMirror, uv, 0 );
-            float4 sB = gIn_SignalB.SampleLevel( gNearestMirror, uv, 0 );
+            float4 d = gIn_Diff.SampleLevel( gNearestMirror, uv, 0 );
+            float scaledViewZ = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uv, 0 );
             float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0 );
 
-            float z = sB.w / NRD_FP16_VIEWZ_SCALE;
-            float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
+            float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, scaledViewZ / NRD_FP16_VIEWZ_SCALE, gIsOrtho );
             normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
             // Sample weight
             float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
             w *= GetNormalWeight( diffNormalWeightParams, N, normal.xyz );
 
-            finalA += sA * w;
-            finalB.xyz += sB.xyz * w;
+            diff += d * w;
             diffSum += w;
         }
 
@@ -193,7 +196,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
             float2 uv = GetKernelSampleCoordinates( offset, centerPos, specTvBv[ 0 ], specTvBv[ 1 ], rotator );
 
             // Fetch data
-            float4 s = gIn_Signal.SampleLevel( gNearestMirror, uv, 0 );
+            float4 s = gIn_Spec.SampleLevel( gNearestMirror, uv, 0 );
             float scaledViewZ = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uv, 0 );
             float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0 );
 
@@ -206,22 +209,19 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
             w *= GetRoughnessWeight( specRoughnessWeightParams, normal.w );
             w *= GetHitDistanceWeight( specHitDistanceWeightParams, s.w );
 
-            final += s * w;
+            spec += s * w;
             specSum += w;
         }
     }
 
-    float invSum = 1.0 / diffSum;
-    finalA *= invSum;
-    finalB.xyz *= invSum;
-    final /= specSum;
+    diff *= STL::Math::PositiveRcp( diffSum );
+    spec *= STL::Math::PositiveRcp( specSum );
 
     // Special case for hit distance
-    finalA.w = lerp( finalA.w, diffCenterNormHitDist, HIT_DIST_INPUT_MIX );
-    final.w = lerp( final.w, specCenterNormHitDist, HIT_DIST_INPUT_MIX );
+    diff.w = lerp( diff.w, diffCenterNormHitDist, HIT_DIST_INPUT_MIX );
+    spec.w = lerp( spec.w, specCenterNormHitDist, HIT_DIST_INPUT_MIX );
 
     // Output
-    gOut_SignalA[ pixelPos ] = finalA;
-    gOut_SignalB[ pixelPos ] = finalB;
-    gOut_Signal[ pixelPos ] = final;
+    gOut_Diff[ pixelPos ] = diff;
+    gOut_Spec[ pixelPos ] = spec;
 }

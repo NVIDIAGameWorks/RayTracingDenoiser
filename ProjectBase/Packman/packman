@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2019 NVIDIA CORPORATION
+# Copyright 2019-2020 NVIDIA CORPORATION
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ else
 	PM_CURL_SILENT="-s -S"
 	PM_WGET_QUIET="--quiet"
 fi
-PM_PACKMAN_VERSION=6.8.1
+PM_PACKMAN_VERSION=6.20.1
 
 # This is necessary for newer macOS
 if [ `uname` == 'Darwin' ]; then
@@ -74,15 +74,14 @@ install_python()
 {
 	PLATFORM=`uname`
 	PROCESSOR=`uname -m`
-	PYTHON_VERSION=3.7.2
+	PYTHON_VERSION=3.7.9
 
 	if [ $PLATFORM == 'Darwin' ]; then
 		PYTHON_PACKAGE=$PYTHON_VERSION-macos-x86_64
 	elif [ $PLATFORM == 'Linux' ] && [ $PROCESSOR == 'x86_64' ]; then
-		# This is temporary while we haven't built a static 3.7.2 that works on CentOS and Ubuntu
-		PYTHON_PACKAGE=3.6.8-linux-x86_64
+		PYTHON_PACKAGE=$PYTHON_VERSION-linux-x86_64
 	elif [ $PLATFORM == 'Linux' ] && [ $PROCESSOR == 'aarch64' ]; then
-		PYTHON_PACKAGE=$PYTHON_VERSION-linux-aarch64-static
+		PYTHON_PACKAGE=$PYTHON_VERSION-linux-aarch64
 	else
 		echo "Operating system not supported"
 		exit 1

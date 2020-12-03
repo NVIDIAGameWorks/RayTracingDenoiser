@@ -257,7 +257,7 @@ namespace STL
 
         float Rsqrt( float x, compiletime const uint mode = STL_RSQRT_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
                 return rsqrt( mode == STL_POSITIVE_RSQRT_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / sqrt( mode == STL_POSITIVE_RSQRT_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -265,7 +265,7 @@ namespace STL
 
         float2 Rsqrt( float2 x, compiletime const uint mode = STL_RSQRT_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
                 return rsqrt( mode == STL_POSITIVE_RSQRT_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / sqrt( mode == STL_POSITIVE_RSQRT_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -273,7 +273,7 @@ namespace STL
 
         float3 Rsqrt( float3 x, compiletime const uint mode = STL_RSQRT_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
                 return rsqrt( mode == STL_POSITIVE_RSQRT_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / sqrt( mode == STL_POSITIVE_RSQRT_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -281,7 +281,7 @@ namespace STL
 
         float4 Rsqrt( float4 x, compiletime const uint mode = STL_RSQRT_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RSQRT_BUILTIN_SAFE )
                 return rsqrt( mode == STL_POSITIVE_RSQRT_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / sqrt( mode == STL_POSITIVE_RSQRT_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -311,7 +311,7 @@ namespace STL
 
         float PositiveRcp( float x, compiletime const uint mode = STL_POSITIVE_RCP_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
                 return rcp( mode == STL_POSITIVE_RCP_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / ( mode == STL_POSITIVE_RCP_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -319,7 +319,7 @@ namespace STL
 
         float2 PositiveRcp( float2 x, compiletime const uint mode = STL_POSITIVE_RCP_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
                 return rcp( mode == STL_POSITIVE_RCP_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / ( mode == STL_POSITIVE_RCP_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -327,7 +327,7 @@ namespace STL
 
         float3 PositiveRcp( float3 x, compiletime const uint mode = STL_POSITIVE_RCP_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
                 return rcp( mode == STL_POSITIVE_RCP_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / ( mode == STL_POSITIVE_RCP_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -335,7 +335,7 @@ namespace STL
 
         float4 PositiveRcp( float4 x, compiletime const uint mode = STL_POSITIVE_RCP_DEFAULT )
         {
-            if ( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
+            if( mode <= STL_POSITIVE_RCP_BUILTIN_SAFE )
                 return rcp( mode == STL_POSITIVE_RCP_BUILTIN ? x : max( x, FLT_MIN ) );
 
             return 1.0 / ( mode == STL_POSITIVE_RCP_ACCURATE ? x : max( x, FLT_MIN ) );
@@ -823,9 +823,9 @@ namespace STL
             float3 color;
             if( x < 0.25 )
                 color = lerp( float3( 0, 0, 0 ), float3( 0, 0, 1 ), Math::SmoothStep( 0.00, 0.25, x ) );
-            else if ( x < 0.50 )
+            else if( x < 0.50 )
                 color = lerp( float3( 0, 0, 1 ), float3( 0, 1, 0 ), Math::SmoothStep( 0.25, 0.50, x ) );
-            else if ( x < 0.75 )
+            else if( x < 0.75 )
                 color = lerp( float3( 0, 1, 0 ), float3( 1, 1, 0 ), Math::SmoothStep( 0.50, 0.75, x ) );
             else
                 color = lerp( float3( 1, 1, 0 ), float3( 1, 0, 0 ), Math::SmoothStep( 0.75, 1.00, x ) );
@@ -985,7 +985,7 @@ namespace STL
 
             float Pmax = max( duvdxMulTexSizeSq, duvdyMulTexSizeSq );
 
-            if ( maxAnisotropy > 1.0 )
+            if( maxAnisotropy > 1.0 )
             {
                 float Pmin = min( duvdxMulTexSizeSq, duvdyMulTexSizeSq );
                 float N = min( Pmax * Math::PositiveRcp( Pmin ), maxAnisotropy );
@@ -1092,146 +1092,65 @@ namespace STL
             return result;
         }
 
-		// IMPORTANT: "sum" can be negative, degradation to linear filter needs to be done manually
-        float4 ApplyCatmullRomFilterWithCustomWeights( CatmullRom filter, float4 s00, float4 s10, float4 s20, float4 s30, float4 s01, float4 s11, float4 s21, float4 s31, float4 s02, float4 s12, float4 s22, float4 s32, float4 s03, float4 s13, float4 s23, float4 s33, float4 w0, float4 w1, float4 w2, float4 w3, out float sum )
-        {
-            /*
-            s00 * w0.x   s10 * w0.y   s20 * w1.x   s30 * w1.y
-            s01 * w0.z   s11 * w0.w   s21 * w1.z   s31 * w1.w
-            s02 * w2.x   s12 * w2.y   s22 * w3.x   s32 * w3.y
-            s03 * w2.z   s13 * w2.w   s23 * w3.z   s33 * w3.w
-            */
-
-            float w = w0.x * filter.weights[ 0 ].x * filter.weights[ 0 ].y;
-            float4 color = s00 * w;
-            sum = w;
-
-            w = w0.y * filter.weights[ 1 ].x * filter.weights[ 0 ].y;
-            color += s10 * w;
-            sum += w;
-
-            w = w1.x * filter.weights[ 2 ].x * filter.weights[ 0 ].y;
-            color += s20 * w;
-            sum += w;
-
-            w = w1.y * filter.weights[ 3 ].x * filter.weights[ 0 ].y;
-            color += s30 * w;
-            sum += w;
-
-
-            w = w0.z * filter.weights[ 0 ].x * filter.weights[ 1 ].y;
-            color += s01 * w;
-            sum += w;
-
-            w = w0.w * filter.weights[ 1 ].x * filter.weights[ 1 ].y;
-            color += s11 * w;
-            sum += w;
-
-            w = w1.z * filter.weights[ 2 ].x * filter.weights[ 1 ].y;
-            color += s21 * w;
-            sum += w;
-
-            w = w1.w * filter.weights[ 3 ].x * filter.weights[ 1 ].y;
-            color += s31 * w;
-            sum += w;
-
-
-            w = w2.x * filter.weights[ 0 ].x * filter.weights[ 2 ].y;
-            color += s02 * w;
-            sum += w;
-
-            w = w2.y * filter.weights[ 1 ].x * filter.weights[ 2 ].y;
-            color += s12 * w;
-            sum += w;
-
-            w = w3.x * filter.weights[ 2 ].x * filter.weights[ 2 ].y;
-            color += s22 * w;
-            sum += w;
-
-            w = w3.y * filter.weights[ 3 ].x * filter.weights[ 2 ].y;
-            color += s32 * w;
-            sum += w;
-
-
-            w = w2.z * filter.weights[ 0 ].x * filter.weights[ 3 ].y;
-            color += s03 * w;
-            sum += w;
-
-            w = w2.w * filter.weights[ 1 ].x * filter.weights[ 3 ].y;
-            color += s13 * w;
-            sum += w;
-
-            w = w3.z * filter.weights[ 2 ].x * filter.weights[ 3 ].y;
-            color += s23 * w;
-            sum += w;
-
-            w = w3.w * filter.weights[ 3 ].x * filter.weights[ 3 ].y;
-            color += s33 * w;
-            sum += w;
-
-            return color * Math::PositiveRcp( sum );
-        }
-
-		// IMPORTANT: "sum" can be negative, degradation to linear filter needs to be done manually
-        float4 ApplyCatmullRomFilterNoCornersWithCustomWeights( CatmullRom filter, float4 s10, float4 s20, float4 s01, float4 s11, float4 s21, float4 s31, float4 s02, float4 s12, float4 s22, float4 s32, float4 s13, float4 s23, float4 w0, float4 w1, float4 w2, float4 w3, out float sum )
+        float4 ApplyCatmullRomFilterNoCorners( CatmullRom filter, float4 s10, float4 s20, float4 s01, float4 s11, float4 s21, float4 s31, float4 s02, float4 s12, float4 s22, float4 s32, float4 s13, float4 s23 )
         {
             /*
             s00, s30, s03, s33 - are not used
 
-                         s10 * w0.y   s20 * w1.x
-            s01 * w0.z   s11 * w0.w   s21 * w1.z   s31 * w1.w
-            s02 * w2.x   s12 * w2.y   s22 * w3.x   s32 * w3.y
-                         s13 * w2.w   s23 * w3.z
+                  s10   s20
+            s01   s11   s21   s31
+            s02   s12   s22   s32
+                  s13   s23
             */
 
-            float w = w0.y * filter.weights[ 1 ].x * filter.weights[ 0 ].y;
+            float w = filter.weights[ 1 ].x * filter.weights[ 0 ].y;
             float4 color = s10 * w;
-            sum = w;
+            float sum = w;
 
-            w = w1.x * filter.weights[ 2 ].x * filter.weights[ 0 ].y;
+            w = filter.weights[ 2 ].x * filter.weights[ 0 ].y;
             color += s20 * w;
             sum += w;
 
 
-            w = w0.z * filter.weights[ 0 ].x * filter.weights[ 1 ].y;
+            w = filter.weights[ 0 ].x * filter.weights[ 1 ].y;
             color += s01 * w;
             sum += w;
 
-            w = w0.w * filter.weights[ 1 ].x * filter.weights[ 1 ].y;
+            w = filter.weights[ 1 ].x * filter.weights[ 1 ].y;
             color += s11 * w;
             sum += w;
 
-            w = w1.z * filter.weights[ 2 ].x * filter.weights[ 1 ].y;
+            w = filter.weights[ 2 ].x * filter.weights[ 1 ].y;
             color += s21 * w;
             sum += w;
 
-            w = w1.w * filter.weights[ 3 ].x * filter.weights[ 1 ].y;
+            w = filter.weights[ 3 ].x * filter.weights[ 1 ].y;
             color += s31 * w;
             sum += w;
 
 
-            w = w2.x * filter.weights[ 0 ].x * filter.weights[ 2 ].y;
+            w = filter.weights[ 0 ].x * filter.weights[ 2 ].y;
             color += s02 * w;
             sum += w;
 
-            w = w2.y * filter.weights[ 1 ].x * filter.weights[ 2 ].y;
+            w = filter.weights[ 1 ].x * filter.weights[ 2 ].y;
             color += s12 * w;
             sum += w;
 
-            w = w3.x * filter.weights[ 2 ].x * filter.weights[ 2 ].y;
+            w = filter.weights[ 2 ].x * filter.weights[ 2 ].y;
             color += s22 * w;
             sum += w;
 
-            w = w3.y * filter.weights[ 3 ].x * filter.weights[ 2 ].y;
+            w = filter.weights[ 3 ].x * filter.weights[ 2 ].y;
             color += s32 * w;
             sum += w;
 
 
-            w = w2.w * filter.weights[ 1 ].x * filter.weights[ 3 ].y;
+            w = filter.weights[ 1 ].x * filter.weights[ 3 ].y;
             color += s13 * w;
             sum += w;
 
-            w = w3.z * filter.weights[ 2 ].x * filter.weights[ 3 ].y;
+            w = filter.weights[ 2 ].x * filter.weights[ 3 ].y;
             color += s23 * w;
             sum += w;
 
@@ -1364,7 +1283,7 @@ namespace STL
         {
             uint2 r = GetUint2( );
 
-            if ( mode == STL_RNG_MANTISSA_BITS )
+            if( mode == STL_RNG_MANTISSA_BITS )
                 return 2.0 - asfloat( ( r >> 9 ) | 0x3F800000 );
 
             return float2( r >> 8 ) * ( 1.0 / float( 1 << 24 ) );
@@ -1376,7 +1295,7 @@ namespace STL
             r.xy = GetUint2( );
             r.zw = GetUint2( );
 
-            if ( mode == STL_RNG_MANTISSA_BITS )
+            if( mode == STL_RNG_MANTISSA_BITS )
                 return 2.0 - asfloat( ( r >> 9 ) | 0x3F800000 );
 
             return float4( r >> 8 ) * ( 1.0 / float( 1 << 24 ) );

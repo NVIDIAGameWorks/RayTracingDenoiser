@@ -154,6 +154,7 @@ void LogPreformatted(const char* format)
 
     EnterCriticalSection(&g_LogCriticalSection);
     printf("%s", format);
+    fflush(stdout);
     LeaveCriticalSection(&g_LogCriticalSection);
 }
 

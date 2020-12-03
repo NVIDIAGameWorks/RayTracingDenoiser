@@ -22,4 +22,5 @@ if [ ! -f "$PACKMAN_CMD" ]; then
 fi
 source "$PACKMAN_CMD" init
 export PYTHONPATH="${PM_MODULE_DIR}:${PYTHONPATH}"
+export PYTHONNOUSERSITE=1
 "${PM_PYTHON}" -u "$@"

@@ -58,12 +58,12 @@ size_t DenoiserImpl::AddMethod_NrdSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
+        PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushInput( AsUint(Permanent::HISTORY) ); // TODO: STABILIZED_HISTORY can be used here - it looks better, but adds lag because TS uses wide variance clamping
         PushInput( TEMP );
-        PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
 
-        PushOutput( AsUint(Transient::ACCUMULATED) );
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
+        PushOutput( AsUint(Transient::ACCUMULATED) );
 
         desc.constantBufferDataSize = SumConstants(4, 4, 1, 4);
 
@@ -86,15 +86,15 @@ size_t DenoiserImpl::AddMethod_NrdSpecular(uint16_t w, uint16_t h)
 
         desc.constantBufferDataSize = SumConstants(0, 0, 0, 0);
 
-        AddDispatchWithExplicitCTASize(desc, NRD_Specular_Mips, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
+        AddDispatchWithExplicitCTASize(desc, NRD_MipGeneration_Float4_Float, DivideUp(w, 2), DivideUp(h, 2), 16, 16);
     }
 
     PushPass("Specular - history fix");
     {
-        PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::ACCUMULATED), 1, 4 );
+        PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ), 0, 5 );
+        PushInput( AsUint(Transient::ACCUMULATED), 1, 4 );
 
         PushOutput( AsUint(Transient::ACCUMULATED) );
 
@@ -107,8 +107,8 @@ size_t DenoiserImpl::AddMethod_NrdSpecular(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::ACCUMULATED) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        PushInput( AsUint(Transient::ACCUMULATED) );
 
         PushOutput( TEMP );
 
@@ -121,8 +121,8 @@ size_t DenoiserImpl::AddMethod_NrdSpecular(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( TEMP );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        PushInput( TEMP );
         PushInput( AsUint(Transient::ACCUMULATED) );
 
         PushOutput( AsUint(Permanent::HISTORY) );

@@ -45,7 +45,6 @@ groupshared SHADOW_TYPE s_Data[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( int2 sharedId, int2 globalId )
 {
-    // TODO: use w = 0 if outside of the screen or use SampleLevel with Clamp sampler
     float viewZ = gIn_ViewZ[ globalId ];
     SHADOW_TYPE s = gIn_Shadow_Translucency[ globalId ]; // no unpacking - temporal stabilization is done in perceptual gamma space
 
@@ -63,21 +62,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 {
     float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvScreenSize;
 
-    // Rename the 16x16 group into a 18x14 group + some idle threads in the end
-    float linearId = ( threadIndex + 0.5 ) / BUFFER_X;
-    int2 newId = int2( frac( linearId ) * BUFFER_X, linearId );
-    int2 groupBase = pixelPos - threadId - BORDER;
-
-    // Preload into shared memory
-    if ( newId.y < RENAMED_GROUP_Y )
-        Preload( newId, groupBase + newId );
-
-    newId.y += RENAMED_GROUP_Y;
-
-    if ( newId.y < BUFFER_Y )
-        Preload( newId, groupBase + newId );
-
-    GroupMemoryBarrierWithGroupSync( );
+    PRELOAD_INTO_SMEM;
 
     // Position
     float viewZ = gIn_ViewZ[ pixelPos ];
@@ -166,17 +151,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     SHADOW_TYPE inputMax = m1 + sigma;
     SHADOW_TYPE historyClamped = clamp( history, inputMin, inputMax );
 
-    // Dither
-    STL::Rng::Initialize( pixelPos, gFrameIndex + 3 );
-    float2 rnd = STL::Rng::GetFloat2( );
-    float dither = 1.0 + ( rnd.x * 2.0 - 1.0 ) * 0.01;
-    historyClamped *= dither;
-
     // History weight
     float motionLength = length( pixelUvPrev - pixelUv );
     float2 historyWeight = 0.95 * lerp( 1.0, 0.7, ratioNorm );
     historyWeight = lerp( historyWeight, 0.1, saturate( motionLength / TS_MOTION_MAX_REUSE ) );
     historyWeight *= isInScreen;
+    historyWeight *= float( gFrameIndex != 0 );
 
     // Combine with current frame
     SHADOW_TYPE result;

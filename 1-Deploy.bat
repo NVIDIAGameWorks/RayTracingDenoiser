@@ -3,8 +3,7 @@
 :: =================================================================================================================================================================================
 :: SETTINGS
 
-set VK_SDK_PATH=%VULKAN_SDK%
-set WIN_SDK_PATH="C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\"
+set WIN_SDK_PATH=C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\
 set DATA_FOLDER=_Data
 set TARGET_VS=%1
 if "%1"=="" set TARGET_VS="vs2017"
@@ -12,8 +11,8 @@ if "%1"=="" set TARGET_VS="vs2017"
 :: =================================================================================================================================================================================
 :: CHECK FOR SDKs
 
-if NOT exist %VK_SDK_PATH% call :ErrorOccured "Please, install Vulkan SDK"
-if NOT exist %WIN_SDK_PATH% call :ErrorOccured "Please, install Windows SDK v10.0.19041.0 (or modify this file to use another location of version)"
+if "%VULKAN_SDK%" == "" call :ErrorOccured "Please, install Vulkan SDK"
+if NOT exist "%WIN_SDK_PATH%" call :ErrorOccured "Please, install Windows SDK v10.0.19041.0 (or modify this file to use another location of version)"
 
 :: =================================================================================================================================================================================
 :: DOWNLOAD DEPENDENCIES

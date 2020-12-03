@@ -24,10 +24,9 @@ NRI_RESOURCE( RWTexture2D<float>, gOut_ViewZ, u, 8, 1 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 9, 1 );
 NRI_RESOURCE( RWTexture2D<unorm float4>, gOut_BaseColor_Metalness, u, 10, 1 );
 NRI_RESOURCE( RWTexture2D<float2>, gOut_Shadow, u, 11, 1 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffA, u, 12, 1 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_DiffB, u, 13, 1 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_SpecHit, u, 14, 1 );
-NRI_RESOURCE( RWTexture2D<float3>, gOut_Translucency, u, 15, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 12, 1 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 13, 1 );
+NRI_RESOURCE( RWTexture2D<float3>, gOut_Translucency, u, 14, 1 );
 
 // SPP - must be POW of 2!
 // Virtual 32 spp tuned for NRD purposes (actually, 1 spp but distributed in time)
@@ -195,34 +194,51 @@ float4 CastSoftShadowRay( GeometryProps geometryProps, MaterialProps materialPro
     return float4( translucency, isOpaqueRayNeeded ? hitDist : INF * float( materialProps.isEmissive ) );
 }
 
-float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps materialProps )
+float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps materialProps, float2 pixelUv )
 {
+    // TODO: fade doesn't include antilag handling - since the previous frame is used in the current frame it adds "lag",
+    // NRD doesn't know anything about it, its internal antilag helps... but not entirely. Fade out more if history reset is detected.
+    // The simplest way is to fade out more if NRD's "maxAccumulatedFrameNum" is low
+
     float3 albedo, Rf0;
     STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( materialProps.baseColor, materialProps.metalness, albedo, Rf0 );
 
+    float4 clipPrev = STL::Geometry::ProjectiveTransform( gWorldToClipPrev, geometryProps.X ); // Not Xprev because confidence is based on viewZ
+    float2 uvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5 - gJitter;
+    float4 prevLsum = gIn_PrevColor_PrevViewZ.SampleLevel( gNearestMipmapNearestSampler, uvPrev, 0.0 );
+    float prevViewZ = abs( prevLsum.w ) / NRD_FP16_VIEWZ_SCALE;
+
+    // Fade-out on screen edges
+    float2 f = STL::Math::LinearStep( 0.0, 0.1, uvPrev ) * STL::Math::LinearStep( 1.0, 0.9, uvPrev );
+    float fade = f.x * f.y;
+
+    // Confidence - viewZ
+    // No "abs" for clipPrev.w, because if it's negative we have a back-projection!
+    float err = abs( prevViewZ - clipPrev.w ) * STL::Math::PositiveRcp( min( prevViewZ, abs( clipPrev.w ) ) );
+    fade *= STL::Math::LinearStep( 0.03, 0.01, err );
+
+    // Confidence - ignore back-facing
+    // Instead of storing previous normal we can store previous NoL, if signs do not match we hit the surface from the opposite side
+    float NoL = dot( geometryProps.N, gSunDirection );
+    fade *= float( NoL * STL::Math::Sign( prevLsum.w ) > 0.0 );
+
+    // Confidence - ignore too short rays
+    float4 clip = STL::Geometry::ProjectiveTransform( gWorldToClip, geometryProps.X );
+    float2 uv = ( clip.xy / clip.w ) * float2( 0.5, -0.5 ) + 0.5 - gJitter;
+    float d = length( ( uv - pixelUv ) * gScreenSize );
+    fade *= STL::Math::LinearStep( 1.0, 3.0, d );
+
+    // Confidence - ignore mirror specular
     float diffusiness = materialProps.roughness * materialProps.roughness;
     float lumDiff = lerp( STL::Color::Luminance( albedo ), 1.0, diffusiness );
     float lumSpec = lerp( STL::Color::Luminance( Rf0 ), 0.0, diffusiness );
     float diffProb = saturate( lumDiff * STL::Math::PositiveRcp( lumDiff + lumSpec ) );
-
-    float4 clipPrev = STL::Geometry::ProjectiveTransform( gWorldToClipPrev, geometryProps.X );
-    float2 uvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5 - gJitter;
-
-    float4 prevLsum = gIn_PrevColor_PrevViewZ.SampleLevel( gNearestMipmapNearestSampler, uvPrev, 0.0 );
-    float prevViewZ = abs( prevLsum.w ) / NRD_FP16_VIEWZ_SCALE;
-    float err = abs( prevViewZ - clipPrev.w ) * STL::Math::PositiveRcp( min( prevViewZ, abs( clipPrev.w ) ) ); // No "abs" for clipPrev.w, because if it's negative we have a back-projection!
-    float2 f = STL::Math::LinearStep( 0.0, 0.1, uvPrev ) * STL::Math::LinearStep( 1.0, 0.9, uvPrev );
-    float NoL = dot( geometryProps.N, gSunDirection ); // Instead of storing previous normal we can store previous NoL, if signs do not match we hit the surface from the opposite side
-
-    // TODO: this doesn't include antilag handling - since the previous frame is used in the current frame it adds "lag",
-    // NRD doesn't know anything about it, its internal antilag helps... but not entirely. Fade out more if history reset is detected.
-    // The simplest way is to fade out more if NRD's "maxAccumulatedFrameNum" is low
-    float fade = f.x * f.y;
-    fade *= float( NoL * STL::Math::Sign( prevLsum.w ) > 0.0 );
-    fade *= float( !materialProps.isEmissive );
-    fade *= STL::Math::LinearStep( 0.06, 0.03, err );
     fade *= diffProb;
+
+    // Additional
+    fade *= float( !materialProps.isEmissive );
     fade *= gDiffSecondBounce;
+
     prevLsum.w = fade;
 
     return prevLsum;
@@ -358,7 +374,7 @@ void ENTRYPOINT( )
             float3 Lsum = materialPropsT1.Lsum * float( materialPropsT1.isEmissive );
             Lsum += materialPropsT1.baseColor * gAmbient;
 
-            float4 prevLsum = GetRadianceFromPreviousFrame( geometryPropsT1, materialPropsT1 );
+            float4 prevLsum = GetRadianceFromPreviousFrame( geometryPropsT1, materialPropsT1, pixelUv );
             Lsum = lerp( Lsum, prevLsum.xyz, prevLsum.w );
 
             transparentLayer.xyz = ( Lsum * FT0 + 0.01 * gAmbient ) * ( 1.0 - FT0 ) * GLASS_TINT;
@@ -369,11 +385,34 @@ void ENTRYPOINT( )
     }
 
     // Early out
-    if ( geometryProps0.IsSky( ) )
+    if( geometryProps0.IsSky( ) )
     {
-        gOut_DiffB[ pixelPos ] = NRD_INF_DIFF_B;
         gOut_Shadow[ pixelPos ] = gSvgf ? 1.0 : NRD_INF_SHADOW;
         gOut_Translucency[ pixelPos ] = 1.0;
+
+        #if( USE_BIG_VALUE_CHECK == 1 )
+            // Write extremely large values to INF pixels
+            const float big = 32000.0;
+
+            #if( CHECKERBOARD == 0 )
+                gOut_Diff[ pixelPos ] = big;
+                gOut_Spec[ pixelPos ] = big;
+            #else
+                uint halfWidth = uint( gScreenSize.x * 0.5 + 0.5 );
+                bool isDiffuse = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex ) != 0;
+                pixelPos.x >>= 1;
+                if( isDiffuse )
+                {
+                    gOut_Diff[ pixelPos ] = big;
+                    gOut_Spec[ pixelPos + uint2( halfWidth, 0 ) ] = big;
+                }
+                else
+                {
+                    gOut_Spec[ pixelPos ] = big;
+                    gOut_Diff[ pixelPos + uint2( halfWidth, 0 ) ] = big;
+                }
+            #endif
+        #endif
 
         return;
     }
@@ -386,15 +425,14 @@ void ENTRYPOINT( )
     gOut_Translucency[ pixelPos ] = lerp( shadowData0.xyz, 1.0, gSvgf ? float( shadowData0.w == INF ) : 0.0 );
 
     // Secondary rays
-    float4 diffIndirectA = 0;
-    float4 diffIndirectB = 0;
+    float4 diffIndirect = 0;
     float4 specIndirect = 0;
 
     float3x3 mLocalBasis = STL::Geometry::GetBasis( materialProps0.N );
     float3 Vlocal = STL::Geometry::RotateVector( mLocalBasis, -rayDirection0 );
     float trimmingFactor = GetTrimmingFactor( materialProps0.roughness );
 
-#if ( CHECKERBOARD == 0 )
+#if( CHECKERBOARD == 0 )
     for( uint i = 0; i < 2; i++ )
     {
         bool isDiffuse = i == 0 ? true : false;
@@ -415,7 +453,7 @@ void ENTRYPOINT( )
             // Get noise which converges to 32spp blue noise over time
             float2 rnd = GetRandom( isCheckerboard, sampleNum, gIn_Scrambling_Ranking_32spp, 0, 32, 1 );
 
-            if ( isDiffuse )
+            if( isDiffuse )
             {
                 float3 rayLocal = STL::ImportanceSampling::Cosine::GetRay( rnd );
                 rayDirection1 = STL::Geometry::RotateVectorInverse( mLocalBasis, rayLocal );
@@ -482,7 +520,7 @@ void ENTRYPOINT( )
         if( !materialProps1.isEmissive )
         {
             // Many bounces (previous frame)
-            float4 prevLsum = GetRadianceFromPreviousFrame( geometryProps1, materialProps1 );
+            float4 prevLsum = GetRadianceFromPreviousFrame( geometryProps1, materialProps1, pixelUv );
             materialProps1.Lsum *= float( prevLsum.w != 1.0 );
 
             // 1st bounce (with shadow)
@@ -577,7 +615,7 @@ void ENTRYPOINT( )
                 {
                     float2 rnd = STL::Rng::GetFloat4( ).xy;
 
-                    if ( isDiffuse )
+                    if( isDiffuse )
                     {
                         float3 rayLocal = STL::ImportanceSampling::Cosine::GetRay( rnd );
                         rayDirection1 = STL::Geometry::RotateVectorInverse( mLocalBasis, rayLocal );
@@ -652,18 +690,18 @@ void ENTRYPOINT( )
         float f = abs( geometryProps0.viewZ ) * gUnitsToMetersMultiplier * HIT_DISTANCE_LINEAR_SCALE;
         pathLength *= gUnitsToMetersMultiplier;
 
-        if ( isDiffuse )
+        if( isDiffuse )
         {
-            float normDist = saturate( pathLength / ( gDiffHitDistScale + f ) );
-            NRD_FrontEnd_PackDiffuse( Clight1, rayDirection1, geometryProps0.viewZ, normDist, diffIndirectA, diffIndirectB );
+            float normDist = saturate( pathLength / ( gDiffDistScale + f ) );
+            diffIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist );
 
             if( gSvgf )
-                diffIndirectA = float4( Clight1, normDist );
+                diffIndirect = float4( Clight1, normDist );
         }
         else
         {
             // Debug
-            if ( gOnScreen >= SHOW_MIP_PRIMARY )
+            if( gOnScreen >= SHOW_MIP_PRIMARY )
             {
                 float mipNorm = saturate( 1.0 - geometryProps1.mip / MAX_MIP_LEVEL );
                 mipNorm = 1.0 - mipNorm * mipNorm;
@@ -671,21 +709,20 @@ void ENTRYPOINT( )
             }
 
             float normDist = saturate( pathLength / ( gSpecHitDistScale + f ) );
-            specIndirect = NRD_FrontEnd_PackSpecular( Clight1, materialProps0.roughness, normDist );
+            specIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist, materialProps0.roughness );
 
             if( gSvgf )
                 specIndirect = float4( Clight1, normDist );
         }
 
-#if ( CHECKERBOARD == 0 )
+#if( CHECKERBOARD == 0 )
     }
 #endif
 
     // Indirect lighting output
-#if ( CHECKERBOARD == 0 )
-    gOut_DiffA[ pixelPos ] = diffIndirectA;
-    gOut_DiffB[ pixelPos ] = diffIndirectB;
-    gOut_SpecHit[ pixelPos ] = specIndirect;
+#if( CHECKERBOARD == 0 )
+    gOut_Diff[ pixelPos ] = diffIndirect;
+    gOut_Spec[ pixelPos ] = specIndirect;
 #else
     if( gSvgf )
     {
@@ -693,18 +730,15 @@ void ENTRYPOINT( )
         uint2 pixelPosA = uint2( pixelPos.x & ~0x1, pixelPos.y );
         uint2 pixelPosB = pixelPosA + uint2( 1, 0 );
 
-        if ( isDiffuse )
+        if( isDiffuse )
         {
-            gOut_DiffA[ pixelPosA ] = diffIndirectA;
-            gOut_DiffA[ pixelPosB ] = diffIndirectA;
-
-            gOut_DiffB[ pixelPosA ] = diffIndirectB;
-            gOut_DiffB[ pixelPosB ] = diffIndirectB;
+            gOut_Diff[ pixelPosA ] = diffIndirect;
+            gOut_Diff[ pixelPosB ] = diffIndirect;
         }
         else
         {
-            gOut_SpecHit[ pixelPosA ] = specIndirect;
-            gOut_SpecHit[ pixelPosB ] = specIndirect;
+            gOut_Spec[ pixelPosA ] = specIndirect;
+            gOut_Spec[ pixelPosB ] = specIndirect;
         }
     }
     else
@@ -712,12 +746,9 @@ void ENTRYPOINT( )
         pixelPos.x >>= 1;
 
         if( isDiffuse )
-        {
-            gOut_DiffA[ pixelPos ] = diffIndirectA;
-            gOut_DiffB[ pixelPos ] = diffIndirectB;
-        }
+            gOut_Diff[ pixelPos ] = diffIndirect;
         else
-            gOut_SpecHit[ pixelPos ] = specIndirect;
+            gOut_Spec[ pixelPos ] = specIndirect;
     }
 #endif
 }

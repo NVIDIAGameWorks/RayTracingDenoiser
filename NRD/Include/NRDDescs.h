@@ -68,11 +68,10 @@ namespace nrd
         // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
         IN_SHADOW,
 
-        // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackDiffuse" (RGBA16f+). For IN_DIFFB INF pixels must be cleared with NRD_INF_DIFF_B macro
-        IN_DIFFA,
-        IN_DIFFB,
+        // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackRadiance" (RGBA16f+)
+        IN_DIFF_HIT,
 
-        // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackSpecular" (RGBA16f+)
+        // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackRadiance" (RGBA16f+)
         IN_SPEC_HIT,
 
         // 3-channel translucency (RGBA8+)
@@ -93,11 +92,11 @@ namespace nrd
         OUT_SHADOW_TRANSLUCENCY,
 
         // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackDiffuse"
+        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackRadiance"
         OUT_DIFF_HIT,
 
         // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackSpecular"
+        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackRadiance"
         OUT_SPEC_HIT,
 
         // POOLS ============================================================================================================================

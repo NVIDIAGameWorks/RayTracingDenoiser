@@ -38,7 +38,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gSeparator;
     float gRoughnessOverride;
     float gMetalnessOverride;
-    float gDiffHitDistScale;
+    float gDiffDistScale;
     float gSpecHitDistScale;
     float gUnitsToMetersMultiplier;
     float gIndirectDiffuse;
@@ -109,6 +109,7 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 #define USE_SIMPLE_MIP_SELECTION            1
 #define USE_SIMPLIFIED_BRDF_MODEL           0
 #define USE_IMPORTANCE_SAMPLING             2 // 0 - off, 1 - ignore rays with 0 throughput, 2 - plus local lights importance sampling
+#define USE_BIG_VALUE_CHECK                 0
 
 #define TAA_HISTORY_SHARPNESS               0.5 // [0; 1], 0.5 matches Catmull-Rom
 #define TAA_MAX_HISTORY_WEIGHT              0.9
@@ -127,13 +128,13 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 
 void ModifyMaterial( inout float3 baseColor, inout float metalness, inout float roughness )
 {
-    if ( gForcedMaterial == MAT_GYPSUM )
+    if( gForcedMaterial == MAT_GYPSUM )
     {
         roughness = 1.0;
         baseColor = 0.5;
         metalness = 0.0;
     }
-    else if ( gForcedMaterial == MAT_COBALT )
+    else if( gForcedMaterial == MAT_COBALT )
     {
         roughness = pow( saturate( baseColor.x * baseColor.y * baseColor.z ), 0.33333 );
         baseColor = float3( 0.672411, 0.637331, 0.585456 );
@@ -210,7 +211,7 @@ float3 ApplyPostLightingComposition( uint2 pixelPos, float3 Lsum, Texture2D<floa
         Lsum = STL::Color::HdrToLinear_Uncharted( Lsum );
 
     // Conversion
-    if ( gOnScreen == SHOW_FINAL || gOnScreen == SHOW_BASE_COLOR )
+    if( gOnScreen == SHOW_FINAL || gOnScreen == SHOW_BASE_COLOR )
         Lsum = STL::Color::LinearToSrgb( Lsum );
 
     return Lsum;

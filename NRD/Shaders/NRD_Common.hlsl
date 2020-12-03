@@ -24,9 +24,6 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define PIXEL                                   2
 #define RANDOM                                  3
 
-#define SHARP                                   0
-#define SOFT                                    1
-
 #define MAX_ACCUM_FRAME_NUM                     31 // "2 ^ N - 1"
 #define INF                                     1e6
 
@@ -41,16 +38,13 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 
 #define USE_QUADRATIC_DISTRIBUTION              0
 #define USE_SHADOW_BLUR_RADIUS_FIX              1
-#define USE_BILATERAL_WEIGHT_CUTOFF_FOR_DIFF    1
-#define USE_BILATERAL_WEIGHT_CUTOFF_FOR_SPEC    1
+#define USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX       1
 #define USE_HISTORY_FIX                         1
 #define USE_MIX_WITH_ORIGINAL                   1
-#define USE_NORMAL_WEIGHT_IN_DIFF_PRE_BLUR      1 // TODO: a must if SH is off, adds more details if SH is on (but not mandatory needed)
 #define USE_ANTILAG                             1
-#define USE_CATMULLROM_RESAMPLING_IN_TA         1 // TODO: adds 0.3 ms on RTX 2080 @ 1440p
-#define USE_CATMULLROM_RESAMPLING_IN_TS         1 // adds 0.1 ms on RTX 2080 @ 1440p
+#define USE_CATROM_RESAMPLING_IN_TA             1 // ~0.13 ms on RTX 2080 @1440p (in each denoiser)
+#define USE_CATROM_RESAMPLING_IN_TS             1 // ~0.03 ms on RTX 2080 @1440p
 #define USE_ANISOTROPIC_KERNEL                  1 // TODO: add anisotropy support for shadows!
-#define USE_SPEC_COMPRESSION_FIX                1 // TODO: try to get rid of it
 
 // Settings
 
@@ -62,7 +56,6 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define SPEC_ACCUM_BASE_POWER                   0.5 // previously was 0.66 (less agressive accumulation, but virtual reprojection works well on flat surfaces and fixes the issue)
 #define SPEC_ACCUM_CURVE                        1.0 // aggressiveness of history rejection depending on viewing angle (1 - low, 0.66 - medium, 0.5 - high)
 #define SPEC_NORMAL_VARIANCE_SMOOTHNESS         4.0 // actually, it's power - 1 low (do nothing), 32 high (NoV not sensitive)
-#define SPEC_NORMAL_BANDING_FIX                 STL::Math::DegToRad( 0.625 ) // mitigate banding introduced by normals stored in RGB8 format // TODO: move to CommonSettings?
 #define SPEC_DOMINANT_DIRECTION                 STL_SPECULAR_DOMINANT_DIRECTION_APPROX
 
 #define SHADOW_POISSON_SAMPLE_NUM               8
@@ -75,13 +68,13 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define SHADOW_MAX_SIGMA_SCALE                  3.5
 #define SHADOW_BLACK_OUT_INF_PIXELS             0 // can be used to avoid killing INF pixels during composition
 
-#define BLACK_OUT_INF_PIXELS                    0 // can be used to avoid killing INF pixels during composition
 #define POISSON_SAMPLE_NUM                      8
 #define POISSON_SAMPLES                         g_Poisson8
+#define NORMAL_BANDING_FIX                      STL::Math::DegToRad( 0.625 ) // mitigate banding introduced by normals stored in RGB8 format // TODO: move to CommonSettings?
+#define BLACK_OUT_INF_PIXELS                    0 // can be used to avoid killing INF pixels during composition
 #define PRE_BLUR_ROTATOR_MODE                   FRAME
 #define BLUR_ROTATOR_MODE                       PIXEL
 #define POST_BLUR_ROTATOR_MODE                  NONE
-#define CHECKERBOARD_RESOLVE_MODE               SHARP
 #define CHECKERBOARD_SIDE_WEIGHT                0.6
 #define LOBE_STRICTNESS_FACTOR                  0.333 // 0.3 - 1.0 (to avoid overblurring)
 #define ANTILAG_MIN                             0.02
@@ -90,7 +83,6 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define TS_HISTORY_SHARPNESS                    0.5 // [0; 1], 0.5 matches Catmull-Rom
 #define TS_SIGMA_AMPLITUDE                      9.0 // previously was 3.0
 #define TS_MAX_HISTORY_WEIGHT                   ( 63.0 / 64.0 ) // previously was 0.9
-#define DITHERING_AMPLITUDE                     0.005
 #define MIP_NUM                                 4.999
 #define PLANE_DIST_SENSITIVITY                  0.002 // m
 #define ALMOST_ZERO_ACCUM_FRAME_NUM             0.01
@@ -110,7 +102,7 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 
 #include "NRD_config.hlsl"
 
-// CTA size
+// CTA & preloading
 
 #define BORDER                                  1 // max kernel radius for data from shared memory
 #define GROUP_X                                 16
@@ -118,6 +110,22 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define BUFFER_X                                ( GROUP_X + BORDER * 2 )
 #define BUFFER_Y                                ( GROUP_Y + BORDER * 2 )
 #define RENAMED_GROUP_Y                         ( ( GROUP_X * GROUP_Y ) / BUFFER_X )
+
+// Rename the 16x16 group into a 18x14 group + some idle threads in the end
+// TODO: ignore out-of-screen texels or use "NearestClamp"
+#define PRELOAD_INTO_SMEM \
+    float linearId = ( threadIndex + 0.5 ) / BUFFER_X; \
+    int2 newId = int2( frac( linearId ) * BUFFER_X, linearId ); \
+    int2 groupBase = pixelPos - threadId - BORDER; \
+    if( newId.y < RENAMED_GROUP_Y ) \
+        Preload( newId, groupBase + newId ); \
+    newId.y += RENAMED_GROUP_Y; \
+    if( newId.y < BUFFER_Y ) \
+        Preload( newId, groupBase + newId ); \
+    GroupMemoryBarrierWithGroupSync( )
+
+groupshared float4 s_Normal_Roughness[ BUFFER_Y ][ BUFFER_X ];
+groupshared float s_ViewZ[ BUFFER_Y ][ BUFFER_X ];
 
 // Misc
 
@@ -147,12 +155,21 @@ uint2 PackViewZNormalRoughnessAccumSpeeds( float viewZ, float diffAccumSpeed, fl
     return p;
 }
 
-float4 UnpackNormalRoughnessAccumSpeed( uint p )
+float4 UnpackNormalRoughness( uint p )
 {
     float4 t = STL::Packing::UintToRgba( p, NORMAL_ROUGHNESS_ACCUMSPEED_BITS );
     float3 N = STL::Packing::DecodeUnitVector( t.xy );
 
     return float4( N, t.z );
+}
+
+float4 UnpackRoughness( uint4 p )
+{
+	// see NORMAL_ROUGHNESS_ACCUMSPEED_BITS
+    p >>= 9 + 9;
+    p &= 0xFF;
+
+    return float4( p ) / 255.0;
 }
 
 float4 UnpackNormalRoughnessAccumSpeed( uint p, out float accumSpeed )
@@ -188,7 +205,7 @@ float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float
     {
         STL::Rng::Initialize( pixelPos, gFrameIndex );
         float4 rnd = STL::Rng::GetFloat4( );
-        rotator = STL::Geometry::GetRotator( rnd.x * STL::Math::Pi( 2.0 ) );
+        rotator = STL::Geometry::GetRotator( rnd.z * STL::Math::Pi( 2.0 ) );
         rotator *= 1.0 + ( rnd.w * 2.0 - 1.0 ) * 0.5;
     }
 
@@ -210,7 +227,7 @@ float2 GetDisocclusionThresholds( float disocclusionThreshold, float jitterDelta
 float ComputeParallax( float2 pixelUv, float roughnessRatio, float3 X, float3 cameraDelta, float4x4 mWorldToClip )
 {
     // X = Prev for surface motion
-    // TODO: X = Xvirtual for visrtual motion (?)
+    // TODO: X = Xvirtual for virtual motion (?)
     float3 Xt = X - cameraDelta;
     float4 clip = STL::Geometry::ProjectiveTransform( mWorldToClip, Xt );
     float2 uv = ( clip.xy / clip.w ) * float2( 0.5, -0.5 ) + 0.5;
@@ -222,6 +239,52 @@ float ComputeParallax( float2 pixelUv, float roughnessRatio, float3 X, float3 ca
     parallax *= lerp( roughnessRatio, 1.0, 0.25 ); // TODO: to not kill parallax completely (biased modification)
 
     return parallax;
+}
+
+float3 GetXvirtual( float3 X, float3 Xprev, float3 N, float3 V, float roughness, float hitDist )
+{
+    float4 D = STL::ImportanceSampling::GetSpecularDominantDirection( N, V, roughness, SPEC_DOMINANT_DIRECTION );
+    float3 Xvirtual = X - V * hitDist * D.w; // TODO: use lerp( Xprev, X, D.w ) instead of X
+
+    return Xvirtual;
+}
+
+float DetectEdge( float3 N, uint2 smemPos )
+{
+    float3 Navg = N;
+    Navg += s_Normal_Roughness[ smemPos.y     ][ smemPos.x + 1 ].xyz;
+    Navg += s_Normal_Roughness[ smemPos.y + 1 ][ smemPos.x     ].xyz;
+    Navg += s_Normal_Roughness[ smemPos.y + 1 ][ smemPos.x + 1 ].xyz;
+    Navg /= 4.0;
+
+    float edge = 1.0 - STL::Math::SmoothStep( 0.94, 0.98, length( Navg ) );
+
+    return edge;
+}
+
+float3 ApplyCheckerboard( inout float2 uv, uint mode, uint counter )
+{
+    int2 uvi = int2( uv * gScreenSize );
+    bool hasData = STL::Sequence::CheckerBoard( uvi, gFrameIndex ) == mode;
+    if( !hasData )
+        uvi.y += ( ( counter & 0x1 ) == 0 ) ? -1 : 1;
+    uv = ( float2( uvi ) + 0.5 ) * gInvScreenSize;
+
+    return float3( uv.x * 0.5, uv.y, float( all( saturate( uv ) == uv ) ) );
+}
+
+float4 MixLinearAndCatmullRom( float4 linearX, float4 catromX, float4 occlusion0, float4 occlusion1, float4 occlusion2, float4 occlusion3 )
+{
+    float4 sum = occlusion0;
+    sum += occlusion1;
+    sum += occlusion2;
+    sum += occlusion3;
+
+    float avg = dot( sum, 1.0 / 16.0 );
+    float confidence = step( 0.999, occlusion0.x );
+    confidence *= USE_CATROM_RESAMPLING_IN_TA;
+
+    return lerp( linearX, catromX, confidence );
 }
 
 // Internal data
@@ -309,7 +372,7 @@ float2 GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float
     // TODO: "accumSpeed.x" can be clamped to some portion of "accumSpeed.y", aka accumSpeed.x = clamp( accumSpeed.x, C * accumSpeed.y, maxAccumSpeed )
     accumSpeed.x = min( accumSpeed.x, maxAccumSpeed );
 
-    return accumSpeed;
+    return accumSpeed * float( gFrameIndex != 0 );
 }
 
 // Kernel
@@ -349,7 +412,8 @@ float GetBlurRadiusScaleBasingOnTrimming( float roughness, float3 trimmingParams
 
 float2x3 GetKernelBasis( float3 Xv, float3 Nv, float worldRadius, float normAccumSpeed = 0.65, float roughness = 1.0 )
 {
-    roughness = lerp( 1.0, roughness, STL::Math::Sqrt01( normAccumSpeed ) ); // TODO: it was a useful experiment - keep it? It helps "a bit" for glancing angles
+    // It's needed to skip anisotropy if accumulation doesn't go well
+    roughness = lerp( 1.0, roughness, STL::Math::Sqrt01( normAccumSpeed ) );
 
     float3 Tv, Bv;
     if( roughness < 0.95 )
@@ -400,35 +464,23 @@ float2 GetKernelSampleCoordinates( float3 offset, float3 Xv, float3 Tv, float3 B
 
 // Weight parameters
 
-float2 GetNormalWeightParamsRoughEstimate( float roughness )
+float GetNormalWeightParamsRoughEstimate( float roughness )
 {
     float ang01 = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness ) / STL::Math::DegToRad( 90.0 );
 
-    float2 normalParams;
-    normalParams.x = STL::Math::DegToRad( lerp( 45.0, 89.0, saturate( ang01 ) ) ); // Yes, very relaxed angles here to not ruin accumulation with enabled jittering. Definitely min angle can't be < 25 deg
-    normalParams.y = 1.0;
-
-    return normalParams;
+    return STL::Math::DegToRad( lerp( 45.0, 89.0, saturate( ang01 ) ) ); // Yes, very relaxed angles here to not ruin accumulation with enabled jittering. Definitely min angle can't be < 25 deg
 }
 
-float2 GetNormalWeightParams( float roughness, float accumSpeed = MAX_ACCUM_FRAME_NUM, float normAccumSpeed = 1.0 )
+float GetNormalWeightParams( float roughness, float edge, float normAccumSpeed = 1.0 )
 {
-    // Fade out normal weights if less than 25% of allowed frames are accumulated
-    float k = STL::Math::LinearStep( 0.0, 0.25, normAccumSpeed );
+    normAccumSpeed = lerp( normAccumSpeed, 0.5, edge );
 
-    // Remap to avoid killing normal weights completely
-    float remap = 0.1 * k + 0.9;
-
-    // Ignore normal weights if ~0 frames are accumulated (not "allowed" frames, it's needed for better tracking of discarded regions)
-    float f = lerp( k, remap, saturate( accumSpeed / ALMOST_ZERO_ACCUM_FRAME_NUM ) );
-
-    // This is the main parameter - cone angle
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
-    angle *= LOBE_STRICTNESS_FACTOR;
+    angle *= lerp( 1.0, LOBE_STRICTNESS_FACTOR, normAccumSpeed );
     angle *= 1.0 - 0.66 * STL::Math::LinearStep( 0.25, 1.0, normAccumSpeed );
-    angle += SPEC_NORMAL_BANDING_FIX;
+    angle += NORMAL_BANDING_FIX;
 
-    return float2( angle, f );
+    return angle;
 }
 
 float2 GetRoughnessWeightParams( float roughness0 )
@@ -473,18 +525,18 @@ float2 GetTemporalAccumulationParams( float isInScreen, float accumSpeed, float 
     historyWeight *= 1.0 - nonLinearAccumSpeed;
     historyWeight *= lerp( saturate( 1.0 - parallax ), 1.0, roughnessWeight );
 
-    return float2( historyWeight, sigmaAmplitude );
+    return float2( historyWeight, sigmaAmplitude ) * float( gFrameIndex != 0 );
 }
 
 // Weights
 
-float GetNormalWeight( float2 params0, float3 n0, float3 n )
+float GetNormalWeight( float params0, float3 n0, float3 n )
 {
     float cosa = saturate( dot( n0, n ) );
     float a = STL::Math::AcosApprox( cosa );
-    a = 1.0 - STL::Math::SmoothStep( 0.0, params0.x, a );
+    a = 1.0 - STL::Math::SmoothStep( 0.0, params0, a );
 
-    return saturate( a * params0.y + 1.0 - params0.y );
+    return saturate( a );
 }
 
 float GetGeometryWeight( float3 n0, float3 p, float2 geometryWeightParams )
@@ -500,19 +552,16 @@ float GetGeometryWeight( float3 n0, float3 p, float2 geometryWeightParams )
     return w;
 }
 
-float GetRoughnessWeight( float2 params0, float roughness )
-{
-    return saturate( 1.0 - abs( params0.y - roughness * params0.x ) );
-}
+#define GetRoughnessWeight( params0, roughness ) saturate( 1.0 - abs( params0.y - roughness * params0.x ) )
 
 float GetHitDistanceWeight( float2 params0, float hitDist )
 {
     return saturate( 1.0 - abs( params0.y - hitDist * params0.x ) );
 }
 
-float GetNormalAndRoughnessWeights( float3 N, float2 normalParams, float2 roughnessParams, uint packedNormalAndRoughness )
+float GetNormalAndRoughnessWeights( float3 N, float normalParams, float2 roughnessParams, uint packedNormalAndRoughness )
 {
-    float4 normalAndRoughness = UnpackNormalRoughnessAccumSpeed( packedNormalAndRoughness );
+    float4 normalAndRoughness = UnpackNormalRoughness( packedNormalAndRoughness );
     float normalWeight = GetNormalWeight( normalParams, N, normalAndRoughness.xyz );
     float roughnessWeight = GetRoughnessWeight( roughnessParams, normalAndRoughness.w );
     roughnessWeight = STL::Math::LinearStep( 0.0, 0.8, roughnessWeight );
@@ -532,13 +581,6 @@ float GetMipLevel( float normAccumSpeed, float accumSpeed, float roughness = 1.0
     return mip * STL::Math::Sqrt01( roughness );
 }
 
-/*
-// TODO: fix minor light leaking in history fix passes!
-The following code helps to avoid light leaking during history fix pass, but can lead to ignoring all sample candidates...
-I'm not using it right now (i.e. "w" can't be 0) because it really works worse, especially in complicated cases where there is
-no a suitable sample. What to do if "sumWeight == 0"? I tried hierachical approach (switching to previous mip level) but it
-looked worse that what I have now.
-*/
 #define _GetBilateralWeight( z, zc, cutoff ) \
     z = abs( z - zc ) * rcp( min( abs( z ), abs( zc ) ) + 0.00001 ); \
     z = rcp( 1.0 + BILATERAL_WEIGHT_VIEWZ_SENSITIVITY * z ) * step( z, cutoff );
@@ -554,7 +596,7 @@ float4 GetBilateralWeight( float4 z, float zc, float cutoff = BILATERAL_WEIGHT_C
 
 float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invTextureSize )
 {
-    #if( USE_CATMULLROM_RESAMPLING_IN_TS == 1 )
+    #if( USE_CATROM_RESAMPLING_IN_TS == 1 )
         const float sharpness = TS_HISTORY_SHARPNESS;
 
         float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
@@ -596,6 +638,70 @@ float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 
     #else
         return tex.SampleLevel( samp, samplePos * invTextureSize, 0 );
     #endif
+}
+
+float4 ReconstructHistory( uint realMipLevel, uint2 screenSizei, float2 pixelUv, float z0, Texture2D<float> texScaledViewZ, Texture2D<float4> texSignal, out float sum )
+{
+    float4 blurry = 0;
+    sum = 0;
+
+#if( USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX == 1 )
+    while( sum == 0.0 && realMipLevel != 0 )
+    {
+#endif
+        uint mipLevel = realMipLevel - 1;
+        float2 mipSize = float2( screenSizei >> realMipLevel );
+        float2 invMipSize = 1.0 / mipSize;
+        float2 mipUv = pixelUv * gScreenSize / ( mipSize * float( 1 << realMipLevel ) );
+
+        STL::Filtering::Bilinear filter = STL::Filtering::GetBilinearFilter( mipUv, mipSize );
+        float4 bilinearWeights = STL::Filtering::GetBilinearCustomWeights( filter, 1.0 );
+        float2 mipUvFootprint00 = saturate( ( filter.origin + 0.5 ) * invMipSize );
+
+        [unroll]
+        for( int i = 0; i < 2; i++ )
+        {
+            [unroll]
+            for( int j = 0; j < 2; j++ )
+            {
+                const float2 offset = float2( i, j ) * 2.0 - 1.0;
+                const float2 uv = saturate( mipUvFootprint00 + offset * invMipSize );
+
+                float4 z;
+                z.x = texScaledViewZ.SampleLevel( gNearestClamp, uv, realMipLevel );
+                z.y = texScaledViewZ.SampleLevel( gNearestClamp, uv, realMipLevel, int2( 1, 0 ) );
+                z.z = texScaledViewZ.SampleLevel( gNearestClamp, uv, realMipLevel, int2( 0, 1 ) );
+                z.w = texScaledViewZ.SampleLevel( gNearestClamp, uv, realMipLevel, int2( 1, 1 ) );
+
+                #if( USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX == 1 )
+                    float cutoff = BILATERAL_WEIGHT_CUTOFF; // TODO: slope scale is needed, but no normals here...
+                #else
+                    float cutoff = 99999.0;
+                #endif
+
+                float4 bilateralWeights = GetBilateralWeight( z, z0, cutoff );
+                float4 w = bilinearWeights * bilateralWeights;
+
+                float4 s00 = texSignal.SampleLevel( gNearestClamp, uv, mipLevel );
+                float4 s10 = texSignal.SampleLevel( gNearestClamp, uv, mipLevel, int2( 1, 0 ) );
+                float4 s01 = texSignal.SampleLevel( gNearestClamp, uv, mipLevel, int2( 0, 1 ) );
+                float4 s11 = texSignal.SampleLevel( gNearestClamp, uv, mipLevel, int2( 1, 1 ) );
+
+                blurry += STL::Filtering::ApplyBilinearCustomWeights( s00, s10, s01, s11, w, false );
+
+                sum += dot( w, 1.0 );
+            }
+        }
+
+#if( USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX == 1 )
+        realMipLevel--;
+    }
+
+#endif
+
+    blurry *= STL::Math::PositiveRcp( sum );
+
+    return blurry;
 }
 
 // Unrolling

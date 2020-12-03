@@ -426,10 +426,13 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
 // DXBC ====================================================================================
 
+// SHARED
+#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4.cs.dxbc.h"
+#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4_Float.cs.dxbc.h"
+
 // NRD_DIFFUSE
 #include "..\..\_Build\Shaders\NRD_Diffuse_PreBlur.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_TemporalAccumulation.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_Mips.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_HistoryFix.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_Blur.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_TemporalStabilization.cs.dxbc.h"
@@ -438,7 +441,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 // NRD_SPECULAR
 #include "..\..\_Build\Shaders\NRD_Specular_PreBlur.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalAccumulation.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Specular_Mips.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Specular_HistoryFix.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Specular_Blur.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.dxbc.h"
@@ -469,10 +471,13 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
 // DXIL ====================================================================================
 
+// SHARED
+#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4.cs.dxil.h"
+#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4_Float.cs.dxil.h"
+
 // NRD_DIFFUSE
 #include "..\..\_Build\Shaders\NRD_Diffuse_PreBlur.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_TemporalAccumulation.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_Mips.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_HistoryFix.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_Blur.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_TemporalStabilization.cs.dxil.h"
@@ -481,7 +486,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 // NRD_SPECULAR
 #include "..\..\_Build\Shaders\NRD_Specular_PreBlur.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalAccumulation.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Specular_Mips.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Specular_HistoryFix.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Specular_Blur.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.dxil.h"
@@ -512,10 +516,13 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
 // SPIRV ===================================================================================
 
+// SHARED
+#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4.cs.spirv.h"
+#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4_Float.cs.spirv.h"
+
 // NRD_DIFFUSE
 #include "..\..\_Build\Shaders\NRD_Diffuse_PreBlur.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_TemporalAccumulation.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_Mips.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_HistoryFix.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_Blur.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Diffuse_TemporalStabilization.cs.spirv.h"
@@ -524,7 +531,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 // NRD_SPECULAR
 #include "..\..\_Build\Shaders\NRD_Specular_PreBlur.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalAccumulation.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Specular_Mips.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Specular_HistoryFix.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Specular_Blur.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.spirv.h"

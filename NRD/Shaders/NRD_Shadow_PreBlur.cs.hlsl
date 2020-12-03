@@ -54,7 +54,6 @@ groupshared float2 s_Data[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( int2 sharedId, int2 globalId )
 {
-    // TODO: use w = 0 if outside of the screen or use SampleLevel with Clamp sampler
     float2 data = gIn_Hit_ViewZ[ globalId ];
     data.x = ( data.x == NRD_FP16_MAX ) ? NRD_FP16_MAX : ( data.x / NRD_FP16_VIEWZ_SCALE );
     data.y = data.y / NRD_FP16_VIEWZ_SCALE;
@@ -71,28 +70,14 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
 
-    // Rename the 16x16 group into a 18x14 group + some idle threads in the end
-    float linearId = ( threadIndex + 0.5 ) / BUFFER_X;
-    int2 newId = int2( frac( linearId ) * BUFFER_X, linearId );
-    int2 groupBase = pixelPos - threadId - BORDER;
-
-    // Preload into shared memory
-    if ( newId.y < RENAMED_GROUP_Y )
-        Preload( newId, groupBase + newId );
-
-    newId.y += RENAMED_GROUP_Y;
-
-    if ( newId.y < BUFFER_Y )
-        Preload( newId, groupBase + newId );
-
-    GroupMemoryBarrierWithGroupSync( );
+    PRELOAD_INTO_SMEM;
 
     // Copy history
     gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
 
     // Center data
-    int2 pos = threadId + BORDER;
-    float2 centerData = s_Data[ pos.y ][ pos.x ];
+    int2 smemPos = threadId + BORDER;
+    float2 centerData = s_Data[ smemPos.y ][ smemPos.x ];
     float centerHitDist = centerData.x;
     float centerSignNoL = float( centerData.x != 0.0 );
     float centerZ = centerData.y;
@@ -106,7 +91,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         SHADOW_TYPE s;
         s.x = float( centerData.x == NRD_FP16_MAX );
         #ifdef TRANSLUCENT_SHADOW
-            s.yzw = s_Translucency[ pos.y ][ pos.x ].xyz;
+            s.yzw = s_Translucency[ smemPos.y ][ smemPos.x ].xyz;
         #endif
         gOut_Shadow_Translucency[ pixelPos ] = s;
 
