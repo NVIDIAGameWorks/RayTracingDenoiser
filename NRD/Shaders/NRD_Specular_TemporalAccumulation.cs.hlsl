@@ -228,6 +228,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Modify specular occlusion to avoid averaging of specular for different roughness
     float4 prevRoughness = float4( prevNormalAndRoughness00.w, prevNormalAndRoughness10.w, prevNormalAndRoughness01.w, prevNormalAndRoughness11.w );
     float4 prevRoughnessWeight = GetRoughnessWeight( roughnessParams, prevRoughness );
+    prevRoughnessWeight = STL::Math::LinearStep( 0.1, 0.9, prevRoughnessWeight );
     occlusion0.w *= prevRoughnessWeight.x;
     occlusion1.z *= prevRoughnessWeight.y;
     occlusion2.y *= prevRoughnessWeight.z;

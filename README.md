@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoiser v1.8.13
+# NVIDIA Real-time (Ray tracing) Denoiser v1.8.14
 
 ## QUICK START GUIDE
 

@@ -281,10 +281,8 @@ float4 MixLinearAndCatmullRom( float4 linearX, float4 catromX, float4 occlusion0
     sum += occlusion3;
 
     float avg = dot( sum, 1.0 / 16.0 );
-    float confidence = step( 0.999, occlusion0.x );
-    confidence *= USE_CATROM_RESAMPLING_IN_TA;
 
-    return lerp( linearX, catromX, confidence );
+    return ( avg < 1.0 || USE_CATROM_RESAMPLING_IN_TA == 0 ) ? linearX : catromX;
 }
 
 // Internal data

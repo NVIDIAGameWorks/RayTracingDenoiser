@@ -13,7 +13,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define VERSION_MAJOR                   1
 #define VERSION_MINOR                   8
-#define VERSION_BUILD                   13
+#define VERSION_BUILD                   14
 #define VERSION_REVISION                0
 
 #define VERSION_STRING STR(VERSION_MAJOR.VERSION_MINOR.VERSION_BUILD.VERSION_REVISION)
