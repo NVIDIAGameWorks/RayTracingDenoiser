@@ -2,10 +2,13 @@
 
 set FRAME_NUM=100
 
-set DIR=_Build\vs2017\Bin\Release\
+set TARGET_VS=vs2017
+if exist "_Compiler\vs2019" set TARGET_VS=vs2019
+
+set DIR=_Build\%TARGET_VS%\Bin\Release\
 
 if not exist %DIR% (
-    set DIR=_Build\vs2017\Bin\Debug\
+    set DIR=_Build\%TARGET_VS%\Bin\Debug\
 )
 
 if not exist %DIR% (

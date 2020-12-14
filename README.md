@@ -1,11 +1,18 @@
-# NVIDIA Real-time (Ray tracing) Denoiser v1.8.14
+# NVIDIA Real-time (Ray tracing) Denoiser v1.8.17
 
 ## QUICK START GUIDE
 
-NVIDIA Ray Tracing Denoiser (NRD) is a spatio-temporal API agnostic denoising library. The library has been designed to work with low rpp (ray per pixel) signals. NRD is a fast solution that slightly depends on input signals and environment conditions. NRD currently supports denoising of 3 signal types:
-* Diffuse (with embedded ambient occlusion)
-* Specular or reflections (with embedded specular occlusion)
-* Shadows from an infinite light source (sun shadows, translucency information can be provided additionally)
+NVIDIA Ray Tracing Denoiser (NRD) is a spatio-temporal API agnostic denoising library. The library has been designed to work with low rpp (ray per pixel) signals (1 rpp and 0.5 rpp). NRD is a fast solution that slightly depends on input signals and environment conditions. NRD currently supports denoising of 3 signal types:
+* Diffuse (with embedded ambient occlusion - AO)
+* Specular or reflections (with embedded specular occlusion - SO)
+* Shadows from an infinite light source (sun shadows)
+
+These signals can be denoised using the following denoisers:
+* NRD_DIFFUSE - diffuse denoiser
+* NRD_SPECULAR - specular denoiser
+* NRD_DIFFUSE_SPECULAR - combined version of DIFFUSE and SPECULAR (faster)
+* NRD_SHADOW - opaque shadow denoiser
+* NRD_TRANSLUCENT_SHADOW - translucent shadow denoiser
 
 NRD is distributed as source as well with a “ready-to-use” library (if used in a precompiled form).
 
@@ -23,16 +30,23 @@ Any Ray Tracing compatible GPU. NVIDIA Ray Tracing compatible GPUs:
 ### How to Compile and Run
 - Update Windows to the latest version (2004)
 - Install latest Vulkan SDK
-- Run ``Deploy.bat``
+- Run ``1-Deploy.bat`` and choose Visual Studio version
 - Install required Windows SDK (you will be prompted)
-- Open ```_Compiler\vs2017\SANDBOX.sln```
+- Open ``_Compiler\vs(2017/2019)\SANDBOX.sln``
 - Rebuild the solution
-- It's recommended to install Smart Command Line Arguments Extension for Visual Studio https://marketplace.visualstudio.com/items?itemName=MBulli.SmartCommandlineArguments
-  - In this case "Command Line Arguments" tab will contain all possible command line arguments for the NRD sample (API, resolution, scene selection...)
+- It's recommended to install Smart Command Line Arguments Extension for Visual Studio https://marketplace.visualstudio.com/items?itemName=MBulli.SmartCommandlineArguments. In this case "Command Line Arguments" tab will contain all possible command line arguments for the NRD sample (API, resolution, scene selection...)
 - Exit out of Visual Studio once completed
 - Run the sample
-  - Use Smart Command Line arguments or set this minimal command line ```--width=1920 --height=1080 --api=D3D12 --testMode --scene=Bistro/BistroInterior.fbx```
-  - Or use ```TestNRD.bat``` to view the NRD sample application
+  - Use Smart Command Line arguments or set this minimal command line ``--width=1920 --height=1080 --api=D3D12 --testMode --scene=Bistro/BistroInterior.fbx``
+  - Or use ``3b-RunNRDSample.bat`` to view the NRD sample application
+
+If you only need to run the sample and don't want to interact with the code:
+- Update Windows to the latest version (2004)
+- Install latest Vulkan SDK
+- Run ``1-Deploy.bat`` and choose Visual Studio version
+- Install required Windows SDK (you will be prompted)
+- Run ``2-Build.bat``
+- Run ``3b-RunNRDSample.bat`` to view the NRD sample application
 
 ### NRD sample usage
 - Press MOUSE_RIGHT to move...
@@ -65,7 +79,7 @@ In rare cases, when the integration via engine’s RHI is not possible and the i
 ## NRD TERMINOLOGY
 
 * Denoiser method (or method) - a method for denoising of a particular signal (for example: diffuse)
-* Denoiser - a set of methods aggregated into a monolithic denoiser (the library is free to rearrange passes without dependencies)
+* Denoiser - a set of methods aggregated into a monolithic entity (the library is free to rearrange passes without dependencies)
 * Resource - an input, output or internal resource. Currently can only be a texture
 * Texture pool (or pool) - a texture pool that stores permanent or transient resources needed for denoising. Textures from the permanent pool are dedicated to NRD and can not be reused by the application (history buffers are stored here). Textures from the transient pool can be reused by the application right after denoising. NRD doesn’t allocate anything. NRD provides resource descriptions, but resource creations are done on the application side.
 
@@ -91,28 +105,35 @@ NRD doesn’t have a "resize" functionality. On resolution change the old denois
 
 The following textures can be requested as inputs for a method. Brackets contain recommended precision:
 
-* IN\_MV (RGBA16f+ or RG16f+) - surface motion (a common part of the g-buffer). MVs must be non-jittered, ```old = new + MV```
+* IN\_MV (RGBA16f+ or RG16f+) - surface motion (a common part of the g-buffer). MVs must be non-jittered, ``old = new + MV``
   - 3D world space motion (recommended). In this case, the alpha channel is unused and can be used by the app
   - 2D screen space motion
 
-* IN\_NORMAL\_ROUGHNESS (RGBA8+) - xyz - normal in world space, unpacking ```normalize(x * 2 - 1)```, w - artistic roughness, where ```"artistic roughness" = sqrt( "mathematical roughness" )```
+* IN\_NORMAL\_ROUGHNESS (RGBA8+ or R10G10B10A2+ depending on encoding) - xyz - normal in world space, w - roughness. Normal and roughness encoding can be controlled by the following macros located in ``NRD.hlsl``:
+  - NRD_USE_SQRT_LINEAR_ROUGHNESS = 0 - roughness is ``"linear roughness" = sqrt( "mathematical roughness" )``
+  - NRD_USE_SQRT_LINEAR_ROUGHNESS = 1 - roughness is ``sqrt( "linear roughness" )``
+  - NRD_USE_OCT_PACKED_NORMALS = 0 - normal unpacking is ``normalize( .xyz * 2 - 1 )``
+  - NRD_USE_OCT_PACKED_NORMALS = 1 - normals are octahedron packed
 
-* IN\_VIEWZ (R32f) - .x - linear view depth ("+" for LHS, "-" for RHS)
+* IN\_VIEWZ (R32f) - .x - linear view depth, not HW depth ("+" for LHS, "-" for RHS)
 
-* IN\_SHADOW (RG16f+), IN\_DIFFA (RGBA16f+), IN\_DIFFB (RGBA16f+), IN\_SPEC\_HIT (RGBA16f+) - main inputs for shadow, diffuse and specular methods respectively. These inputs should be prepared using the corresponding packing function from NRD.hlsl. Infinite (sky) pixels for shadow and diffuse must be cleared using corresponding NRD_INF_x macros
+* IN\_SHADOW (RG16f+) - the input for shadow method, needs to be packed using ``NRD_FrontEnd_PackShadow`` function from ``NRD.hlsl``. Infinite (sky) pixels must be cleared using ``NRD_INF_SHADOW`` macros
+
+* IN\_DIFF_HIT (RGBA16f+), IN\_SPEC\_HIT (RGBA16f+) - main inputs for diffuse and specular methods respectively. These inputs should be prepared using the ``NRD_FrontEnd_PackRadiance`` function from ``NRD.hlsl``. It is recommented to clear infinite (sky) pixels using corresponding ``NRD_INF_DIFF / NRD_INF_SPEC`` macros
+
 * IN\_TRANSLUCENCY - translucency to be used by NRD\_TRANSLUCENT\_SHADOW denoiser. There are two ways how it can be used (see OUT\_SHADOW)
-  - ```final shadow = lerp( translucency, 1.0, shadow )``` (recommended)
-  - ```final shadow = translucency * shadow```
+  - ``final shadow = lerp( translucency, 1.0, shadow )`` (recommended)
+  - ``final shadow = translucency * shadow``
 
 ### NRD OUTPUTS
 
-* OUT\_SHADOW (R8+) - denoised shadow
+* OUT\_SHADOW (R8+) - denoised shadow. Must be unpacked using ``NRD_BackEnd_UnpackShadow`` function from ``NRD.hlsl``
   - R8 - for NRD\_SHADOW denoiser (.x - shadow)
   - RGBA8 - for NRD\_TRANSLUCENT\_SHADOW denoiser (.x - shadow, .yzw - translucency)
 
-* OUT\_DIFF\_HIT (RGBA16f+) - .xyz - denoisied diffuse radiance, .w - denoised normalized hit distance
+* OUT\_DIFF\_HIT (RGBA16f+) - .xyz - denoisied diffuse radiance, .w - denoised normalized hit distance. Must be unpacked using ``NRD_BackEnd_UnpackRadiance`` function from ``NRD.hlsl``
 
-* OUT\_SPEC\_HIT (RGBA16f+) - .xyz - denoised specular radiance, .w - normalized hit distance
+* OUT\_SPEC\_HIT (RGBA16f+) - .xyz - denoised specular radiance, .w - normalized hit distance. Must be unpacked using ``NRD_BackEnd_UnpackRadiance`` function from ``NRD.hlsl``
 
 ## RECOMMENDATIONS AND GOOD PRACTICES
 
@@ -128,8 +149,10 @@ Denoising is not a panacea or miracle. Denoising works best with ray tracing res
    - VNDF sampling for specular
    - Custom importance sampling for local light sources
 
-3. For diffuse and specular NRD expects hit distance input in normalized form. Some tweaking can be needed here, but in most cases normalization to 3-40 meters works well (can be roughness or view distance dependent). NRD outputs denoised normalized hit distance, which can be used by the application (see unpacking functions from ```NRD.hlsl```)
+3. For diffuse and specular NRD expects hit distance input in normalized form. Some tweaking can be needed here, but in most cases normalization to 3-40 meters works well (can be roughness or view distance dependent). NRD outputs denoised normalized hit distance, which can be used by the application (see unpacking functions from ``NRD.hlsl``)
 
 4. To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
 
 5. Low discrepancy sampling helps to have a cleaner output
+
+6. Read all comments from ``NRDDescs.h`` and ``NRD.hlsl``

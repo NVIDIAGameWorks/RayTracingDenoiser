@@ -23,7 +23,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gInf;
     float gReference;
     uint gFrameIndex;
-    uint gWorldSpaceMotion;
+    float gFramerateScale;
 
     float4x4 gWorldToViewPrev;
     float4x4 gWorldToClipPrev;
@@ -82,7 +82,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float viewZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
     [branch]
-    if( abs( viewZ ) > gInf )
+    if( abs( viewZ ) > abs( gInf ) )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Diff[ pixelPos ] = 0;
@@ -161,43 +161,45 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     trimmingFade = STL::Math::LinearStep( 0.0, 0.1, trimmingFade ); // TODO: is it needed? Better settings?
     trimmingFade = lerp( 1.0, trimmingFade, roughnessRatio );
 
-    // Normal and roughness weight parameters
-    normalParams = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughnessModified );
-    normalParams *= LOBE_STRICTNESS_FACTOR;
-    normalParams += NORMAL_BANDING_FIX;
-
     // Compute previous position for surface motion
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, gWorldSpaceMotion );
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
     float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) ); // TODO: ideally, isInScreen must be per pixel in 2x2 or 4x4 footprint
     float2 motion = pixelUvPrev - pixelUv;
     float motionLength = length( motion );
-    float3 Xprev = X + motionVector * float( gWorldSpaceMotion != 0 );
+    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() != 0 );
 
-    // Previous viewZ ( Catmull-Rom )
+    // Previous data ( Catmull-Rom )
     STL::Filtering::CatmullRom catmullRomFilterAtPrevPos = STL::Filtering::GetCatmullRomFilter( saturate( pixelUvPrev ), gScreenSize );
     float2 catmullRomFilterAtPrevPosGatherOrigin = catmullRomFilterAtPrevPos.origin * gInvScreenSize;
     uint4 prevPackRed0 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 1, 1 ) ).wzxy;
     uint4 prevPackRed1 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 3, 1 ) ).wzxy;
     uint4 prevPackRed2 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 1, 3 ) ).wzxy;
     uint4 prevPackRed3 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 3, 3 ) ).wzxy;
+    uint4 prevPackGreen0 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherGreen( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 1, 1 ) ).wzxy;
+    uint4 prevPackGreen1 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherGreen( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 3, 1 ) ).wzxy;
+    uint4 prevPackGreen2 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherGreen( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 1, 3 ) ).wzxy;
+    uint4 prevPackGreen3 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherGreen( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 3, 3 ) ).wzxy;
+
     float4 prevViewZ0 = UnpackViewZ( prevPackRed0 );
     float4 prevViewZ1 = UnpackViewZ( prevPackRed1 );
     float4 prevViewZ2 = UnpackViewZ( prevPackRed2 );
     float4 prevViewZ3 = UnpackViewZ( prevPackRed3 );
+
     float4 diffPrevAccumSpeeds = UnpackAccumSpeed( uint4( prevPackRed0.w, prevPackRed1.z, prevPackRed2.y, prevPackRed3.x ) );
 
-    // Previous normal, roughness and accum speed ( bilinear )
-    STL::Filtering::Bilinear bilinearFilterAtPrevPos = STL::Filtering::GetBilinearFilter( saturate( pixelUvPrev ), gScreenSize );
-    float2 bilinearFilterAtPrevPosGatherOrigin = ( bilinearFilterAtPrevPos.origin + 1.0 ) * gInvScreenSize;
-    uint4 prevPackGreen = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherGreen( gNearestClamp, bilinearFilterAtPrevPosGatherOrigin ).wzxy;
     float4 specPrevAccumSpeeds;
-    float4 prevNormalAndRoughness00 = UnpackNormalRoughnessAccumSpeed( prevPackGreen.x, specPrevAccumSpeeds.x );
-    float4 prevNormalAndRoughness10 = UnpackNormalRoughnessAccumSpeed( prevPackGreen.y, specPrevAccumSpeeds.y );
-    float4 prevNormalAndRoughness01 = UnpackNormalRoughnessAccumSpeed( prevPackGreen.z, specPrevAccumSpeeds.z );
-    float4 prevNormalAndRoughness11 = UnpackNormalRoughnessAccumSpeed( prevPackGreen.w, specPrevAccumSpeeds.w );
+    float3 prevNormal00 = UnpackNormalRoughnessAccumSpeed( prevPackGreen0.w, specPrevAccumSpeeds.x ).xyz;
+    float3 prevNormal10 = UnpackNormalRoughnessAccumSpeed( prevPackGreen1.z, specPrevAccumSpeeds.y ).xyz;
+    float3 prevNormal01 = UnpackNormalRoughnessAccumSpeed( prevPackGreen2.y, specPrevAccumSpeeds.z ).xyz;
+    float3 prevNormal11 = UnpackNormalRoughnessAccumSpeed( prevPackGreen3.x, specPrevAccumSpeeds.w ).xyz;
 
-    float3 prevNflat = prevNormalAndRoughness00.xyz + prevNormalAndRoughness10.xyz + prevNormalAndRoughness01.xyz + prevNormalAndRoughness11.xyz;
+    float4 prevRoughness0 = UnpackRoughness( prevPackGreen0 );
+    float4 prevRoughness1 = UnpackRoughness( prevPackGreen1 );
+    float4 prevRoughness2 = UnpackRoughness( prevPackGreen2 );
+    float4 prevRoughness3 = UnpackRoughness( prevPackGreen3 );
+
+    float3 prevNflat = prevNormal00.xyz + prevNormal10.xyz + prevNormal01.xyz + prevNormal11.xyz;
     prevNflat = normalize( prevNflat );
 
     // Plane distance based disocclusion for surface motion
@@ -219,10 +221,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Ignore backfacing history
     float4 cosa;
-    cosa.x = dot( N, prevNormalAndRoughness00.xyz );
-    cosa.y = dot( N, prevNormalAndRoughness10.xyz );
-    cosa.z = dot( N, prevNormalAndRoughness01.xyz );
-    cosa.w = dot( N, prevNormalAndRoughness11.xyz );
+    cosa.x = dot( N, prevNormal00.xyz );
+    cosa.y = dot( N, prevNormal10.xyz );
+    cosa.z = dot( N, prevNormal01.xyz );
+    cosa.w = dot( N, prevNormal11.xyz );
 
     float4 frontFacing = STL::Math::LinearStep( disocclusionThresholds.y, 0.001, cosa );
     occlusion0.w *= frontFacing.x;
@@ -247,19 +249,21 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 d13 = gIn_History_Diff.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 1, 3 ) );
     float4 d23 = gIn_History_Diff.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 2, 3 ) );
 
+    STL::Filtering::Bilinear bilinearFilterAtPrevPos = STL::Filtering::GetBilinearFilter( saturate( pixelUvPrev ), gScreenSize );
     float4 diffWeights = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevPos, diffOcclusion2x2 );
     float4 diffHistory = STL::Filtering::ApplyBilinearCustomWeights( d11, d21, d12, d22, diffWeights );
     float4 diffHistoryCatRom = STL::Filtering::ApplyCatmullRomFilterNoCorners( catmullRomFilterAtPrevPos, d10, d20, d01, d11, d21, d31, d02, d12, d22, d32, d13, d23 );
     diffHistory = MixLinearAndCatmullRom( diffHistory, diffHistoryCatRom, occlusion0, occlusion1, occlusion2, occlusion3 );
 
     // Modify specular occlusion to avoid averaging of specular for different roughness
-    float4 prevRoughness = float4( prevNormalAndRoughness00.w, prevNormalAndRoughness10.w, prevNormalAndRoughness01.w, prevNormalAndRoughness11.w );
-    float4 prevRoughnessWeight = GetRoughnessWeight( roughnessParams, prevRoughness );
-    prevRoughnessWeight = STL::Math::LinearStep( 0.1, 0.9, prevRoughnessWeight );
-    occlusion0.w *= prevRoughnessWeight.x;
-    occlusion1.z *= prevRoughnessWeight.y;
-    occlusion2.y *= prevRoughnessWeight.z;
-    occlusion3.x *= prevRoughnessWeight.w;
+    float4 prevRoughnessWeight0 = GetRoughnessWeight( roughnessParams, prevRoughness0 );
+    float4 prevRoughnessWeight1 = GetRoughnessWeight( roughnessParams, prevRoughness1 );
+    float4 prevRoughnessWeight2 = GetRoughnessWeight( roughnessParams, prevRoughness2 );
+    float4 prevRoughnessWeight3 = GetRoughnessWeight( roughnessParams, prevRoughness3 );
+    occlusion0 *= STL::Math::LinearStep( 0.1, 0.9, prevRoughnessWeight0 );
+    occlusion1 *= STL::Math::LinearStep( 0.1, 0.9, prevRoughnessWeight1 );
+    occlusion2 *= STL::Math::LinearStep( 0.1, 0.9, prevRoughnessWeight2 );
+    occlusion3 *= STL::Math::LinearStep( 0.1, 0.9, prevRoughnessWeight3 );
 
     float4 specOcclusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
 
@@ -309,7 +313,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specAccumSpeed, motionLength, STL::Math::Pow01( parallax, 0.25 ), roughnessModified );
         float historyWeight = gCheckerboardResolveAccumSpeed * temporalAccumulationParams.x;
 
-        spec = lerp( spec, specHistorySurface, historyWeight );
+        float4 specMin = m1 - sigma * temporalAccumulationParams.y;
+        float4 specMax = m1 + sigma * temporalAccumulationParams.y;
+        float4 specHistorySurfaceClamped = clamp( specHistorySurface, specMin, specMax );
+
+        spec = lerp( spec, specHistorySurfaceClamped, historyWeight );
     }
 
     // Current specular signal ( surface motion )
@@ -340,6 +348,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float zThreshold = lerp( 0.03, 0.1, STL::Math::Sqrt01( 1.0 - flatNoV ) );
     occlusionVirtual = STL::Math::LinearStep( zThreshold, 0.02, occlusionVirtual );
 
+    normalParams = GetNormalWeightParams( roughnessModified, 0.0, 0.7 );
     occlusionVirtual.x *= GetNormalAndRoughnessWeights( N, normalParams, roughnessParams, prevPackGreenVirtual.x );
     occlusionVirtual.y *= GetNormalAndRoughnessWeights( N, normalParams, roughnessParams, prevPackGreenVirtual.y );
     occlusionVirtual.z *= GetNormalAndRoughnessWeights( N, normalParams, roughnessParams, prevPackGreenVirtual.z );
@@ -418,7 +427,14 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     diffResult.xyz = lerp( diffHistory.xyz, diff.xyz, diffHistoryAmount );
     diffResult.w = lerp( diffHistory.w, diff.w, max( diffHistoryAmount, MIN_HITDIST_ACCUM_SPEED ) );
 
-    // TODO: get rid of possible negative values?
+    // Get rid of possible negative values?
+    diffResult.xyz = _NRD_YCoCgToLinear( diffResult.xyz );
+    diffResult.w = max( diffResult.w, 0.0 );
+    diffResult.xyz = _NRD_LinearToYCoCg( diffResult.xyz );
+
+    specResult.xyz = _NRD_YCoCgToLinear( specResult.xyz );
+    specResult.w = max( specResult.w, 0.0 );
+    specResult.xyz = _NRD_LinearToYCoCg( specResult.xyz );
 
     // Output
     gOut_InternalData[ pixelPos ] = PackDiffSpecInternalData( float3( diffAccumSpeeds, diffAccumSpeed ), float3( specAccumSpeeds, specAccumSpeed ), virtualHistoryAmount );

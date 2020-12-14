@@ -23,7 +23,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gInf;
     float gReference;
     uint gFrameIndex;
-    uint gWorldSpaceMotion;
+    float gFramerateScale;
 
     float4x4 gWorldToViewPrev;
     float4x4 gWorldToClipPrev;
@@ -70,7 +70,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float viewZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
     [branch]
-    if( abs( viewZ ) > gInf )
+    if( abs( viewZ ) > abs( gInf ) )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Diff[ pixelPos ] = 0;
@@ -110,11 +110,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Compute previous position for surface motion
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, gWorldSpaceMotion );
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
     float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) ); // TODO: ideally, isInScreen must be per pixel in 2x2 or 4x4 footprint
     float2 motion = pixelUvPrev - pixelUv;
     float motionLength = length( motion );
-    float3 Xprev = X + motionVector * float( gWorldSpaceMotion != 0 );
+    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() != 0 );
 
     // Previous viewZ ( Catmull-Rom )
     STL::Filtering::CatmullRom catmullRomFilterAtPrevPos = STL::Filtering::GetCatmullRomFilter( saturate( pixelUvPrev ), gScreenSize );
@@ -123,22 +123,24 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     uint4 prevPackRed1 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 3, 1 ) ).wzxy;
     uint4 prevPackRed2 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 1, 3 ) ).wzxy;
     uint4 prevPackRed3 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 3, 3 ) ).wzxy;
+
     float4 prevViewZ0 = UnpackViewZ( prevPackRed0 );
     float4 prevViewZ1 = UnpackViewZ( prevPackRed1 );
     float4 prevViewZ2 = UnpackViewZ( prevPackRed2 );
     float4 prevViewZ3 = UnpackViewZ( prevPackRed3 );
+
     float4 diffPrevAccumSpeeds = UnpackAccumSpeed( uint4( prevPackRed0.w, prevPackRed1.z, prevPackRed2.y, prevPackRed3.x ) );
 
     // Previous normal, roughness and accum speed ( bilinear )
     STL::Filtering::Bilinear bilinearFilterAtPrevPos = STL::Filtering::GetBilinearFilter( saturate( pixelUvPrev ), gScreenSize );
     float2 bilinearFilterAtPrevPosGatherOrigin = ( bilinearFilterAtPrevPos.origin + 1.0 ) * gInvScreenSize;
     uint4 prevPackGreen = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherGreen( gNearestClamp, bilinearFilterAtPrevPosGatherOrigin ).wzxy;
-    float4 prevNormalAndRoughness00 = UnpackNormalRoughness( prevPackGreen.x );
-    float4 prevNormalAndRoughness10 = UnpackNormalRoughness( prevPackGreen.y );
-    float4 prevNormalAndRoughness01 = UnpackNormalRoughness( prevPackGreen.z );
-    float4 prevNormalAndRoughness11 = UnpackNormalRoughness( prevPackGreen.w );
+    float3 prevNormal00 = UnpackNormalRoughness( prevPackGreen.x ).xyz;
+    float3 prevNormal10 = UnpackNormalRoughness( prevPackGreen.y ).xyz;
+    float3 prevNormal01 = UnpackNormalRoughness( prevPackGreen.z ).xyz;
+    float3 prevNormal11 = UnpackNormalRoughness( prevPackGreen.w ).xyz;
 
-    float3 prevNflat = prevNormalAndRoughness00.xyz + prevNormalAndRoughness10.xyz + prevNormalAndRoughness01.xyz + prevNormalAndRoughness11.xyz;
+    float3 prevNflat = prevNormal00.xyz + prevNormal10.xyz + prevNormal01.xyz + prevNormal11.xyz;
     prevNflat = normalize( prevNflat );
 
     // Plane distance based disocclusion for surface motion
@@ -160,10 +162,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Ignore backfacing history
     float4 cosa;
-    cosa.x = dot( N, prevNormalAndRoughness00.xyz );
-    cosa.y = dot( N, prevNormalAndRoughness10.xyz );
-    cosa.z = dot( N, prevNormalAndRoughness01.xyz );
-    cosa.w = dot( N, prevNormalAndRoughness11.xyz );
+    cosa.x = dot( N, prevNormal00.xyz );
+    cosa.y = dot( N, prevNormal10.xyz );
+    cosa.z = dot( N, prevNormal01.xyz );
+    cosa.w = dot( N, prevNormal11.xyz );
 
     float4 frontFacing = STL::Math::LinearStep( disocclusionThresholds.y, 0.001, cosa );
     occlusion0.w *= frontFacing.x;
@@ -218,7 +220,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     diffResult.xyz = lerp( diffHistory.xyz, diff.xyz, diffHistoryAmount );
     diffResult.w = lerp( diffHistory.w, diff.w, max( diffHistoryAmount, MIN_HITDIST_ACCUM_SPEED ) );
 
-    // TODO: get rid of possible negative values?
+    // Get rid of possible negative values
+    diffResult.xyz = _NRD_YCoCgToLinear( diffResult.xyz );
+    diffResult.w = max( diffResult.w, 0.0 );
+    diffResult.xyz = _NRD_LinearToYCoCg( diffResult.xyz );
 
     // Output
     gOut_InternalData[ pixelPos ] = PackDiffInternalData( float3( diffAccumSpeeds, diffAccumSpeed ) );

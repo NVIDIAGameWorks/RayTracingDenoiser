@@ -35,6 +35,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float2 gInvScreenSize;
     float2 gJitter;
     float gAmbient;
+    float gAmbientInComposition;
     float gSeparator;
     float gRoughnessOverride;
     float gMetalnessOverride;
@@ -51,7 +52,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gDebug;
     float gDiffSecondBounce;
     float gTransparent;
-    uint gSvgf;
+    uint gDenoiserType;
     uint gDisableShadowsAndEnableImportanceSampling;
     uint gOnScreen;
     uint gFrameIndex;
@@ -79,6 +80,9 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 //=============================================================================================
 
 // Constants
+#define NRD                                 0
+#define SVGF                                1
+
 #define SHOW_FINAL                          0
 #define SHOW_AMBIENT_OCCLUSION              1
 #define SHOW_SPECULAR_OCCLUSION             2
@@ -112,7 +116,7 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 #define USE_BIG_VALUE_CHECK                 0
 
 #define TAA_HISTORY_SHARPNESS               0.5 // [0; 1], 0.5 matches Catmull-Rom
-#define TAA_MAX_HISTORY_WEIGHT              0.9
+#define TAA_MAX_HISTORY_WEIGHT              0.95
 #define TAA_MIN_HISTORY_WEIGHT              0.1
 #define TAA_MOTION_MAX_REUSE                0.1
 #define MAX_MIP_LEVEL                       11.0

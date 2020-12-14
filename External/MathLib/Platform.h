@@ -39,7 +39,7 @@
     #define PLATFORM_INTEL_COMPILER
 #endif
 
-#if defined(PLATFORM_INTEL_COMPILER) || (_MSC_VER>1920)
+#if defined(PLATFORM_INTEL_COMPILER) || (_MSC_VER >= 1920)
     #define PLATFORM_HAS_SVML_INTRISICS
 #endif
 
@@ -74,7 +74,12 @@
 #define PLATFORM_INTRINSIC_AVX1                         2       // NOTE: +FP16C
 #define PLATFORM_INTRINSIC_AVX2                         3       // NOTE: +FMA3
 
-#define PLATFORM_INTRINSIC                              PLATFORM_INTRINSIC_SSE4
+#if( _MSC_VER >= 1920 )
+    // TODO: disable __m256d emulation if VS2019 is used
+    #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_AVX2
+#else
+    #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_SSE4
+#endif
 
 #if( _MSC_VER < 1800 )
     #define round(x)        floor(x + T(0.5))

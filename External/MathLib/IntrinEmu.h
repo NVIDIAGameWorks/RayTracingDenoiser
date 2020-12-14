@@ -814,8 +814,8 @@ PLATFORM_INLINE emu__m256i emu_mm256_castsi128_si256(const __m128i& a)
 #define __m256i emu__m256i
 #define __m256d emu__m256d
 
-#define _mm256_add_pd    emu_mm256_add_pd
-#define _mm256_add_ps    emu_mm256_add_ps
+#define _mm256_add_pd emu_mm256_add_pd
+#define _mm256_add_ps emu_mm256_add_ps
 
 #define _mm256_addsub_pd emu_mm256_addsub_pd
 #define _mm256_addsub_ps emu_mm256_addsub_ps
@@ -1052,7 +1052,7 @@ PLATFORM_INLINE emu__m256i emu_mm256_castsi128_si256(const __m128i& a)
         return r;
     }
 
-    #define _mm256_cvtepi32_epi64(a)        _mm256_cmp_pd(_mm256_cvtepi32_pd(_mm_and_si128(a, _mm_set1_epi32(1))), _mm256_set1_pd(1.0), _CMP_EQ_OQ)
+    #define _mm256_cvtepi32_epi64(a)        _mm256_castpd_si256(_mm256_cmp_pd(_mm256_cvtepi32_pd(_mm_and_si128(a, _mm_set1_epi32(1))), _mm256_set1_pd(1.0), _CMP_EQ_OQ))
     #define _mm256_permute4x64_pd           emu_mm256_permute4x64_pd
 
     #define _mm_fmadd_ps(a, b, c)           _mm_add_ps(_mm_mul_ps(a, b), c)

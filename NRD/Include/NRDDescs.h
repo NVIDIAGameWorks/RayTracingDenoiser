@@ -25,7 +25,7 @@ namespace nrd
 
     enum class Method : uint32_t
     {
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFFA, IN_DIFFB
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT
         // OUTPUTS - OUT_DIFF_HIT
         NRD_DIFFUSE,
 
@@ -33,7 +33,7 @@ namespace nrd
         // OUTPUTS - OUT_SPEC_HIT
         NRD_SPECULAR,
 
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFFA, IN_DIFFB, IN_SPEC_HIT
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT, IN_SPEC_HIT
         // OUTPUTS - OUT_DIFF_HIT, OUT_SPEC_HIT
         NRD_DIFFUSE_SPECULAR,
 
@@ -111,12 +111,17 @@ namespace nrd
 
         // RENAMINGS ========================================================================================================================
 
-        // .xyz - signal1, .w - signal2
-        IN_SVGF = IN_SPEC_HIT,
+        // Just to clarify that .w channel will be ignored (only RGB color space is supported!)
+        IN_DIFF = IN_DIFF_HIT,
+        IN_SPEC = IN_SPEC_HIT,
+        OUT_DIFF = OUT_DIFF_HIT,
+        OUT_SPEC = OUT_SPEC_HIT,
 
         // .xyz - signal1, .w - signal2
-        OUT_SVGF = OUT_SPEC_HIT,
+        IN_SVGF = IN_DIFF_HIT,
 
+        // .xyz - signal1, .w - signal2
+        OUT_SVGF = OUT_DIFF_HIT,
     };
 
     enum class Format : uint32_t

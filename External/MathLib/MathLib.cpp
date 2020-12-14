@@ -1376,7 +1376,7 @@ PLATFORM_INLINE v4d _ymm_cmp_4i(const v4i& x, const v4i& y)
 {
     v4i t = _mm_cmpeq_epi32(x, y);
 
-    return _mm256_cvtepi32_epi64(t);
+    return _mm256_castsi256_pd( _mm256_cvtepi32_epi64(t) );
 }
 
 PLATFORM_INLINE v4d _ymm_atan2(const v4d& y, const v4d& x)

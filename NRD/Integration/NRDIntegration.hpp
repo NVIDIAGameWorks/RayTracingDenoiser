@@ -449,8 +449,7 @@ void Nrd::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descr
             "IN_NORMAL_ROUGHNESS ",
             "IN_VIEWZ ",
             "IN_SHADOW ",
-            "IN_DIFFA ",
-            "IN_DIFFB ",
+            "IN_DIFF_HIT ",
             "IN_SPEC_HIT ",
             "IN_TRANSLUCENCY ",
 

@@ -301,6 +301,8 @@ void DenoiserImpl::AddSharedConstants(const MethodData& methodData, Constant*& d
     float w = float(methodData.desc.fullResolutionWidth);
     float h = float(methodData.desc.fullResolutionHeight);
     float unproject = 1.0f / (0.5f * h * m_ProjectY);
+    float infAndWorldSpaceMotion = m_CommonSettings.worldSpaceMotion ? m_CommonSettings.denoisingRange : -m_CommonSettings.denoisingRange;
+    float frameRateScale = Clamp( 16.7f / m_Timer.GetSmoothedElapsedTime(), 1.0f, 4.0f );
 
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4(data, m_Frustum);
@@ -310,10 +312,10 @@ void DenoiserImpl::AddSharedConstants(const MethodData& methodData, Constant*& d
     AddFloat(data, m_IsOrtho);
     AddFloat(data, unproject);
     AddFloat(data, m_CommonSettings.debug);
-    AddFloat(data, m_CommonSettings.denoisingRange);
+    AddFloat(data, infAndWorldSpaceMotion);
     AddFloat(data, m_CommonSettings.forceReferenceAccumulation ? 1.0f : 0.0f);
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, m_CommonSettings.worldSpaceMotion ? 1 : 0);
+    AddFloat(data, frameRateScale);
 }
 
 void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
@@ -567,4 +569,3 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "Methods/NrdShadow.hpp"
 #include "Methods/NrdTranslucentShadow.hpp"
 #include "Methods/Svgf.hpp"
-

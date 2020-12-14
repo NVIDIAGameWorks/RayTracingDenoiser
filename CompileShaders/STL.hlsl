@@ -130,6 +130,18 @@ namespace STL
         // REQUIREMENT: a < b
         #define _SmoothStep01( x ) ( x * x * ( 3.0 - 2.0 * x ) )
 
+        float SmoothStep01( float x )
+        { return _SmoothStep01( saturate( x ) ); }
+
+        float2 SmoothStep01( float2 x )
+        { return _SmoothStep01( saturate( x ) ); }
+
+        float3 SmoothStep01( float3 x )
+        { return _SmoothStep01( saturate( x ) ); }
+
+        float4 SmoothStep01( float4 x )
+        { return _SmoothStep01( saturate( x ) ); }
+
         float SmoothStep( float a, float b, float x )
         { x = _LinearStep( a, b, x ); return _SmoothStep01( x ); }
 

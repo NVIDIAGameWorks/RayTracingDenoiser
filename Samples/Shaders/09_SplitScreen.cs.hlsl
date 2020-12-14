@@ -41,7 +41,7 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
 
     // Split screen - noisy input / denoised output
     uint2 checkerboardPos = pixelPos;
-    checkerboardPos.x >>= gSvgf ? 0 : gCheckerboard;
+    checkerboardPos.x >>= gDenoiserType == NRD ? gCheckerboard : 0; // TODO: No checkerboard support
 
     float s = gIn_Unfiltered_Shadow[ pixelPos ].x;
     float3 translucency = gIn_Unfiltered_Translucency[ pixelPos ];
@@ -50,9 +50,6 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
 
     float4 diff = gIn_Unfiltered_Diff[ checkerboardPos ];
     float4 spec = gIn_Unfiltered_Spec[ checkerboardPos ];
-
-    if( gSvgf )
-        shadowData.xyz = translucency;
 
     gOut_Shadow[ pixelPos ] = shadowData;
     gOut_Diff[ pixelPos ] = diff;

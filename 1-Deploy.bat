@@ -5,8 +5,22 @@
 
 set WIN_SDK_PATH=C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\
 set DATA_FOLDER=_Data
-set TARGET_VS=%1
-if "%1"=="" set TARGET_VS="vs2017"
+
+set TARGET_VS=vs2017
+echo 1 - vs2017
+echo 2 - vs2019
+:CHOOSE_VS_START
+set /P M=Choose Visual Studio [1-2]:
+if %M%==1 goto VS2017
+if %M%==2 goto VS2019
+goto CHOOSE_VS_START
+:VS2017
+set TARGET_VS=vs2017
+goto CHOOSE_VS_END
+:VS2019
+set TARGET_VS=vs2019
+goto CHOOSE_VS_END
+:CHOOSE_VS_END
 
 :: =================================================================================================================================================================================
 :: CHECK FOR SDKs

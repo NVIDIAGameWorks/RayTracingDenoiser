@@ -36,7 +36,8 @@ float2 GetRandom( bool isCheckerboard, uint seed, Texture2D<uint3> texScrambling
     // WHITE NOISE (for testing purposes)
 
     float4 white = STL::Rng::GetFloat4( );
-    if( gUseBlueNoise == 0 || ( gSvgf && sppVirtual == 1 ) )
+    bool forceWhiteNoise = gDenoiserType != NRD && sppVirtual != 1; // TODO: modify some settings to WAR unsupported and not working stuff in non-NRD
+    if( !gUseBlueNoise || forceWhiteNoise )
         return white.xy;
 
     // BLUE NOISE
@@ -387,7 +388,7 @@ void ENTRYPOINT( )
     // Early out
     if( geometryProps0.IsSky( ) )
     {
-        gOut_Shadow[ pixelPos ] = gSvgf ? 1.0 : NRD_INF_SHADOW;
+        gOut_Shadow[ pixelPos ] = NRD_INF_SHADOW;
         gOut_Translucency[ pixelPos ] = 1.0;
 
         #if( USE_BIG_VALUE_CHECK == 1 )
@@ -422,7 +423,7 @@ void ENTRYPOINT( )
     // Sun shadow
     float4 shadowData0 = CastSoftShadowRay( geometryProps0, materialProps0 );
     gOut_Shadow[ pixelPos ] = NRD_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.w == INF ? NRD_FP16_MAX : shadowData0.w );
-    gOut_Translucency[ pixelPos ] = lerp( shadowData0.xyz, 1.0, gSvgf ? float( shadowData0.w == INF ) : 0.0 );
+    gOut_Translucency[ pixelPos ] = shadowData0.xyz;
 
     // Secondary rays
     float4 diffIndirect = 0;
@@ -693,10 +694,7 @@ void ENTRYPOINT( )
         if( isDiffuse )
         {
             float normDist = saturate( pathLength / ( gDiffDistScale + f ) );
-            diffIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist );
-
-            if( gSvgf )
-                diffIndirect = float4( Clight1, normDist );
+            diffIndirect = NRD_FrontEnd_PackRadiance( gDenoiserType != NRD, Clight1, normDist );
         }
         else
         {
@@ -709,10 +707,7 @@ void ENTRYPOINT( )
             }
 
             float normDist = saturate( pathLength / ( gSpecHitDistScale + f ) );
-            specIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist, materialProps0.roughness );
-
-            if( gSvgf )
-                specIndirect = float4( Clight1, normDist );
+            specIndirect = NRD_FrontEnd_PackRadiance( gDenoiserType != NRD, Clight1, normDist, materialProps0.roughness );
         }
 
 #if( CHECKERBOARD == 0 )
@@ -724,9 +719,8 @@ void ENTRYPOINT( )
     gOut_Diff[ pixelPos ] = diffIndirect;
     gOut_Spec[ pixelPos ] = specIndirect;
 #else
-    if( gSvgf )
+    if( gDenoiserType != NRD ) // TODO: No checkerboard support
     {
-        // No checkerboard support
         uint2 pixelPosA = uint2( pixelPos.x & ~0x1, pixelPos.y );
         uint2 pixelPosB = pixelPosA + uint2( 1, 0 );
 

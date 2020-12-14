@@ -23,8 +23,8 @@ Special thanks:
 
 #define NRD_VERSION_MAJOR 1
 #define NRD_VERSION_MINOR 8
-#define NRD_VERSION_BUILD 14
-#define NRD_VERSION_DATE "2 December 2020"
+#define NRD_VERSION_BUILD 17
+#define NRD_VERSION_DATE "8 December 2020"
 #define NRD_CALL __fastcall
 
 #ifndef NRD_API

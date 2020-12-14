@@ -695,9 +695,8 @@ bool SampleBase::Create(const wchar_t* windowTitle, HINSTANCE hInstance, int nCm
     wcex.lpszClassName = windowName;
     RegisterClassExW(&wcex);
 
-    // TODO: it doesn't work well for multi-monitor setup
-    const uint32_t screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    const uint32_t screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    const uint32_t screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    const uint32_t screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
     if (m_WindowWidth > screenWidth)
         m_WindowWidth = screenWidth;

@@ -23,7 +23,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gInf;
     float gReference;
     uint gFrameIndex;
-    uint gWorldSpaceMotion;
+    float gFramerateScale;
 
     float4x4 gWorldToView;
     float4 gRotator;
@@ -84,7 +84,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float centerZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
     [branch]
-    if( abs( centerZ ) > gInf )
+    if( abs( centerZ ) > abs( gInf ) )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Diff[ pixelPos ] = 0;
@@ -110,12 +110,18 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 d0 = gIn_Diff[ checkerboardPos.xy ];
     float4 d1 = gIn_Diff[ checkerboardPos.zy ];
     if( !hasData.x )
-        diff = d0 * w.x + d1 * w.y;
+    {
+        diff *= saturate( 1.0 - w.x - w.y );
+        diff += d0 * w.x + d1 * w.y;
+    }
 
     float4 s0 = gIn_Spec[ checkerboardPos.xy ];
     float4 s1 = gIn_Spec[ checkerboardPos.zy ];
     if( !hasData.y )
-        spec = s0 * w.x + s1 * w.y;
+    {
+        spec *= saturate( 1.0 - w.x - w.y );
+        spec += s0 * w.x + s1 * w.y;
+    }
 
     float diffCenterNormHitDist = diff.w;
     float specCenterNormHitDist = spec.w;
@@ -128,13 +134,17 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Blur radius
     float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffScalingParams );
-    float diffBlurRadius = DIFF_PRE_BLUR_RADIUS_SCALE * GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, 1.0 );
+    float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, PRE_BLUR_NON_LINEAR_ACCUM_SPEED( 1.0 ) );
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
     float specHitDist = GetHitDistance( spec.w, centerZ, gSpecScalingParams, roughness );
-    float specBlurRadius = SPEC_PRE_BLUR_RADIUS_SCALE * GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, 1.0 );
+    float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, PRE_BLUR_NON_LINEAR_ACCUM_SPEED( roughness ) );
     specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
     float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );
+
+    // Blur radius scale
+    diffWorldBlurRadius *= PRE_BLUR_RADIUS_SCALE;
+    specWorldBlurRadius *= PRE_BLUR_RADIUS_SCALE;
 
     // Tangent basis
     float2x3 diffTvBv = GetKernelBasis( centerPos, Nv, diffWorldBlurRadius );
@@ -147,14 +157,15 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float edge = DetectEdge( N, smemPos );
 
     // Denoising
-    float diffSum = 1.0;
+    float2 diffSum = 1.0;
     float2 specSum = 1.0;
 
-    float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, gMetersToUnits, centerZ );
+    float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, centerZ );
     float diffNormalWeightParams = GetNormalWeightParams( 1.0, edge );
     float specNormalWeightParams = GetNormalWeightParams( roughness, edge );
+    float2 diffHitDistanceWeightParams = GetHitDistanceWeightParams( diffCenterNormHitDist, PRE_BLUR_NORM_ACCUM_SPEED( 1.0 ), diffHitDist, centerPos );
+    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( specCenterNormHitDist, PRE_BLUR_NORM_ACCUM_SPEED( roughness ), specHitDist, centerPos );
     float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
-    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( roughness, specCenterNormHitDist );
 
     UNROLL
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
@@ -180,12 +191,15 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
             normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
             // Sample weight
-            float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
+            float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
             w *= GetNormalWeight( diffNormalWeightParams, N, normal.xyz );
             w *= checkerboardUv.z;
 
-            diff += d * w;
-            diffSum += w;
+            float2 ww = w;
+            ww.x *= GetHitDistanceWeight( diffHitDistanceWeightParams, d.w );
+
+            diff += d * ww.xxxy;
+            diffSum += ww;
         }
 
         // Specular
@@ -207,7 +221,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
             normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
             // Sample weight
-            float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
+            float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
             w *= GetNormalWeight( specNormalWeightParams, N, normal.xyz );
             w *= GetRoughnessWeight( specRoughnessWeightParams, normal.w );
             w *= checkerboardUv.z;
@@ -220,7 +234,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         }
     }
 
-    diff *= STL::Math::PositiveRcp( diffSum );
+    diff *= STL::Math::PositiveRcp( diffSum ).xxxy;
     spec *= STL::Math::PositiveRcp( specSum ).xxxy;
 
     // Special case for hit distance

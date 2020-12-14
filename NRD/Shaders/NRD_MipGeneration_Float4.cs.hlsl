@@ -23,7 +23,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gInf;
     float gReference;
     uint gFrameIndex;
-    uint gWorldSpaceMotion;
+    float gFramerateScale;
 };
 
 #include "NRD_Common.hlsl"
@@ -45,7 +45,7 @@ groupshared float s_TempB[ 17 ][ 17 ];
 // high roughness ) to highly compressed value ( for low roughness )... which will be later decompressed ( and will get even more energy on top )
 #define DO_REDUCTION \
 { \
-    float4 w = float4( abs( float4( b00, b10, b01, b11 ) / NRD_FP16_VIEWZ_SCALE ) < gInf ); \
+    float4 w = float4( abs( float4( b00, b10, b01, b11 ) / NRD_FP16_VIEWZ_SCALE ) < abs( gInf ) ); \
     a = a00 * w.x + a10 * w.y + a01 * w.z + a11 * w.w; \
     b = b00 * w.x + b10 * w.y + b01 * w.z + b11 * w.w; \
     float sum = dot( w, 1.0 ); \

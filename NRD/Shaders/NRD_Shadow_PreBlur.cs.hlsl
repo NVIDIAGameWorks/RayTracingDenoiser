@@ -23,7 +23,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gInf;
     float gReference;
     uint gFrameIndex;
-    uint gWorldSpaceMotion;
+    float gFramerateScale;
 
     float4x4 gWorldToView;
     float4 gRotator;
@@ -84,7 +84,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Early out
     [branch]
-    if( abs( centerZ ) > gInf || centerHitDist == 0.0 )
+    if( abs( centerZ ) > abs( gInf ) || centerHitDist == 0.0 )
     {
         gOut_Hit_ViewZ[ pixelPos ] = float2( 0.0, centerZ * NRD_FP16_VIEWZ_SCALE );
 
@@ -171,7 +171,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     sum = 1.0;
 
     float centerWeight = STL::Math::LinearStep( 1.0, 0.9, result.x );
-    float2 geometryWeightParams = GetGeometryWeightParams( Xv, Nv, gMetersToUnits, centerZ, SHADOW_PLANE_DISTANCE_SCALE );
+    float2 geometryWeightParams = GetGeometryWeightParams( Xv, Nv, centerZ, SHADOW_PLANE_DISTANCE_SCALE );
 
     SHADOW_UNROLL
     for( uint i = 0; i < SHADOW_POISSON_SAMPLE_NUM; i++ )
@@ -194,7 +194,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
         // Sample weight
         float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
-        float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
+        float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
         w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
 
         #if( USE_SHADOW_BLUR_RADIUS_FIX == 1 )

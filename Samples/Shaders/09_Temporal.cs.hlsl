@@ -11,12 +11,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "09_Resources.hlsl"
 
 NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 0, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 1, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_ComposedLighting_ViewZ, t, 2, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_TransparentLighting, t, 3, 1 );
-NRI_RESOURCE( Texture2D<float4>, gIn_History, t, 4, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_ComposedLighting_ViewZ, t, 1, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_TransparentLighting, t, 2, 1 );
+NRI_RESOURCE( Texture2D<float4>, gIn_History, t, 3, 1 );
 
-NRI_RESOURCE( RWTexture2D<float4>, gOut_History, u, 5, 1 );
+NRI_RESOURCE( RWTexture2D<float3>, gOut_History, u, 4, 1 );
 
 #define BORDER 1
 #define GROUP_X 16
@@ -26,7 +25,6 @@ NRI_RESOURCE( RWTexture2D<float4>, gOut_History, u, 5, 1 );
 #define RENAMED_GROUP_Y ( ( GROUP_X * GROUP_Y ) / BUFFER_X )
 
 groupshared float4 s_Data[ BUFFER_Y ][ BUFFER_X ];
-groupshared float4 s_Normal[ BUFFER_Y ][ BUFFER_X ];
 
 float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const float sharpness )
 {
@@ -86,7 +84,6 @@ void Preload( int2 sharedId, int2 globalId )
     color_viewZ.w = abs( color_viewZ.w ) * STL::Math::Sign( gNearZ ) / NRD_FP16_VIEWZ_SCALE;
 
     s_Data[ sharedId.y ][ sharedId.x ] = color_viewZ;
-    s_Normal[ sharedId.y ][ sharedId.x ] = UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] );
 }
 
 #define MOTION_LENGTH_SCALE 16.0
@@ -176,66 +173,28 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, gWorldSpaceMotion );
     pixelUvPrev -= offset;
 
-    // Edge detection
-    float3 Navg = s_Normal[ threadId.y + BORDER + 0 ][threadId.x + BORDER + 0 ].xyz;
-    Navg += s_Normal[ threadId.y + BORDER + 1 ][threadId.x + BORDER + 0 ].xyz;
-    Navg += s_Normal[ threadId.y + BORDER + 0 ][threadId.x + BORDER + 1 ].xyz;
-    Navg += s_Normal[ threadId.y + BORDER + 1 ][threadId.x + BORDER + 1 ].xyz;
-    Navg /= 4.0;
-    float edge = 1.0 - STL::Math::SmoothStep( 0.94, 0.98, length( Navg ) ); // 0.95, 1.0 - more edges
-
     // History clamping
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
-    float4 t = BicubicFilterNoCorners( gIn_History, gLinearSampler, pixelPosPrev, gInvScreenSize, TAA_HISTORY_SHARPNESS );
-    float3 history = t.xyz;
-    float2 motion = pixelUvPrev - pixelUv;
-    float motionLength = length( motion * gScreenSize );
-    float motionLengthPrev = MOTION_LENGTH_SCALE * t.w;
-    float motionDelta = abs( motionLength - motionLengthPrev );
-    float disocclusion = STL::Math::SmoothStep( 0.0, 1.5, motionDelta );
-
-    if( gWorldSpaceMotion )
-    {
-        float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gCameraFrustum, viewZ, gIsOrtho );
-        float3 X = STL::Geometry::AffineTransform( gViewToWorld, Xv );
-
-        float3 mv = gIn_ObjectMotion[ pixelPos ] * ( gWorldSpaceMotion ? 1.0 : gInvScreenSize.xyy );
-        float3 Xprev = X + mv;
-
-        float3 Xt = Xprev - gCameraDelta;
-        float2 uvt = STL::Geometry::GetScreenUv( gWorldToClip, Xt );
-        float2 parallaxInUv = uvt - pixelUv;
-        float parallaxInPixels = length( parallaxInUv * gScreenSize );
-
-        disocclusion *= STL::Math::SmoothStep( 0.0, 1.5, parallaxInPixels );
-    }
-
-    float scale = 1.0 + edge * 1.1 / ( STL::Math::Pow01( disocclusion, 0.5 ) + 0.1 );
-    float3 historyClamped = ClipAABB( aabbCenter, aabbExtents * scale, history );
+    float3 history = BicubicFilterNoCorners( gIn_History, gLinearSampler, pixelPosPrev, gInvScreenSize, TAA_HISTORY_SHARPNESS ).xyz;
+    float3 historyClamped = ClipAABB( aabbCenter, aabbExtents, history );
 
     // History weight
-    float lc = STL::Color::Luminance( input, STL_LUMINANCE_BT709 );
-    float lh = STL::Color::Luminance( history, STL_LUMINANCE_BT709 );
-    float ls = STL::Color::Luminance( aabbExtents, STL_LUMINANCE_BT709 );
-    float ld = saturate( abs( lc - lh ) - ls ) / ( max( lc, lh ) + ls + 0.01 );
-
     bool isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
+    float2 motion = pixelUvPrev - pixelUv;
     float motionAmount = saturate( length( motion ) / TAA_MOTION_MAX_REUSE );
     float historyWeight = lerp( TAA_MAX_HISTORY_WEIGHT, TAA_MIN_HISTORY_WEIGHT, motionAmount );
-    historyWeight *= lerp( 1.0, 0.75, ld );
     historyWeight *= float( gMipBias != 0.0 && isInScreen );
 
     // Dithering
     STL::Rng::Initialize( pixelPos, gFrameIndex );
     float2 rnd = STL::Rng::GetFloat2( );
     float luma = STL::Color::Luminance( aabbCenter, STL_LUMINANCE_BT709 );
-    float amplitude = lerp( 0.2, 0.005, STL::Math::Sqrt01( luma ) );
+    float amplitude = lerp( 0.1, 0.0025, STL::Math::Sqrt01( luma ) );
     float2 dither = 1.0 + ( rnd - 0.5 ) * amplitude;
     historyClamped *= dither.x;
 
     // Final mix
     float3 result = lerp( input, historyClamped, historyWeight );
-    motionLengthPrev = lerp( motionLength, motionLengthPrev, historyWeight );
 
     // Split screen - noisy input / denoised output
     result = pixelUv.x < gSeparator ? input : result;
@@ -248,7 +207,5 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     result = lerp( result, nvColor * verticalLine, verticalLine * float( gSeparator != 0.0 ) );
 
     // Output
-    float packedMotionLengthPrev = motionLengthPrev / MOTION_LENGTH_SCALE;
-
-    gOut_History[ pixelPos ] = float4( result, packedMotionLengthPrev );
+    gOut_History[ pixelPos ] = result;
 }

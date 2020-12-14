@@ -45,21 +45,16 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
 
     // Denoised data
     float4 shadowData = gIn_Shadow[ pixelPos ];
+    shadowData = NRD_BackEnd_UnpackShadow( shadowData );
+    float3 shadow = lerp( shadowData.yzw, 1.0, shadowData.x );
 
     float4 indirectSpec = gIn_Spec[ pixelPos ];
+    indirectSpec = NRD_BackEnd_UnpackRadiance( gDenoiserType != NRD, indirectSpec, roughness );
     indirectSpec.xyz *= gIndirectSpecular;
 
     float4 indirectDiff = gIn_Diff[ pixelPos ];
+    indirectDiff = NRD_BackEnd_UnpackRadiance( gDenoiserType != NRD, indirectDiff );
     indirectDiff.xyz *= gIndirectDiffuse;
-
-    if( !gSvgf )
-    {
-        shadowData = NRD_BackEnd_UnpackShadow( shadowData );
-        indirectSpec = NRD_BackEnd_UnpackRadiance( indirectSpec, roughness );
-        indirectDiff = NRD_BackEnd_UnpackRadiance( indirectDiff );
-    }
-
-    float3 shadow = gSvgf ? shadowData.xyz : lerp( shadowData.yzw, 1.0, shadowData.x );
 
     // Good denoisers do nothing with sky...
     shadow = lerp( 1.0, shadow, isGround );
@@ -85,8 +80,8 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     // Add ambient
     float m = roughness * roughness;
     indirectDiff.w *= GG.y;
-    indirectDiff.xyz += gAmbient * indirectDiff.w;
-    indirectSpec.xyz += gAmbient * indirectSpec.w * m;
+    indirectDiff.xyz += gAmbientInComposition * gAmbient * indirectDiff.w;
+    indirectSpec.xyz += gAmbientInComposition * gAmbient * indirectSpec.w * m;
 
     // Add indirect lighting
     Lsum += indirectDiff.xyz * albedo;

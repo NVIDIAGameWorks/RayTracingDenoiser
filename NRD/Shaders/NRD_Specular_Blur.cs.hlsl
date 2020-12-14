@@ -23,7 +23,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gInf;
     float gReference;
     uint gFrameIndex;
-    uint gWorldSpaceMotion;
+    float gFramerateScale;
 
     float4x4 gWorldToView;
     float4 gRotator;
@@ -61,7 +61,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float centerZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
     [branch]
-    if( abs( centerZ ) > gInf )
+    if( abs( centerZ ) > abs( gInf ) )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Spec[ pixelPos ] = 0;
@@ -79,9 +79,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float3 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
     float specNormAccumSpeed = saturate( specInternalData.x * STL::Math::PositiveRcp( specInternalData.y ) );
     float specNonLinearAccumSpeed = 1.0 / ( 1.0 + specInternalData.x );
-
-    // Specular specific - want to use wide blur radius
-    specNonLinearAccumSpeed = lerp( 0.02, 1.0, specNonLinearAccumSpeed );
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -106,10 +103,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Denoising
     float2 specSum = 1.0;
 
-    float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, gMetersToUnits, centerZ );
+    float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, centerZ );
     float specNormalWeightParams = GetNormalWeightParams( roughness, edge, specNormAccumSpeed );
     float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
-    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( roughness, specCenterNormHitDist );
+    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( specCenterNormHitDist, specNormAccumSpeed, specHitDist, centerPos );
 
     UNROLL
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
@@ -128,7 +125,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
 
         // Sample weight
-        float w = GetGeometryWeight( Nv, samplePos, geometryWeightParams );
+        float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
         w *= GetNormalWeight( specNormalWeightParams, N, normal.xyz );
         w *= GetRoughnessWeight( specRoughnessWeightParams, normal.w );
 

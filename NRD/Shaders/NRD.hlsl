@@ -124,6 +124,11 @@ float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool b
     return bNormalize ? normalize( n ) : n;
 }
 
+float _NRD_Luminance( float3 linearColor )
+{
+    return dot( linearColor, float3( 0.2990, 0.5870, 0.1140 ) );
+}
+
 float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 {
     float4 r;
@@ -159,15 +164,17 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 // Must be used to "clear" INF pixels
 #define NRD_INF_SHADOW                  float2( NRD_FP16_MAX, NRD_FP16_MAX )
 
-float4 NRD_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float linearRoughness = 1.0 )
+float4 NRD_FrontEnd_PackRadiance( bool rgb, float3 radiance, float normHitDist, float linearRoughness = 1.0 )
 {
-    float3 ycocg = _NRD_LinearToYCoCg( radiance );
+    if( !rgb )
+        radiance = _NRD_LinearToYCoCg( radiance );
 
     float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float k = ycocg.x * exposure;
-    float3 compressedYcocg = ycocg / ( 1.0 + k );
+    float lum = rgb ? _NRD_Luminance( radiance ) : radiance.x;
+    float k = lum * exposure;
+    float3 compressedRadiance = radiance / ( 1.0 + k );
 
-    return float4( compressedYcocg, normHitDist );
+    return float4( compressedRadiance, normHitDist );
 }
 
 float2 NRD_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
@@ -189,15 +196,17 @@ float2 NRD_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
 // BACK-END UNPACKING
 //=================================================================================================================================
 
-float4 NRD_BackEnd_UnpackRadiance( float4 compressedYcocg_normHitDist, float linearRoughness = 1.0 )
+float4 NRD_BackEnd_UnpackRadiance( bool rgb, float4 compressedRadiance_normHitDist, float linearRoughness = 1.0 )
 {
     float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float k = compressedYcocg_normHitDist.x * exposure;
-    float3 ycocg = compressedYcocg_normHitDist.xyz / max( 1.0 - k, NRD_EPS );
+    float lum = rgb ? _NRD_Luminance( compressedRadiance_normHitDist.xyz ) : compressedRadiance_normHitDist.x;
+    float k = lum * exposure;
+    float3 radiance = compressedRadiance_normHitDist.xyz / max( 1.0 - k, NRD_EPS );
 
-    float3 radiance = _NRD_YCoCgToLinear( ycocg );
+    if( !rgb )
+        radiance = _NRD_YCoCgToLinear( radiance );
 
-    return float4( radiance, compressedYcocg_normHitDist.w );
+    return float4( radiance, compressedRadiance_normHitDist.w );
 }
 
 #define NRD_BackEnd_UnpackShadow( color )  ( color * color )

@@ -6,9 +6,16 @@ if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
     exit /b 1
 )
 
+set TARGET_VS=vs2017
+set VER_VS=^[15.0^^,16.0^^)
+if exist "_Compiler\vs2019" (
+    set TARGET_VS=vs2019
+    set VER_VS=^[16.0^^,17.0^^)
+)
+
 setlocal EnableDelayedExpansion
 
-for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do (
+for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -version %VER_VS% -products * -requires Microsoft.Component.MSBuild -property installationPath`) do (
     set VS_PATH=%%i
 )
 
@@ -22,6 +29,6 @@ if NOT exist "%VCVARS%" (
 )
 
 call "%VCVARS%"
-msbuild /t:Build /p:Configuration=Release /p:Platform=x64 "_Compiler\vs2017\SANDBOX.sln"
+msbuild /t:Build /p:Configuration=Release /p:Platform=x64 "_Compiler\%TARGET_VS%\SANDBOX.sln"
 
 pause

@@ -89,7 +89,8 @@ workspace "SANDBOX"
             kind "SharedLib"
             location (workspaceDir.."/%{prj.name}")
             includedirs { "%{prj.name}/Include", "External" }
-            files { "%{prj.name}/Source/**", "%{prj.name}/Include/**", "External/MathLib/mathlib.cpp", "External/Timer/*", "External/StdAllocator/*" }
+            files { "%{prj.name}/Source/**", "%{prj.name}/Include/**", "External/MathLib/**", "External/Timer/*", "External/StdAllocator/*" }
+            vpaths { ["MathLib"] = {"External/MathLib/**"} }
             vpaths { ["NRD"] = inc.."**.h" }
             vpaths { ["Methods"] = "**.hpp" }
             vpaths { ["Sources"] = {"**.cpp", "**.h", "**.rc"} }
@@ -174,7 +175,8 @@ workspace "SANDBOX"
             kind "StaticLib"
             location (workspaceDir.."/%{prj.name}")
             includedirs { "External", targetDepsDir, targetDepsDir.."/Assimp/include", "NRI/Include" }
-            files { dir.."%{prj.name}/**", "External/MathLib/mathlib*.*", "External/MathLib/packed.h", "External/Timer/*" }
+            files { dir.."%{prj.name}/**", "External/MathLib/**", "External/Timer/*" }
+            vpaths { ["MathLib"] = {"External/MathLib/**"} }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             dependson { "CompileShaders" }
             defines { defs }

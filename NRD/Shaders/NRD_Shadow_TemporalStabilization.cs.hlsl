@@ -23,7 +23,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gInf;
     float gReference;
     uint gFrameIndex;
-    uint gWorldSpaceMotion;
+    float gFramerateScale;
 
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
@@ -71,7 +71,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Early out
     [branch]
-    if( abs( viewZ ) > gInf )
+    if( abs( viewZ ) > abs( gInf ) )
     {
         #if( SHADOW_BLACK_OUT_INF_PIXELS == 1 )
             gOut_Shadow_Translucency[ pixelPos ] = 0;
@@ -122,7 +122,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Compute previous pixel position
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, gWorldSpaceMotion );
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
     float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
 
     // Sample history
