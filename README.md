@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoiser v1.8.17
+# NVIDIA Real-time (Ray tracing) Denoiser v1.9.0
 
 ## QUICK START GUIDE
 
@@ -13,6 +13,8 @@ These signals can be denoised using the following denoisers:
 * NRD_DIFFUSE_SPECULAR - combined version of DIFFUSE and SPECULAR (faster)
 * NRD_SHADOW - opaque shadow denoiser
 * NRD_TRANSLUCENT_SHADOW - translucent shadow denoiser
+* RELAX (experimental) - diffuse and specular combined denoiser, has been designed for RTXDI (RTX Direct Illumination)
+* SVGF - baseline denoiser (mostly for comparison and academic needs)
 
 NRD is distributed as source as well with a “ready-to-use” library (if used in a precompiled form).
 

@@ -81,7 +81,8 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 
 // Constants
 #define NRD                                 0
-#define SVGF                                1
+#define RELAX                               1
+#define SVGF                                2
 
 #define SHOW_FINAL                          0
 #define SHOW_AMBIENT_OCCLUSION              1

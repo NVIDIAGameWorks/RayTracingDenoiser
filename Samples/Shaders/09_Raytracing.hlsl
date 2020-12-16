@@ -694,7 +694,10 @@ void ENTRYPOINT( )
         if( isDiffuse )
         {
             float normDist = saturate( pathLength / ( gDiffDistScale + f ) );
-            diffIndirect = NRD_FrontEnd_PackRadiance( gDenoiserType != NRD, Clight1, normDist );
+            diffIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist );
+
+            if( gDenoiserType != NRD )
+                diffIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist );
         }
         else
         {
@@ -707,7 +710,10 @@ void ENTRYPOINT( )
             }
 
             float normDist = saturate( pathLength / ( gSpecHitDistScale + f ) );
-            specIndirect = NRD_FrontEnd_PackRadiance( gDenoiserType != NRD, Clight1, normDist, materialProps0.roughness );
+            specIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist, materialProps0.roughness );
+
+            if( gDenoiserType != NRD )
+                specIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist, materialProps0.roughness );
         }
 
 #if( CHECKERBOARD == 0 )

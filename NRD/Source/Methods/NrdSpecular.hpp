@@ -65,7 +65,7 @@ size_t DenoiserImpl::AddMethod_NrdSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ACCUMULATED) );
 
-        desc.constantBufferDataSize = SumConstants(4, 4, 1, 4);
+        desc.constantBufferDataSize = SumConstants(4, 4, 1, 5);
 
         AddDispatch(desc, NRD_Specular_TemporalAccumulation, w, h);
     }
@@ -171,6 +171,7 @@ void DenoiserImpl::UpdateMethod_NrdSpecular(const MethodData& methodData)
     const NrdSpecularSettings& settings = methodData.settings.specular;
 
     float maxAccumulatedFrameNum = float( Min(settings.maxAccumulatedFrameNum, NRD_SPECULAR_MAX_HISTORY_FRAME_NUM) );
+    float noisinessBlurrinessBalance = settings.noisinessBlurrinessBalance;
     float blurRadius = settings.blurRadius;
     float disocclusionThreshold = settings.disocclusionThreshold;
     bool useAntilag = !m_CommonSettings.forceReferenceAccumulation && settings.antilagSettings.enable;
@@ -178,6 +179,7 @@ void DenoiserImpl::UpdateMethod_NrdSpecular(const MethodData& methodData)
     if (m_CommonSettings.forceReferenceAccumulation)
     {
         maxAccumulatedFrameNum = settings.maxAccumulatedFrameNum == 0 ? 0.0f : NRD_SPECULAR_MAX_HISTORY_FRAME_NUM;
+        noisinessBlurrinessBalance = 1.0f;
         blurRadius = 0.0f;
         disocclusionThreshold = 0.005f;
     }
@@ -211,7 +213,8 @@ void DenoiserImpl::UpdateMethod_NrdSpecular(const MethodData& methodData)
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, disocclusionThreshold);
     AddFloat(data, m_JitterDelta );
-    AddFloat(data, float(maxAccumulatedFrameNum));
+    AddFloat(data, maxAccumulatedFrameNum);
+    AddFloat(data, noisinessBlurrinessBalance);
     AddUint(data, checkerboard);
     ValidateConstants(data);
 

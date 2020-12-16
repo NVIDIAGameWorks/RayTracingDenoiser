@@ -301,6 +301,18 @@ float GetColorErrorForAdaptiveRadiusScale( float luma, float lumaPrev, float non
     return error;
 }
 
+float GetAccumSpeed( float4 prevAccumSpeed, float4 weights, float maxAccumulatedFrameNum, float noisinessBlurrinessBalance, out float accumSpeed )
+{
+    float4 accumSpeeds = prevAccumSpeed + 1.0;
+    float accumSpeedMax = STL::Filtering::ApplyBilinearCustomWeights( accumSpeeds.x, accumSpeeds.y, accumSpeeds.z, accumSpeeds.w, weights );
+    accumSpeedMax = min( accumSpeedMax, MAX_ACCUM_FRAME_NUM );
+
+    float accumSpeedClamped = min( accumSpeedMax, maxAccumulatedFrameNum );
+    accumSpeed = lerp( accumSpeedMax, accumSpeedClamped, noisinessBlurrinessBalance );
+
+    return lerp( maxAccumulatedFrameNum / MAX_ACCUM_FRAME_NUM, 1.0, noisinessBlurrinessBalance );
+}
+
 // Internal data
 
 float2 PackDiffInternalData( float3 accumSpeeds )
@@ -539,7 +551,7 @@ float2 GetTemporalAccumulationParams( float isInScreen, float accumSpeed, float 
     const float norm = MAX_ACCUM_FRAME_NUM / ( MAX_ACCUM_FRAME_NUM + 1.0 );
 
     float oneMinusNonLinearAccumSpeed = accumSpeed / ( 1.0 + accumSpeed );
-    float roughnessWeight = STL::Math::SmoothStep( 0.0, 0.5, roughness );
+    float roughnessWeight = STL::Math::SmoothStep( 0.0, 0.75, roughness );
     float sigmaAmplitude = oneMinusNonLinearAccumSpeed;
     sigmaAmplitude *= lerp( saturate( 1.0 - parallax ), 1.0, roughnessWeight );
     sigmaAmplitude = TS_SIGMA_AMPLITUDE * sigmaAmplitude + 1.0;
@@ -548,6 +560,7 @@ float2 GetTemporalAccumulationParams( float isInScreen, float accumSpeed, float 
     historyWeight *= 1.0 - STL::Math::SmoothStep( 0.0, TS_MOTION_MAX_REUSE, motionLength );
     historyWeight *= saturate( oneMinusNonLinearAccumSpeed / norm );
     historyWeight *= lerp( saturate( 1.0 - parallax ), 1.0, roughnessWeight );
+    historyWeight *= lerp( 1.0, oneMinusNonLinearAccumSpeed * saturate( 1.0 - parallax ), gReference );
 
     return float2( historyWeight, sigmaAmplitude ) * float( gFrameIndex != 0 );
 }

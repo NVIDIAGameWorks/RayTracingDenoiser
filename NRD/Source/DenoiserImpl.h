@@ -38,6 +38,7 @@ namespace nrd
         NrdSpecularSettings specular;
         NrdDiffuseSpecularSettings diffuseSpecular;
         NrdShadowSettings shadow;
+        RelaxSettings relax;
         SvgfSettings svgf;
     };
 
@@ -82,6 +83,9 @@ namespace nrd
 
         size_t AddMethod_NrdTranslucentShadow(uint16_t w, uint16_t h);
         void UpdateMethod_NrdTranslucentShadow(const MethodData& methodData);
+
+        size_t AddMethod_Relax(uint16_t w, uint16_t h);
+        void UpdateMethod_Relax(const MethodData& methodData);
 
         size_t AddMethod_Svgf(uint16_t w, uint16_t h);
         void UpdateMethod_Svgf(const MethodData& methodData);

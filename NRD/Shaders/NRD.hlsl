@@ -157,6 +157,8 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 // FRONT-END PACKING
 //=================================================================================================================================
 
+// NRD
+
 // Recommended to be used to "clear" INF pixels
 #define NRD_INF_DIFF                    0
 #define NRD_INF_SPEC                    0
@@ -164,13 +166,12 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 // Must be used to "clear" INF pixels
 #define NRD_INF_SHADOW                  float2( NRD_FP16_MAX, NRD_FP16_MAX )
 
-float4 NRD_FrontEnd_PackRadiance( bool rgb, float3 radiance, float normHitDist, float linearRoughness = 1.0 )
+float4 NRD_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float linearRoughness = 1.0 )
 {
-    if( !rgb )
-        radiance = _NRD_LinearToYCoCg( radiance );
+    radiance = _NRD_LinearToYCoCg( radiance );
 
     float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float lum = rgb ? _NRD_Luminance( radiance ) : radiance.x;
+    float lum = radiance.x;
     float k = lum * exposure;
     float3 compressedRadiance = radiance / ( 1.0 + k );
 
@@ -192,21 +193,46 @@ float2 NRD_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
     return r;
 }
 
+// RELAX / SVGF
+
+float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist, float linearRoughness = 1.0 )
+{
+    float exposure = NRD_GetColorCompressionExposure( linearRoughness );
+    float lum = _NRD_Luminance( radiance );
+    float k = lum * exposure;
+    float3 compressedRadiance = radiance / ( 1.0 + k );
+
+    return float4( compressedRadiance, hitDist ); // TODO: RELAX - .w channel in the diffuse input will be ignored
+}
+
 //=================================================================================================================================
 // BACK-END UNPACKING
 //=================================================================================================================================
 
-float4 NRD_BackEnd_UnpackRadiance( bool rgb, float4 compressedRadiance_normHitDist, float linearRoughness = 1.0 )
+// NRD
+
+float4 NRD_BackEnd_UnpackRadiance( float4 compressedRadiance_normHitDist, float linearRoughness = 1.0 )
 {
     float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float lum = rgb ? _NRD_Luminance( compressedRadiance_normHitDist.xyz ) : compressedRadiance_normHitDist.x;
+    float lum = compressedRadiance_normHitDist.x;
     float k = lum * exposure;
     float3 radiance = compressedRadiance_normHitDist.xyz / max( 1.0 - k, NRD_EPS );
 
-    if( !rgb )
-        radiance = _NRD_YCoCgToLinear( radiance );
+    radiance = _NRD_YCoCgToLinear( radiance );
 
     return float4( radiance, compressedRadiance_normHitDist.w );
 }
 
 #define NRD_BackEnd_UnpackShadow( color )  ( color * color )
+
+// RELAX / SVGF
+
+float4 RELAX_BackEnd_UnpackRadiance( float4 compressedRadiance, float linearRoughness = 1.0 )
+{
+    float exposure = NRD_GetColorCompressionExposure( linearRoughness );
+    float lum = _NRD_Luminance( compressedRadiance.xyz );
+    float k = lum * exposure;
+    float3 radiance = compressedRadiance.xyz / max( 1.0 - k, NRD_EPS );
+
+    return float4( radiance, compressedRadiance.w ); // TODO: RELAX - output doesn't have .w channel
+}

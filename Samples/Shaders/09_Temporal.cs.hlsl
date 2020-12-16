@@ -114,8 +114,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float3 m1 = 0;
     float3 m2 = 0;
     float3 input = 0;
-    float3 maxInput = -INF;
-    float3 minInput = INF;
 
     float viewZ = s_Data[ threadId.y + BORDER ][threadId.x + BORDER ].w;
     float viewZnearest = viewZ;
@@ -141,9 +139,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
                     viewZnearest = data.w;
                     offseti = t;
                 }
-
-                maxInput = max( maxInput, data.xyz );
-                minInput = min( minInput, data.xyz );
             }
 
             m1 += data.xyz;
@@ -156,13 +151,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     float3 aabbCenter = m1;
     float3 aabbExtents = sqrt( abs( m2 - m1 * m1 ) );
-
-    // Apply RCRS
-    if( pixelUv.x > gSeparator )
-    {
-        input = min( input, maxInput );
-        input = max( input, minInput );
-    }
 
     // Previous pixel position
     offseti -= BORDER;

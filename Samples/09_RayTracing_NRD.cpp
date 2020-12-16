@@ -42,6 +42,7 @@ constexpr uint32_t ANIMATED_INSTANCE_MAX_NUM = 512;
 enum Denoiser : int32_t
 {
     NRD,
+    RELAX,
     SVGF,
 
     DENOISER_MAX_NUM
@@ -234,9 +235,9 @@ struct NrdSettings
     float specAdaptiveRadiusScale = 5.0f;
     float antilagIntensityThreshold = 1.0f;
     float disocclusionThreshold = 0.5f;
+    float noisinessBlurrinessBalance = 1.0f;
 
-    int32_t diffMaxAccumulatedFrameNum = 31;
-    int32_t specMaxAccumulatedFrameNum = 31;
+    int32_t maxAccumulatedFrameNum = 31;
 
     bool referenceAccumulation = false;
     bool checkerboard = true;
@@ -415,6 +416,7 @@ class Sample : public SampleBase
 public:
     Sample() :
         m_NRD(BUFFERED_FRAME_MAX_NUM),
+        m_RELAX(BUFFERED_FRAME_MAX_NUM),
         m_SVGF_Diff(BUFFERED_FRAME_MAX_NUM),
         m_SVGF_Spec(BUFFERED_FRAME_MAX_NUM)
     {}
@@ -489,6 +491,7 @@ private:
 
 private:
     Nrd m_NRD;
+    Nrd m_RELAX;
     Nrd m_SVGF_Diff;
     Nrd m_SVGF_Spec;
 
@@ -514,6 +517,7 @@ private:
     std::vector<nri::AccelerationStructure*> m_BLASs;
     std::vector<uint64_t> m_ShaderEntries;
     std::vector<BackBuffer> m_SwapChainBuffers;
+
     std::vector<AnimatedInstance> m_AnimatedInstances;
     std::array<float, 256> m_FrameTimes = {};
     Timer m_Timer;
@@ -521,6 +525,7 @@ private:
     uint2 m_OutputResolution = {};
     uint2 m_RenderResolution = {};
     utils::Scene m_Scene;
+    nrd::RelaxSettings m_RelaxSettings = {}; // TODO: after code stabilization move to Settings and adjust unit tests
     Settings m_Settings = {};
     Settings m_PrevSettings = {};
     Settings m_DefaultSettings = {};
@@ -539,6 +544,7 @@ Sample::~Sample()
     NRI.WaitForIdle(*m_CommandQueue);
 
     m_NRD.Destroy();
+    m_RELAX.Destroy();
     m_SVGF_Diff.Destroy();
     m_SVGF_Spec.Destroy();
 
@@ -649,6 +655,22 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         denoiserCreationDesc.requestedMethods = methodDescs;
         denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs);
         NRI_ABORT_ON_FALSE( m_NRD.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
+    }
+
+    // RELAX
+    // TODO: RELAX doesn't support shadows denoising
+    {
+        const nrd::MethodDesc methodDescs[] =
+        {
+            { nrd::Method::RELAX, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+            { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+        };
+
+        nrd::DenoiserCreationDesc denoiserCreationDesc = {};
+        denoiserCreationDesc.requestedMethods = methodDescs;
+        denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs);
+
+        NRI_ABORT_ON_FALSE(m_RELAX.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false));
     }
 
     // SVGF
@@ -970,10 +992,11 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Separator();
                             ImGui::SliderFloat("Disocclusion (%)", &m_Settings.nrdSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", 2.0f);
                             ImGui::SliderFloat("Antilag threshold", &m_Settings.nrdSettings.antilagIntensityThreshold, 0.0f, 1.0f, "%.4f", 4.0f);
+                            ImGui::SliderInt("History frames", &m_Settings.nrdSettings.maxAccumulatedFrameNum, 0, nrd::NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM);
+                            ImGui::SliderFloat("Noisiness / Blurriness", &m_Settings.nrdSettings.noisinessBlurrinessBalance, 0.0f, 1.0f, "%.3f");
                             ImGui::Text("DIFFUSE:");
                             ImGui::PushID("DIFFUSE");
                             {
-                                ImGui::SliderInt("History frames", &m_Settings.nrdSettings.diffMaxAccumulatedFrameNum, 0, nrd::NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM);
                                 ImGui::SliderFloat("Blur radius (px)", &m_Settings.nrdSettings.diffBlurRadius, 0.0f, 150.0f, "%.1f", 2.0f);
                                 ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.diffAdaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
                             }
@@ -981,7 +1004,6 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Text("SPECULAR:");
                             ImGui::PushID("SPECULAR");
                             {
-                                ImGui::SliderInt("History frames", &m_Settings.nrdSettings.specMaxAccumulatedFrameNum, 0, nrd::NRD_SPECULAR_MAX_HISTORY_FRAME_NUM);
                                 ImGui::SliderFloat("Blur radius (px)", &m_Settings.nrdSettings.specBlurRadius, 0.0f, 150.0f, "%.1f", 2.0f);
                                 ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.specAdaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
                                 ImGui::Checkbox("Reference accumulation", &m_Settings.nrdSettings.referenceAccumulation);
@@ -990,6 +1012,39 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                                 ImGui::SameLine();
                             }
                             ImGui::PopID();
+                        }
+                        else if (m_Settings.denoiser == RELAX)
+                        {
+                            ImGui::Text("DENOISER - RELAX (F2 - next)");
+                            ImGui::Separator();
+                            ImGui::Text("REPROJECTION:");
+                            ImGui::Checkbox("Bicubic", &m_RelaxSettings.bicubicFilterForReprojectionEnabled);
+                            ImGui::SameLine();
+                            ImGui::Checkbox("Firefly suppression", &m_RelaxSettings.fireflySuppressionEnabled);
+                            ImGui::SliderFloat("Spec alpha", &m_RelaxSettings.specularAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
+                            ImGui::SliderFloat("Spec responsive alpha", &m_RelaxSettings.specularResponsiveAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
+                            ImGui::SliderFloat("Spec moments alpha", &m_RelaxSettings.specularMomentsAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
+                            ImGui::SliderFloat("Spec variance boost", &m_RelaxSettings.specularVarianceBoost, 0.000f, 8.0f, "%.2f", 1.0f);
+                            ImGui::SliderFloat("Diff alpha", &m_RelaxSettings.diffuseAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
+                            ImGui::SliderFloat("Diff responsive alpha", &m_RelaxSettings.diffuseResponsiveAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
+                            ImGui::SliderFloat("Diff moments alpha", &m_RelaxSettings.diffuseMomentsAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
+                            ImGui::Text("DISOCCLUSION FIX:");
+                            ImGui::SliderFloat("Edge-stop Z fraction", &m_RelaxSettings.disocclusionFixEdgeStoppingZFraction, 0.0f, 0.1f, "%.2f", 1.0f);
+                            ImGui::SliderFloat("Edge-stop normal power", &m_RelaxSettings.disocclusionFixEdgeStoppingNormalPower, 0.0f, 128.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Max kernel radius", &m_RelaxSettings.disocclusionFixMaxRadius, 0.000f, 100.0f, "%.1f", 1.0f);
+                            ImGui::SliderInt("Frames to fix", &m_RelaxSettings.disocclusionFixNumFramesToFix, 0, 10);
+                            ImGui::Text("HISTORY CLAMPING:");
+                            ImGui::SliderFloat("Color Clamping Sigma", &m_RelaxSettings.historyClampingColorBoxSigmaScale, 0.000f, 10.0f, "%.1f", 1.0f);
+                            ImGui::Text("SPATIAL VARIANCE ESTIMATION:");
+                            ImGui::SliderInt("History threshold", &m_RelaxSettings.spatialVarianceEstimationHistoryThreshold, 0, 10);
+                            ImGui::Text("SPATIAL FILTER (EDGE STOPPING):");
+                            ImGui::SliderFloat("Depth", &m_RelaxSettings.phiDepth, 0.0f, 1.0f, "%.3f", 1.0f);
+                            ImGui::SliderFloat("Normal", &m_RelaxSettings.phiNormal, 1.0f, 256.0f, "%.0f", 1.0f);
+                            ImGui::SliderFloat("Diff luminance", &m_RelaxSettings.diffusePhiLuminance, 0.0f, 10.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Spec luminance", &m_RelaxSettings.specularPhiLuminance, 0.0f, 10.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Roughness relaxation", &m_RelaxSettings.roughnessEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
+                            ImGui::SliderFloat("Normal relaxation", &m_RelaxSettings.normalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
+                            ImGui::SliderFloat("Luminance relaxation", &m_RelaxSettings.luminanceEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
                         }
                         else if(m_Settings.denoiser == SVGF)
                         {
@@ -1278,6 +1333,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
     // TODO: modify some settings to WAR unsupported and not working stuff in non-NRD
     if (m_Settings.denoiser != NRD)
         m_Settings.nrdSettings.checkerboard = false;
+    if (m_Settings.denoiser == RELAX)
+        m_AmbientInComposition = false;
 }
 
 void Sample::CreateSwapChain(nri::Format& swapChainFormat)
@@ -1522,6 +1579,7 @@ void Sample::CreatePipelines()
         m_Pipelines.clear();
 
         m_NRD.CreatePipelines();
+        m_RELAX.CreatePipelines();
         m_SVGF_Diff.CreatePipelines();
         m_SVGF_Spec.CreatePipelines();
     }
@@ -2707,6 +2765,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
     float sunPrev = Smoothstep( -0.9f, 0.05f, Sin( DegToRad(m_PrevSettings.sunElevation) ) );
     float resetHistoryFactor = 1.0f - Smoothstep( 0.0f, 0.2f, Abs(sunCurr - sunPrev) );
 
+    if (m_PrevSettings.denoiser != m_Settings.denoiser)
+        resetHistoryFactor = 0.0f;
     if (m_PrevSettings.nrdSettings.referenceAccumulation != m_Settings.nrdSettings.referenceAccumulation)
         resetHistoryFactor = 0.0f;
     if ( (m_PrevSettings.onScreen >= 11 && m_Settings.onScreen <= 4) || (m_PrevSettings.onScreen <= 4 && m_Settings.onScreen >= 11) ) // FIXME: for mip visualization
@@ -2776,31 +2836,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
             {Get(Texture::Spec), &GetState(Texture::Spec), GetFormat(Texture::Spec)},
         }};
 
-        if (m_Settings.denoiser == SVGF)
-        {
-            helper::Annotation annotation(NRI, commandBuffer2, "SVGF denoising");
-
-            nrd::SvgfSettings svgfSettings = {};
-            svgfSettings.disocclusionThreshold = m_Settings.svgfSettings.disocclusionThreshold * 0.01f;
-            svgfSettings.varianceScale = m_Settings.svgfSettings.varianceScale;
-            svgfSettings.zDeltaScale = m_Settings.svgfSettings.zDeltaScale;
-
-            svgfSettings.isDiffuse = true;
-            svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            m_SVGF_Diff.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
-            m_SVGF_Diff.SetMethodSettings(nrd::Method::NRD_TRANSLUCENT_SHADOW, &shadowSettings);
-
-            m_SVGF_Diff.Denoise(commandBuffer2, commonSettings, userPool);
-
-            svgfSettings.isDiffuse = false;
-            svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_Spec), &GetState(Texture::Unfiltered_Spec), GetFormat(Texture::Unfiltered_Spec)};
-            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::Spec), &GetState(Texture::Spec), GetFormat(Texture::Spec)};
-            m_SVGF_Spec.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
-
-            m_SVGF_Spec.Denoise(commandBuffer2, commonSettings, userPool);
-        }
-        else
+        if (m_Settings.denoiser == NRD)
         {
             helper::Annotation annotation(NRI, commandBuffer2, "NRD denoising");
 
@@ -2822,13 +2858,15 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 diffuseSpecularSettings.antilagSettings = antilagSettings;
                 diffuseSpecularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 diffuseSpecularSettings.diffHitDistanceParameters = { m_Settings.diffHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
-                diffuseSpecularSettings.diffMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSpecularSettings.diffMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSpecularSettings.diffNoisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSpecularSettings.diffBlurRadius = m_Settings.nrdSettings.diffBlurRadius;
                 diffuseSpecularSettings.diffPostBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
                 diffuseSpecularSettings.diffCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
                 diffuseSpecularSettings.specHitDistanceParameters = { m_Settings.specHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
                 diffuseSpecularSettings.specLobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
-                diffuseSpecularSettings.specMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSpecularSettings.specMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSpecularSettings.specNoisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSpecularSettings.specBlurRadius = m_Settings.nrdSettings.specBlurRadius;
                 diffuseSpecularSettings.specPostBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
                 diffuseSpecularSettings.specCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
@@ -2837,7 +2875,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 nrd::NrdDiffuseSettings diffuseSettings = {};
                 diffuseSettings.hitDistanceParameters = { m_Settings.diffHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
                 diffuseSettings.antilagSettings = antilagSettings;
-                diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                diffuseSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 diffuseSettings.blurRadius = m_Settings.nrdSettings.diffBlurRadius;
                 diffuseSettings.postBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
@@ -2848,7 +2887,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 specularSettings.hitDistanceParameters = { m_Settings.specHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
                 specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
                 specularSettings.antilagSettings = antilagSettings;
-                specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+                specularSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 specularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 specularSettings.blurRadius = m_Settings.nrdSettings.specBlurRadius;
                 specularSettings.postBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
@@ -2858,6 +2898,41 @@ void Sample::RenderFrame(uint32_t frameIndex)
             m_NRD.SetMethodSettings(nrd::Method::NRD_TRANSLUCENT_SHADOW, &shadowSettings);
 
             m_NRD.Denoise(commandBuffer2, commonSettings, userPool);
+        }
+        else if (m_Settings.denoiser == RELAX)
+        {
+            helper::Annotation annotation(NRI, commandBuffer2, "RELAX denoising");
+
+            m_RELAX.SetMethodSettings(nrd::Method::RELAX, &m_RelaxSettings);
+            m_RELAX.SetMethodSettings(nrd::Method::NRD_TRANSLUCENT_SHADOW, &shadowSettings);
+
+            m_RELAX.Denoise(commandBuffer2, commonSettings, userPool);
+        }
+        else
+        {
+            helper::Annotation annotation(NRI, commandBuffer2, "SVGF denoising");
+
+            nrd::SvgfSettings svgfSettings = {};
+            svgfSettings.disocclusionThreshold = m_Settings.svgfSettings.disocclusionThreshold * 0.01f;
+            svgfSettings.varianceScale = m_Settings.svgfSettings.varianceScale;
+            svgfSettings.zDeltaScale = m_Settings.svgfSettings.zDeltaScale;
+
+            svgfSettings.isDiffuse = true;
+            svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+            svgfSettings.momentsMaxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.diffMomentsMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+            m_SVGF_Diff.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
+            m_SVGF_Diff.SetMethodSettings(nrd::Method::NRD_TRANSLUCENT_SHADOW, &shadowSettings);
+
+            m_SVGF_Diff.Denoise(commandBuffer2, commonSettings, userPool);
+
+            svgfSettings.isDiffuse = false;
+            svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+            svgfSettings.momentsMaxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.specMomentsMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_Spec), &GetState(Texture::Unfiltered_Spec), GetFormat(Texture::Unfiltered_Spec)};
+            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::Spec), &GetState(Texture::Spec), GetFormat(Texture::Spec)};
+            m_SVGF_Spec.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
+
+            m_SVGF_Spec.Denoise(commandBuffer2, commonSettings, userPool);
         }
     }
     NRI.EndCommandBuffer(*frame.commandBuffers[1]);

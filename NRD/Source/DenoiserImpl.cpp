@@ -63,6 +63,8 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
             methodData.settingsSize = AddMethod_NrdShadow(w, h);
         else if (methodDesc.method == Method::NRD_TRANSLUCENT_SHADOW)
             methodData.settingsSize = AddMethod_NrdTranslucentShadow(w, h);
+        else if (methodDesc.method == Method::RELAX)
+            methodData.settingsSize = AddMethod_Relax(w, h);
         else if (methodDesc.method == Method::SVGF)
             methodData.settingsSize = AddMethod_Svgf(w, h);
         else
@@ -108,6 +110,8 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
             UpdateMethod_NrdShadow(methodData);
         else if (methodData.desc.method == Method::NRD_TRANSLUCENT_SHADOW)
             UpdateMethod_NrdTranslucentShadow(methodData);
+        else if (methodData.desc.method == Method::RELAX)
+            UpdateMethod_Relax(methodData);
         else if (methodData.desc.method == Method::SVGF)
             UpdateMethod_Svgf(methodData);
     }
@@ -466,6 +470,16 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "..\..\_Build\Shaders\NRD_TranslucentShadow_Blur.cs.dxbc.h"
 #include "..\..\_Build\Shaders\NRD_TranslucentShadow_TemporalStabilization.cs.dxbc.h"
 
+// RELAX
+#include "..\..\_Build\Shaders\RELAX_PackInputData.cs.dxbc.h"
+#include "..\..\_Build\Shaders\RELAX_Reproject.cs.dxbc.h"
+#include "..\..\_Build\Shaders\RELAX_DisocclusionFix.cs.dxbc.h"
+#include "..\..\_Build\Shaders\RELAX_HistoryClamping.cs.dxbc.h"
+#include "..\..\_Build\Shaders\RELAX_Firefly.cs.dxbc.h"
+#include "..\..\_Build\Shaders\RELAX_SpatialVarianceEstimation.cs.dxbc.h"
+#include "..\..\_Build\Shaders\RELAX_ATrousShmem.cs.dxbc.h"
+#include "..\..\_Build\Shaders\RELAX_ATrousStandard.cs.dxbc.h"
+
 // SVGF
 #include "..\..\_Build\Shaders\SVGF_Reproject.cs.dxbc.h"
 #include "..\..\_Build\Shaders\SVGF_FilterMoments.cs.dxbc.h"
@@ -510,6 +524,16 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "..\..\_Build\Shaders\NRD_TranslucentShadow_PreBlur.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_TranslucentShadow_Blur.cs.dxil.h"
 #include "..\..\_Build\Shaders\NRD_TranslucentShadow_TemporalStabilization.cs.dxil.h"
+
+// RELAX
+#include "..\..\_Build\Shaders\RELAX_PackInputData.cs.dxil.h"
+#include "..\..\_Build\Shaders\RELAX_Reproject.cs.dxil.h"
+#include "..\..\_Build\Shaders\RELAX_DisocclusionFix.cs.dxil.h"
+#include "..\..\_Build\Shaders\RELAX_HistoryClamping.cs.dxil.h"
+#include "..\..\_Build\Shaders\RELAX_Firefly.cs.dxil.h"
+#include "..\..\_Build\Shaders\RELAX_SpatialVarianceEstimation.cs.dxil.h"
+#include "..\..\_Build\Shaders\RELAX_ATrousShmem.cs.dxil.h"
+#include "..\..\_Build\Shaders\RELAX_ATrousStandard.cs.dxil.h"
 
 // SVGF
 #include "..\..\_Build\Shaders\SVGF_Reproject.cs.dxil.h"
@@ -556,6 +580,16 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "..\..\_Build\Shaders\NRD_TranslucentShadow_Blur.cs.spirv.h"
 #include "..\..\_Build\Shaders\NRD_TranslucentShadow_TemporalStabilization.cs.spirv.h"
 
+// RELAX
+#include "..\..\_Build\Shaders\RELAX_PackInputData.cs.spirv.h"
+#include "..\..\_Build\Shaders\RELAX_Reproject.cs.spirv.h"
+#include "..\..\_Build\Shaders\RELAX_DisocclusionFix.cs.spirv.h"
+#include "..\..\_Build\Shaders\RELAX_HistoryClamping.cs.spirv.h"
+#include "..\..\_Build\Shaders\RELAX_Firefly.cs.spirv.h"
+#include "..\..\_Build\Shaders\RELAX_SpatialVarianceEstimation.cs.spirv.h"
+#include "..\..\_Build\Shaders\RELAX_ATrousShmem.cs.spirv.h"
+#include "..\..\_Build\Shaders\RELAX_ATrousStandard.cs.spirv.h"
+
 // SVGF
 #include "..\..\_Build\Shaders\SVGF_Reproject.cs.spirv.h"
 #include "..\..\_Build\Shaders\SVGF_FilterMoments.cs.spirv.h"
@@ -568,4 +602,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "Methods/NrdDiffuseSpecular.hpp"
 #include "Methods/NrdShadow.hpp"
 #include "Methods/NrdTranslucentShadow.hpp"
+#include "Methods/Relax.hpp"
 #include "Methods/Svgf.hpp"
+

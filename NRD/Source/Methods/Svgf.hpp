@@ -168,6 +168,9 @@ void DenoiserImpl::UpdateMethod_Svgf(const MethodData& methodData)
     float maxAccumulatedFrameNum = float( Min( settings.maxAccumulatedFrameNum, SVGF_MAX_HISTORY_FRAME_NUM ) );
     float momentsMaxAccumulatedFrameNum = float( Min( settings.momentsMaxAccumulatedFrameNum, SVGF_MAX_HISTORY_FRAME_NUM ) );
 
+    if( m_CommonSettings.frameIndex == 0 )
+        momentsMaxAccumulatedFrameNum = 0;
+
     // REPROJECT
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::REPROJECT));
     AddFloat4x4(data, m_WorldToViewPrev);

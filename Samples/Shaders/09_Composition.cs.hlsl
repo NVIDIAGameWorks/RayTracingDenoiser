@@ -44,17 +44,23 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     albedo *= STL::ImportanceSampling::Cosine::GetInversePDF( ) / STL::Math::Pi( 1.0 );
 
     // Denoised data
+    float4 indirectDiff = gIn_Diff[ pixelPos ];
+    if( gDenoiserType == NRD )
+        indirectDiff = NRD_BackEnd_UnpackRadiance( indirectDiff );
+    else
+        indirectDiff = RELAX_BackEnd_UnpackRadiance( indirectDiff );
+    indirectDiff.xyz *= gIndirectDiffuse;
+
+    float4 indirectSpec = gIn_Spec[ pixelPos ];
+    if( gDenoiserType == NRD )
+        indirectSpec = NRD_BackEnd_UnpackRadiance( indirectSpec, roughness );
+    else
+        indirectSpec = RELAX_BackEnd_UnpackRadiance( indirectSpec, roughness );
+    indirectSpec.xyz *= gIndirectSpecular;
+
     float4 shadowData = gIn_Shadow[ pixelPos ];
     shadowData = NRD_BackEnd_UnpackShadow( shadowData );
     float3 shadow = lerp( shadowData.yzw, 1.0, shadowData.x );
-
-    float4 indirectSpec = gIn_Spec[ pixelPos ];
-    indirectSpec = NRD_BackEnd_UnpackRadiance( gDenoiserType != NRD, indirectSpec, roughness );
-    indirectSpec.xyz *= gIndirectSpecular;
-
-    float4 indirectDiff = gIn_Diff[ pixelPos ];
-    indirectDiff = NRD_BackEnd_UnpackRadiance( gDenoiserType != NRD, indirectDiff );
-    indirectDiff.xyz *= gIndirectDiffuse;
 
     // Good denoisers do nothing with sky...
     shadow = lerp( 1.0, shadow, isGround );

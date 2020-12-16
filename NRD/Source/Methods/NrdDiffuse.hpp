@@ -65,7 +65,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuse(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ACCUMULATED) );
 
-        desc.constantBufferDataSize = SumConstants(4, 1, 1, 4);
+        desc.constantBufferDataSize = SumConstants(4, 1, 1, 5);
 
         AddDispatch(desc, NRD_Diffuse_TemporalAccumulation, w, h);
     }
@@ -171,6 +171,7 @@ void DenoiserImpl::UpdateMethod_NrdDiffuse(const MethodData& methodData)
 
     float4 distanceScale = float4(settings.hitDistanceParameters.A, settings.hitDistanceParameters.B, settings.hitDistanceParameters.C, settings.hitDistanceParameters.D) * m_CommonSettings.metersToUnitsMultiplier;
     float maxAccumulatedFrameNum = float( Min(settings.maxAccumulatedFrameNum, NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM) );
+    float noisinessBlurrinessBalance = settings.noisinessBlurrinessBalance;
     float blurRadius = settings.blurRadius;
     float disocclusionThreshold = settings.disocclusionThreshold;
     bool useAntilag = !m_CommonSettings.forceReferenceAccumulation && settings.antilagSettings.enable;
@@ -179,6 +180,7 @@ void DenoiserImpl::UpdateMethod_NrdDiffuse(const MethodData& methodData)
     if (m_CommonSettings.forceReferenceAccumulation)
     {
         maxAccumulatedFrameNum = settings.maxAccumulatedFrameNum == 0 ? 0.0f : NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM;
+        noisinessBlurrinessBalance = 1.0f;
         blurRadius = 0.0f;
         disocclusionThreshold = 0.005f;
     }
@@ -205,6 +207,7 @@ void DenoiserImpl::UpdateMethod_NrdDiffuse(const MethodData& methodData)
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, disocclusionThreshold );
     AddFloat(data, maxAccumulatedFrameNum);
+    AddFloat(data, noisinessBlurrinessBalance);
     AddUint(data, checkerboard);
     ValidateConstants(data);
 

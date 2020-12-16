@@ -45,8 +45,12 @@ namespace nrd
         // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
         NRD_TRANSLUCENT_SHADOW,
 
-        // INPUTS - SVGF_INPUT
-        // OUTPUTS - SVGF_OUTPUT
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF, IN_SPEC
+        // OUTPUTS - OUT_DIFF, OUT_SPEC
+        RELAX,
+
+        // INPUTS - IN_SVGF
+        // OUTPUTS - OUT_SVGF
         SVGF,
 
         MAX_NUM
@@ -243,16 +247,19 @@ namespace nrd
         bool enableValidation : 1;
     };
 
+    /*
+    Texture description
+    - always texture-read and texture-storage access
+    - potential descriptors:
+      - shader read:
+        - a descriptor for all mips
+        - a descriptor for first mip only
+        - a descriptor for some mips with a specific offset
+      - shader write:
+        - a descriptor for each mip
+    */
     struct TextureDesc
     {
-        // - always texture-read and texture-storage access
-        // - potential descriptors:
-        //   - shader read:
-        //     - a descriptor for all mips
-        //     - a descriptor for first mip only
-        //     - a descriptor for some mips with a specific offset
-        //   - shader write:
-        //     - a descriptor for each mip
         Format format;
         uint16_t width;
         uint16_t height;

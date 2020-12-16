@@ -39,6 +39,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gDisocclusionThreshold;
     float gJitterDelta;
     float gSpecMaxAccumulatedFrameNum;
+    float gSpecNoisinessBlurrinessBalance;
     uint gSpecCheckerboard;
 };
 
@@ -151,10 +152,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughnessRatio = ( roughness + 0.001 ) / ( roughnessModified + 0.001 );
     roughnessRatio = STL::Math::Pow01( roughnessRatio, SPEC_NORMAL_VARIANCE_SMOOTHNESS );
 
-    float trimmingFade = GetTrimmingFactor( roughness, gSpecTrimmingParams );
-    trimmingFade = STL::Math::LinearStep( 0.0, 0.1, trimmingFade ); // TODO: is it needed? Better settings?
-    trimmingFade = lerp( 1.0, trimmingFade, roughnessRatio );
-
     // Compute previous position for surface motion
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
@@ -261,8 +258,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     specHistorySurface = MixLinearAndCatmullRom( specHistorySurface, specHistorySurfaceCatRom, occlusion0, occlusion1, occlusion2, occlusion3 );
 
     // Accumulation speeds
-    specPrevAccumSpeeds = min( specPrevAccumSpeeds + 1.0, gSpecMaxAccumulatedFrameNum );
-    float specAccumSpeed = STL::Filtering::ApplyBilinearCustomWeights( specPrevAccumSpeeds.x, specPrevAccumSpeeds.y, specPrevAccumSpeeds.z, specPrevAccumSpeeds.w, specWeights );
+    float specAccumSpeed;
+    float specAccumSpeedFade = GetAccumSpeed( specPrevAccumSpeeds, specWeights, gSpecMaxAccumulatedFrameNum, gSpecNoisinessBlurrinessBalance, specAccumSpeed );
+
+    float trimmingFactor = GetTrimmingFactor( roughness, gSpecTrimmingParams );
+    trimmingFactor = STL::Math::LinearStep( 0.0, 0.1, trimmingFactor ); // TODO: is it needed? Better settings?
+    specAccumSpeedFade *= lerp( 1.0, trimmingFactor, roughnessRatio );
 
     // Noisy signal with reconstruction (if needed)
     uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );
@@ -284,13 +285,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 currentSurface;
 
     float2 accumSpeedsSurface = GetSpecAccumSpeed( specAccumSpeed, roughnessModified, avgNoV, parallax );
-    float accumSpeedSurface = 1.0 / ( trimmingFade * accumSpeedsSurface.x + 1.0 );
+    float accumSpeedSurface = 1.0 / ( specAccumSpeedFade * accumSpeedsSurface.x + 1.0 );
     currentSurface.w = lerp( specHistorySurface.w, spec.w, max( accumSpeedSurface, MIN_HITDIST_ACCUM_SPEED ) );
 
     float hitDist = GetHitDistance( currentSurface.w, viewZ, gSpecScalingParams, roughness );
     parallax *= saturate( hitDist * invDistToPoint );
     accumSpeedsSurface = GetSpecAccumSpeed( specAccumSpeed, roughnessModified, avgNoV, parallax );
-    accumSpeedSurface = 1.0 / ( trimmingFade * accumSpeedsSurface.x + 1.0 );
+    accumSpeedSurface = 1.0 / ( specAccumSpeedFade * accumSpeedsSurface.x + 1.0 );
     currentSurface.xyz = lerp( specHistorySurface.xyz, spec.xyz, accumSpeedSurface );
 
     // Compute previous pixel position for virtual motion
@@ -329,7 +330,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float virtualHistoryAmount = min( temp.x, temp.y );
     float isInScreenVirtual = float( all( saturate( pixelUvVirtualPrev ) == pixelUvVirtualPrev ) );
     virtualHistoryAmount *= isInScreenVirtual;
-    virtualHistoryAmount *= 1.0 - STL::Math::SmoothStep( 0.2, 1.0, roughness ); // TODO: fade out to surface motion, because virtual motion is valid only for true mirrors
+    virtualHistoryAmount *= 1.0 - STL::Math::SmoothStep( 0.75, 1.0, roughness );
     virtualHistoryAmount *= 1.0 - gReference; // TODO: I would be glad to use virtual motion in the reference mode, but it requires denoised hit distances. Unfortunately, in the reference mode blur radius is set to 0
 
     // Hit distance based disocclusion for virtual motion
@@ -350,7 +351,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Current specular signal ( virtual motion )
     float2 accumSpeedsVirtual = GetSpecAccumSpeed( specAccumSpeed, roughnessModified, avgNoV, 0.0 );
-    float accumSpeedVirtual = 1.0 / ( trimmingFade * accumSpeedsVirtual.x + 1.0 );
+    float accumSpeedVirtual = 1.0 / ( specAccumSpeedFade * accumSpeedsVirtual.x + 1.0 );
 
     float4 currentVirtual;
     currentVirtual.xyz = lerp( specHistoryVirtual.xyz, spec.xyz, accumSpeedVirtual );

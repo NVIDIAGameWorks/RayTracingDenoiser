@@ -35,6 +35,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gCheckerboardResolveAccumSpeed;
     float gDisocclusionThreshold;
     float gDiffMaxAccumulatedFrameNum;
+    float gDiffNoisinessBlurrinessBalance;
     uint gDiffCheckerboard;
 };
 
@@ -196,8 +197,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     diffHistory = MixLinearAndCatmullRom( diffHistory, diffHistoryCatRom, occlusion0, occlusion1, occlusion2, occlusion3 );
 
     // Accumulation speeds
-    diffPrevAccumSpeeds = min( diffPrevAccumSpeeds + 1.0, gDiffMaxAccumulatedFrameNum );
-    float diffAccumSpeed = STL::Filtering::ApplyBilinearCustomWeights( diffPrevAccumSpeeds.x, diffPrevAccumSpeeds.y, diffPrevAccumSpeeds.z, diffPrevAccumSpeeds.w, diffWeights );
+    float diffAccumSpeed;
+    float diffAccumSpeedFade = GetAccumSpeed( diffPrevAccumSpeeds, diffWeights, gDiffMaxAccumulatedFrameNum, gDiffNoisinessBlurrinessBalance, diffAccumSpeed );
 
     // Noisy signal with reconstruction (if needed)
     uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );
@@ -214,7 +215,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Diffuse accumulation
     float2 diffAccumSpeeds = GetSpecAccumSpeed( diffAccumSpeed, 1.0, 0.0, 0.0 );
-    float diffHistoryAmount = 1.0 / ( diffAccumSpeeds.x + 1.0 );
+    float diffHistoryAmount = 1.0 / ( diffAccumSpeedFade * diffAccumSpeeds.x + 1.0 );
 
     float4 diffResult;
     diffResult.xyz = lerp( diffHistory.xyz, diff.xyz, diffHistoryAmount );

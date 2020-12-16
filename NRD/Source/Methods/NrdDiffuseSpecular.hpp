@@ -79,7 +79,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        desc.constantBufferDataSize = SumConstants(4, 4, 1, 6);
+        desc.constantBufferDataSize = SumConstants(4, 4, 1, 8);
 
         AddDispatch(desc, NRD_DiffuseSpecular_TemporalAccumulation, w, h);
     }
@@ -216,19 +216,25 @@ void DenoiserImpl::UpdateMethod_NrdDiffuseSpecular(const MethodData& methodData)
     bool useAntilag = !m_CommonSettings.forceReferenceAccumulation && settings.antilagSettings.enable;
 
     float diffMaxAccumulatedFrameNum = float( Min(settings.diffMaxAccumulatedFrameNum, NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM) );
+    float diffNoisinessBlurrinessBalance = settings.diffNoisinessBlurrinessBalance;
     float diffBlurRadius = settings.diffBlurRadius;
     uint32_t diffCheckerboard = ((uint32_t)settings.diffCheckerboardMode + 2) % 3;
 
     float specMaxAccumulatedFrameNum = float( Min(settings.specMaxAccumulatedFrameNum, NRD_SPECULAR_MAX_HISTORY_FRAME_NUM) );
+    float specNoisinessBlurrinessBalance = settings.diffNoisinessBlurrinessBalance;
     float specBlurRadius = settings.specBlurRadius;
     uint32_t specCheckerboard = ((uint32_t)settings.specCheckerboardMode + 2) % 3;
 
     if (m_CommonSettings.forceReferenceAccumulation)
     {
         diffMaxAccumulatedFrameNum = settings.diffMaxAccumulatedFrameNum == 0 ? 0.0f : NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM;
+        diffNoisinessBlurrinessBalance = 1.0f;
         diffBlurRadius = 0.0f;
+
         specMaxAccumulatedFrameNum = settings.specMaxAccumulatedFrameNum == 0 ? 0.0f : NRD_SPECULAR_MAX_HISTORY_FRAME_NUM;
+        specNoisinessBlurrinessBalance = 1.0f;
         specBlurRadius = 0.0f;
+
         disocclusionThreshold = 0.005f;
     }
 
@@ -264,8 +270,10 @@ void DenoiserImpl::UpdateMethod_NrdDiffuseSpecular(const MethodData& methodData)
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, disocclusionThreshold);
     AddFloat(data, m_JitterDelta );
-    AddFloat(data, float(diffMaxAccumulatedFrameNum));
-    AddFloat(data, float(specMaxAccumulatedFrameNum));
+    AddFloat(data, diffMaxAccumulatedFrameNum);
+    AddFloat(data, diffNoisinessBlurrinessBalance);
+    AddFloat(data, specMaxAccumulatedFrameNum);
+    AddFloat(data, specNoisinessBlurrinessBalance);
     AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);
     ValidateConstants(data);
