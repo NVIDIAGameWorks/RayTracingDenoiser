@@ -153,21 +153,35 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     diffuseFirstMoment /= 9.0;
     diffuseSecondMoment /= 9.0;
 
+    // Calculating color boxes for specular and diffuse signals
     float3 specularSigma = sqrt(max(0.0f, specularSecondMoment - specularFirstMoment * specularFirstMoment));
     float3 specularColorMin = specularFirstMoment - gColorBoxSigmaScale * specularSigma;
     float3 specularColorMax = specularFirstMoment + gColorBoxSigmaScale * specularSigma;
-
-    float3 specularIlluminationYCgCo = _NRD_LinearToYCoCg(specularIllumination);
-    specularIlluminationYCgCo = clamp(specularIlluminationYCgCo, specularColorMin, specularColorMax);
-    specularIllumination = _NRD_YCoCgToLinear(specularIlluminationYCgCo);
 
     float3 diffuseSigma = sqrt(max(0.0f, diffuseSecondMoment - diffuseFirstMoment * diffuseFirstMoment));
     float3 diffuseColorMin = diffuseFirstMoment - gColorBoxSigmaScale * diffuseSigma;
     float3 diffuseColorMax = diffuseFirstMoment + gColorBoxSigmaScale * diffuseSigma;
 
+    // Expanding specular and diffuse color boxes with color of the center pixel for specular and diffuse signals 
+    // to avoid introducing bias
+    float3 specularIlluminationCenter;
+    float3 diffuseIlluminationCenter;
+    unpackIllumination(sharedPackedResponsiveIlluminationYCgCo[sharedMemoryIndex.y][sharedMemoryIndex.x], specularIlluminationCenter, diffuseIlluminationCenter);
+
+    specularColorMin = min(specularColorMin, specularIlluminationCenter);
+    specularColorMax = max(specularColorMax, specularIlluminationCenter);
+    diffuseColorMin = min(diffuseColorMin, diffuseIlluminationCenter);
+    diffuseColorMax = max(diffuseColorMax, diffuseIlluminationCenter);
+
+    // Color clamping
+    float3 specularIlluminationYCgCo = _NRD_LinearToYCoCg(specularIllumination);
+    specularIlluminationYCgCo = clamp(specularIlluminationYCgCo, specularColorMin, specularColorMax);
+    specularIllumination = _NRD_YCoCgToLinear(specularIlluminationYCgCo);
+
     float3 diffuseIlluminationYCgCo = _NRD_LinearToYCoCg(diffuseIllumination);
     diffuseIlluminationYCgCo = clamp(diffuseIlluminationYCgCo, diffuseColorMin, diffuseColorMax);
     diffuseIllumination = _NRD_YCoCgToLinear(diffuseIlluminationYCgCo);
 
+    // Writing out the results
     gOutSpecularAndDiffuseIlluminationLogLuv[dispatchThreadId.xy] = PackSpecularAndDiffuseToLogLuvUint2(specularIllumination, diffuseIllumination);
 }

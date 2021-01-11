@@ -6,15 +6,23 @@ and proprietary rights in and to this software, related documentation
 and any modifications thereto. Any use, reproduction, disclosure or
 distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
+*/
 
+/*
 CREDITS:
-Developed by:
-    Dmitry Zhdan (dzhdan@nvidia.com)
-Special thanks:
-    Evgeny Makarov (NVIDIA) - denoising ideas
-    Ivan Fedorov (NVIDIA) - interface
-    Ivan Povarov (NVIDIA) - QA, integrations and feedback
-    Oles Shyshkovtsov (4A GAMES) - initial idea of recurrent blurring, storing diffuse signal in SH
+    Developed by:
+        Library, NRD & SVGF denoisers:
+            Dmitry Zhdan (dzhdan@nvidia.com)
+
+        ReLAX denoiser:
+            Tim Cheblokov (tcheblokov@nvidia.com)
+            Pawel Kozlowski (pkozlowski@nvidia.com) 
+
+    Special thanks:
+        Evgeny Makarov (NVIDIA) - denoising ideas
+        Ivan Fedorov (NVIDIA) - interface
+        Ivan Povarov (NVIDIA) - QA, integrations and feedback
+        Oles Shyshkovtsov (4A GAMES) - initial idea of recurrent blurring
 */
 
 #pragma once
@@ -22,9 +30,9 @@ Special thanks:
 #include <cstdint>
 
 #define NRD_VERSION_MAJOR 1
-#define NRD_VERSION_MINOR 9
+#define NRD_VERSION_MINOR 10
 #define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "8 December 2020"
+#define NRD_VERSION_DATE "11 January 2021"
 #define NRD_CALL __fastcall
 
 #ifndef NRD_API

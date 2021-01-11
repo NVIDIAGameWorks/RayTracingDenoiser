@@ -275,9 +275,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     //
     // Shared memory is populated now and can be used for filtering
     //
-
-    const float epsVariance = 1e-10;
-
     uint2 sharedMemoryIndex = groupThreadId.xy + int2(1,1);
 
     // Fetching center data
@@ -306,8 +303,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float centerDiffuseVar;
     computeVariance(groupThreadId.xy, centerSpecularVar, centerDiffuseVar);
 
-    float specularPhiLIllumination = gSpecularPhiLuminance * sqrt(max(0.0, epsVariance + centerSpecularVar));
-    float diffusePhiLIllumination = gDiffusePhiLuminance * sqrt(max(0.0, epsVariance + centerDiffuseVar));
+    float specularPhiLIllumination = 1.0e-4 + gSpecularPhiLuminance * sqrt(max(0.0, centerSpecularVar));
+    float diffusePhiLIllumination = 1.0e-4 + gDiffusePhiLuminance * sqrt(max(0.0, centerDiffuseVar));
     float phiDepth = gPhiDepth;
 
     float sumWSpecular = 0;

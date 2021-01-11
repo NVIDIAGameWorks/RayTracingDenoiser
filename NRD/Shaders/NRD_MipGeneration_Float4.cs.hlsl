@@ -16,12 +16,12 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 };

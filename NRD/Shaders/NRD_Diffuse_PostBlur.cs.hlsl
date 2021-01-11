@@ -16,18 +16,18 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 
     float4x4 gWorldToView;
     float4 gRotator;
-    float4 gDiffScalingParams;
+    float4 gDiffHitDistParams;
     float gDiffBlurRadius;
     float gDiffBlurRadiusScale;
 };
@@ -36,10 +36,10 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_TemporalAccumulationOutput, t, 4, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_DiffTemporalAccumulationOutput, t, 4, 0 );
 
 // Outputs
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 0, 0 );
@@ -83,9 +83,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Accumulations speeds
-    float3 diffInternalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ] );
-    float diffNormAccumSpeed = saturate( diffInternalData.x * STL::Math::PositiveRcp( diffInternalData.y ) );
-    float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + diffInternalData.x );
+    float2 diffInternalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ] );
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -93,19 +91,16 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float diffCenterNormHitDist = diff.w;
 
     // Blur radius
-    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffScalingParams );
-    float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffNonLinearAccumSpeed );
+    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffHitDistParams );
+    float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffInternalData.x );
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
     // Blur radius scale
-    float luma = diff.x;
-    float lumaPrev = gIn_TemporalAccumulationOutput[ pixelPos ].x;
-    float error = GetColorErrorForAdaptiveRadiusScale( luma, lumaPrev, diffNonLinearAccumSpeed );
-    float diffBlurRadiusScale = POST_BLUR_RADIUS_SCALE + error * gDiffBlurRadiusScale;
+    float diffLuma = diff.x;
+    float diffLumaPrev = gIn_DiffTemporalAccumulationOutput[ pixelPos ].x;
+    float diffError = GetColorErrorForAdaptiveRadiusScale( diffLuma, diffLumaPrev, diffInternalData.x );
+    float diffBlurRadiusScale = POST_BLUR_RADIUS_SCALE + diffError * gDiffBlurRadiusScale;
     diffWorldBlurRadius *= diffBlurRadiusScale;
-
-    // Tangent basis
-    float2x3 diffTvBv = GetKernelBasis( centerPos, Nv, diffWorldBlurRadius, diffNormAccumSpeed );
 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( POST_BLUR_ROTATOR_MODE, pixelPos, gRotator );
@@ -115,10 +110,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Denoising
     float diffSum = 1.0;
+    float diffNormalWeightParams = GetNormalWeightParams( 1.0, edge, diffInternalData.x );
+    float2 diffHitDistanceWeightParams = GetHitDistanceWeightParams( diffCenterNormHitDist, diffInternalData.x, diffHitDist, centerPos );
+    float2x3 diffTvBv = GetKernelBasis( centerPos, Nv, diffWorldBlurRadius, diffInternalData.x );
 
     float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, centerZ );
-    float diffNormalWeightParams = GetNormalWeightParams( 1.0, edge, diffNormAccumSpeed );
-    float2 diffHitDistanceWeightParams = GetHitDistanceWeightParams( diffCenterNormHitDist, diffNormAccumSpeed, diffHitDist, centerPos );
 
     UNROLL
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
@@ -139,7 +135,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         // Sample weight
         float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
         w *= GetNormalWeight( diffNormalWeightParams, N, normal.xyz );
-        w *= GetHitDistanceWeight( diffHitDistanceWeightParams, d.w ); // yes, apply hit distance weight to hit distance in this pass
+        w *= GetHitDistanceWeight( diffHitDistanceWeightParams, d.w );
 
         diff += d * w;
         diffSum += w;

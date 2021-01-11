@@ -917,7 +917,7 @@ namespace STL
         // Half float
         uint Rg16fToUint( float2 c )
         {
-            return ( f32tof16( c.y ) << 16 ) | f32tof16( c.x );
+            return ( f32tof16( c.y ) << 16 ) | ( f32tof16( c.x ) & 0xFFFF ); // TODO: 0xFFFF is a WAR for VK
         }
 
         float2 UintToRg16f( uint p )

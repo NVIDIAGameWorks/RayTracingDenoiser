@@ -16,12 +16,12 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 
@@ -50,7 +50,7 @@ NRI_RESOURCE( Texture2D<float4>, gIn_History_Diff, t, 4, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 5, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<float2>, gOut_InternalData, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<unorm float>, gOut_InternalData, u, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 1, 0 );
 
 void Preload( int2 sharedId, int2 globalId )
@@ -76,7 +76,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Diff[ pixelPos ] = 0;
         #endif
-        gOut_InternalData[ pixelPos ] = PackDiffInternalData( MAX_ACCUM_FRAME_NUM ); // MAX_ACCUM_FRAME_NUM to skip HistoryFix on INF pixels
+        gOut_InternalData[ pixelPos ] = PackDiffInternalData( );
         return;
     }
 
@@ -115,9 +115,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) ); // TODO: ideally, isInScreen must be per pixel in 2x2 or 4x4 footprint
     float2 motion = pixelUvPrev - pixelUv;
     float motionLength = length( motion );
-    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() != 0 );
+    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() );
 
-    // Previous viewZ ( Catmull-Rom )
+    // Previous data ( Catmull-Rom )
     STL::Filtering::CatmullRom catmullRomFilterAtPrevPos = STL::Filtering::GetCatmullRomFilter( saturate( pixelUvPrev ), gScreenSize );
     float2 catmullRomFilterAtPrevPosGatherOrigin = catmullRomFilterAtPrevPos.origin * gInvScreenSize;
     uint4 prevPackRed0 = gIn_Prev_ViewZ_Normal_Roughness_AccumSpeeds.GatherRed( gNearestClamp, catmullRomFilterAtPrevPosGatherOrigin, float2( 1, 1 ) ).wzxy;
@@ -130,7 +130,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 prevViewZ2 = UnpackViewZ( prevPackRed2 );
     float4 prevViewZ3 = UnpackViewZ( prevPackRed3 );
 
-    float4 diffPrevAccumSpeeds = UnpackAccumSpeed( uint4( prevPackRed0.w, prevPackRed1.z, prevPackRed2.y, prevPackRed3.x ) );
+    float4 diffPrevAccumSpeeds = UnpackDiffAccumSpeed( uint4( prevPackRed0.w, prevPackRed1.z, prevPackRed2.y, prevPackRed3.x ) );
 
     // Previous normal, roughness and accum speed ( bilinear )
     STL::Filtering::Bilinear bilinearFilterAtPrevPos = STL::Filtering::GetBilinearFilter( saturate( pixelUvPrev ), gScreenSize );
@@ -199,6 +199,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Accumulation speeds
     float diffAccumSpeed;
     float diffAccumSpeedFade = GetAccumSpeed( diffPrevAccumSpeeds, diffWeights, gDiffMaxAccumulatedFrameNum, gDiffNoisinessBlurrinessBalance, diffAccumSpeed );
+
+    // Avoid getting stuck in history if only 1 sample is valid from 2x2 footprint and there is a big difference between foreground and background surfaces
+    float4 planeDist2x2 = float4( planeDist0.w, planeDist1.z, planeDist2.y, planeDist3.x );
+    planeDist2x2 = STL::Math::LinearStep( disocclusionThresholds.x, 0.2, planeDist2x2 );
+    planeDist2x2 = 1.0 - planeDist2x2;
+    diffAccumSpeed *= dot( planeDist2x2, 0.25 );
 
     // Noisy signal with reconstruction (if needed)
     uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );

@@ -16,12 +16,12 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 
@@ -87,9 +87,8 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     #endif
 
     float roughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] ).w;
-    float3 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
-    float specNormAccumSpeed = saturate( specInternalData.z * STL::Math::PositiveRcp( specInternalData.y * HISTORY_FIX_FRAME_NUM_PERCENTAGE ) ); // .x instead of .z can't be used here due to adaptive number of accumulated frames
-    float specRealMipLevelf = GetMipLevel( specNormAccumSpeed, specInternalData.z, roughness );
+    float2 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
+    float specRealMipLevelf = GetMipLevel( specInternalData, roughness );
     uint specRealMipLevel = uint( specRealMipLevelf );
 
     [branch]
@@ -97,11 +96,6 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     {
         float sum;
         float4 blurry = ReconstructHistory( specRealMipLevel, gScreenSizei, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Spec, sum );
-
-        #if( USE_MIX_WITH_ORIGINAL == 1 )
-            float4 original = gOut_Spec[ pixelPos ];
-            blurry = lerp( blurry, original, specNormAccumSpeed );
-        #endif
 
         #if( USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX == 1 )
             [branch]

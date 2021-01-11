@@ -34,8 +34,8 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
@@ -51,8 +51,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         SPEC_ILLUM_VARIANCE_PONG,
         DIFF_ILLUM_VARIANCE_PING,
         DIFF_ILLUM_VARIANCE_PONG,
-        SPEC_REPROJECTION_CONFIDENCE,
-        DEBUG
+        SPEC_REPROJECTION_CONFIDENCE
     };
 
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
@@ -95,9 +94,8 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::REFLECTION_HIT_T_CURR), 0, 1, AsUint(Permanent::REFLECTION_HIT_T_PREV) );
         PushOutput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
         PushOutput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
-        PushOutput( AsUint(Transient::DEBUG) );
 
-        desc.constantBufferDataSize = SumConstants(5, 1, 3, 11, false);
+        desc.constantBufferDataSize = SumConstants(5, 1, 3, 10, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_Reproject, w, h, 16, 16);
     }
@@ -284,15 +282,14 @@ void DenoiserImpl::UpdateMethod_Relax(const MethodData& methodData)
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat(data, settings.bicubicFilterForReprojectionEnabled ? 1.0f : 0.0f);
     AddFloat(data, settings.specularAlpha);
-    AddFloat(data, settings.specularMomentsAlpha);
     AddFloat(data, settings.specularResponsiveAlpha);
     AddFloat(data, settings.specularVarianceBoost);
     AddFloat(data, settings.diffuseAlpha);
-    AddFloat(data, settings.diffuseMomentsAlpha);
     AddFloat(data, settings.diffuseResponsiveAlpha);
     AddFloat(data, m_CommonSettings.worldSpaceMotion ? 1.0f : 0.0f);
     AddFloat(data, m_IsOrtho);
     AddFloat(data, 1.0f / (0.5f * h * m_ProjectY));
+    AddFloat(data, settings.needHistoryReset ? 1.0f : 0.0f);
     ValidateConstants(data);
 
     // DISOCCLUSION FIX

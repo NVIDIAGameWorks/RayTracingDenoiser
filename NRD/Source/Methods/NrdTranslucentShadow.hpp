@@ -86,7 +86,7 @@ void DenoiserImpl::UpdateMethod_NrdTranslucentShadow(const MethodData& methodDat
 
     // PRE_BLUR
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::PRE_BLUR));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[0]);
     AddFloat(data, blurRadius);
@@ -94,7 +94,7 @@ void DenoiserImpl::UpdateMethod_NrdTranslucentShadow(const MethodData& methodDat
 
     // BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[0]);
     AddFloat(data, blurRadius);
@@ -102,7 +102,7 @@ void DenoiserImpl::UpdateMethod_NrdTranslucentShadow(const MethodData& methodDat
 
     // TEMPORAL_STABILIZATION
     data = PushDispatch(methodData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);

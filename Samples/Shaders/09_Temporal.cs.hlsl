@@ -72,7 +72,7 @@ float3 ClipAABB( float3 center, float3 extents, float3 prevSample )
     float3 d = prevSample - center;
     float3 dn = abs( d * STL::Math::PositiveRcp( extents ) );
     float maxd = max( dn.x, max( dn.y, dn.z ) );
-    float3 t = center + d / maxd;
+    float3 t = center + d * STL::Math::PositiveRcp( maxd );
 
     return maxd > 1.0 ? t : prevSample;
 }

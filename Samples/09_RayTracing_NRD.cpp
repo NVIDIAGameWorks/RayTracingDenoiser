@@ -992,7 +992,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Separator();
                             ImGui::SliderFloat("Disocclusion (%)", &m_Settings.nrdSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", 2.0f);
                             ImGui::SliderFloat("Antilag threshold", &m_Settings.nrdSettings.antilagIntensityThreshold, 0.0f, 1.0f, "%.4f", 4.0f);
-                            ImGui::SliderInt("History frames", &m_Settings.nrdSettings.maxAccumulatedFrameNum, 0, nrd::NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM);
+                            ImGui::SliderInt("History frames", &m_Settings.nrdSettings.maxAccumulatedFrameNum, 0, nrd::NRD_MAX_HISTORY_FRAME_NUM);
                             ImGui::SliderFloat("Noisiness / Blurriness", &m_Settings.nrdSettings.noisinessBlurrinessBalance, 0.0f, 1.0f, "%.3f");
                             ImGui::Text("DIFFUSE:");
                             ImGui::PushID("DIFFUSE");
@@ -1023,11 +1023,9 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Checkbox("Firefly suppression", &m_RelaxSettings.fireflySuppressionEnabled);
                             ImGui::SliderFloat("Spec alpha", &m_RelaxSettings.specularAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
                             ImGui::SliderFloat("Spec responsive alpha", &m_RelaxSettings.specularResponsiveAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
-                            ImGui::SliderFloat("Spec moments alpha", &m_RelaxSettings.specularMomentsAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
                             ImGui::SliderFloat("Spec variance boost", &m_RelaxSettings.specularVarianceBoost, 0.000f, 8.0f, "%.2f", 1.0f);
                             ImGui::SliderFloat("Diff alpha", &m_RelaxSettings.diffuseAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
                             ImGui::SliderFloat("Diff responsive alpha", &m_RelaxSettings.diffuseResponsiveAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
-                            ImGui::SliderFloat("Diff moments alpha", &m_RelaxSettings.diffuseMomentsAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
                             ImGui::Text("DISOCCLUSION FIX:");
                             ImGui::SliderFloat("Edge-stop Z fraction", &m_RelaxSettings.disocclusionFixEdgeStoppingZFraction, 0.0f, 0.1f, "%.2f", 1.0f);
                             ImGui::SliderFloat("Edge-stop normal power", &m_RelaxSettings.disocclusionFixEdgeStoppingNormalPower, 0.0f, 128.0f, "%.1f", 1.0f);
@@ -2790,8 +2788,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         commonSettings.motionVectorScale[1] = m_Settings.worldSpaceMotion ? 1.0f : 1.0f / GetWindowHeight();
         commonSettings.cameraJitter[0] = jitter.x;
         commonSettings.cameraJitter[1] = jitter.y;
-        commonSettings.metersToUnitsMultiplier = 1.0f / m_Settings.unitsToMetersMultiplier;
-        commonSettings.denoisingRange = m_Scene.aabb.GetRadius() * 4.0f;
+        commonSettings.denoisingRange = 4.0f * m_Scene.aabb.GetRadius() * m_Settings.unitsToMetersMultiplier;
         commonSettings.debug = m_Settings.debug;
         commonSettings.frameIndex = frameIndex;
         commonSettings.worldSpaceMotion = m_Settings.worldSpaceMotion;
@@ -2853,45 +2850,53 @@ void Sample::RenderFrame(uint32_t frameIndex)
             antilagSettings.intensityThresholdMin = threshold0;
             antilagSettings.intensityThresholdMax = 3.0f * threshold0;
 
+            nrd::HitDistanceParameters diffHitDistanceParameters = {};
+            diffHitDistanceParameters.A = m_Settings.diffHitDistScale;
+            diffHitDistanceParameters.B = 0.1f; // see HIT_DISTANCE_LINEAR_SCALE
+
+            nrd::HitDistanceParameters specHitDistanceParameters = {};
+            specHitDistanceParameters.A = m_Settings.specHitDistScale;
+            specHitDistanceParameters.B = 0.1f; // see HIT_DISTANCE_LINEAR_SCALE
+
             #if( NRD_COMBINED == 1 )
                 nrd::NrdDiffuseSpecularSettings diffuseSpecularSettings = {};
                 diffuseSpecularSettings.antilagSettings = antilagSettings;
                 diffuseSpecularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
-                diffuseSpecularSettings.diffHitDistanceParameters = { m_Settings.diffHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                diffuseSpecularSettings.diffHitDistanceParameters = diffHitDistanceParameters;
                 diffuseSpecularSettings.diffMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 diffuseSpecularSettings.diffNoisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSpecularSettings.diffBlurRadius = m_Settings.nrdSettings.diffBlurRadius;
-                diffuseSpecularSettings.diffPostBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
+                diffuseSpecularSettings.diffMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
                 diffuseSpecularSettings.diffCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
-                diffuseSpecularSettings.specHitDistanceParameters = { m_Settings.specHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                diffuseSpecularSettings.specHitDistanceParameters = specHitDistanceParameters;
                 diffuseSpecularSettings.specLobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
                 diffuseSpecularSettings.specMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 diffuseSpecularSettings.specNoisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSpecularSettings.specBlurRadius = m_Settings.nrdSettings.specBlurRadius;
-                diffuseSpecularSettings.specPostBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
+                diffuseSpecularSettings.specMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
                 diffuseSpecularSettings.specCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
                 m_NRD.SetMethodSettings(nrd::Method::NRD_DIFFUSE_SPECULAR, &diffuseSpecularSettings);
             #else
                 nrd::NrdDiffuseSettings diffuseSettings = {};
-                diffuseSettings.hitDistanceParameters = { m_Settings.diffHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                diffuseSettings.hitDistanceParameters = diffHitDistanceParameters;
                 diffuseSettings.antilagSettings = antilagSettings;
                 diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 diffuseSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 diffuseSettings.blurRadius = m_Settings.nrdSettings.diffBlurRadius;
-                diffuseSettings.postBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
+                diffuseSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
                 diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
                 m_NRD.SetMethodSettings(nrd::Method::NRD_DIFFUSE, &diffuseSettings);
 
                 nrd::NrdSpecularSettings specularSettings = {};
-                specularSettings.hitDistanceParameters = { m_Settings.specHitDistScale, 0.1f, 0.0f, 0.0f }; // see HIT_DISTANCE_LINEAR_SCALE
+                specularSettings.hitDistanceParameters = specHitDistanceParameters;
                 specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
                 specularSettings.antilagSettings = antilagSettings;
                 specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 specularSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 specularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 specularSettings.blurRadius = m_Settings.nrdSettings.specBlurRadius;
-                specularSettings.postBlurMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
+                specularSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
                 specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
                 m_NRD.SetMethodSettings(nrd::Method::NRD_SPECULAR, &specularSettings);
             #endif

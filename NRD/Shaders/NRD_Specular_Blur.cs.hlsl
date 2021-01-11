@@ -16,18 +16,18 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 
     float4x4 gWorldToView;
     float4 gRotator;
-    float4 gSpecScalingParams;
+    float4 gSpecHitDistParams;
     float3 gSpecTrimmingParams;
     float gSpecBlurRadius;
 };
@@ -76,9 +76,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Accumulations speeds
-    float3 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
-    float specNormAccumSpeed = saturate( specInternalData.x * STL::Math::PositiveRcp( specInternalData.y ) );
-    float specNonLinearAccumSpeed = 1.0 / ( 1.0 + specInternalData.x );
+    float2 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -86,13 +84,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float specCenterNormHitDist = spec.w;
 
     // Blur radius
-    float specHitDist = GetHitDistance( spec.w, centerZ, gSpecScalingParams, roughness );
-    float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, specNonLinearAccumSpeed );
+    float specHitDist = GetHitDistance( spec.w, centerZ, gSpecHitDistParams, roughness );
+    float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, specInternalData.x );
     specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
     float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );
-
-    // Tangent basis
-    float2x3 specTvBv = GetKernelBasis( centerPos, Nv, specWorldBlurRadius, specNormAccumSpeed, roughness );
 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( BLUR_ROTATOR_MODE, pixelPos, gRotator );
@@ -102,11 +97,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Denoising
     float2 specSum = 1.0;
+    float specNormalWeightParams = GetNormalWeightParams( roughness, edge, specInternalData.x );
+    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( specCenterNormHitDist, specInternalData.x, specHitDist, centerPos );
+    float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
+    float2x3 specTvBv = GetKernelBasis( centerPos, Nv, specWorldBlurRadius, specInternalData.x, roughness );
 
     float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, centerZ );
-    float specNormalWeightParams = GetNormalWeightParams( roughness, edge, specNormAccumSpeed );
-    float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
-    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( specCenterNormHitDist, specNormAccumSpeed, specHitDist, centerPos );
 
     UNROLL
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )

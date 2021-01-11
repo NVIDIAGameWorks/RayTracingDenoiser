@@ -160,7 +160,7 @@ void UnpackSpecularAndDiffuseFromLogLuvUint2(out float3 specular, out float3 dif
 }
 
 // Filtering helpers
-float4 BicubicSampleCatmullRomFloat4UsingBilinear(Texture2D tex, SamplerState samp, float2 samplePos, float2 invViewSize)
+float4 BicubicSampleCatmullRomFloat4UsingBilinear(Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invViewSize)
 {
     float2 tc = floor(samplePos - 0.5) + 0.5;
     float2 f = saturate(samplePos - tc);
@@ -188,7 +188,35 @@ float4 BicubicSampleCatmullRomFloat4UsingBilinear(Texture2D tex, SamplerState sa
     return result / ((w0.x * w12.y) + (w12.x * w0.y) + (w12.x * w12.y) + (w12.x * w3.y) + (w3.x * w12.y));
 }
 
-float4 BicubicSampleCatmullRomFloat4(Texture2D tex, float2 samplePos)
+float2 BicubicSampleCatmullRomFloat2UsingBilinear(Texture2D<float2> tex, SamplerState samp, float2 samplePos, float2 invViewSize)
+{
+    float2 tc = floor(samplePos - 0.5) + 0.5;
+    float2 f = saturate(samplePos - tc);
+
+    float2 f2 = f * f;
+    float2 f3 = f2 * f;
+
+    float c = 0.5; // Sharpness: 0.5 is standard for Catmull-Rom
+    float2 w0 = -c * f3 + 2.0 * c * f2 - c * f;
+    float2 w1 = (2.0 - c) * f3 - (3.0 - c) * f2 + 1.0;
+    float2 w2 = -(2.0 - c) * f3 + (3.0 - 2.0 * c) * f2 + c * f;
+    float2 w3 = c * f3 - c * f2;
+    float2 w12 = w1 + w2;
+
+    float2 tc0 = (tc - 1) * invViewSize;
+    float2 tc12 = (tc + w2 / w12) * invViewSize;
+    float2 tc3 = (tc + 2) * invViewSize;
+
+    float2 result =
+        tex.SampleLevel(samp, float2(tc0.x, tc12.y), 0).rg * (w0.x * w12.y) +
+        tex.SampleLevel(samp, float2(tc12.x, tc0.y), 0).rg * (w12.x * w0.y) +
+        tex.SampleLevel(samp, float2(tc12.x, tc12.y), 0).rg * (w12.x * w12.y) +
+        tex.SampleLevel(samp, float2(tc12.x, tc3.y), 0).rg * (w12.x * w3.y) +
+        tex.SampleLevel(samp, float2(tc3.x, tc12.y), 0).rg * (w3.x * w12.y);
+    return result / ((w0.x * w12.y) + (w12.x * w0.y) + (w12.x * w12.y) + (w12.x * w3.y) + (w3.x * w12.y));
+}
+
+float4 BicubicSampleCatmullRomFloat4(Texture2D<float4> tex, float2 samplePos)
 {
     float2 tc = floor(samplePos - 0.5) + 0.5;
     float2 f = saturate(samplePos - tc);
@@ -358,7 +386,26 @@ float LinearInterpolationWithBinaryWeightsFloat(Texture2D<float> tex, int2 bilin
     return r;
 }
 
-float4 LinearInterpolationWithBinaryWeightsFloat4(Texture2D tex, int2 bilinearOrigin, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
+float2 LinearInterpolationWithBinaryWeightsFloat2(Texture2D<float2> tex, int2 bilinearOrigin, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
+{
+    float2 s00 = tex[bilinearOrigin + int2(0, 0)].rg;
+    float2 s10 = tex[bilinearOrigin + int2(1, 0)].rg;
+    float2 s01 = tex[bilinearOrigin + int2(0, 1)].rg;
+    float2 s11 = tex[bilinearOrigin + int2(1, 1)].rg;
+    s00 *= binaryWeights.x;
+    s10 *= binaryWeights.y;
+    s01 *= binaryWeights.z;
+    s11 *= binaryWeights.w;
+
+    STL::Filtering::Bilinear bilinear;
+    bilinear.weights = bilinearWeights;
+
+    float2 r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
+    r /= interpolatedBinaryWeight;
+    return r;
+}
+
+float4 LinearInterpolationWithBinaryWeightsFloat4(Texture2D<float4> tex, int2 bilinearOrigin, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
 {
     float4 s00 = tex[bilinearOrigin + int2(0, 0)].rgba;
     float4 s10 = tex[bilinearOrigin + int2(1, 0)].rgba;

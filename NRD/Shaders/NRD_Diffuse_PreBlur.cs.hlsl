@@ -16,18 +16,18 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 
     float4x4 gWorldToView;
     float4 gRotator;
-    float4 gDiffScalingParams;
+    float4 gDiffHitDistParams;
     float gDiffBlurRadius;
     uint gDiffCheckerboard;
 };
@@ -40,8 +40,8 @@ NRI_RESOURCE( Texture2D<float>, gIn_ViewZ, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 2, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 0, 0 );
-NRI_RESOURCE( RWTexture2D<float>, gOut_ScaledViewZ, u, 1, 0 );
+NRI_RESOURCE( RWTexture2D<float>, gOut_ScaledViewZ, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 1, 0 );
 
 void Preload( int2 sharedId, int2 globalId )
 {
@@ -57,13 +57,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     PRELOAD_INTO_SMEM;
 
     // Checkerboard
-    bool hasData = true;
-    uint2 checkerboardPixelPos = pixelPos;
+    bool2 hasData = true;
+    uint2 checkerboardPixelPos = pixelPos.xx;
     uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );
 
     if( gDiffCheckerboard != 2 )
     {
-        hasData = checkerboard == gDiffCheckerboard;
+        hasData.x = checkerboard == gDiffCheckerboard;
         checkerboardPixelPos.x >>= 1;
     }
 
@@ -83,7 +83,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
-    float4 diff = gIn_Diff[ checkerboardPixelPos ];
+    float4 diff = gIn_Diff[ uint2( checkerboardPixelPos.x, pixelPos.y ) ];
 
     int3 smemCheckerboardPos = smemPos.xyx + int3( -1, 0, 1 );
     float viewZ0 = s_ViewZ[ smemCheckerboardPos.y ][ smemCheckerboardPos.x ];
@@ -93,14 +93,14 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     int3 checkerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
     checkerboardPos.xz >>= 1;
+
     float4 d0 = gIn_Diff[ checkerboardPos.xy ];
     float4 d1 = gIn_Diff[ checkerboardPos.zy ];
-    if( !hasData )
+    if( !hasData.x )
     {
         diff *= saturate( 1.0 - w.x - w.y );
         diff += d0 * w.x + d1 * w.y;
     }
-
     float diffCenterNormHitDist = diff.w;
 
     // Normal and roughness
@@ -110,15 +110,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Blur radius
-    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffScalingParams );
-    float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, PRE_BLUR_NON_LINEAR_ACCUM_SPEED( 1.0 ) );
+    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffHitDistParams );
+    float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, PRE_BLUR_NON_LINEAR_ACCUM_SPEED, PRE_BLUR_RADIUS_SCALE( 1.0 ) );
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
-
-    // Blur radius scale
-    diffWorldBlurRadius *= PRE_BLUR_RADIUS_SCALE;
-
-    // Tangent basis
-    float2x3 diffTvBv = GetKernelBasis( centerPos, Nv, diffWorldBlurRadius );
 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator );
@@ -128,10 +122,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Denoising
     float2 diffSum = 1.0;
+    float diffNormalWeightParams = GetNormalWeightParams( 1.0, edge, PRE_BLUR_NON_LINEAR_ACCUM_SPEED );
+    float2 diffHitDistanceWeightParams = GetHitDistanceWeightParams( diffCenterNormHitDist, PRE_BLUR_NON_LINEAR_ACCUM_SPEED, diffHitDist, centerPos );
+    float2x3 diffTvBv = GetKernelBasis( centerPos, Nv, diffWorldBlurRadius, PRE_BLUR_NON_LINEAR_ACCUM_SPEED );
 
     float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, centerZ );
-    float diffNormalWeightParams = GetNormalWeightParams( 1.0, edge );
-    float2 diffHitDistanceWeightParams = GetHitDistanceWeightParams( diffCenterNormHitDist, PRE_BLUR_NORM_ACCUM_SPEED( 1.0 ), diffHitDist, centerPos );
 
     UNROLL
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
@@ -147,9 +142,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
             checkerboardUv = ApplyCheckerboard( uv, gDiffCheckerboard, i );
 
         // Fetch data
-        float4 d = gIn_Diff.SampleLevel( gNearestClamp, checkerboardUv.xy, 0 );
-        float z = gIn_ViewZ.SampleLevel( gNearestClamp, uv, 0 );
-        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestClamp, uv, 0 );
+        float4 d = gIn_Diff.SampleLevel( gNearestMirror, checkerboardUv.xy, 0 );
+        float z = gIn_ViewZ.SampleLevel( gNearestMirror, uv, 0 );
+        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0 );
 
         float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
         normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
@@ -174,6 +169,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Output
     float scaledViewZ = clamp( centerZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
 
-    gOut_Diff[ pixelPos ] = diff;
     gOut_ScaledViewZ[ pixelPos ] = scaledViewZ;
+    gOut_Diff[ pixelPos ] = diff;
 }

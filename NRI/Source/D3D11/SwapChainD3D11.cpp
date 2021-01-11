@@ -76,8 +76,9 @@ Result SwapChainD3D11::Create(const VersionedDevice& device, const SwapChainDesc
     hr = dxgiFactory2->QueryInterface(IID_PPV_ARGS(&dxgiFactory5));
     if (SUCCEEDED(hr))
     {
-        hr = dxgiFactory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &m_IsTearingAllowed, sizeof(m_IsTearingAllowed));
-        m_IsTearingAllowed &= SUCCEEDED(hr);
+        uint32_t tearingSupport = 0;
+        hr = dxgiFactory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearingSupport, sizeof(tearingSupport));
+        m_IsTearingAllowed = (SUCCEEDED(hr) && tearingSupport) ? true : false;
     }
 
     DXGI_FORMAT format = g_swapChainFormat[(uint32_t)swapChainDesc.format];

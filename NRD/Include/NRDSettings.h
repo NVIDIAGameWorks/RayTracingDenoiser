@@ -12,6 +12,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 namespace nrd
 {
+    // IMPORTANT: default values assume that "meter" is the primary measurement unit. If other units are used, values marked as "m" need to be adjusted.
+    // NRD inputs (viewZ, hit distance) can be scaled instead of input settings.
+
     /*
     Checkerboard modes:
     1. Internally, NRD uses the following sequence based on "CommonSettings::frameIndex":
@@ -55,29 +58,29 @@ namespace nrd
         float viewToClipMatrixPrev[16] = {};
         float motionVectorScale[2] = {1.0f, 1.0f};  // if "worldSpaceMotion = true" will be used as "MV * motionVectorScale.xyy"
         float cameraJitter[2] = {0.0f, 0.0f};
-        float metersToUnitsMultiplier = 1.0f;
-        float denoisingRange = 1e6f;                // units
+        float denoisingRange = 10000.0f;            // (m) (> 0)
         float debug = 0.0f;
         uint32_t frameIndex = 0;                    // pass 0 for a single frame to reset history (method 1)
         bool worldSpaceMotion = false;              // if "true" IN_MV is 3D motion in world space (0 should be everywhere if the scene is static), otherwise it's 2D screen-space motion (0 should be everywhere if the camera doesn't move)
         bool forceReferenceAccumulation = false;
     };
 
-    // Hit distance (m) = "normalized hit distance" * ( A + viewZ * B ) * lerp( C, 1.0, exp2( -D * roughness ^ 2 ) )
+    // Hit distance = "normalized hit distance" * ( A + viewZ * B ) * lerp( 1.0, C, exp2( D * roughness ^ 2 ) )
     struct HitDistanceParameters
     {
-        float A = 1.0f; // constant value (m)
-        float B = 0.0f; // viewZ based linear scale (m / units)
-        float C = 0.0f; // roughness based scale
-        float D = 0.0f; // roughness based exponential scale
+        float A = 3.0f;     // constant value (m)
+        float B = 0.1f;     // viewZ based linear scale (m / units), viewZ will be automatically scaled to meters using provided "metersToUnitsMultiplier" (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
+        float C = 1.0f;     // roughness based scale, "> 1" to get bigger hit distance for relatively low roughness
+        float D = -50.0f;   // roughness based exponential scale, "< 0", absolute value should be big enough to collapse "exp2( D * roughness ^ 2 )" to "~0" for roughness = 1
     };
 
     // Optional specular lobe trimming = A * smoothstep( B, C, roughness )
+    // Recommended settings if lobe trimming is used = { 0.85f, 0.04f, 0.11f }
     struct LobeTrimmingParameters
     {
-        float A = 0.85f;
-        float B = 0.04f;
-        float C = 0.11f;
+        float A = 1.0f;
+        float B = 0.0f;
+        float C = 0.0001f;
     };
 
     // Optional antilag settings
@@ -91,36 +94,36 @@ namespace nrd
         bool enable = true;                         // enables "hit distance" and "intensity" tracking (the latter can be turned off by huge thresholds)
     };
 
-    // NRD_DIFFUSE
+    const uint32_t NRD_MAX_HISTORY_FRAME_NUM = 63;
 
-    const uint32_t NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM = 31;
+    // NRD_DIFFUSE
 
     struct NrdDiffuseSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
         AntilagSettings antilagSettings = {};
-        uint32_t maxAccumulatedFrameNum = NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM;    // 0 - NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        float disocclusionThreshold = 0.005f;                           // normalized %
+        float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
+        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
+        float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         float noisinessBlurrinessBalance = 1.0f;
-        float disocclusionThreshold = 0.005f;                                   // normalized %
-        float blurRadius = 30.0f;                                               // base (worst) denoising radius (pixels)
-        float postBlurMaxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
     };
 
     // NRD_SPECULAR
-
-    const uint32_t NRD_SPECULAR_MAX_HISTORY_FRAME_NUM = 31;
 
     struct NrdSpecularSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
         LobeTrimmingParameters lobeTrimmingParameters = {};
         AntilagSettings antilagSettings = {};
-        uint32_t maxAccumulatedFrameNum = NRD_SPECULAR_MAX_HISTORY_FRAME_NUM;   // 0 - NRD_SPECULAR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        float disocclusionThreshold = 0.005f;                           // normalized %
+        float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
+        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
+        float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         float noisinessBlurrinessBalance = 1.0f;
-        float disocclusionThreshold = 0.005f;                                   // normalized %
-        float blurRadius = 30.0f;                                               // base (worst) denoising radius (pixels)
-        float postBlurMaxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
     };
 
@@ -132,15 +135,16 @@ namespace nrd
         HitDistanceParameters specHitDistanceParameters = {};
         LobeTrimmingParameters specLobeTrimmingParameters = {};
         AntilagSettings antilagSettings = {};
-        uint32_t diffMaxAccumulatedFrameNum = NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM;    // 0 - NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
-        uint32_t specMaxAccumulatedFrameNum = NRD_SPECULAR_MAX_HISTORY_FRAME_NUM;   // 0 - NRD_SPECULAR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        float disocclusionThreshold = 0.005f;                            // normalized %
+        float planeDistanceSensitivity = 0.002f;                         // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
+        uint32_t diffMaxAccumulatedFrameNum = 31;                        // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t specMaxAccumulatedFrameNum = 31;                        // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        float diffBlurRadius = 30.0f;                                    // base (worst) diffuse denoising radius (pixels)
+        float specBlurRadius = 30.0f;                                    // base (worst) specular denoising radius (pixels)
+        float diffMaxAdaptiveRadiusScale = 5.0f;                         // adaptive radius scale, comes into play if error is high (0-10)
+        float specMaxAdaptiveRadiusScale = 5.0f;                         // adaptive radius scale, comes into play if error is high (0-10)
         float diffNoisinessBlurrinessBalance = 1.0f;
         float specNoisinessBlurrinessBalance = 1.0f;
-        float disocclusionThreshold = 0.005f; // normalized %
-        float diffBlurRadius = 30.0f; // pixels
-        float specBlurRadius = 30.0f; // pixels
-        float diffPostBlurMaxAdaptiveRadiusScale = 5.0f; // 0-10
-        float specPostBlurMaxAdaptiveRadiusScale = 5.0f; // 0-10
         CheckerboardMode diffCheckerboardMode = CheckerboardMode::OFF;
         CheckerboardMode specCheckerboardMode = CheckerboardMode::OFF;
     };
@@ -150,6 +154,7 @@ namespace nrd
     struct NrdShadowSettings
     {
         float lightSourceAngularDiameter = 0.533f;  // angular diameter (deg) (0.533 = sun)
+        float planeDistanceSensitivity = 0.002f;    // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         float blurRadiusScale = 1.0f;               // adds bias if > 1, but if shadows are still unstable (have you tried blue noise?)... can be set in range [1; 1.5]
     };
 
@@ -160,10 +165,8 @@ namespace nrd
         bool bicubicFilterForReprojectionEnabled = true;        // slower but sharper filtering of the history during reprojection
         float specularAlpha = 0.016f;                           // new data blend weight for normal illumination temporal accumulation
         float specularResponsiveAlpha = 0.1f;                   // new data blend weight for responsive illumination temporal accumulation
-        float specularMomentsAlpha = 0.1f;                      // new data blend weight for moments temporal accumulation
         float diffuseAlpha = 0.016f;                            // new data blend weight for normal illumination temporal accumulation
         float diffuseResponsiveAlpha = 0.1f;                    // new data blend weight for responsive illumination temporal accumulation
-        float diffuseMomentsAlpha = 0.1f;                       // new data blend weight for moments temporal accumulation
         float specularVarianceBoost = 1.0f;                     // how much variance we inject to specular if reprojection confidence is low
         bool debugOutputReprojectionEnabled = false;            // enable debug output with reprojection results
 
@@ -175,13 +178,14 @@ namespace nrd
         float historyClampingColorBoxSigmaScale = 1.0f;         // scale for standard deviation of color box
 
         bool fireflySuppressionEnabled = true;                  // firefly suppression
+        bool needHistoryReset = false;                          // set to true for 1 frame to reset history 
 
         int32_t spatialVarianceEstimationHistoryThreshold = 3;  // history length threshold below which spatial variance estimation will be executed
         int32_t atrousIterations = 5;                           // number of iteration for A-Trous wavelet transform
-        float specularPhiLuminance = 2.0f;                      // A-trous Luminance sensitivity
-        float diffusePhiLuminance = 2.0f;                       // A-trous Luminance sensitivity
-        float phiNormal = 128.0f;                               // A-trous Normal sensitivity for diffuse
-        float phiDepth = 0.05f;                                 // A-trous Depth sensitivity
+        float specularPhiLuminance = 2.0f;                      // A-trous edge stopping Luminance sensitivity
+        float diffusePhiLuminance = 2.0f;                       // A-trous edge stopping Luminance sensitivity
+        float phiNormal = 64.0f;                                // A-trous edge stopping Normal sensitivity for diffuse
+        float phiDepth = 0.05f;                                 // A-trous edge stopping Depth sensitivity
         float roughnessEdgeStoppingRelaxation = 0.3f;           // how much we relax roughness based rejection in areas where specular reprojection is low
         float normalEdgeStoppingRelaxation = 0.3f;              // how much we relax normal based rejection in areas where specular reprojection is low
         float luminanceEdgeStoppingRelaxation = 1.0f;           // how much we relax luminance based rejection in areas where specular reprojection is low

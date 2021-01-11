@@ -300,24 +300,30 @@ void DenoiserImpl::UpdatePingPong(const MethodData& methodData)
     }
 }
 
-void DenoiserImpl::AddSharedConstants(const MethodData& methodData, Constant*& data)
+void DenoiserImpl::AddNrdSharedConstants(const MethodData& methodData, float planeDistSensitivity, Constant*& data)
 {
     float w = float(methodData.desc.fullResolutionWidth);
     float h = float(methodData.desc.fullResolutionHeight);
     float unproject = 1.0f / (0.5f * h * m_ProjectY);
-    float infAndWorldSpaceMotion = m_CommonSettings.worldSpaceMotion ? m_CommonSettings.denoisingRange : -m_CommonSettings.denoisingRange;
+    float infWithViewZSign = m_CommonSettings.denoisingRange * ( ( m_ProjectionFlags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );
     float frameRateScale = Clamp( 16.7f / m_Timer.GetSmoothedElapsedTime(), 1.0f, 4.0f );
+    
+    uint32_t bools = 0;
+    if (m_CommonSettings.worldSpaceMotion)
+        bools |= 0x1;
+    if (m_CommonSettings.forceReferenceAccumulation)
+        bools |= 0x2;
 
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4(data, m_Frustum);
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat2(data, w, h);
-    AddFloat(data, m_CommonSettings.metersToUnitsMultiplier);
+    AddUint(data, bools);
     AddFloat(data, m_IsOrtho);
     AddFloat(data, unproject);
     AddFloat(data, m_CommonSettings.debug);
-    AddFloat(data, infAndWorldSpaceMotion);
-    AddFloat(data, m_CommonSettings.forceReferenceAccumulation ? 1.0f : 0.0f);
+    AddFloat(data, infWithViewZSign);
+    AddFloat(data, 1.0f / planeDistSensitivity);
     AddUint(data, m_CommonSettings.frameIndex);
     AddFloat(data, frameRateScale);
 }
@@ -336,7 +342,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     m_Rotator[0] = float4( ca, sa, -sa, ca );
     m_Rotator[1] = float4( -sa, ca, -ca, -sa );
     m_Rotator[2] = float4( ca, sa, -sa, ca );
-
 
     m_ViewToClip = float4x4
     (
@@ -411,8 +416,8 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
 
     m_ProjectY = project[1];
-    m_CommonSettings.denoisingRange = Min(m_CommonSettings.denoisingRange, Abs(settings[PROJ_ZFAR]) * 0.99f);
     m_IsOrtho = ( flags & PROJ_ORTHO ) == 0 ? 0.0f : ( ( flags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );
+    m_ProjectionFlags = flags;
 
     DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
     m_IsOrthoPrev = ( flags & PROJ_ORTHO ) == 0 ? 0.0f : ( ( flags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );

@@ -145,8 +145,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     int2 ipos = dispatchThreadId.xy;
     if (any(ipos >= gResolution)) return;
 
-    const float epsVariance      = 1e-6;
-
     float4 centerSpecularIlluminationAndVariance = gSpecularIlluminationAndVariance[ipos];
     float centerSpecularLuminance = STL::Color::Luminance(centerSpecularIlluminationAndVariance.rgb);
 
@@ -168,8 +166,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     float3 centerWorldPos = getCurrentWorldPos(ipos, centerDepth.x);
 
-    float specularPhiLIllumination = gSpecularPhiLuminance * sqrt(max(0.0, epsVariance + centerSpecularVar));
-    float diffusePhiLIllumination = gDiffusePhiLuminance * sqrt(max(0.0, epsVariance + centerDiffuseVar));
+    float specularPhiLIllumination = 1.0e-4 + gSpecularPhiLuminance * sqrt(max(0.0, centerSpecularVar));
+    float diffusePhiLIllumination = 1.0e-4 + gDiffusePhiLuminance * sqrt(max(0.0, centerDiffuseVar));
     float phiDepth = gPhiDepth;
 
     float sumWSpecular = 0;

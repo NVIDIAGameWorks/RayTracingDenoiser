@@ -16,12 +16,12 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 
@@ -32,7 +32,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustumPrev;
     float3 gCameraDelta;
     float gIsOrthoPrev;
-    float4 gSpecScalingParams;
+    float4 gSpecHitDistParams;
     float3 gSpecTrimmingParams;
     float gCheckerboardResolveAccumSpeed;
     float2 gMotionVectorScale;
@@ -40,9 +40,9 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gJitterDelta;
     float gDiffMaxAccumulatedFrameNum;
     float gDiffNoisinessBlurrinessBalance;
+    uint gDiffCheckerboard;
     float gSpecMaxAccumulatedFrameNum;
     float gSpecNoisinessBlurrinessBalance;
-    uint gDiffCheckerboard;
     uint gSpecCheckerboard;
 };
 
@@ -59,7 +59,7 @@ NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 6, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 7, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<uint>, gOut_InternalData, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<unorm float4>, gOut_InternalData, u, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 1, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 2, 0 );
 
@@ -90,7 +90,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
             gOut_Diff[ pixelPos ] = 0;
             gOut_Spec[ pixelPos ] = 0;
         #endif
-        gOut_InternalData[ pixelPos ] = PackDiffSpecInternalData( MAX_ACCUM_FRAME_NUM, MAX_ACCUM_FRAME_NUM, 0 ); // MAX_ACCUM_FRAME_NUM to skip HistoryFix on INF pixels
+        gOut_InternalData[ pixelPos ] = PackDiffSpecInternalData( );
         return;
     }
 
@@ -165,7 +165,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) ); // TODO: ideally, isInScreen must be per pixel in 2x2 or 4x4 footprint
     float2 motion = pixelUvPrev - pixelUv;
     float motionLength = length( motion );
-    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() != 0 );
+    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() );
 
     // Previous data ( Catmull-Rom )
     STL::Filtering::CatmullRom catmullRomFilterAtPrevPos = STL::Filtering::GetCatmullRomFilter( saturate( pixelUvPrev ), gScreenSize );
@@ -184,13 +184,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 prevViewZ2 = UnpackViewZ( prevPackRed2 );
     float4 prevViewZ3 = UnpackViewZ( prevPackRed3 );
 
-    float4 diffPrevAccumSpeeds = UnpackAccumSpeed( uint4( prevPackRed0.w, prevPackRed1.z, prevPackRed2.y, prevPackRed3.x ) );
+    float4 diffPrevAccumSpeeds = UnpackDiffAccumSpeed( uint4( prevPackRed0.w, prevPackRed1.z, prevPackRed2.y, prevPackRed3.x ) );
 
     float4 specPrevAccumSpeeds;
-    float3 prevNormal00 = UnpackNormalRoughnessAccumSpeed( prevPackGreen0.w, specPrevAccumSpeeds.x ).xyz;
-    float3 prevNormal10 = UnpackNormalRoughnessAccumSpeed( prevPackGreen1.z, specPrevAccumSpeeds.y ).xyz;
-    float3 prevNormal01 = UnpackNormalRoughnessAccumSpeed( prevPackGreen2.y, specPrevAccumSpeeds.z ).xyz;
-    float3 prevNormal11 = UnpackNormalRoughnessAccumSpeed( prevPackGreen3.x, specPrevAccumSpeeds.w ).xyz;
+    float3 prevNormal00 = UnpackNormalRoughnessSpecAccumSpeed( prevPackGreen0.w, specPrevAccumSpeeds.x ).xyz;
+    float3 prevNormal10 = UnpackNormalRoughnessSpecAccumSpeed( prevPackGreen1.z, specPrevAccumSpeeds.y ).xyz;
+    float3 prevNormal01 = UnpackNormalRoughnessSpecAccumSpeed( prevPackGreen2.y, specPrevAccumSpeeds.z ).xyz;
+    float3 prevNormal11 = UnpackNormalRoughnessSpecAccumSpeed( prevPackGreen3.x, specPrevAccumSpeeds.w ).xyz;
 
     float4 prevRoughness0 = UnpackRoughness( prevPackGreen0 );
     float4 prevRoughness1 = UnpackRoughness( prevPackGreen1 );
@@ -296,6 +296,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     trimmingFactor = STL::Math::LinearStep( 0.0, 0.1, trimmingFactor ); // TODO: is it needed? Better settings?
     specAccumSpeedFade *= lerp( 1.0, trimmingFactor, roughnessRatio );
 
+    // Avoid getting stuck in history if only 1 sample is valid from 2x2 footprint and there is a big difference between foreground and background surfaces
+    float4 planeDist2x2 = float4( planeDist0.w, planeDist1.z, planeDist2.y, planeDist3.x );
+    planeDist2x2 = STL::Math::LinearStep( disocclusionThresholds.x, 0.2, planeDist2x2 );
+    planeDist2x2 = 1.0 - planeDist2x2;
+    diffAccumSpeed *= dot( planeDist2x2, 0.25 );
+    specAccumSpeed *= dot( planeDist2x2, 0.25 );
+
     // Noisy signal with reconstruction (if needed)
     uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );
 
@@ -329,7 +336,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float accumSpeedSurface = 1.0 / ( specAccumSpeedFade * accumSpeedsSurface.x + 1.0 );
     currentSurface.w = lerp( specHistorySurface.w, spec.w, max( accumSpeedSurface, MIN_HITDIST_ACCUM_SPEED ) );
 
-    float hitDist = GetHitDistance( currentSurface.w, viewZ, gSpecScalingParams, roughness );
+    float hitDist = GetHitDistance( currentSurface.w, viewZ, gSpecHitDistParams, roughness );
     parallax *= saturate( hitDist * invDistToPoint );
     accumSpeedsSurface = GetSpecAccumSpeed( specAccumSpeed, roughnessModified, avgNoV, parallax );
     accumSpeedSurface = 1.0 / ( specAccumSpeedFade * accumSpeedsSurface.x + 1.0 );
@@ -350,7 +357,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float zThreshold = lerp( 0.03, 0.1, STL::Math::Sqrt01( 1.0 - flatNoV ) );
     occlusionVirtual = STL::Math::LinearStep( zThreshold, 0.02, occlusionVirtual );
 
-    normalParams = GetNormalWeightParams( roughnessModified, 0.0, 0.7 );
+    float fresnelFactor = STL::BRDF::Pow5( avgNoV );
+    normalParams = GetNormalWeightParams( roughnessModified, 0.0, lerp( 1.0 / ( 1.0 + specAccumSpeed ), 1.0, fresnelFactor ) );
+    normalParams *= lerp( 1.5, 1.0, fresnelFactor ); // TODO: tune better?
     occlusionVirtual.x *= GetNormalAndRoughnessWeights( N, normalParams, roughnessParams, prevPackGreenVirtual.x );
     occlusionVirtual.y *= GetNormalAndRoughnessWeights( N, normalParams, roughnessParams, prevPackGreenVirtual.y );
     occlusionVirtual.z *= GetNormalAndRoughnessWeights( N, normalParams, roughnessParams, prevPackGreenVirtual.z );
@@ -372,10 +381,15 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float isInScreenVirtual = float( all( saturate( pixelUvVirtualPrev ) == pixelUvVirtualPrev ) );
     virtualHistoryAmount *= isInScreenVirtual;
     virtualHistoryAmount *= 1.0 - STL::Math::SmoothStep( 0.75, 1.0, roughness );
-    virtualHistoryAmount *= 1.0 - gReference; // TODO: I would be glad to use virtual motion in the reference mode, but it requires denoised hit distances. Unfortunately, in the reference mode blur radius is set to 0
+    virtualHistoryAmount *= float( !IsReference() ); // no virtual motion in reference mode (it's by design, useful for integration debugging)
+
+    // Adjust based on local normal divergence
+    float nonEdge = STL::Math::SmoothStep( 0.94, 0.999, length( Navg ) );
+    nonEdge = lerp( nonEdge, 1.0, fresnelFactor );
+    virtualHistoryAmount *= nonEdge;
 
     // Hit distance based disocclusion for virtual motion
-    float hitDistVirtual = GetHitDistance( specHistoryVirtual.w, viewZ, gSpecScalingParams, roughness );
+    float hitDistVirtual = GetHitDistance( specHistoryVirtual.w, viewZ, gSpecHitDistParams, roughness );
     float relativeDelta = abs( hitDist - hitDistVirtual ) * STL::Math::PositiveRcp( min( hitDistVirtual, hitDist ) + abs( viewZ ) );
 
     float relativeDeltaThreshold = lerp( 0.01, 0.25, roughnessModified * roughnessModified );
@@ -408,7 +422,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float virtualClampingAmount = lerp( 1.0 - roughnessModified * roughnessModified, 0.0, virtualHistoryCorrectness );
     float surfaceClampingAmount = 1.0 - STL::Math::SmoothStep( 0.04, 0.4, roughnessModified );
     surfaceClampingAmount *= STL::Math::SmoothStep( 0.05, 0.3, parallax );
-    surfaceClampingAmount *= 1.0 - gReference;
+    surfaceClampingAmount *= float( !IsReference() );
 
     currentVirtual = lerp( currentVirtual, currentVirtualClamped, virtualClampingAmount );
     currentSurface.xyz = lerp( currentSurface.xyz, currentSurfaceClamped.xyz, surfaceClampingAmount );

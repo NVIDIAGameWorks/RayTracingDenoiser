@@ -39,7 +39,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         SCALED_VIEWZ,
     };
 
-    m_TransientPool.push_back( {Format::R32_UINT, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 5} );
@@ -55,9 +55,9 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_DIFF_HIT) );
         PushInput( AsUint(ResourceType::IN_SPEC_HIT) );
 
+        PushOutput( AsUint(Transient::SCALED_VIEWZ) );
         PushOutput( DIFF_TEMP );
         PushOutput( SPEC_TEMP );
-        PushOutput( AsUint(Transient::SCALED_VIEWZ) );
 
         desc.constantBufferDataSize = SumConstants(1, 4, 0, 3);
 
@@ -185,7 +185,7 @@ size_t DenoiserImpl::AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::SPEC_STABILIZED_HISTORY_2) );
         PushOutput( AsUint(ResourceType::OUT_SPEC_HIT) );
 
-        desc.constantBufferDataSize = SumConstants(3, 2, 2, 0);
+        desc.constantBufferDataSize = SumConstants(3, 2, 2, 2);
 
         AddDispatch(desc, NRD_DiffuseSpecular_TemporalStabilization, w, h);
     }
@@ -213,120 +213,121 @@ void DenoiserImpl::UpdateMethod_NrdDiffuseSpecular(const MethodData& methodData)
     const NrdDiffuseSpecularSettings& settings = methodData.settings.diffuseSpecular;
 
     float disocclusionThreshold = settings.disocclusionThreshold;
-    bool useAntilag = !m_CommonSettings.forceReferenceAccumulation && settings.antilagSettings.enable;
 
-    float diffMaxAccumulatedFrameNum = float( Min(settings.diffMaxAccumulatedFrameNum, NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM) );
+    float diffMaxAccumulatedFrameNum = float( Min(settings.diffMaxAccumulatedFrameNum, NRD_MAX_HISTORY_FRAME_NUM) );
     float diffNoisinessBlurrinessBalance = settings.diffNoisinessBlurrinessBalance;
     float diffBlurRadius = settings.diffBlurRadius;
     uint32_t diffCheckerboard = ((uint32_t)settings.diffCheckerboardMode + 2) % 3;
 
-    float specMaxAccumulatedFrameNum = float( Min(settings.specMaxAccumulatedFrameNum, NRD_SPECULAR_MAX_HISTORY_FRAME_NUM) );
+    float specMaxAccumulatedFrameNum = float( Min(settings.specMaxAccumulatedFrameNum, NRD_MAX_HISTORY_FRAME_NUM) );
     float specNoisinessBlurrinessBalance = settings.diffNoisinessBlurrinessBalance;
     float specBlurRadius = settings.specBlurRadius;
     uint32_t specCheckerboard = ((uint32_t)settings.specCheckerboardMode + 2) % 3;
 
     if (m_CommonSettings.forceReferenceAccumulation)
     {
-        diffMaxAccumulatedFrameNum = settings.diffMaxAccumulatedFrameNum == 0 ? 0.0f : NRD_DIFFUSE_MAX_HISTORY_FRAME_NUM;
+        diffMaxAccumulatedFrameNum = settings.diffMaxAccumulatedFrameNum == 0 ? 0.0f : NRD_MAX_HISTORY_FRAME_NUM;
         diffNoisinessBlurrinessBalance = 1.0f;
         diffBlurRadius = 0.0f;
 
-        specMaxAccumulatedFrameNum = settings.specMaxAccumulatedFrameNum == 0 ? 0.0f : NRD_SPECULAR_MAX_HISTORY_FRAME_NUM;
+        specMaxAccumulatedFrameNum = settings.specMaxAccumulatedFrameNum == 0 ? 0.0f : NRD_MAX_HISTORY_FRAME_NUM;
         specNoisinessBlurrinessBalance = 1.0f;
         specBlurRadius = 0.0f;
 
         disocclusionThreshold = 0.005f;
     }
 
-    float4 diffScalingParams = float4(&settings.diffHitDistanceParameters.A) * m_CommonSettings.metersToUnitsMultiplier;
-    float4 specScalingParams = float4(&settings.specHitDistanceParameters.A) * m_CommonSettings.metersToUnitsMultiplier;
-    float4 specTrimmingParams_and_diffBlurRadius = float4(settings.specLobeTrimmingParameters.A, settings.specLobeTrimmingParameters.B, settings.specLobeTrimmingParameters.C, diffBlurRadius);
+    float4 diffHitDistParams = float4(&settings.diffHitDistanceParameters.A);
+    float4 specHitDistParams = float4(&settings.specHitDistanceParameters.A);
+    float4 specTrimmingParams_and_specBlurRadius = float4(settings.specLobeTrimmingParameters.A, settings.specLobeTrimmingParameters.B, settings.specLobeTrimmingParameters.C, specBlurRadius);
     float4 specTrimmingParams_and_checkerboardResolveAccumSpeed = float4(settings.specLobeTrimmingParameters.A, settings.specLobeTrimmingParameters.B, settings.specLobeTrimmingParameters.C, m_CheckerboardResolveAccumSpeed);
 
     // PRE_BLUR
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::PRE_BLUR));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[0]);
-    AddFloat4(data, diffScalingParams);
-    AddFloat4(data, specScalingParams);
-    AddFloat4(data, specTrimmingParams_and_diffBlurRadius);
-    AddFloat(data, specBlurRadius);
-    AddUint(data, diffCheckerboard);
+    AddFloat4(data, diffHitDistParams);
+    AddFloat4(data, specHitDistParams);
+    AddFloat4(data, specTrimmingParams_and_specBlurRadius);
     AddUint(data, specCheckerboard);
+    AddFloat(data, diffBlurRadius);
+    AddUint(data, diffCheckerboard);
     ValidateConstants(data);
 
     // TEMPORAL_ACCUMULATION
     data = PushDispatch(methodData, AsUint(Dispatch::TEMPORAL_ACCUMULATION));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToViewPrev);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
     AddFloat4(data, m_FrustumPrev);
     AddFloat4(data, float4( m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, m_IsOrthoPrev ) );
-    AddFloat4(data, specScalingParams);
+    AddFloat4(data, specHitDistParams);
     AddFloat4(data, specTrimmingParams_and_checkerboardResolveAccumSpeed);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, disocclusionThreshold);
     AddFloat(data, m_JitterDelta );
     AddFloat(data, diffMaxAccumulatedFrameNum);
     AddFloat(data, diffNoisinessBlurrinessBalance);
+    AddUint(data, diffCheckerboard);
     AddFloat(data, specMaxAccumulatedFrameNum);
     AddFloat(data, specNoisinessBlurrinessBalance);
-    AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);
     ValidateConstants(data);
 
     // DIFF_MIP_GENERATION
     data = PushDispatch(methodData, AsUint(Dispatch::DIFF_MIP_GENERATION));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     ValidateConstants(data);
 
     // SPEC_MIP_GENERATION
     data = PushDispatch(methodData, AsUint(Dispatch::SPEC_MIP_GENERATION));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     ValidateConstants(data);
 
     // HISTORY_FIX
     data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddUint2(data, methodData.desc.fullResolutionWidth, methodData.desc.fullResolutionHeight);
     ValidateConstants(data);
 
     // BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[1]);
-    AddFloat4(data, diffScalingParams);
-    AddFloat4(data, specScalingParams);
-    AddFloat4(data, specTrimmingParams_and_diffBlurRadius);
-    AddFloat(data, specBlurRadius);
+    AddFloat4(data, diffHitDistParams);
+    AddFloat4(data, specHitDistParams);
+    AddFloat4(data, specTrimmingParams_and_specBlurRadius);
+    AddFloat(data, diffBlurRadius);
     ValidateConstants(data);
 
     // POST_BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::POST_BLUR));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[2]);
-    AddFloat4(data, diffScalingParams);
-    AddFloat4(data, specScalingParams);
-    AddFloat4(data, specTrimmingParams_and_diffBlurRadius);
-    AddFloat(data, specBlurRadius);
-    AddFloat(data, settings.diffPostBlurMaxAdaptiveRadiusScale);
-    AddFloat(data, settings.specPostBlurMaxAdaptiveRadiusScale);
+    AddFloat4(data, diffHitDistParams);
+    AddFloat4(data, specHitDistParams);
+    AddFloat4(data, specTrimmingParams_and_specBlurRadius);
+    AddFloat(data, settings.specMaxAdaptiveRadiusScale);
+    AddFloat(data, diffBlurRadius);
+    AddFloat(data, settings.diffMaxAdaptiveRadiusScale);
     ValidateConstants(data);
 
     // TEMPORAL_STABILIZATION
     data = PushDispatch(methodData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
-    AddSharedConstants(methodData, data);
+    AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
-    AddFloat4(data, specScalingParams);
-    AddFloat4(data, float4( m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, useAntilag ? 1.0f : 0.0f ) );
+    AddFloat4(data, specHitDistParams);
+    AddFloat4(data, float4( m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, settings.antilagSettings.enable ? 1.0f : 0.0f ) );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat2(data, settings.antilagSettings.intensityThresholdMin, settings.antilagSettings.intensityThresholdMax);
+    AddFloat(data, diffNoisinessBlurrinessBalance);
+    AddFloat(data, specNoisinessBlurrinessBalance);
     ValidateConstants(data);
 }

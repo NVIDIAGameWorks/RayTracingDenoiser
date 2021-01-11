@@ -29,14 +29,14 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 // Inputs
 NRI_RESOURCE(Texture2D<uint2>,  gSpecularAndDiffuseIlluminationLogLuv, t, 0, 0);
 NRI_RESOURCE(Texture2D<uint2>,  gSpecularAndDiffuseIlluminationResponsiveLogLuv, t, 1, 0);
-NRI_RESOURCE(Texture2D<float4>, gSpecularAndDiffuseMoments, t, 2, 0);
+NRI_RESOURCE(Texture2D<float2>, gSpecularAndDiffuse2ndMoments, t, 2, 0);
 NRI_RESOURCE(Texture2D<float>,  gHistoryLength, t, 3, 0);
 NRI_RESOURCE(Texture2D<uint2>,  gNormalRoughnessDepth, t, 4, 0);
 
 // Outputs
 NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationLogLuv, u, 0, 0);
 NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationResponsiveLogLuv, u, 1, 0);
-NRI_RESOURCE(RWTexture2D<float4>, gOutSpecularAndDiffuseMoments, u, 2, 0);
+NRI_RESOURCE(RWTexture2D<float2>, gOutSpecularAndDiffuse2ndMoments, u, 2, 0);
 
 // Helper functions
 float getLinearZFromDepth(int2 ipos, float depth)
@@ -86,14 +86,14 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float historyLength = gHistoryLength[ipos].r;
     uint2 illuminationPacked = gSpecularAndDiffuseIlluminationLogLuv[ipos];
     uint2 illuminationResponsivePacked = gSpecularAndDiffuseIlluminationResponsiveLogLuv[ipos];
-    float4 centerSpecularAndDiffuseMoments = gSpecularAndDiffuseMoments[ipos];
+    float2 centerSpecularAndDiffuse2ndMoments = gSpecularAndDiffuse2ndMoments[ipos];
 
     // Early out if no disocclusion detected
     if (historyLength > gFramesToFix)
     {
         gOutSpecularAndDiffuseIlluminationLogLuv[ipos] = illuminationPacked;
         gOutSpecularAndDiffuseIlluminationResponsiveLogLuv[ipos] = illuminationResponsivePacked;
-        gOutSpecularAndDiffuseMoments[ipos] = centerSpecularAndDiffuseMoments;
+        gOutSpecularAndDiffuse2ndMoments[ipos] = centerSpecularAndDiffuse2ndMoments;
         return;
     }
 
@@ -113,7 +113,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     // Running sparse cross-bilateral filter
     float3 specularIlluminationSum = centerSpecularIlluminationResponsive;
     float3 diffuseIlluminationSum = centerDiffuseIlluminationResponsive;
-    float4 specularAndDiffuseMomentsSum = centerSpecularAndDiffuseMoments;
+    float2 specularAndDiffuse2ndMomentsSum = centerSpecularAndDiffuse2ndMoments;
 
     float wSum = 1;
 
@@ -142,7 +142,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         float3 sampleDiffuseIllumination;
         UnpackSpecularAndDiffuseFromLogLuvUint2(sampleSpecularIllumination, sampleDiffuseIllumination, gSpecularAndDiffuseIlluminationResponsiveLogLuv[samplePosInt]);
 
-        float4 sampleSpecularAndDiffuseMoments = gSpecularAndDiffuseMoments[samplePosInt];
+        float2 sampleSpecularAndDiffuse2ndMoments = gSpecularAndDiffuse2ndMoments[samplePosInt];
 
         float3 sampleNormal;
         float sampleRoughnessDontCare;
@@ -160,19 +160,19 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         // Summing up the result
         specularIlluminationSum += sampleSpecularIllumination * w;
         diffuseIlluminationSum += sampleDiffuseIllumination * w;
-        specularAndDiffuseMomentsSum += sampleSpecularAndDiffuseMoments * w;
+        specularAndDiffuse2ndMomentsSum += sampleSpecularAndDiffuse2ndMoments * w;
 
         wSum += w;
     }
 
     float3 outSpecularIllumination = specularIlluminationSum / wSum;
     float3 outDiffuseIllumination = diffuseIlluminationSum / wSum;
-    float4 outSpecularAndDiffuseMoments = specularAndDiffuseMomentsSum / wSum;
+    float2 outSpecularAndDiffuse2ndMoments = specularAndDiffuse2ndMomentsSum / wSum;
 
     uint2 outIlluminationPacked = PackSpecularAndDiffuseToLogLuvUint2(outSpecularIllumination, outDiffuseIllumination);
 
     // Writing out the results
     gOutSpecularAndDiffuseIlluminationLogLuv[ipos] = outIlluminationPacked;
     gOutSpecularAndDiffuseIlluminationResponsiveLogLuv[ipos] = outIlluminationPacked;
-    gOutSpecularAndDiffuseMoments[ipos] = outSpecularAndDiffuseMoments;
+    gOutSpecularAndDiffuse2ndMoments[ipos] = outSpecularAndDiffuse2ndMoments;
 }

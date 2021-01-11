@@ -69,8 +69,9 @@ Result SwapChainD3D12::Create(const SwapChainDesc& swapChainDesc)
     hr = factory->QueryInterface(IID_PPV_ARGS(&dxgiFactory5));
     if (SUCCEEDED(hr))
     {
-        hr = dxgiFactory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &m_IsTearingAllowed, sizeof(m_IsTearingAllowed));
-        m_IsTearingAllowed &= SUCCEEDED(hr);
+        uint32_t tearingSupport = 0;
+        hr = dxgiFactory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearingSupport, sizeof(tearingSupport));
+        m_IsTearingAllowed = (SUCCEEDED(hr) && tearingSupport) ? true : false;
     }
 
     CommandQueue* commandQueue;

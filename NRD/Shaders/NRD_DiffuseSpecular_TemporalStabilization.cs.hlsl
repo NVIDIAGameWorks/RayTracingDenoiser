@@ -16,23 +16,25 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gFrustum;
     float2 gInvScreenSize;
     float2 gScreenSize;
-    float gMetersToUnits;
+    uint gBools;
     float gIsOrtho;
     float gUnproject;
     float gDebug;
     float gInf;
-    float gReference;
+    float gPlaneDistSensitivity;
     uint gFrameIndex;
     float gFramerateScale;
 
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
     float4x4 gWorldToClip;
-    float4 gSpecScalingParams;
+    float4 gSpecHitDistParams;
     float3 gCameraDelta;
     float gAntilag;
     float2 gMotionVectorScale;
     float2 gAntilagRadianceThreshold;
+    float gDiffNoisinessBlurrinessBalance;
+    float gSpecNoisinessBlurrinessBalance;
 };
 
 #include "NRD_Common.hlsl"
@@ -41,7 +43,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ViewZ, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 2, 0 );
-NRI_RESOURCE( Texture2D<uint>, gIn_InternalData, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_InternalData, t, 3, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_History_Diff, t, 4, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 5, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_History_Spec, t, 6, 0 );
@@ -94,6 +96,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Diff[ pixelPos ] = 0;
             gOut_Diff_Copy[ pixelPos ] = 0;
+
             gOut_Spec[ pixelPos ] = 0;
             gOut_Spec_Copy[ pixelPos ] = 0;
         #endif
@@ -108,9 +111,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Internal data
     float virtualMotionAmount;
-    float2x3 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], roughness, virtualMotionAmount );
-    float diffAccumSpeed = internalData[ 0 ].z;
-    float specAccumSpeed = internalData[ 1 ].z;
+    float2x2 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], roughness, virtualMotionAmount );
+    float2 diffInternalData = internalData[ 0 ];
+    float2 specInternalData = internalData[ 1 ];
 
     // Position
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -120,20 +123,20 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Local variance
     float2 sum = 0;
+    float2 sum1 = 0;
 
     float4 diffM1 = 0;
     float4 diffM2 = 0;
     float4 diff = 0;
     float4 diffMaxInput = -INF;
     float4 diffMinInput = INF;
+    float diffNormalParams = GetNormalWeightParamsRoughEstimate( 1.0 );
 
     float4 specM1 = 0;
     float4 specM2 = 0;
     float4 spec = 0;
     float4 specMaxInput = -INF;
     float4 specMinInput = INF;
-
-    float diffNormalParams = GetNormalWeightParamsRoughEstimate( 1.0 );
     float specNormalParams = GetNormalWeightParamsRoughEstimate( roughness );
     float2 roughnessParams = GetRoughnessWeightParams( roughness );
 
@@ -145,8 +148,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         {
             int2 pos = threadId + int2( dx, dy );
             float4 diffSignal = s_Diff[ pos.y ][ pos.x ];
-            float4 specSignal = s_Spec[ pos.y ][ pos.x ];
             float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
+            float4 specSignal = s_Spec[ pos.y ][ pos.x ];
             float z = s_ViewZ[ pos.y ][ pos.x ];
 
             float2 w = 1.0;
@@ -159,69 +162,68 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
             {
                 w = GetBilateralWeight( z, centerZ );
                 w.x *= GetNormalWeight( diffNormalParams, N, normalAndRoughness.xyz );
+
+                float d = float( w.x == 0.0 ) * INF;
+                diffMaxInput = max( diffSignal - d, diffMaxInput );
+                diffMinInput = min( diffSignal + d, diffMinInput );
+
                 w.y *= GetNormalWeight( specNormalParams, N, normalAndRoughness.xyz );
                 w.y *= GetRoughnessWeight( roughnessParams, normalAndRoughness.w );
 
-                float a = float( w.x == 0.0 ) * INF;
-                diffMaxInput = max( diffSignal - a, diffMaxInput );
-                diffMinInput = min( diffSignal + a, diffMinInput );
-
-                a = float( w.y == 0.0 ) * INF;
-                specMaxInput = max( specSignal - a, specMaxInput );
-                specMinInput = min( specSignal + a, specMinInput );
+                float s = float( w.y == 0.0 ) * INF;
+                specMaxInput = max( specSignal - s, specMaxInput );
+                specMinInput = min( specSignal + s, specMinInput );
             }
 
             diffM1 += diffSignal * w.x;
             diffM2 += diffSignal * diffSignal * w.x;
+
             specM1 += specSignal * w.y;
             specM2 += specSignal * specSignal * w.y;
 
             sum += w;
+            sum1 += float2( w > RCRS_THRESHOLD );
         }
     }
 
     float2 invSum = STL::Math::PositiveRcp( sum );
     diffM1 *= invSum.x;
     diffM2 *= invSum.x;
+    float4 diffSigma = GetVariance( diffM1, diffM2 );
+
     specM1 *= invSum.y;
     specM2 *= invSum.y;
-
-    float4 diffSigma = GetVariance( diffM1, diffM2 );
     float4 specSigma = GetVariance( specM1, specM2 );
 
     // Apply RCRS
-    float2 rcrsWeight = ( sum - 1.0 ) / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) - 1.0 );
+    float2 rcrsWeight = ( sum1 - 1.0 ) / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) - 1.0 );
     rcrsWeight = STL::Math::Sqrt01( rcrsWeight );
-    rcrsWeight *= 1.0 - gReference;
+    rcrsWeight *= float( !IsReference() ); // also turns off antilag in reference mode
 
-    float4 rcrsResult = min( diff, diffMaxInput );
-    rcrsResult = max( rcrsResult, diffMinInput );
-    diff = lerp( diff, rcrsResult, rcrsWeight.x );
+    float4 diffRcrs = min( diff, diffMaxInput );
+    diffRcrs = max( diffRcrs, diffMinInput );
+    diff = lerp( diff, diffRcrs, rcrsWeight.x );
 
-    rcrsResult = min( spec, specMaxInput );
-    rcrsResult = max( rcrsResult, specMinInput );
-    spec = lerp( spec, rcrsResult, rcrsWeight.y );
+    float4 specRcrs = min( spec, specMaxInput );
+    specRcrs = max( specRcrs, specMinInput );
+    spec = lerp( spec, specRcrs, rcrsWeight.y );
 
-    // Compute previous pixel position
+    // Compute previous position
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
     float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
-    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() != 0 );
-
-    // Virtual position
-    float hitDist = GetHitDistance( spec.w, centerZ, gSpecScalingParams, roughness );
-    float3 Xvirtual = GetXvirtual( X, Xprev, N, V, roughness, hitDist );
 
     // Sample history ( surface motion )
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
     float4 diffHistory = BicubicFilterNoCorners( gIn_History_Diff, gLinearClamp, pixelPosPrev, gInvScreenSize );
     float4 historySurface = BicubicFilterNoCorners( gIn_History_Spec, gLinearClamp, pixelPosPrev, gInvScreenSize );
 
-    // Sample history ( virtual motion )
+    // Sample history ( virtual motion ) and mix
+    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() );
+    float hitDist = GetHitDistance( spec.w, centerZ, gSpecHitDistParams, roughness );
+    float3 Xvirtual = GetXvirtual( X, Xprev, N, V, roughness, hitDist );
     float2 pixelUvVirtualPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
     float4 historyVirtual = gIn_History_Spec.SampleLevel( gLinearClamp, pixelUvVirtualPrev, 0.0 );
-
-    // Mix histories
     float4 specHistory = lerp( historySurface, historyVirtual, virtualMotionAmount );
 
     // Compute parallax
@@ -230,53 +232,63 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // History weight
     float motionLength = length( pixelUvPrev - pixelUv );
-    float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffAccumSpeed, motionLength );
-    float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specAccumSpeed, motionLength, parallaxMod, roughness );
+    float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffInternalData.y, motionLength );
+    float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specInternalData.y, motionLength, parallaxMod, roughness );
 
     // Antilag
-    float2 antiLag = 1.0;
+    float diffAntiLag = 1.0;
+    float specAntiLag = 1.0;
     if( gAntilag != 0.0 && USE_ANTILAG == 1 )
     {
         // TODO: if compression is used delta.x needs to be decompressed, but it doesn't affect the behavior, because heavily compressed values do not lag
-        {
-            float2 delta = abs( diffHistory.xw - diff.xw ) - diffSigma.xw * 2.0;
-            delta = STL::Math::LinearStep( float2( gAntilagRadianceThreshold.y, 0.1 ), float2( gAntilagRadianceThreshold.x, 0.01 ), delta );
-            delta = STL::Math::Pow01( delta, float2( 2.0, 8.0 ) );
+        // TODO: Keep an eye on delta calculation! It was changed from "abs( Xhistory.xw - X.xw ) - Xsigma.xw * 2". It is a good change. Using just average
+        // offers better propagation between frames and allows to reduce variance scale from 2 to 1. There is a chance that with 1 some places can look less stable...
+        float2 diffDelta = abs( diffHistory.xw - diffM1.xw ) - diffSigma.xw * lerp( 2.0, 1.0, gDiffNoisinessBlurrinessBalance );
+        diffDelta = STL::Math::LinearStep( float2( gAntilagRadianceThreshold.y, 0.1 ), float2( gAntilagRadianceThreshold.x, 0.01 ), diffDelta );
+        diffDelta = STL::Math::Pow01( diffDelta, float2( 2.0, 8.0 ) );
 
-            float fade = diffAccumSpeed / ( 1.0 + diffAccumSpeed );
-            fade *= diffTemporalAccumulationParams.x;
-            fade *= rcrsWeight.x;
+        float diffFade = diffInternalData.y / ( 1.0 + diffInternalData.y );
+        diffFade *= diffTemporalAccumulationParams.x;
+        diffFade *= rcrsWeight.x;
 
-            antiLag.x = min( delta.x, delta.y );
-            antiLag.x = lerp( 1.0, antiLag.x, fade );
-        }
+        diffAntiLag = min( diffDelta.x, diffDelta.y );
+        diffAntiLag = lerp( 1.0, diffAntiLag, diffFade );
 
-        {
-            float2 delta = abs( specHistory.xw - spec.xw ) - specSigma.xw * 2.0;
-            delta = STL::Math::LinearStep( float2( gAntilagRadianceThreshold.y, 0.1 ), float2( gAntilagRadianceThreshold.x, 0.01 ), delta );
-            delta = STL::Math::Pow01( delta, float2( 2.0, 8.0 ) );
+        float2 specDelta = abs( specHistory.xw - specM1.xw ) - specSigma.xw * lerp( 2.0, 1.0, gSpecNoisinessBlurrinessBalance );
+        specDelta = STL::Math::LinearStep( float2( gAntilagRadianceThreshold.y, 0.1 ), float2( gAntilagRadianceThreshold.x, 0.01 ), specDelta );
+        specDelta = STL::Math::Pow01( specDelta, float2( 2.0, 8.0 ) );
 
-            float fade = specAccumSpeed / ( 1.0 + specAccumSpeed );
-            fade *= specTemporalAccumulationParams.x;
-            fade *= rcrsWeight.y;
+        float specFade = specInternalData.y / ( 1.0 + specInternalData.y );
+        specFade *= specTemporalAccumulationParams.x;
+        specFade *= rcrsWeight.y;
 
-            antiLag.y = min( delta.x, delta.y );
-            antiLag.y = lerp( 1.0, antiLag.y, fade );
-        }
+        specAntiLag = min( specDelta.x, specDelta.y );
+        specAntiLag = lerp( 1.0, specAntiLag, specFade );
     }
+
+    // Doesn't allow more than some portion of average for sigma amplitude
+    float da = diffSigma.x * diffTemporalAccumulationParams.y;
+    float db = diffM1.x * TS_SIGMA_AMPLITUDE_CLAMP;
+    diffTemporalAccumulationParams.y = min( da, db ) * STL::Math::PositiveRcp( diffSigma.x );
+
+    float sa = specSigma.x * specTemporalAccumulationParams.y;
+    float sb = specM1.x * TS_SIGMA_AMPLITUDE_CLAMP;
+    specTemporalAccumulationParams.y = min( sa, sb ) * STL::Math::PositiveRcp( specSigma.x );
 
     // Clamp history and combine with the current frame
     float4 diffMin = diffM1 - diffSigma * diffTemporalAccumulationParams.y;
     float4 diffMax = diffM1 + diffSigma * diffTemporalAccumulationParams.y;
     diffHistory = clamp( diffHistory, diffMin, diffMax );
 
+    float diffHistoryWeight = TS_MAX_HISTORY_WEIGHT * diffAntiLag;
+    float4 diffResult = lerp( diff, diffHistory, diffHistoryWeight * diffTemporalAccumulationParams.x );
+
     float4 specMin = specM1 - specSigma * specTemporalAccumulationParams.y;
     float4 specMax = specM1 + specSigma * specTemporalAccumulationParams.y;
     specHistory = clamp( specHistory, specMin, specMax );
 
-    float2 historyWeight = TS_MAX_HISTORY_WEIGHT * antiLag;
-    float4 diffResult = lerp( diff, diffHistory, historyWeight.x * diffTemporalAccumulationParams.x );
-    float4 specResult = lerp( spec, specHistory, historyWeight.y * specTemporalAccumulationParams.x );
+    float specHistoryWeight = TS_MAX_HISTORY_WEIGHT * specAntiLag;
+    float4 specResult = lerp( spec, specHistory, specHistoryWeight * specTemporalAccumulationParams.x );
 
     // Get rid of possible negative values
     diffResult.xyz = _NRD_YCoCgToLinear( diffResult.xyz );
@@ -288,19 +300,19 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     specResult.xyz = _NRD_LinearToYCoCg( specResult.xyz );
 
     // Output
-    diffAccumSpeed *= antiLag.x;
-    specAccumSpeed *= antiLag.y;
+    diffInternalData.y *= diffAntiLag;
+    specInternalData.y *= specAntiLag;
 
-    gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( centerZ, diffAccumSpeed, N, roughness, specAccumSpeed );
+    gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( centerZ, diffInternalData.y, N, roughness, specInternalData.y );
     gOut_Diff[ pixelPos ] = diffResult;
     gOut_Spec[ pixelPos ] = specResult;
 
     #if( SHOW_ACCUM_SPEED == 1 )
-        diffResult.w = saturate( diffAccumSpeed / MAX_ACCUM_FRAME_NUM );
-        specResult.w = saturate( specAccumSpeed / MAX_ACCUM_FRAME_NUM );
+        diffResult.w = saturate( diffInternalData.y / MAX_ACCUM_FRAME_NUM );
+        specResult.w = saturate( specInternalData.y / MAX_ACCUM_FRAME_NUM );
     #elif( SHOW_ANTILAG == 1 )
-        diffResult.w = antiLag.x;
-        specResult.w = antiLag.y;
+        diffResult.w = diffAntiLag;
+        specResult.w = specAntiLag;
     #endif
 
     gOut_Diff_Copy[ pixelPos ] = diffResult;

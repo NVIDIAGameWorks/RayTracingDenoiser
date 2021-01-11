@@ -143,7 +143,7 @@ namespace nrd
 
     // Available in methods
     private:
-        void AddSharedConstants(const MethodData& methodData, Constant*& data);
+        void AddNrdSharedConstants(const MethodData& methodData, float planeDistSensitivity, Constant*& data);
 
         constexpr uint32_t GetSharedConstantsNum() const
         { return 32; } // must be a multiply of 4
@@ -219,6 +219,7 @@ namespace nrd
         float m_IsOrthoPrev = 0.0f;
         float m_CheckerboardResolveAccumSpeed = 0.0f;
         float m_JitterDelta = 0.0f;
+        uint32_t m_ProjectionFlags = 0;
         uint16_t m_TransientPoolOffset = 0;
         uint16_t m_PermanentPoolOffset = 0;
         float m_ProjectY = 0.0f; // TODO: NRD assumes that there are no checkerboard "tricks" in Y direction, so no a separate m_ProjectX

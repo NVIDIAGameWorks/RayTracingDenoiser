@@ -308,7 +308,7 @@ void ENTRYPOINT( )
 
     // G-buffer
     gOut_ObjectMotion[ pixelPos ] = geometryProps0.motion;
-    gOut_ViewZ[ pixelPos ] = geometryProps0.viewZ;
+    gOut_ViewZ[ pixelPos ] = geometryProps0.viewZ * gUnitsToMetersMultiplier;
     gOut_DirectLighting[ pixelPos ] = materialProps0.Lsum;
     gOut_Normal_Roughness[ pixelPos ] = geometryProps0.IsSky( ) ? SKY_MARK : PackNormalAndRoughness( materialProps0.N, materialProps0.roughness );
     gOut_BaseColor_Metalness[ pixelPos ] = float4( STL::Color::LinearToSrgb( materialProps0.baseColor ), materialProps0.metalness );
