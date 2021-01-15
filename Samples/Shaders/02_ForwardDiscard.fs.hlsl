@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -15,7 +15,7 @@ float4 main( in Attributes input ) : SV_Target
 {
     PS_INPUT;
     float4 output = Shade( float4( albedo, diffuse.w ), Rf0, roughness, emissive, N, L, V, Clight, FAKE_AMBIENT );
-    if ( output.w < 0.5 )
+    if( output.w < 0.5 )
         discard;
 
     output.xyz = STL::Color::HdrToLinear( output.xyz * exposure );

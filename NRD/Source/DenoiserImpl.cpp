@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -53,18 +53,18 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
         methodData.textureOffset = m_Resources.size();
         methodData.pingPongOffset = m_PingPongs.size();
 
-        if (methodDesc.method == Method::NRD_DIFFUSE)
-            methodData.settingsSize = AddMethod_NrdDiffuse(w, h);
-        else if (methodDesc.method == Method::NRD_SPECULAR)
-            methodData.settingsSize = AddMethod_NrdSpecular(w, h);
-        else if (methodDesc.method == Method::NRD_DIFFUSE_SPECULAR)
-            methodData.settingsSize = AddMethod_NrdDiffuseSpecular(w, h);
-        else if (methodDesc.method == Method::NRD_SHADOW)
-            methodData.settingsSize = AddMethod_NrdShadow(w, h);
-        else if (methodDesc.method == Method::NRD_TRANSLUCENT_SHADOW)
-            methodData.settingsSize = AddMethod_NrdTranslucentShadow(w, h);
-        else if (methodDesc.method == Method::RELAX)
-            methodData.settingsSize = AddMethod_Relax(w, h);
+        if (methodDesc.method == Method::REBLUR_DIFFUSE)
+            methodData.settingsSize = AddMethod_ReblurDiffuse(w, h);
+        else if (methodDesc.method == Method::REBLUR_SPECULAR)
+            methodData.settingsSize = AddMethod_ReblurSpecular(w, h);
+        else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR)
+            methodData.settingsSize = AddMethod_ReblurDiffuseSpecular(w, h);
+        else if (methodDesc.method == Method::SIGMA_SHADOW)
+            methodData.settingsSize = AddMethod_SigmaShadow(w, h);
+        else if (methodDesc.method == Method::SIGMA_TRANSLUCENT_SHADOW)
+            methodData.settingsSize = AddMethod_SigmaTranslucentShadow(w, h);
+        else if (methodDesc.method == Method::RELAX_DIFFUSE_SPECULAR)
+            methodData.settingsSize = AddMethod_RelaxDiffuseSpecular(w, h);
         else if (methodDesc.method == Method::SVGF)
             methodData.settingsSize = AddMethod_Svgf(w, h);
         else
@@ -100,18 +100,18 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
         if (updatePingPong)
             UpdatePingPong(methodData); // TODO: swap only if frameIndex has changed?
 
-        if (methodData.desc.method == Method::NRD_DIFFUSE)
-            UpdateMethod_NrdDiffuse(methodData);
-        else if (methodData.desc.method == Method::NRD_SPECULAR)
-            UpdateMethod_NrdSpecular(methodData);
-        else if (methodData.desc.method == Method::NRD_DIFFUSE_SPECULAR)
-            UpdateMethod_NrdDiffuseSpecular(methodData);
-        else if (methodData.desc.method == Method::NRD_SHADOW)
-            UpdateMethod_NrdShadow(methodData);
-        else if (methodData.desc.method == Method::NRD_TRANSLUCENT_SHADOW)
-            UpdateMethod_NrdTranslucentShadow(methodData);
-        else if (methodData.desc.method == Method::RELAX)
-            UpdateMethod_Relax(methodData);
+        if (methodData.desc.method == Method::REBLUR_DIFFUSE)
+            UpdateMethod_ReblurDiffuse(methodData);
+        else if (methodData.desc.method == Method::REBLUR_SPECULAR)
+            UpdateMethod_ReblurSpecular(methodData);
+        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR)
+            UpdateMethod_ReblurDiffuseSpecular(methodData);
+        else if (methodData.desc.method == Method::SIGMA_SHADOW)
+            UpdateMethod_SigmaShadow(methodData);
+        else if (methodData.desc.method == Method::SIGMA_TRANSLUCENT_SHADOW)
+            UpdateMethod_SigmaTranslucentShadow(methodData);
+        else if (methodData.desc.method == Method::RELAX_DIFFUSE_SPECULAR)
+            UpdateMethod_RelaxDiffuseSpecular(methodData);
         else if (methodData.desc.method == Method::SVGF)
             UpdateMethod_Svgf(methodData);
     }
@@ -306,7 +306,7 @@ void DenoiserImpl::AddNrdSharedConstants(const MethodData& methodData, float pla
     float h = float(methodData.desc.fullResolutionHeight);
     float unproject = 1.0f / (0.5f * h * m_ProjectY);
     float infWithViewZSign = m_CommonSettings.denoisingRange * ( ( m_ProjectionFlags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );
-    float frameRateScale = Clamp( 16.7f / m_Timer.GetSmoothedElapsedTime(), 1.0f, 4.0f );
+    float frameRateScale = Min( 33.333f / m_Timer.GetSmoothedElapsedTime(), 4.0f );
     
     uint32_t bools = 0;
     if (m_CommonSettings.worldSpaceMotion)
@@ -435,178 +435,181 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     #define BYTE unsigned char
 #endif
 
-// DXBC ====================================================================================
-
-// SHARED
-#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4_Float.cs.dxbc.h"
-
-// NRD_DIFFUSE
-#include "..\..\_Build\Shaders\NRD_Diffuse_PreBlur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_TemporalAccumulation.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_HistoryFix.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_Blur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_TemporalStabilization.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_PostBlur.cs.dxbc.h"
-
-// NRD_SPECULAR
-#include "..\..\_Build\Shaders\NRD_Specular_PreBlur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Specular_TemporalAccumulation.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Specular_HistoryFix.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Specular_Blur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Specular_PostBlur.cs.dxbc.h"
-
-// NRD_DIFFUSE_SPECULAR
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PreBlur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_HistoryFix.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_Blur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalStabilization.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PostBlur.cs.dxbc.h"
-
-// NRD_SHADOW
-#include "..\..\_Build\Shaders\NRD_Shadow_PreBlur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Shadow_Blur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_Shadow_TemporalStabilization.cs.dxbc.h"
-
-// NRD_TRANSLUCENT_SHADOW
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_PreBlur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_Blur.cs.dxbc.h"
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_TemporalStabilization.cs.dxbc.h"
-
-// RELAX
-#include "..\..\_Build\Shaders\RELAX_PackInputData.cs.dxbc.h"
-#include "..\..\_Build\Shaders\RELAX_Reproject.cs.dxbc.h"
-#include "..\..\_Build\Shaders\RELAX_DisocclusionFix.cs.dxbc.h"
-#include "..\..\_Build\Shaders\RELAX_HistoryClamping.cs.dxbc.h"
-#include "..\..\_Build\Shaders\RELAX_Firefly.cs.dxbc.h"
-#include "..\..\_Build\Shaders\RELAX_SpatialVarianceEstimation.cs.dxbc.h"
-#include "..\..\_Build\Shaders\RELAX_ATrousShmem.cs.dxbc.h"
-#include "..\..\_Build\Shaders\RELAX_ATrousStandard.cs.dxbc.h"
-
-// SVGF
-#include "..\..\_Build\Shaders\SVGF_Reproject.cs.dxbc.h"
-#include "..\..\_Build\Shaders\SVGF_FilterMoments.cs.dxbc.h"
-#include "..\..\_Build\Shaders\SVGF_Atrous.cs.dxbc.h"
-
-// DXIL ====================================================================================
-
-// SHARED
-#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4_Float.cs.dxil.h"
-
-// NRD_DIFFUSE
-#include "..\..\_Build\Shaders\NRD_Diffuse_PreBlur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_TemporalAccumulation.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_HistoryFix.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_Blur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_TemporalStabilization.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_PostBlur.cs.dxil.h"
-
-// NRD_SPECULAR
-#include "..\..\_Build\Shaders\NRD_Specular_PreBlur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Specular_TemporalAccumulation.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Specular_HistoryFix.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Specular_Blur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Specular_PostBlur.cs.dxil.h"
-
-// NRD_DIFFUSE_SPECULAR
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PreBlur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_HistoryFix.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_Blur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalStabilization.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PostBlur.cs.dxil.h"
-
-// NRD_SHADOW
-#include "..\..\_Build\Shaders\NRD_Shadow_PreBlur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Shadow_Blur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_Shadow_TemporalStabilization.cs.dxil.h"
-
-// NRD_TRANSLUCENT_SHADOW
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_PreBlur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_Blur.cs.dxil.h"
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_TemporalStabilization.cs.dxil.h"
-
-// RELAX
-#include "..\..\_Build\Shaders\RELAX_PackInputData.cs.dxil.h"
-#include "..\..\_Build\Shaders\RELAX_Reproject.cs.dxil.h"
-#include "..\..\_Build\Shaders\RELAX_DisocclusionFix.cs.dxil.h"
-#include "..\..\_Build\Shaders\RELAX_HistoryClamping.cs.dxil.h"
-#include "..\..\_Build\Shaders\RELAX_Firefly.cs.dxil.h"
-#include "..\..\_Build\Shaders\RELAX_SpatialVarianceEstimation.cs.dxil.h"
-#include "..\..\_Build\Shaders\RELAX_ATrousShmem.cs.dxil.h"
-#include "..\..\_Build\Shaders\RELAX_ATrousStandard.cs.dxil.h"
-
-// SVGF
-#include "..\..\_Build\Shaders\SVGF_Reproject.cs.dxil.h"
-#include "..\..\_Build\Shaders\SVGF_FilterMoments.cs.dxil.h"
-#include "..\..\_Build\Shaders\SVGF_Atrous.cs.dxil.h"
-
-// SPIRV ===================================================================================
-
-// SHARED
-#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_MipGeneration_Float4_Float.cs.spirv.h"
-
-// NRD_DIFFUSE
-#include "..\..\_Build\Shaders\NRD_Diffuse_PreBlur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_TemporalAccumulation.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_HistoryFix.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_Blur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_TemporalStabilization.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Diffuse_PostBlur.cs.spirv.h"
-
-// NRD_SPECULAR
-#include "..\..\_Build\Shaders\NRD_Specular_PreBlur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Specular_TemporalAccumulation.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Specular_HistoryFix.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Specular_Blur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Specular_TemporalStabilization.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Specular_PostBlur.cs.spirv.h"
-
-// NRD_DIFFUSE_SPECULAR
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PreBlur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_HistoryFix.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_Blur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_DiffuseSpecular_PostBlur.cs.spirv.h"
-
-// NRD_SHADOW
-#include "..\..\_Build\Shaders\NRD_Shadow_PreBlur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Shadow_Blur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_Shadow_TemporalStabilization.cs.spirv.h"
-
-// NRD_TRANSLUCENT_SHADOW
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_PreBlur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_Blur.cs.spirv.h"
-#include "..\..\_Build\Shaders\NRD_TranslucentShadow_TemporalStabilization.cs.spirv.h"
-
-// RELAX
-#include "..\..\_Build\Shaders\RELAX_PackInputData.cs.spirv.h"
-#include "..\..\_Build\Shaders\RELAX_Reproject.cs.spirv.h"
-#include "..\..\_Build\Shaders\RELAX_DisocclusionFix.cs.spirv.h"
-#include "..\..\_Build\Shaders\RELAX_HistoryClamping.cs.spirv.h"
-#include "..\..\_Build\Shaders\RELAX_Firefly.cs.spirv.h"
-#include "..\..\_Build\Shaders\RELAX_SpatialVarianceEstimation.cs.spirv.h"
-#include "..\..\_Build\Shaders\RELAX_ATrousShmem.cs.spirv.h"
-#include "..\..\_Build\Shaders\RELAX_ATrousStandard.cs.spirv.h"
-
-// SVGF
-#include "..\..\_Build\Shaders\SVGF_Reproject.cs.spirv.h"
-#include "..\..\_Build\Shaders\SVGF_FilterMoments.cs.spirv.h"
-#include "..\..\_Build\Shaders\SVGF_Atrous.cs.spirv.h"
-
 // METHODS =================================================================================
 
-#include "Methods/NrdDiffuse.hpp"
-#include "Methods/NrdSpecular.hpp"
-#include "Methods/NrdDiffuseSpecular.hpp"
-#include "Methods/NrdShadow.hpp"
-#include "Methods/NrdTranslucentShadow.hpp"
-#include "Methods/Relax.hpp"
-#include "Methods/Svgf.hpp"
+// SHARED
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4.cs.dxbc.h"
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4.cs.dxil.h"
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4.cs.spirv.h"
 
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxbc.h"
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxil.h"
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.spirv.h"
+
+
+// REBLUR_DIFFUSE
+#include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.spirv.h"
+
+#include "Methods/Reblur_Diffuse.hpp"
+
+
+// REBLUR_SPECULAR
+#include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.spirv.h"
+
+#include "Methods/Reblur_Specular.hpp"
+
+
+// REBLUR_DIFFUSE_SPECULAR
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
+
+#include "Methods/Reblur_DiffuseSpecular.hpp"
+
+
+// SIGMA_SHADOW
+#include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.dxil.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.spirv.h"
+
+#include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.dxbc.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.dxil.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.spirv.h"
+
+#include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxbc.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxil.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.spirv.h"
+
+#include "Methods/Sigma_Shadow.hpp"
+
+
+// SIGMA_TRANSLUCENT_SHADOW
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_PreBlur.cs.dxbc.h"
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_PreBlur.cs.dxil.h"
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_PreBlur.cs.spirv.h"
+
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_Blur.cs.dxbc.h"
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_Blur.cs.dxil.h"
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_Blur.cs.spirv.h"
+
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_TemporalStabilization.cs.dxbc.h"
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_TemporalStabilization.cs.dxil.h"
+#include "../../_Build/Shaders/SIGMA_TranslucentShadow_TemporalStabilization.cs.spirv.h"
+
+#include "Methods/Sigma_TranslucentShadow.hpp"
+
+
+// RELAX_DIFFUSE_SPECULAR
+#include "../../_Build/Shaders/RELAX_PackInputData.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_PackInputData.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_PackInputData.cs.spirv.h"
+
+#include "../../_Build/Shaders/RELAX_Reproject.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_Reproject.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_Reproject.cs.spirv.h"
+
+#include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.spirv.h"
+
+#include "../../_Build/Shaders/RELAX_HistoryClamping.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_HistoryClamping.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_HistoryClamping.cs.spirv.h"
+
+#include "../../_Build/Shaders/RELAX_Firefly.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_Firefly.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_Firefly.cs.spirv.h"
+
+#include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.spirv.h"
+
+#include "../../_Build/Shaders/RELAX_ATrousShmem.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_ATrousShmem.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_ATrousShmem.cs.spirv.h"
+
+#include "../../_Build/Shaders/RELAX_ATrousStandard.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_ATrousStandard.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_ATrousStandard.cs.spirv.h"
+
+#include "Methods/Relax_DiffuseSpecular.hpp"
+
+
+// SVGF
+#include "../../_Build/Shaders/SVGF_Reproject.cs.dxbc.h"
+#include "../../_Build/Shaders/SVGF_Reproject.cs.dxil.h"
+#include "../../_Build/Shaders/SVGF_Reproject.cs.spirv.h"
+
+#include "../../_Build/Shaders/SVGF_FilterMoments.cs.dxbc.h"
+#include "../../_Build/Shaders/SVGF_FilterMoments.cs.dxil.h"
+#include "../../_Build/Shaders/SVGF_FilterMoments.cs.spirv.h"
+
+#include "../../_Build/Shaders/SVGF_Atrous.cs.dxbc.h"
+#include "../../_Build/Shaders/SVGF_Atrous.cs.dxil.h"
+#include "../../_Build/Shaders/SVGF_Atrous.cs.spirv.h"
+
+#include "Methods/Svgf.hpp"

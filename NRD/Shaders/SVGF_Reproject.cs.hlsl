@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -56,7 +56,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float viewZ = gIn_ViewZ[ pixelPos ];
 
     [branch]
-    if ( abs( viewZ ) > gInf )
+    if( abs( viewZ ) > gInf )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Signal[ pixelPos ] = 0;
@@ -97,7 +97,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float4 viewZprev = asfloat( pack0 );
 
     // Compute disocclusion based on plane distance
-    float disocclusionThreshold = gDisocclusionThreshold; // TODO: take method from NRD
+    float disocclusionThreshold = gDisocclusionThreshold; // TODO: take method from REBLUR
     float NoV = abs( dot( Nflat, X ) ) * invDistToPoint;
     float f = STL::Math::Pow01( 1.0 - NoV, 5.0 );
     disocclusionThreshold += gJitterDelta * f;

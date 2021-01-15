@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -137,7 +137,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         // Sampling data at the sample location
         // Since disocclusion fix works where there is no / small history, there is no / not much difference between
-        // responsive and standard illumination, so we'll blur the responsive illumination for fix disocclusions in both normal and responsive illumination 
+        // responsive and standard illumination, so we'll blur the responsive illumination for fix disocclusions in both normal and responsive illumination
         float3 sampleSpecularIllumination;
         float3 sampleDiffuseIllumination;
         UnpackSpecularAndDiffuseFromLogLuvUint2(sampleSpecularIllumination, sampleDiffuseIllumination, gSpecularAndDiffuseIlluminationResponsiveLogLuv[samplePosInt]);

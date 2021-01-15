@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -41,7 +41,7 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
 
     // Split screen - noisy input / denoised output
     uint2 checkerboardPos = pixelPos;
-    checkerboardPos.x >>= gDenoiserType == NRD ? gCheckerboard : 0; // TODO: No checkerboard support
+    checkerboardPos.x >>= gDenoiserType == REBLUR ? gCheckerboard : 0; // TODO: No checkerboard support
 
     float s = gIn_Unfiltered_Shadow[ pixelPos ].x;
     float3 translucency = gIn_Unfiltered_Translucency[ pixelPos ];

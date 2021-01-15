@@ -1,19 +1,16 @@
-# NVIDIA Real-time (Ray tracing) Denoiser v1.10.0
+# NVIDIA Real-time (Ray tracing) Denoiser v1.14.1
 
 ## QUICK START GUIDE
 
-NVIDIA Ray Tracing Denoiser (NRD) is a spatio-temporal API agnostic denoising library. The library has been designed to work with low rpp (ray per pixel) signals (1 rpp and 0.5 rpp). NRD is a fast solution that slightly depends on input signals and environment conditions. NRD currently supports denoising of 3 signal types:
+NVIDIA Real-Time Denoisers (NRD) is a spatio-temporal API agnostic denoising library. The library has been designed to work with low rpp (ray per pixel) signals (1 rpp and 0.5 rpp). NRD is a fast solution that slightly depends on input signals and environment conditions. NRD currently supports denoising of 3 signal types:
 * Diffuse (with embedded ambient occlusion - AO)
 * Specular or reflections (with embedded specular occlusion - SO)
 * Shadows from an infinite light source (sun shadows)
 
 These signals can be denoised using the following denoisers:
-* NRD_DIFFUSE - diffuse denoiser
-* NRD_SPECULAR - specular denoiser
-* NRD_DIFFUSE_SPECULAR - combined version of DIFFUSE and SPECULAR (faster)
-* NRD_SHADOW - opaque shadow denoiser
-* NRD_TRANSLUCENT_SHADOW - translucent shadow denoiser
-* RELAX (experimental) - diffuse and specular combined denoiser, has been designed for RTXDI (RTX Direct Illumination)
+* REBLUR - recurrent blur based denoiser
+* SIGMA - shadow-only denoiser
+* RELAX - SVGF based denoiser using clamping to fast history to minimize temporal lag, has been designed for RTXDI (RTX Direct Illumination)
 * SVGF - baseline denoiser (mostly for comparison and academic needs)
 
 NRD is distributed as source as well with a “ready-to-use” library (if used in a precompiled form).
@@ -55,7 +52,7 @@ If you only need to run the sample and don't want to interact with the code:
 - W/S/A/D - move camera
 - MOUSE_SCROLL - accelerate / decelerate
 - F1 - hide UI toggle
-- F2 - switch to the next denoiser (NRD => SVGF => ...)
+- F2 - switch to the next denoiser (REBLUR => RELAX => SVGF ..., SIGMA is the only denoiser for shadows)
 - SPACE - animation pause toggle
 
 ## INTEGRATION VARIANTS
@@ -103,6 +100,8 @@ NRD doesn't make any graphics API calls. The application is supposed to invoke a
 
 NRD doesn’t have a "resize" functionality. On resolution change the old denoiser needs to be destroyed and a new one needs to be created with new parameters. Dynamic resolution handling is considered to be added in the future.
 
+NOTE: ``XXX`` below is a replacement for a denoiser you choose from REBLUR, RELAX, SIGMA or SVGF.
+
 ### NRD INPUTS
 
 The following textures can be requested as inputs for a method. Brackets contain recommended precision:
@@ -119,23 +118,23 @@ The following textures can be requested as inputs for a method. Brackets contain
 
 * IN\_VIEWZ (R32f) - .x - linear view depth, not HW depth ("+" for LHS, "-" for RHS)
 
-* IN\_SHADOW (RG16f+) - the input for shadow method, needs to be packed using ``NRD_FrontEnd_PackShadow`` function from ``NRD.hlsl``. Infinite (sky) pixels must be cleared using ``NRD_INF_SHADOW`` macros
+* IN\_SHADOW (RG16f+) - the input for shadow method, needs to be packed using ``XXX_FrontEnd_PackShadow`` function from ``NRD.hlsl``. Infinite (sky) pixels must be cleared using ``XXX_INF_SHADOW`` macros
 
-* IN\_DIFF_HIT (RGBA16f+), IN\_SPEC\_HIT (RGBA16f+) - main inputs for diffuse and specular methods respectively. These inputs should be prepared using the ``NRD_FrontEnd_PackRadiance`` function from ``NRD.hlsl``. It is recommented to clear infinite (sky) pixels using corresponding ``NRD_INF_DIFF / NRD_INF_SPEC`` macros
+* IN\_DIFF_HIT (RGBA16f+), IN\_SPEC\_HIT (RGBA16f+) - main inputs for diffuse and specular methods respectively. These inputs should be prepared using the ``XXX_FrontEnd_PackRadiance`` function from ``NRD.hlsl``. It is recommented to clear infinite (sky) pixels using corresponding ``XXX_INF_DIFF / XXX_INF_SPEC`` macros
 
-* IN\_TRANSLUCENCY - translucency to be used by NRD\_TRANSLUCENT\_SHADOW denoiser. There are two ways how it can be used (see OUT\_SHADOW)
+* IN\_TRANSLUCENCY - translucency to be used by XXX\_TRANSLUCENT\_SHADOW denoiser. There are two ways how it can be used (see OUT\_SHADOW)
   - ``final shadow = lerp( translucency, 1.0, shadow )`` (recommended)
   - ``final shadow = translucency * shadow``
 
 ### NRD OUTPUTS
 
-* OUT\_SHADOW (R8+) - denoised shadow. Must be unpacked using ``NRD_BackEnd_UnpackShadow`` function from ``NRD.hlsl``
-  - R8 - for NRD\_SHADOW denoiser (.x - shadow)
-  - RGBA8 - for NRD\_TRANSLUCENT\_SHADOW denoiser (.x - shadow, .yzw - translucency)
+* OUT\_SHADOW (R8+) - denoised shadow. Must be unpacked using ``XXX_BackEnd_UnpackShadow`` function from ``NRD.hlsl``
+  - R8 - for SIGMA\_SHADOW denoiser (.x - shadow)
+  - RGBA8 - for SIGMA\_TRANSLUCENT\_SHADOW denoiser (.x - shadow, .yzw - translucency)
 
-* OUT\_DIFF\_HIT (RGBA16f+) - .xyz - denoisied diffuse radiance, .w - denoised normalized hit distance. Must be unpacked using ``NRD_BackEnd_UnpackRadiance`` function from ``NRD.hlsl``
+* OUT\_DIFF\_HIT (RGBA16f+) - .xyz - denoisied diffuse radiance, .w - denoised normalized hit distance. Must be unpacked using ``XXX_BackEnd_UnpackRadiance`` function from ``NRD.hlsl``
 
-* OUT\_SPEC\_HIT (RGBA16f+) - .xyz - denoised specular radiance, .w - normalized hit distance. Must be unpacked using ``NRD_BackEnd_UnpackRadiance`` function from ``NRD.hlsl``
+* OUT\_SPEC\_HIT (RGBA16f+) - .xyz - denoised specular radiance, .w - normalized hit distance. Must be unpacked using ``XXX_BackEnd_UnpackRadiance`` function from ``NRD.hlsl``
 
 ## RECOMMENDATIONS AND GOOD PRACTICES
 

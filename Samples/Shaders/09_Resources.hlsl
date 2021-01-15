@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -80,7 +80,7 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 //=============================================================================================
 
 // Constants
-#define NRD                                 0
+#define REBLUR                              0
 #define RELAX                               1
 #define SVGF                                2
 

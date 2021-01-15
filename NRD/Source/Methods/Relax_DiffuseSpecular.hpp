@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
+size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
 {
     DispatchDesc desc = {};
 
@@ -61,7 +61,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
     m_TransientPool.push_back({ Format::RGBA16_SFLOAT, w, h, 1 });
 
-    PushPass("RELAX - Pack input data");
+    PushPass("RELAX::DiffuseSpecular - Pack input data");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
@@ -73,7 +73,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_PackInputData, w, h, 16, 16);
     }
 
-    PushPass("RELAX - Reproject");
+    PushPass("RELAX::DiffuseSpecular - Reproject");
     {
         PushInput( AsUint(ResourceType::IN_SPEC));
         PushInput( AsUint(ResourceType::IN_DIFF));
@@ -100,7 +100,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_Reproject, w, h, 16, 16);
     }
 
-    PushPass("RELAX - Disocclusion fix");
+    PushPass("RELAX::DiffuseSpecular - Disocclusion fix");
     {
         PushInput(AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_CURR));
         PushInput(AsUint(Permanent::SPEC_DIFF_ILLUM_RESPONSIVE_LOGLUV_CURR));
@@ -117,7 +117,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_DisocclusionFix, w, h, 8, 8);
     }
 
-    PushPass("RELAX - History clamping");
+    PushPass("RELAX::DiffuseSpecular - History clamping");
     {
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_PREV) );
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_RESPONSIVE_LOGLUV_PREV) );
@@ -129,7 +129,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_HistoryClamping, w, h, 16, 16);
     }
 
-    PushPass("RELAX - Firefly");
+    PushPass("RELAX::DiffuseSpecular - Firefly");
     {
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_CURR) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
@@ -143,7 +143,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_Firefly, w, h, 16, 16);
     }
 
-    PushPass("RELAX - Spatial variance estimation");
+    PushPass("RELAX::DiffuseSpecular - Spatial variance estimation");
     {
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_PREV) );
         PushInput( AsUint(Permanent::SPEC_DIFF_MOMENTS_PREV) );
@@ -158,7 +158,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_SpatialVarianceEstimation, w, h, 16, 16);
     }
     
-    PushPass("RELAX - Atrous 1");
+    PushPass("RELAX::DiffuseSpecular - Atrous 1");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
@@ -174,7 +174,7 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_ATrousShmem, w, h, 16, 16);
     }
 
-    PushPass("RELAX - Atrous 2");
+    PushPass("RELAX::DiffuseSpecular - Atrous 2");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG) );
@@ -187,10 +187,10 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
 
         desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
 
-        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 16, 16);
+        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
 
-    PushPass("RELAX - Atrous 3");
+    PushPass("RELAX::DiffuseSpecular - Atrous 3");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
@@ -203,10 +203,10 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
 
         desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
 
-        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 16, 16);
+        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
 
-    PushPass("RELAX - Atrous 4");
+    PushPass("RELAX::DiffuseSpecular - Atrous 4");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG) );
@@ -219,10 +219,10 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
 
         desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
 
-        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 16, 16);
+        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
 
-    PushPass("RELAX - Atrous 5");
+    PushPass("RELAX::DiffuseSpecular - Atrous 5");
     {
         PushInput(AsUint(Transient::SPEC_ILLUM_VARIANCE_PING));
         PushInput(AsUint(Transient::DIFF_ILLUM_VARIANCE_PING));
@@ -235,13 +235,13 @@ size_t DenoiserImpl::AddMethod_Relax(uint16_t w, uint16_t h)
 
         desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
 
-        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 16, 16);
+        AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
     
-    return sizeof(RelaxSettings);
+    return sizeof(RelaxDiffuseSpecularSettings);
 }
 
-void DenoiserImpl::UpdateMethod_Relax(const MethodData& methodData)
+void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodData)
 {
     enum class Dispatch
     {
@@ -258,7 +258,7 @@ void DenoiserImpl::UpdateMethod_Relax(const MethodData& methodData)
         ATROUS_5,
     };
 
-    const RelaxSettings& settings = methodData.settings.relax;
+    const RelaxDiffuseSpecularSettings& settings = methodData.settings.relax;
 
     int w = methodData.desc.fullResolutionWidth;
     int h = methodData.desc.fullResolutionHeight;

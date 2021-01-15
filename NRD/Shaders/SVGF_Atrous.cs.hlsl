@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -65,7 +65,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
 
     // Early out
     [branch]
-    if ( abs( centerZ ) > gInf )
+    if( abs( centerZ ) > gInf )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Signal[ pixelPos ] = 0;

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -29,14 +29,14 @@ NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 13, 1 );
 NRI_RESOURCE( RWTexture2D<float3>, gOut_Translucency, u, 14, 1 );
 
 // SPP - must be POW of 2!
-// Virtual 32 spp tuned for NRD purposes (actually, 1 spp but distributed in time)
+// Virtual 32 spp tuned for REBLUR purposes (actually, 1 spp but distributed in time)
 // Final SPP = sppVirtual x spp (for this value there is a different "gIn_Scrambling_Ranking" texture!)
 float2 GetRandom( bool isCheckerboard, uint seed, Texture2D<uint3> texScramblingRanking, uint sampleIndex, const uint sppVirtual, const uint spp )
 {
     // WHITE NOISE (for testing purposes)
 
     float4 white = STL::Rng::GetFloat4( );
-    bool forceWhiteNoise = gDenoiserType != NRD && sppVirtual != 1; // TODO: modify some settings to WAR unsupported and not working stuff in non-NRD
+    bool forceWhiteNoise = gDenoiserType != REBLUR && sppVirtual != 1; // TODO: modify some settings to WAR unsupported and not working stuff in non-REBLUR
     if( !gUseBlueNoise || forceWhiteNoise )
         return white.xy;
 
@@ -198,8 +198,8 @@ float4 CastSoftShadowRay( GeometryProps geometryProps, MaterialProps materialPro
 float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps materialProps, float2 pixelUv )
 {
     // TODO: fade doesn't include antilag handling - since the previous frame is used in the current frame it adds "lag",
-    // NRD doesn't know anything about it, its internal antilag helps... but not entirely. Fade out more if history reset is detected.
-    // The simplest way is to fade out more if NRD's "maxAccumulatedFrameNum" is low
+    // REBLUR doesn't know anything about it, its internal antilag helps... but not entirely. Fade out more if history reset is detected.
+    // The simplest way is to fade out more if REBLUR's "maxAccumulatedFrameNum" is low
 
     float3 albedo, Rf0;
     STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( materialProps.baseColor, materialProps.metalness, albedo, Rf0 );
@@ -388,7 +388,7 @@ void ENTRYPOINT( )
     // Early out
     if( geometryProps0.IsSky( ) )
     {
-        gOut_Shadow[ pixelPos ] = NRD_INF_SHADOW;
+        gOut_Shadow[ pixelPos ] = SIGMA_INF_SHADOW;
         gOut_Translucency[ pixelPos ] = 1.0;
 
         #if( USE_BIG_VALUE_CHECK == 1 )
@@ -422,7 +422,7 @@ void ENTRYPOINT( )
 
     // Sun shadow
     float4 shadowData0 = CastSoftShadowRay( geometryProps0, materialProps0 );
-    gOut_Shadow[ pixelPos ] = NRD_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.w == INF ? NRD_FP16_MAX : shadowData0.w );
+    gOut_Shadow[ pixelPos ] = SIGMA_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.w == INF ? NRD_FP16_MAX : shadowData0.w );
     gOut_Translucency[ pixelPos ] = shadowData0.xyz;
 
     // Secondary rays
@@ -694,9 +694,9 @@ void ENTRYPOINT( )
         if( isDiffuse )
         {
             float normDist = saturate( pathLength / ( gDiffDistScale + f ) );
-            diffIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist );
+            diffIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist );
 
-            if( gDenoiserType != NRD )
+            if( gDenoiserType != REBLUR )
                 diffIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist );
         }
         else
@@ -710,9 +710,9 @@ void ENTRYPOINT( )
             }
 
             float normDist = saturate( pathLength / ( gSpecHitDistScale + f ) );
-            specIndirect = NRD_FrontEnd_PackRadiance( Clight1, normDist, materialProps0.roughness );
+            specIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, materialProps0.roughness );
 
-            if( gDenoiserType != NRD )
+            if( gDenoiserType != REBLUR )
                 specIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist, materialProps0.roughness );
         }
 
@@ -725,7 +725,7 @@ void ENTRYPOINT( )
     gOut_Diff[ pixelPos ] = diffIndirect;
     gOut_Spec[ pixelPos ] = specIndirect;
 #else
-    if( gDenoiserType != NRD ) // TODO: No checkerboard support
+    if( gDenoiserType != REBLUR ) // TODO: No checkerboard support
     {
         uint2 pixelPosA = uint2( pixelPos.x & ~0x1, pixelPos.y );
         uint2 pixelPosB = pixelPosA + uint2( 1, 0 );

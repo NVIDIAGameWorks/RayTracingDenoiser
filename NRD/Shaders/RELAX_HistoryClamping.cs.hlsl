@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -125,10 +125,10 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float3 diffuseFirstMoment = 0;
     float3 diffuseSecondMoment = 0;
 
-    [unroll] 
+    [unroll]
     for (int dy = -1; dy <= 1; dy++)
     {
-        [unroll] 
+        [unroll]
         for (int dx = -1; dx <= 1; dx++)
         {
             uint2 sharedMemoryIndexP = sharedMemoryIndex + int2(dx, dy);
@@ -162,7 +162,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float3 diffuseColorMin = diffuseFirstMoment - gColorBoxSigmaScale * diffuseSigma;
     float3 diffuseColorMax = diffuseFirstMoment + gColorBoxSigmaScale * diffuseSigma;
 
-    // Expanding specular and diffuse color boxes with color of the center pixel for specular and diffuse signals 
+    // Expanding specular and diffuse color boxes with color of the center pixel for specular and diffuse signals
     // to avoid introducing bias
     float3 specularIlluminationCenter;
     float3 diffuseIlluminationCenter;

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -89,7 +89,7 @@ float GetNormalWeight( float2 params0, float3 n0, float3 n )
 
 float2 ComputeWeight( float zc, float z, float zWeight, float3 nc, float3 n, float2 nWeightParams, float2 lc, float2 l, float2 lWeight, float fade )
 {
-    // Normal weight (taken from NRD)
+    // Normal weight (taken from old REBLUR)
     float wn = GetNormalWeight( nWeightParams, nc, n );
     wn = lerp( wn, 1.0, fade );
 

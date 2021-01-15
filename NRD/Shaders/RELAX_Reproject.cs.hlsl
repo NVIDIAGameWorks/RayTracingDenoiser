@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -89,14 +89,14 @@ float3 getCurrentWorldPos(int2 pixelPos, float depth)
 float3 getPreviousWorldPos(int2 pixelPos, float depth)
 {
     float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize;
-    float4 clipPos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1); 
+    float4 clipPos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1);
     float4 worldPos = mul(gPrevClipToWorld, clipPos);
     return worldPos.xyz / worldPos.w;
 }
 
 float2 getRoughnessWeightParams(float roughness0)
 {
-    float a = 1.0 / (roughness0 * 0.5 * 0.999 + 0.001); 
+    float a = 1.0 / (roughness0 * 0.5 * 0.999 + 0.001);
     float b = roughness0 * a;
     return float2(a, b);
 }
@@ -142,7 +142,7 @@ float getModifiedRoughnessFromNormalVariance(float roughness, float3 nonNormaliz
 
 float isReprojectionTapValid(int2 pixelCoord, float currentLinearZ, float3 currentWorldPos, float3 previousWorldPos, float3 currentNormal, float3 previousNormal, float jitterRadius)
 {
-    
+
     // Check whether reprojected pixel is inside of the screen
     if (any(pixelCoord < int2(0, 0)) || any(pixelCoord > int2(gResolution) - int2(1, 1))) return 0;
 
@@ -152,7 +152,7 @@ float isReprojectionTapValid(int2 pixelCoord, float currentLinearZ, float3 curre
 
     // No need to check normals, as plane distance check is conservative enough!
     // if (dot(currentNormal, previousNormal) < 0.5) return 0;
-    
+
     return 1.0;
 }
 
@@ -173,7 +173,7 @@ float getSpecularAlphaAdjustment(float roughness, float cosa)
 
 
 // Returns reprojection search result based on surface motion:
-// 2 - 16 taps in 4x4 footprint are good, bicubic filtering used 
+// 2 - 16 taps in 4x4 footprint are good, bicubic filtering used
 // 1 - some of 4 taps in 2x2 footprint are good, weighted bilinear used
 // 0 - candidate taps for reprojection not found, therefore reprojection is not valid = not found
 //
@@ -229,10 +229,10 @@ int loadSurfaceMotionBasedPrevData(
     // bc - bicubic & bilinear tap,
     // bl - bilinear tap
     //
-    // -- bc bc -- 
-    // bc bl bl bc 
-    // bc bl bl bc 
-    // -- bc bc -- 
+    // -- bc bc --
+    // bc bl bl bc
+    // bc bl bl bc
+    // -- bc bc --
 
     float bicubicFootprintValid = 1.0;
     float4 bilinearTapsValid = 0;
@@ -330,7 +330,7 @@ int loadSurfaceMotionBasedPrevData(
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
-    // Calculating interpolated binary weight for bilinear taps in advance 
+    // Calculating interpolated binary weight for bilinear taps in advance
     STL::Filtering::Bilinear bilinear;
     bilinear.weights = bilinearWeights;
     float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
@@ -369,7 +369,7 @@ int loadSurfaceMotionBasedPrevData(
 
     // If reprojection was found, calculating previousd worldspace position
     // by applying weighted bilinear to worldspace positions in taps.
-    // Also calculating history length by using weighted bilinear 
+    // Also calculating history length by using weighted bilinear
     if (reprojectionFound > 0)
     {
 
@@ -434,7 +434,7 @@ int loadVirtualMotionBasedPrevData(
     int2 bilinearOrigin = int2(floor(prevVirtualPixelPosOnScreen - 0.5) + 0.5);
     float2 bilinearWeights = frac(prevVirtualPixelPosOnScreen - 0.5);
 
-    // Checking bilinear footprint 
+    // Checking bilinear footprint
     float4 bilinearTapsValid = 0;
 
 
@@ -446,7 +446,7 @@ int loadVirtualMotionBasedPrevData(
     float3 prevNormal00, prevNormal10, prevNormal01, prevNormal11;
     float prevRoughness00, prevRoughness10, prevRoughness01, prevRoughness11;
     bool reprojectionTapValid;
-    
+
     tapPos = bilinearOrigin + int2(0, 0);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessInTap, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
     prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
@@ -479,14 +479,14 @@ int loadVirtualMotionBasedPrevData(
     prevNormal11 = prevNormalInTap;
     prevRoughness11 = prevRoughnessInTap;
 
-    
-    // Calculating interpolated binary weight for bilinear taps in advance 
+
+    // Calculating interpolated binary weight for bilinear taps in advance
     STL::Filtering::Bilinear bilinear;
     bilinear.weights = bilinearWeights;
     float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
     interpolatedBinaryWeight = max(1e-2, interpolatedBinaryWeight);
-    
-    //Applying reprojection 
+
+    //Applying reprojection
     int reprojectionFound = 0;
 
     // Weighted bilinear for prev specular data based on virtual motion
@@ -590,7 +590,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 prevSurfaceMotionBasedWorldPos;
     float  historyLength;
     float3 debugOut1;
-    
+
     int surfaceMotionBasedReprojectionFound = loadSurfaceMotionBasedPrevData(ipos.xy,
                                                             currentWorldPos,
                                                             currentNormal,
@@ -682,7 +682,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
 
 
-    // Adjusting accumulation factors for virtual motion based specular 
+    // Adjusting accumulation factors for virtual motion based specular
     float specularAlphaVirtualMotionBased = lerp(1.0, specularAlpha, virtualMotionBasedReprojectionConfidence);
     float specularAlphaResponsiveVirtualMotionBased = lerp(1.0, specularAlphaResponsive, virtualMotionBasedReprojectionConfidence);
 
@@ -716,7 +716,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     // Now weighing between virtual and surface motion based specular reprojection
     float virtualVsSurfaceWeight = virtualMotionBasedReprojectionConfidence;
 
-    // Adjusting weighing between virtual motion based and surface motion based reprojection for specular, 
+    // Adjusting weighing between virtual motion based and surface motion based reprojection for specular,
     // based on current roughness: virtual motion is perfectly valid for perfect mirrors only
     virtualVsSurfaceWeight *= 1.0 - STL::Math::SmoothStep(0.4, 1.0, currentRoughness);
 

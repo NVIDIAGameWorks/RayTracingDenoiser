@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -44,7 +44,7 @@ float distanceToOccluder:
 
 float normHitDist:
     - normalized hit distance
-    - NRD must be aware of the normalization function via "nrd::HitDistanceParameters"
+    - REBLUR must be aware of the normalization function via "nrd::HitDistanceParameters"
     - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse. SO ( specular occlusion ) for specular
     - AO can be used to emulate 2nd+ diffuse bounces
     - SO can be used to adjust IBL lighting
@@ -57,7 +57,6 @@ float normHitDist:
 // PUBLIC
 //=================================================================================================================================
 
-// This function can be tuned at any time ( NRD doesn't use NRD_FrontEnd_PackSpecular and NRD_BackEnd_UnpackSpecular internally )
 float NRD_GetColorCompressionExposure( float linearRoughness )
 {
     // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
@@ -157,16 +156,13 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 // FRONT-END PACKING
 //=================================================================================================================================
 
-// NRD
+// REBLUR
 
 // Recommended to be used to "clear" INF pixels
-#define NRD_INF_DIFF                    0
-#define NRD_INF_SPEC                    0
+#define REBLUR_INF_DIFF     0
+#define REBLUR_INF_SPEC     0
 
-// Must be used to "clear" INF pixels
-#define NRD_INF_SHADOW                  float2( NRD_FP16_MAX, NRD_FP16_MAX )
-
-float4 NRD_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float linearRoughness = 1.0 )
+float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float linearRoughness = 1.0 )
 {
     radiance = _NRD_LinearToYCoCg( radiance );
 
@@ -178,7 +174,12 @@ float4 NRD_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float line
     return float4( compressedRadiance, normHitDist );
 }
 
-float2 NRD_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
+// SIGMA
+
+// Must be used to "clear" INF pixels
+#define SIGMA_INF_SHADOW     float2( NRD_FP16_MAX, NRD_FP16_MAX )
+
+float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
 {
     float2 r;
     r.x = 0.0;
@@ -209,9 +210,9 @@ float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist, float linear
 // BACK-END UNPACKING
 //=================================================================================================================================
 
-// NRD
+// REBLUR
 
-float4 NRD_BackEnd_UnpackRadiance( float4 compressedRadiance_normHitDist, float linearRoughness = 1.0 )
+float4 REBLUR_BackEnd_UnpackRadiance( float4 compressedRadiance_normHitDist, float linearRoughness = 1.0 )
 {
     float exposure = NRD_GetColorCompressionExposure( linearRoughness );
     float lum = compressedRadiance_normHitDist.x;
@@ -223,7 +224,9 @@ float4 NRD_BackEnd_UnpackRadiance( float4 compressedRadiance_normHitDist, float 
     return float4( radiance, compressedRadiance_normHitDist.w );
 }
 
-#define NRD_BackEnd_UnpackShadow( color )  ( color * color )
+// SIGMA
+
+#define SIGMA_BackEnd_UnpackShadow( color )  ( color * color )
 
 // RELAX / SVGF
 

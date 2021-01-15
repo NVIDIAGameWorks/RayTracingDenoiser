@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -179,7 +179,7 @@ float4 BicubicSampleCatmullRomFloat4UsingBilinear(Texture2D<float4> tex, Sampler
     float2 tc12 = (tc + w2 / w12) * invViewSize;
     float2 tc3 = (tc + 2) * invViewSize;
 
-    float4 result = 
+    float4 result =
         tex.SampleLevel(samp, float2(tc0.x, tc12.y), 0).rgba * (w0.x * w12.y) +
         tex.SampleLevel(samp, float2(tc12.x, tc0.y), 0).rgba * (w12.x * w0.y) +
         tex.SampleLevel(samp, float2(tc12.x, tc12.y), 0).rgba * (w12.x * w12.y) +

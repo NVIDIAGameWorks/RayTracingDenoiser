@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -23,31 +23,40 @@ namespace nrd
         MAX_NUM
     };
 
+    // "Denoiser name"_"Signal type"
     enum class Method : uint32_t
     {
+        // REBLUR ===========================================================================================================================
+
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT
         // OUTPUTS - OUT_DIFF_HIT
-        NRD_DIFFUSE,
+        REBLUR_DIFFUSE,
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_HIT
         // OUTPUTS - OUT_SPEC_HIT
-        NRD_SPECULAR,
+        REBLUR_SPECULAR,
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT, IN_SPEC_HIT
         // OUTPUTS - OUT_DIFF_HIT, OUT_SPEC_HIT
-        NRD_DIFFUSE_SPECULAR,
+        REBLUR_DIFFUSE_SPECULAR,
+
+        // SIGMA ===========================================================================================================================
 
         // INPUTS - IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SHADOW, OUT_SHADOW
         // OUTPUTS - OUT_SHADOW
-        NRD_SHADOW,
+        SIGMA_SHADOW,
 
         // INPUTS - IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SHADOW, IN_TRANSLUCENCY, OUT_SHADOW_TRANSLUCENCY
         // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
-        NRD_TRANSLUCENT_SHADOW,
+        SIGMA_TRANSLUCENT_SHADOW,
+
+        // RELAX ===========================================================================================================================
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF, IN_SPEC
         // OUTPUTS - OUT_DIFF, OUT_SPEC
-        RELAX,
+        RELAX_DIFFUSE_SPECULAR,
+
+        // SVGF ============================================================================================================================
 
         // INPUTS - IN_SVGF
         // OUTPUTS - OUT_SVGF
@@ -69,13 +78,13 @@ namespace nrd
         // Linear view depth for primary rays - "+" for LHS, "-" for RHS (R16f+)
         IN_VIEWZ,
 
-        // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
+        // Data must be packed using "NRD.hlsl/XXX_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
         IN_SHADOW,
 
-        // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackRadiance" (RGBA16f+)
+        // Data must be packed using "NRD.hlsl/XXX_PackRadiance" (RGBA16f+)
         IN_DIFF_HIT,
 
-        // Data must be packed using "NRD.hlsl/NRD_FrontEnd_PackRadiance" (RGBA16f+)
+        // Data must be packed using "NRD.hlsl/XXX_PackRadiance" (RGBA16f+)
         IN_SPEC_HIT,
 
         // 3-channel translucency (RGBA8+)
@@ -88,19 +97,19 @@ namespace nrd
         // - as intermediate buffers
 
         // .x - shadow (R8+)
-        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackShadow"
+        // Data must be unpacked using "NRD.hlsl/XXX_UnpackShadow"
         OUT_SHADOW,
 
         // .x - shadow, .yzw - translucency (RGBA8+), assuming that it will be used as: translucent shadow = lerp( .yzw, 1, .x )
-        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackShadow"
+        // Data must be unpacked using "NRD.hlsl/XXX_UnpackShadow"
         OUT_SHADOW_TRANSLUCENCY,
 
         // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackRadiance"
+        // Data must be unpacked using "NRD.hlsl/XXX_UnpackRadiance"
         OUT_DIFF_HIT,
 
         // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        // Data must be unpacked using "NRD.hlsl/NRD_BackEnd_UnpackRadiance"
+        // Data must be unpacked using "NRD.hlsl/XXX_UnpackRadiance"
         OUT_SPEC_HIT,
 
         // POOLS ============================================================================================================================

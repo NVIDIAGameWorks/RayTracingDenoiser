@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -18,12 +18,12 @@ using namespace nrd;
 
 static const std::array<Method, 7> g_NrdSupportedMethods =
 {
-    Method::NRD_DIFFUSE,
-    Method::NRD_SPECULAR,
-    Method::NRD_DIFFUSE_SPECULAR,
-    Method::NRD_SHADOW,
-    Method::NRD_TRANSLUCENT_SHADOW,
-    Method::RELAX,
+    Method::REBLUR_DIFFUSE,
+    Method::REBLUR_SPECULAR,
+    Method::REBLUR_DIFFUSE_SPECULAR,
+    Method::SIGMA_SHADOW,
+    Method::SIGMA_TRANSLUCENT_SHADOW,
+    Method::RELAX_DIFFUSE_SPECULAR,
     Method::SVGF,
 };
 

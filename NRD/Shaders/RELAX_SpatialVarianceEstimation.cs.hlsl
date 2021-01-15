@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -167,12 +167,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float centerSpecular1stMoment;
     float centerDiffuse1stMoment;
     unpackIllumination1stMoments(sharedPackedIllumination1stMoments[sharedMemoryCenterIndex.y][sharedMemoryCenterIndex.x],
-                                centerSpecularIllumination, 
-                                centerDiffuseIllumination, 
-                                centerSpecular1stMoment, 
+                                centerSpecularIllumination,
+                                centerDiffuseIllumination,
+                                centerSpecular1stMoment,
                                 centerDiffuse1stMoment);
 
-    if (historyLength >= float(gHistoryThreshold)) 
+    if (historyLength >= float(gHistoryThreshold))
     {
         // If we have enough temporal history available,
         // we pass illumination data unmodified
@@ -194,10 +194,10 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
         float centerDiffuse2ndMoment;
         uint4 centerPackedNormalRoughnessDepth2ndMoments = sharedPackedNormalRoughnessDepth2ndMoments[sharedMemoryCenterIndex.y][sharedMemoryCenterIndex.x];
         unpackNormalRoughnessDepth2ndMoments(centerPackedNormalRoughnessDepth2ndMoments,
-                                            centerNormal, 
-                                            centerRoughnessDontCare, 
-                                            centerDepth, 
-                                            centerSpecular2ndMoment, 
+                                            centerNormal,
+                                            centerRoughnessDontCare,
+                                            centerDepth,
+                                            centerSpecular2ndMoment,
                                             centerDiffuse2ndMoment);
 
         if (centerDepth <= 0)
@@ -207,7 +207,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
             gOutDiffuseIlluminationAndVariance[ipos] = float4(centerDiffuseIllumination, 0);
             return;
         }
-        
+
         float sumWSpecularIllumination = 0;
         float3 sumSpecularIllumination = 0;
 
@@ -234,8 +234,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
                 float sampleSpecular2ndMoment;
                 float sampleDiffuse2ndMoment;
                 unpackNormalRoughnessDepth2ndMoments(sharedPackedNormalRoughnessDepth2ndMoments[sharedMemoryIndex.y][sharedMemoryIndex.x],
-                                                     sampleNormal, 
-                                                     sampleRoughnessDontCare, 
+                                                     sampleNormal,
+                                                     sampleRoughnessDontCare,
                                                      sampleDepth,
                                                      sampleSpecular2ndMoment,
                                                      sampleDiffuse2ndMoment );
@@ -244,8 +244,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
                 float3 sampleDiffuseIllumination;
                 float sampleSpecular1stMoment;
                 float sampleDiffuse1stMoment;
-                unpackIllumination1stMoments(sharedPackedIllumination1stMoments[sharedMemoryIndex.y][sharedMemoryIndex.x], 
-                                   sampleSpecularIllumination, 
+                unpackIllumination1stMoments(sharedPackedIllumination1stMoments[sharedMemoryIndex.y][sharedMemoryIndex.x],
+                                   sampleSpecularIllumination,
                                    sampleDiffuseIllumination,
                                    sampleSpecular1stMoment,
                                    sampleDiffuse1stMoment);

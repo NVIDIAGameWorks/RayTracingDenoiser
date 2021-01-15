@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -41,7 +41,7 @@ constexpr uint32_t ANIMATED_INSTANCE_MAX_NUM = 512;
 
 enum Denoiser : int32_t
 {
-    NRD,
+    REBLUR,
     RELAX,
     SVGF,
 
@@ -234,6 +234,7 @@ struct NrdSettings
     float specBlurRadius = 30.0f;
     float specAdaptiveRadiusScale = 5.0f;
     float antilagIntensityThreshold = 1.0f;
+    float antilagSigmaScale = 2.0f;
     float disocclusionThreshold = 0.5f;
     float noisinessBlurrinessBalance = 1.0f;
 
@@ -525,7 +526,7 @@ private:
     uint2 m_OutputResolution = {};
     uint2 m_RenderResolution = {};
     utils::Scene m_Scene;
-    nrd::RelaxSettings m_RelaxSettings = {}; // TODO: after code stabilization move to Settings and adjust unit tests
+    nrd::RelaxDiffuseSpecularSettings m_RelaxSettings = {}; // TODO: after code stabilization move to Settings and adjust unit tests
     Settings m_Settings = {};
     Settings m_PrevSettings = {};
     Settings m_DefaultSettings = {};
@@ -536,7 +537,7 @@ private:
     bool m_PrevIsActive = true;
     bool m_HasTransparentObjects = false;
     bool m_ShowUi = true;
-    bool m_AmbientInComposition = true; // TODO: only to WAR unsupported AO / SO in non-NRD
+    bool m_AmbientInComposition = true; // TODO: only to WAR unsupported AO / SO in non-REBLUR
 };
 
 Sample::~Sample()
@@ -634,20 +635,20 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     UploadStaticData();
     SetupAnimatedObjects();
 
-    // NRD
+    // REBLUR
     {
         #if( NRD_COMBINED == 1 )
             const nrd::MethodDesc methodDescs[] =
             {
-                { nrd::Method::NRD_DIFFUSE_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-                { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::REBLUR_DIFFUSE_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
             };
         #else
             const nrd::MethodDesc methodDescs[] =
             {
-                { nrd::Method::NRD_DIFFUSE, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-                { nrd::Method::NRD_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-                { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::REBLUR_DIFFUSE, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::REBLUR_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
             };
         #endif
 
@@ -662,8 +663,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
     {
         const nrd::MethodDesc methodDescs[] =
         {
-            { nrd::Method::RELAX, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-            { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+            { nrd::Method::RELAX_DIFFUSE_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+            { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
         };
 
         nrd::DenoiserCreationDesc denoiserCreationDesc = {};
@@ -679,7 +680,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         const nrd::MethodDesc methodDescs1[] =
         {
             { nrd::Method::SVGF, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-            { nrd::Method::NRD_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+            { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
         };
 
         nrd::DenoiserCreationDesc denoiserCreationDesc = {};
@@ -816,7 +817,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                     ImGui::SliderFloat("Field of view (deg)", &m_Settings.camFov, 10.0f, 150.0f);
                     ImGui::SliderFloat("Exposure", &m_Settings.exposure, 0.0001f, 1.0f, "%.7f", 5.0f);
                     ImGui::Combo("On screen", &m_Settings.onScreen, onScreenModes, helper::GetCountOf(onScreenModes));
-                    bool cmp = m_Settings.denoiser == NRD && m_Settings.nrdSettings.referenceAccumulation;
+                    bool cmp = m_Settings.denoiser == REBLUR && m_Settings.nrdSettings.referenceAccumulation;
                     if (cmp)
                         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
                     ImGui::Checkbox("TAA", &m_Settings.TAA);
@@ -984,16 +985,22 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                     ImGui::PushID("DENOISER");
                     {
                         const nrd::LibraryDesc& nrdLibraryDesc = nrd::GetLibraryDesc();
-                        if (m_Settings.denoiser == NRD)
+                        if (m_Settings.denoiser == REBLUR)
                         {
                             char name[256];
-                            sprintf_s(name, "DENOISER - NRD v%u.%u.%u (F2 - next)", nrdLibraryDesc.versionMajor, nrdLibraryDesc.versionMinor, nrdLibraryDesc.versionBuild);
+                            sprintf_s(name, "DENOISER - REBLUR / SIGMA v%u.%u.%u (F2 - next)", nrdLibraryDesc.versionMajor, nrdLibraryDesc.versionMinor, nrdLibraryDesc.versionBuild);
                             ImGui::Text(name);
                             ImGui::Separator();
                             ImGui::SliderFloat("Disocclusion (%)", &m_Settings.nrdSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", 2.0f);
-                            ImGui::SliderFloat("Antilag threshold", &m_Settings.nrdSettings.antilagIntensityThreshold, 0.0f, 1.0f, "%.4f", 4.0f);
-                            ImGui::SliderInt("History frames", &m_Settings.nrdSettings.maxAccumulatedFrameNum, 0, nrd::NRD_MAX_HISTORY_FRAME_NUM);
                             ImGui::SliderFloat("Noisiness / Blurriness", &m_Settings.nrdSettings.noisinessBlurrinessBalance, 0.0f, 1.0f, "%.3f");
+                            ImGui::SliderInt("History frames", &m_Settings.nrdSettings.maxAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
+                            ImGui::Text("ANTILAG:");
+                            ImGui::PushID("ANTILAG");
+                            {
+                                ImGui::SliderFloat("Threshold", &m_Settings.nrdSettings.antilagIntensityThreshold, 0.0f, 1.0f, "%.4f", 4.0f);
+                                ImGui::SliderFloat("Sigma scale", &m_Settings.nrdSettings.antilagSigmaScale, 0.0f, 4.0f, "%.3f");
+                            }
+                            ImGui::PopID();
                             ImGui::Text("DIFFUSE:");
                             ImGui::PushID("DIFFUSE");
                             {
@@ -1015,7 +1022,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                         }
                         else if (m_Settings.denoiser == RELAX)
                         {
-                            ImGui::Text("DENOISER - RELAX (F2 - next)");
+                            ImGui::Text("DENOISER - RELAX / SIGMA (F2 - next)");
                             ImGui::Separator();
                             ImGui::Text("REPROJECTION:");
                             ImGui::Checkbox("Bicubic", &m_RelaxSettings.bicubicFilterForReprojectionEnabled);
@@ -1046,7 +1053,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                         }
                         else if(m_Settings.denoiser == SVGF)
                         {
-                            ImGui::Text("DENOISER - SVGF (F2 - next)");
+                            ImGui::Text("DENOISER - SVGF / SIGMA (F2 - next)");
                             ImGui::Separator();
                             ImGui::SliderFloat("Disocclusion (%)", &m_Settings.svgfSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", 2.0f);
                             ImGui::SliderFloat("Variance scale", &m_Settings.svgfSettings.varianceScale, 0.5f, 100.0f, "%.3f", 3.0f);
@@ -1173,7 +1180,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
 
                                     // Reset some settings to defaults to avoid a potential confusion
                                     m_Settings.debug = 0.0f;
-                                    m_Settings.denoiser = NRD;
+                                    m_Settings.denoiser = REBLUR;
                                     m_AmbientInComposition = true;
                                 }
 
@@ -1328,8 +1335,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
         }
     }
 
-    // TODO: modify some settings to WAR unsupported and not working stuff in non-NRD
-    if (m_Settings.denoiser != NRD)
+    // TODO: modify some settings to WAR unsupported and not working stuff in non-REBLUR
+    if (m_Settings.denoiser != REBLUR)
         m_Settings.nrdSettings.checkerboard = false;
     if (m_Settings.denoiser == RELAX)
         m_AmbientInComposition = false;
@@ -2794,7 +2801,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         commonSettings.worldSpaceMotion = m_Settings.worldSpaceMotion;
         commonSettings.forceReferenceAccumulation = m_Settings.nrdSettings.referenceAccumulation;
 
-        nrd::NrdShadowSettings shadowSettings = {};
+        nrd::SigmaShadowSettings shadowSettings = {};
         shadowSettings.lightSourceAngularDiameter = m_Settings.sunAngularDiameter;
 
         NrdUserPool userPool =
@@ -2833,9 +2840,9 @@ void Sample::RenderFrame(uint32_t frameIndex)
             {Get(Texture::Spec), &GetState(Texture::Spec), GetFormat(Texture::Spec)},
         }};
 
-        if (m_Settings.denoiser == NRD)
+        if (m_Settings.denoiser == REBLUR)
         {
-            helper::Annotation annotation(NRI, commandBuffer2, "NRD denoising");
+            helper::Annotation annotation(NRI, commandBuffer2, "REBLUR / SIGMA denoising");
 
             const float3 trimmingParams = GetTrimmingParams();
 
@@ -2845,10 +2852,15 @@ void Sample::RenderFrame(uint32_t frameIndex)
             threshold0 += 0.1f * b * b;
             threshold0 *= 1920.0f / GetWindowWidth(); // Additionally it depends on the resolution (higher resolution = better samples)
 
-            nrd::AntilagSettings antilagSettings = {};
-            antilagSettings.enable = m_Settings.nrdSettings.antilag;
-            antilagSettings.intensityThresholdMin = threshold0;
-            antilagSettings.intensityThresholdMax = 3.0f * threshold0;
+            nrd::IntensityAntilagSettings intensityAntilagSettings = {};
+            intensityAntilagSettings.thresholdMin = threshold0;
+            intensityAntilagSettings.thresholdMax = 3.0f * threshold0;
+            intensityAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScale;
+            intensityAntilagSettings.enable = m_Settings.nrdSettings.antilag;
+
+            nrd::HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
+            hitDistanceAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScale;
+            hitDistanceAntilagSettings.enable = m_Settings.nrdSettings.antilag;
 
             nrd::HitDistanceParameters diffHitDistanceParameters = {};
             diffHitDistanceParameters.A = m_Settings.diffHitDistScale;
@@ -2859,8 +2871,9 @@ void Sample::RenderFrame(uint32_t frameIndex)
             specHitDistanceParameters.B = 0.1f; // see HIT_DISTANCE_LINEAR_SCALE
 
             #if( NRD_COMBINED == 1 )
-                nrd::NrdDiffuseSpecularSettings diffuseSpecularSettings = {};
-                diffuseSpecularSettings.antilagSettings = antilagSettings;
+                nrd::ReblurDiffuseSpecularSettings diffuseSpecularSettings = {};
+                diffuseSpecularSettings.intensityAntilagSettings = intensityAntilagSettings;
+                diffuseSpecularSettings.hitDistanceAntilagSettings = hitDistanceAntilagSettings;
                 diffuseSpecularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 diffuseSpecularSettings.diffHitDistanceParameters = diffHitDistanceParameters;
                 diffuseSpecularSettings.diffMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
@@ -2875,47 +2888,49 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 diffuseSpecularSettings.specBlurRadius = m_Settings.nrdSettings.specBlurRadius;
                 diffuseSpecularSettings.specMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
                 diffuseSpecularSettings.specCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
-                m_NRD.SetMethodSettings(nrd::Method::NRD_DIFFUSE_SPECULAR, &diffuseSpecularSettings);
+                m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE_SPECULAR, &diffuseSpecularSettings);
             #else
-                nrd::NrdDiffuseSettings diffuseSettings = {};
+                nrd::ReblurDiffuseSettings diffuseSettings = {};
                 diffuseSettings.hitDistanceParameters = diffHitDistanceParameters;
-                diffuseSettings.antilagSettings = antilagSettings;
+                diffuseSettings.intensityAntilagSettings = intensityAntilagSettings;
+                diffuseSettings.hitDistanceAntilagSettings = hitDistanceAntilagSettings;
                 diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 diffuseSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 diffuseSettings.blurRadius = m_Settings.nrdSettings.diffBlurRadius;
                 diffuseSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
                 diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
-                m_NRD.SetMethodSettings(nrd::Method::NRD_DIFFUSE, &diffuseSettings);
+                m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE, &diffuseSettings);
 
-                nrd::NrdSpecularSettings specularSettings = {};
+                nrd::ReblurSpecularSettings specularSettings = {};
                 specularSettings.hitDistanceParameters = specHitDistanceParameters;
                 specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
-                specularSettings.antilagSettings = antilagSettings;
+                specularSettings.intensityAntilagSettings = intensityAntilagSettings;
+                specularSettings.hitDistanceAntilagSettings = hitDistanceAntilagSettings;
                 specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 specularSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 specularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 specularSettings.blurRadius = m_Settings.nrdSettings.specBlurRadius;
                 specularSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
                 specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
-                m_NRD.SetMethodSettings(nrd::Method::NRD_SPECULAR, &specularSettings);
+                m_NRD.SetMethodSettings(nrd::Method::REBLUR_SPECULAR, &specularSettings);
             #endif
-            m_NRD.SetMethodSettings(nrd::Method::NRD_TRANSLUCENT_SHADOW, &shadowSettings);
+            m_NRD.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
 
             m_NRD.Denoise(commandBuffer2, commonSettings, userPool);
         }
         else if (m_Settings.denoiser == RELAX)
         {
-            helper::Annotation annotation(NRI, commandBuffer2, "RELAX denoising");
+            helper::Annotation annotation(NRI, commandBuffer2, "RELAX / SIGMA denoising");
 
-            m_RELAX.SetMethodSettings(nrd::Method::RELAX, &m_RelaxSettings);
-            m_RELAX.SetMethodSettings(nrd::Method::NRD_TRANSLUCENT_SHADOW, &shadowSettings);
+            m_RELAX.SetMethodSettings(nrd::Method::RELAX_DIFFUSE_SPECULAR, &m_RelaxSettings);
+            m_RELAX.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
 
             m_RELAX.Denoise(commandBuffer2, commonSettings, userPool);
         }
         else
         {
-            helper::Annotation annotation(NRI, commandBuffer2, "SVGF denoising");
+            helper::Annotation annotation(NRI, commandBuffer2, "SVGF / SIGMA denoising");
 
             nrd::SvgfSettings svgfSettings = {};
             svgfSettings.disocclusionThreshold = m_Settings.svgfSettings.disocclusionThreshold * 0.01f;
@@ -2926,7 +2941,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
             svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
             svgfSettings.momentsMaxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.diffMomentsMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
             m_SVGF_Diff.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
-            m_SVGF_Diff.SetMethodSettings(nrd::Method::NRD_TRANSLUCENT_SHADOW, &shadowSettings);
+            m_SVGF_Diff.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
 
             m_SVGF_Diff.Denoise(commandBuffer2, commonSettings, userPool);
 

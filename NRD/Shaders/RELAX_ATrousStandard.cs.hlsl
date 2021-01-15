@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -72,7 +72,7 @@ float3 getCurrentWorldPos(int2 pixelPos, float depth)
 float getGeometryWeight(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float phiDepth)
 {
 	float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
-	return (isnan(distanceToCenterPointPlane) ? 1.0 : distanceToCenterPointPlane) / (phiDepth + 1e-6);
+	return distanceToCenterPointPlane / (phiDepth + 1e-6);
 }
 
 float getDiffuseNormalWeight(float3 centerNormal, float3 sampleNormal, float phiNormal)
@@ -109,7 +109,7 @@ float getRoughnessWeight(float2 params0, float roughness)
 
 float2 getNormalWeightParams(float roughness, float numFramesInHistory, float specularReprojectionConfidence)
 {
-    // Relaxing normal weights 
+    // Relaxing normal weights
     // and if specular reprojection confidence is low
     float relaxation = lerp(1.0, specularReprojectionConfidence, gNormalEdgeStoppingRelaxation);
     float f = 0.9 + 0.1 * saturate(numFramesInHistory / 5.0) * relaxation;
@@ -139,7 +139,7 @@ float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
 }
 
 
-[numthreads(16, 16, 1)]
+[numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     int2 ipos = dispatchThreadId.xy;
@@ -151,6 +151,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float4 centerDiffuseIlluminationAndVariance = gDiffuseIlluminationAndVariance[ipos];
     float centerDiffuseLuminance = STL::Color::Luminance(centerDiffuseIlluminationAndVariance.rgb);
     float specularReprojectionConfidence = gSpecularReprojectionConfidence[ipos];
+
+    float specularLuminanceWeightRelation = 1.0;
+    if (gStepSize <= 4)
+    {
+        specularLuminanceWeightRelation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
+    }
 
     // Variance, NOT filtered using 3x3 gaussin blur, as we don't need this in other than 1st Atrous pass
     float centerSpecularVar = centerSpecularIlluminationAndVariance.a;
@@ -170,13 +176,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float diffusePhiLIllumination = 1.0e-4 + gDiffusePhiLuminance * sqrt(max(0.0, centerDiffuseVar));
     float phiDepth = gPhiDepth;
 
-    float sumWSpecular = 0;
-    float4 sumSpecularIlluminationAndVariance = 0;
-
-    float sumWDiffuse = 0;
-    float4 sumDiffuseIlluminationAndVariance = 0;
-
     static const float kernelWeightGaussian3x3[2] = { 0.44198, 0.27901 };
+
+    float sumWSpecular = 0.44198 * 0.44198;
+    float4 sumSpecularIlluminationAndVariance = centerSpecularIlluminationAndVariance * float4(sumWSpecular.xxx, sumWSpecular * sumWSpecular);
+
+    float sumWDiffuse = 0.44198 * 0.44198;
+    float4 sumDiffuseIlluminationAndVariance = centerDiffuseIlluminationAndVariance * float4(sumWDiffuse.xxx, sumWDiffuse * sumWDiffuse);
 
     float3 sampleWorldPos = 0;
 
@@ -189,6 +195,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             int2 p = ipos + int2(xx, yy) * gStepSize;
             bool isInside = all(p >= int2(0, 0)) && all(p < gResolution);
             bool isCenter = ((xx == 0) && (yy == 0));
+            if(isCenter) continue;
             
             float kernel = kernelWeightGaussian3x3[abs(xx)] * kernelWeightGaussian3x3[abs(yy)];
 
@@ -220,17 +227,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             float specularRoughnessW = getRoughnessWeight(roughnessWeightParams, sampleRoughness);
 
             // Adjusting specular weight to allow more blur for pixels with low reprojection confidence value  
-            if(gStepSize <= 4)
-            {
-                float relaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
-                specularLuminanceW *= relaxation;
-            }
+            specularLuminanceW *= specularLuminanceWeightRelation;
 
             // Calculating bilateral weight for specular
-            float wSpecular = isCenter ? kernel : max(1e-6, normalWSpecular * exp(-geometryW - specularLuminanceW)) * specularRoughnessW * kernel;
+            float wSpecular = max(1e-6, normalWSpecular * exp(-geometryW - specularLuminanceW)) * specularRoughnessW * kernel;
 
             // Calculating bilateral weight for diffuse
-            float wDiffuse = isCenter ? kernel : max(1e-6, normalWDiffuse * exp(-geometryW - diffuseLuminanceW)) * kernel;
+            float wDiffuse = max(1e-6, normalWDiffuse * exp(-geometryW - diffuseLuminanceW)) * kernel;
 
             // Discarding out of screen samples
             wSpecular *= isInside ? 1.0 : 0.0;
@@ -245,11 +248,10 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
     }
 
-    // renormalization is different for variance, check paper for the formula
     float4 filteredSpecularIlluminationAndVariance = float4(sumSpecularIlluminationAndVariance / float4(sumWSpecular.xxx, sumWSpecular * sumWSpecular));
     float4 filteredDiffuseIlluminationAndVariance = float4(sumDiffuseIlluminationAndVariance / float4(sumWDiffuse.xxx, sumWDiffuse * sumWDiffuse));
 
-    //filteredSpecularIlluminationAndVariance = specularReprojectionConfidence;
+
 
     gOutSpecularIlluminationAndVariance[ipos] =  filteredSpecularIlluminationAndVariance;
     gOutDiffuseIlluminationAndVariance[ipos] =  filteredDiffuseIlluminationAndVariance;

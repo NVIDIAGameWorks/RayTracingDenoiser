@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -105,7 +105,7 @@ float getRoughnessWeight(float2 params0, float roughness)
 
 float2 getNormalWeightParams(float roughness, float numFramesInHistory, float specularReprojectionConfidence)
 {
-    // Relaxing normal weights 
+    // Relaxing normal weights
     // and if specular reprojection confidence is low
     float relaxation = lerp(1.0, specularReprojectionConfidence, gNormalEdgeStoppingRelaxation);
     float f = 0.9 + 0.1 * saturate(numFramesInHistory / 5.0) * relaxation;
@@ -321,13 +321,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
         //[unroll]
         for (int cx = -1; cx <= 1; cx++)
         {
-            const float kernel = kernelWeightGaussian3x3[abs(cx)] * kernelWeightGaussian3x3[abs(cy)]; 
+            const float kernel = kernelWeightGaussian3x3[abs(cx)] * kernelWeightGaussian3x3[abs(cy)];
             const int2 p = ipos + int2(cx, cy);
             const bool isInside = all(p >= int2(0, 0)) && all(p < gResolution);
             const bool isCenter = ((cx == 0) && (cy == 0));
 
             int2 sampleSharedMemoryIndex = groupThreadId.xy + int2(1 + cx, 1 + cy);
-                        
+
             float3 sampleNormal = sharedNormalRoughness[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].rgb;
             float sampleRoughness = sharedNormalRoughness[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].a;
             float3 sampleWorldPos = sharedWorldPos[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].rgb;

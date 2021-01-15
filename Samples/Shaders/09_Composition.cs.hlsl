@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -45,21 +45,21 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
 
     // Denoised data
     float4 indirectDiff = gIn_Diff[ pixelPos ];
-    if( gDenoiserType == NRD )
-        indirectDiff = NRD_BackEnd_UnpackRadiance( indirectDiff );
+    if( gDenoiserType == REBLUR )
+        indirectDiff = REBLUR_BackEnd_UnpackRadiance( indirectDiff );
     else
         indirectDiff = RELAX_BackEnd_UnpackRadiance( indirectDiff );
     indirectDiff.xyz *= gIndirectDiffuse;
 
     float4 indirectSpec = gIn_Spec[ pixelPos ];
-    if( gDenoiserType == NRD )
-        indirectSpec = NRD_BackEnd_UnpackRadiance( indirectSpec, roughness );
+    if( gDenoiserType == REBLUR )
+        indirectSpec = REBLUR_BackEnd_UnpackRadiance( indirectSpec, roughness );
     else
         indirectSpec = RELAX_BackEnd_UnpackRadiance( indirectSpec, roughness );
     indirectSpec.xyz *= gIndirectSpecular;
 
     float4 shadowData = gIn_Shadow[ pixelPos ];
-    shadowData = NRD_BackEnd_UnpackShadow( shadowData );
+    shadowData = SIGMA_BackEnd_UnpackShadow( shadowData );
     float3 shadow = lerp( shadowData.yzw, 1.0, shadowData.x );
 
     // Good denoisers do nothing with sky...

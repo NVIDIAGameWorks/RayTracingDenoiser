@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -84,61 +84,72 @@ namespace nrd
     };
 
     // Optional antilag settings
-    // intensityOld and intensityNew come from "laggy" history buffers, so the actual radiance thresholds should be divided by ~64
-    // delta = remap "abs( intensityOld - intensityNew )" to [0; 1] range using thresholds
-    // antilag = F( delta )
-    struct AntilagSettings
+    // delta = remap "abs( old - new ) - localVariance * sigmaScale" to [0; 1] range using thresholds
+    // antilag = F( delta ), delta = 0 - keep accumulation, delta = 1 - history reset
+    struct IntensityAntilagSettings
     {
-        float intensityThresholdMin = 99999.0f;     // depends on many factors, but in general it's "some percent of the local average of the final image"
-        float intensityThresholdMax = 100000.0f;    // max > min, usually 3-4x times greater than min
-        bool enable = true;                         // enables "hit distance" and "intensity" tracking (the latter can be turned off by huge thresholds)
+        float thresholdMin = 99999.0f;      // depends on many factors, but in general it's "some percent of the local average of the final image"
+        float thresholdMax = 100000.0f;     // max > min, usually 3-4x times greater than min
+        float sigmaScale = 2.0f;            // plain "delta" is reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
+        bool enable = false;                // Turned off by default because intensity range is only known on the application side
     };
 
-    const uint32_t NRD_MAX_HISTORY_FRAME_NUM = 63;
+    struct HitDistanceAntilagSettings
+    {
+        float thresholdMin = 0.01f;         // can be slightly increased if noise in AO/SO is high
+        float thresholdMax = 0.1f;          // 10% is a good start
+        float sigmaScale = 2.0f;            // "delta" will be reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
+        bool enable = true;                 // Turned on by default because it works with normalized hit distances
+    };
 
-    // NRD_DIFFUSE
+    // REBLUR_DIFFUSE
 
-    struct NrdDiffuseSettings
+    const uint32_t REBLUR_MAX_HISTORY_FRAME_NUM = 63;
+
+    struct ReblurDiffuseSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
-        AntilagSettings antilagSettings = {};
+        IntensityAntilagSettings intensityAntilagSettings = {};
+        HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
         float disocclusionThreshold = 0.005f;                           // normalized %
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         float noisinessBlurrinessBalance = 1.0f;
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
     };
 
-    // NRD_SPECULAR
+    // REBLUR_SPECULAR
 
-    struct NrdSpecularSettings
+    struct ReblurSpecularSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
         LobeTrimmingParameters lobeTrimmingParameters = {};
-        AntilagSettings antilagSettings = {};
+        IntensityAntilagSettings intensityAntilagSettings = {};
+        HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
         float disocclusionThreshold = 0.005f;                           // normalized %
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         float noisinessBlurrinessBalance = 1.0f;
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
     };
 
-    // NRD_DIFFUSE_SPECULAR
+    // REBLUR_DIFFUSE_SPECULAR
 
-    struct NrdDiffuseSpecularSettings
+    struct ReblurDiffuseSpecularSettings
     {
         HitDistanceParameters diffHitDistanceParameters = {};
         HitDistanceParameters specHitDistanceParameters = {};
         LobeTrimmingParameters specLobeTrimmingParameters = {};
-        AntilagSettings antilagSettings = {};
+        IntensityAntilagSettings intensityAntilagSettings = {};
+        HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
         float disocclusionThreshold = 0.005f;                            // normalized %
         float planeDistanceSensitivity = 0.002f;                         // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        uint32_t diffMaxAccumulatedFrameNum = 31;                        // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
-        uint32_t specMaxAccumulatedFrameNum = 31;                        // 0 - NRD_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t diffMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t specMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
         float diffBlurRadius = 30.0f;                                    // base (worst) diffuse denoising radius (pixels)
         float specBlurRadius = 30.0f;                                    // base (worst) specular denoising radius (pixels)
         float diffMaxAdaptiveRadiusScale = 5.0f;                         // adaptive radius scale, comes into play if error is high (0-10)
@@ -149,18 +160,18 @@ namespace nrd
         CheckerboardMode specCheckerboardMode = CheckerboardMode::OFF;
     };
 
-    // NRD_SHADOW and NRD_TRANSLUCENT_SHADOW
+    // SIGMA_SHADOW and SIGMA_TRANSLUCENT_SHADOW
 
-    struct NrdShadowSettings
+    struct SigmaShadowSettings
     {
         float lightSourceAngularDiameter = 0.533f;  // angular diameter (deg) (0.533 = sun)
         float planeDistanceSensitivity = 0.002f;    // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         float blurRadiusScale = 1.0f;               // adds bias if > 1, but if shadows are still unstable (have you tried blue noise?)... can be set in range [1; 1.5]
     };
 
-    // RELAX
+    // RELAX_DIFFUSE_SPECULAR
 
-    struct RelaxSettings
+    struct RelaxDiffuseSpecularSettings
     {
         bool bicubicFilterForReprojectionEnabled = true;        // slower but sharper filtering of the history during reprojection
         float specularAlpha = 0.016f;                           // new data blend weight for normal illumination temporal accumulation

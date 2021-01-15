@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -34,11 +34,11 @@ namespace nrd
     union Settings
     {
         // Add settings here
-        NrdDiffuseSettings diffuse;
-        NrdSpecularSettings specular;
-        NrdDiffuseSpecularSettings diffuseSpecular;
-        NrdShadowSettings shadow;
-        RelaxSettings relax;
+        ReblurDiffuseSettings diffuse;
+        ReblurSpecularSettings specular;
+        ReblurDiffuseSpecularSettings diffuseSpecular;
+        SigmaShadowSettings shadow;
+        RelaxDiffuseSpecularSettings relax;
         SvgfSettings svgf;
     };
 
@@ -69,23 +69,23 @@ namespace nrd
     {
     // Add methods here
     public:
-        size_t AddMethod_NrdDiffuse(uint16_t w, uint16_t h);
-        void UpdateMethod_NrdDiffuse(const MethodData& methodData);
+        size_t AddMethod_ReblurDiffuse(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurDiffuse(const MethodData& methodData);
 
-        size_t AddMethod_NrdSpecular(uint16_t w, uint16_t h);
-        void UpdateMethod_NrdSpecular(const MethodData& methodData);
+        size_t AddMethod_ReblurSpecular(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurSpecular(const MethodData& methodData);
 
-        size_t AddMethod_NrdDiffuseSpecular(uint16_t w, uint16_t h);
-        void UpdateMethod_NrdDiffuseSpecular(const MethodData& methodData);
+        size_t AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodData);
 
-        size_t AddMethod_NrdShadow(uint16_t w, uint16_t h);
-        void UpdateMethod_NrdShadow(const MethodData& methodData);
+        size_t AddMethod_SigmaShadow(uint16_t w, uint16_t h);
+        void UpdateMethod_SigmaShadow(const MethodData& methodData);
 
-        size_t AddMethod_NrdTranslucentShadow(uint16_t w, uint16_t h);
-        void UpdateMethod_NrdTranslucentShadow(const MethodData& methodData);
+        size_t AddMethod_SigmaTranslucentShadow(uint16_t w, uint16_t h);
+        void UpdateMethod_SigmaTranslucentShadow(const MethodData& methodData);
 
-        size_t AddMethod_Relax(uint16_t w, uint16_t h);
-        void UpdateMethod_Relax(const MethodData& methodData);
+        size_t AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h);
+        void UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodData);
 
         size_t AddMethod_Svgf(uint16_t w, uint16_t h);
         void UpdateMethod_Svgf(const MethodData& methodData);

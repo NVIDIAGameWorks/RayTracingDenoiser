@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -25,6 +25,6 @@ void Main_rahit( inout Payload payload, IntersectionAttributes intersectionAttri
     float3 mips = GetRealMip( baseTexture, geometryProps.mip );
     float alpha = gIn_Textures[ baseTexture ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.x ).w;
 
-    if ( alpha < 0.5 )
+    if( alpha < 0.5 )
         IgnoreHit( );
 }

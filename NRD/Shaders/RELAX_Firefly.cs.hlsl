@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -26,7 +26,7 @@ NRI_RESOURCE(Texture2D<uint2>, gNormalRoughnessDepth, t, 1, 0);
 NRI_RESOURCE(RWTexture2D<uint2>, gOutSpecularAndDiffuseIlluminationLogLuv, u, 0, 0);
 NRI_RESOURCE(RWTexture2D<float4>, gOutSpecularIllumination, u, 1, 0);
 NRI_RESOURCE(RWTexture2D<float4>, gOutDiffuseIllumination, u, 2, 0);
-    
+
 groupshared uint4 sharedPackedIllumination[16 + 2][16 + 2];
 groupshared float4 sharedPackedZAndNormal[16 + 2][16 + 2];
 
@@ -37,7 +37,7 @@ groupshared float4 sharedPackedZAndNormal[16 + 2][16 + 2];
 static const float c_floatMax = 3.402823466e+38f;
 
 // Unpacking from LogLuv to RGB is expensive, so let's do it
-// at the stage of populating the shared memory 
+// at the stage of populating the shared memory
 uint4 repackIllumination(uint2 specularAndDiffuseIlluminationLogLuv)
 {
     float3 specularIllum;
@@ -146,7 +146,7 @@ void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId,
 // Cross bilateral Rank-Conditioned Rank-Selection (RCRS) filter
 void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, out float3 outDiffuse)
 {
-    // Fetching center data    
+    // Fetching center data
     uint2 sharedMemoryIndex = groupThreadId.xy + int2(1,1);
 
     float3 normalCenter;
@@ -190,7 +190,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
             float3 specularIlluminationSample;
             float3 diffuseIlluminationSample;
             unpackIllumination(sharedPackedIllumination[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x], specularIlluminationSample, diffuseIlluminationSample);
-            
+
             float specularLuminanceSample = STL::Color::Luminance(specularIlluminationSample);
             float diffuseLuminanceSample = STL::Color::Luminance(diffuseIlluminationSample);
 
@@ -213,7 +213,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
                     minSpecularLuminance = specularLuminanceSample;
                     minSpecularLuminanceCoords = sharedMemoryIndexSample;
                 }
-                
+
                 if(diffuseLuminanceSample > maxDiffuseLuminance)
                 {
                     maxDiffuseLuminance = diffuseLuminanceSample;
@@ -224,7 +224,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
                     minDiffuseLuminance = diffuseLuminanceSample;
                     minDiffuseLuminanceCoords = sharedMemoryIndexSample;
                 }
-                
+
             }
         }
     }
@@ -233,7 +233,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
     // or leaving sample as it is if it's within the range
     int2 specularCoords = sharedMemoryIndex;
     int2 diffuseCoords = sharedMemoryIndex;
-    
+
     if(specularLuminanceCenter > maxSpecularLuminance)
     {
         specularCoords = maxSpecularLuminanceCoords;
@@ -242,7 +242,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
     {
         specularCoords = minSpecularLuminanceCoords;
     }
-    
+
     if(diffuseLuminanceCenter > maxDiffuseLuminance)
     {
         diffuseCoords = maxDiffuseLuminanceCoords;
@@ -251,7 +251,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
     {
         diffuseCoords = minDiffuseLuminanceCoords;
     }
-    
+
     float3 dontcare;
     unpackIllumination(sharedPackedIllumination[specularCoords.y][specularCoords.x], outSpecular, dontcare);
     unpackIllumination(sharedPackedIllumination[diffuseCoords.y][diffuseCoords.x], dontcare, outDiffuse);

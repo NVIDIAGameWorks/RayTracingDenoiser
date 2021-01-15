@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -26,7 +26,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gFramerateScale;
 };
 
-#include "NRD_Common.hlsl"
+#include "REBLUR_Common.hlsl"
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_A, t, 0, 0 );

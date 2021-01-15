@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -53,7 +53,7 @@ NRI_RESOURCE( SamplerState, AnisotropicSampler, s, 0, 0 );
 
 float4 Shade( float4 albedo, float3 Rf0, float roughness, float3 emissive, float3 N, float3 L, float3 V, float3 Clight, uint flags )
 {
-    if ( flags & GLASS_HACK )
+    if( flags & GLASS_HACK )
     {
         Rf0 = 0.04;
         roughness = 0.1;
@@ -63,7 +63,7 @@ float4 Shade( float4 albedo, float3 Rf0, float roughness, float3 emissive, float
     float3 Cdiff, Cspec;
     STL::BRDF::DirectLighting( N, L, V, Rf0, roughness, Cdiff, Cspec );
 
-    if ( flags & FAKE_AMBIENT )
+    if( flags & FAKE_AMBIENT )
     {
         // Ambient
         const float3 ambient = float3( 1.0, 1.0, 0.8 ) * 0.1;
@@ -88,7 +88,7 @@ float4 Shade( float4 albedo, float3 Rf0, float roughness, float3 emissive, float
 
     float NoL = saturate( dot( N, L ) );
     float specIntensity = STL::Color::Luminance( Cspec * NoL );
-    if ( flags & GLASS_HACK )
+    if( flags & GLASS_HACK )
         output.w = saturate( 0.5 + specIntensity );
 
     return output;

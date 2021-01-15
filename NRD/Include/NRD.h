@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 /*
 CREDITS:
     Developed by:
-        Library, NRD & SVGF denoisers:
+        Library, REBLUR, SIGMA and SVGF denoisers:
             Dmitry Zhdan (dzhdan@nvidia.com)
 
         ReLAX denoiser:
@@ -30,9 +30,9 @@ CREDITS:
 #include <cstdint>
 
 #define NRD_VERSION_MAJOR 1
-#define NRD_VERSION_MINOR 10
-#define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "11 January 2021"
+#define NRD_VERSION_MINOR 14
+#define NRD_VERSION_BUILD 1
+#define NRD_VERSION_DATE "15 January 2021"
 #define NRD_CALL __fastcall
 
 #ifndef NRD_API
