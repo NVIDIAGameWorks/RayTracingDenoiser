@@ -24,8 +24,8 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         DIFF_ILLUM_UNPACKED,
         REFLECTION_HIT_T_CURR,
         REFLECTION_HIT_T_PREV,
-        HISTORY_LENGTH_CURR,
-        HISTORY_LENGTH_PREV,
+        SPEC_DIFF_HISTORY_LENGTH_CURR,
+        SPEC_DIFF_HISTORY_LENGTH_PREV,
         NORMAL_ROUGHNESS_DEPTH_CURR,
         NORMAL_ROUGHNESS_DEPTH_PREV
     };
@@ -40,8 +40,8 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::RG8_UNORM, w, h, 1} );
+    m_PermanentPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
 
@@ -59,7 +59,6 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
     m_TransientPool.push_back({ Format::RGBA16_SFLOAT, w, h, 1 });
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back({ Format::RGBA16_SFLOAT, w, h, 1 });
 
     PushPass("RELAX::DiffuseSpecular - Pack input data");
     {
@@ -86,18 +85,18 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Permanent::SPEC_DIFF_MOMENTS_PREV) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR) );
         PushInput( AsUint(Permanent::REFLECTION_HIT_T_PREV), 0, 1, AsUint(Permanent::REFLECTION_HIT_T_CURR) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_PREV), 0, 1, AsUint(Permanent::HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_PREV) );
 
         PushOutput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_CURR) );
         PushOutput( AsUint(Permanent::SPEC_DIFF_ILLUM_RESPONSIVE_LOGLUV_CURR) );
         PushOutput( AsUint(Permanent::SPEC_DIFF_MOMENTS_CURR) );
         PushOutput( AsUint(Permanent::REFLECTION_HIT_T_CURR), 0, 1, AsUint(Permanent::REFLECTION_HIT_T_PREV) );
-        PushOutput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
+        PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushOutput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
 
-        desc.constantBufferDataSize = SumConstants(5, 1, 3, 10, false);
+        desc.constantBufferDataSize = SumConstants(1, 7, 3, 10, false);
 
-        AddDispatchWithExplicitCTASize(desc, RELAX_Reproject, w, h, 16, 16);
+        AddDispatchWithExplicitCTASize(desc, RELAX_Reproject, w, h, 8, 8);
     }
 
     PushPass("RELAX::DiffuseSpecular - Disocclusion fix");
@@ -105,14 +104,14 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput(AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_CURR));
         PushInput(AsUint(Permanent::SPEC_DIFF_ILLUM_RESPONSIVE_LOGLUV_CURR));
         PushInput(AsUint(Permanent::SPEC_DIFF_MOMENTS_CURR));
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
         PushOutput(AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_PREV));
         PushOutput(AsUint(Permanent::SPEC_DIFF_ILLUM_RESPONSIVE_LOGLUV_PREV));
         PushOutput(AsUint(Permanent::SPEC_DIFF_MOMENTS_PREV));
 
-        desc.constantBufferDataSize = SumConstants(2, 0, 2, 4, false);
+        desc.constantBufferDataSize = SumConstants(0, 3, 2, 4, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_DisocclusionFix, w, h, 8, 8);
     }
@@ -121,15 +120,17 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_PREV) );
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_RESPONSIVE_LOGLUV_PREV) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
 
         PushOutput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_CURR) );
+        PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_PREV) );
 
-        desc.constantBufferDataSize = SumConstants(0, 0, 1, 1, false);
+        desc.constantBufferDataSize = SumConstants(0, 0, 1, 5, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_HistoryClamping, w, h, 16, 16);
     }
 
-    PushPass("RELAX::DiffuseSpecular - Firefly");
+    PushPass("RELAX::DiffuseSpecular - Firefly suppression");
     {
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_CURR) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
@@ -147,7 +148,7 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_LOGLUV_PREV) );
         PushInput( AsUint(Permanent::SPEC_DIFF_MOMENTS_PREV) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
         PushOutput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
@@ -158,82 +159,82 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         AddDispatchWithExplicitCTASize(desc, RELAX_SpatialVarianceEstimation, w, h, 16, 16);
     }
     
-    PushPass("RELAX::DiffuseSpecular - Atrous 1");
+    PushPass("RELAX::DiffuseSpecular - A-trous 1");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
         PushOutput(AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG));
         PushOutput(AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG));
 
-        desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
+        desc.constantBufferDataSize = SumConstants(0, 3, 2, 8, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_ATrousShmem, w, h, 16, 16);
     }
 
-    PushPass("RELAX::DiffuseSpecular - Atrous 2");
+    PushPass("RELAX::DiffuseSpecular - A-trous 2");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
         PushOutput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
 
-        desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
+        desc.constantBufferDataSize = SumConstants(0, 3, 2, 8, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
 
-    PushPass("RELAX::DiffuseSpecular - Atrous 3");
+    PushPass("RELAX::DiffuseSpecular - A-trous 3");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
         PushOutput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG) );
 
-        desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
+        desc.constantBufferDataSize = SumConstants(0, 3, 2, 8, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
 
-    PushPass("RELAX::DiffuseSpecular - Atrous 4");
+    PushPass("RELAX::DiffuseSpecular - A-trous 4");
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG) );
         PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
         PushOutput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
 
-        desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
+        desc.constantBufferDataSize = SumConstants(0, 3, 2, 8, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
 
-    PushPass("RELAX::DiffuseSpecular - Atrous 5");
+    PushPass("RELAX::DiffuseSpecular - A-trous 5");
     {
-        PushInput(AsUint(Transient::SPEC_ILLUM_VARIANCE_PING));
-        PushInput(AsUint(Transient::DIFF_ILLUM_VARIANCE_PING));
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR), 0, 1, AsUint(Permanent::HISTORY_LENGTH_PREV) );
-        PushInput(AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
+        PushInput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
+        PushInput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
+        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
         PushOutput( AsUint(ResourceType::OUT_SPEC) );
         PushOutput( AsUint(ResourceType::OUT_DIFF) );
 
-        desc.constantBufferDataSize = SumConstants(2, 0, 2, 8, false);
+        desc.constantBufferDataSize = SumConstants(0, 3, 2, 8, false);
 
         AddDispatchWithExplicitCTASize(desc, RELAX_ATrousStandard, w, h, 8, 8);
     }
@@ -263,6 +264,24 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     int w = methodData.desc.fullResolutionWidth;
     int h = methodData.desc.fullResolutionHeight;
 
+    // Calculate camera right and up vectors in worldspace scaled according to frustum extents,
+    // and unit forward vector, for fast worldspace position reconstruction in shaders
+    float tanHalfFov = 1.0f / m_ViewToClip.a00;
+    float aspect = m_ViewToClip.a00 / m_ViewToClip.a11;
+    float3 frustumRight = m_WorldToView.GetRow0().To3d() * tanHalfFov;
+    float3 frustumUp = m_WorldToView.GetRow1().To3d() * tanHalfFov * aspect;
+    float3 frustumForward = m_WorldToView.GetRow2().To3d();
+
+    float prevTanHalfFov = 1.0f / m_ViewToClipPrev.a00;
+    float prevAspect = m_ViewToClipPrev.a00 / m_ViewToClipPrev.a11;
+    float3 prevFrustumRight = m_WorldToViewPrev.GetRow0().To3d() * prevTanHalfFov;
+    float3 prevFrustumUp = m_WorldToViewPrev.GetRow1().To3d() * prevTanHalfFov * prevAspect;
+    float3 prevFrustumForward = m_WorldToViewPrev.GetRow2().To3d();
+
+    // Handling projection matrix handedness
+    if (m_ViewToClip.a32 == -1.0f) frustumForward *= -1.0f; // right handed
+    if (m_ViewToClipPrev.a32 == -1.0f) prevFrustumForward *= -1.0f; // right handed
+
     // PACK INPUT DATA
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::PACK_INPUT_DATA));
     AddFloat4x4(data, m_ViewToClip);    
@@ -271,12 +290,18 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     // REPROJECT
     data = PushDispatch(methodData, AsUint(Dispatch::REPROJECT));
 
-    AddFloat4x4(data, m_ClipToView);
-    AddFloat4x4(data, m_ViewToClip);
-    AddFloat4x4(data, m_ClipToWorld);
-    AddFloat4x4(data, m_ClipToWorldPrev);
     AddFloat4x4(data, m_WorldToClipPrev);
+
+    AddFloat4(data, float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
+    AddFloat4(data, float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
+    AddFloat4(data, float4(frustumForward.x, frustumForward.y, frustumForward.z ,0));
+
+    AddFloat4(data, float4(prevFrustumRight.x, prevFrustumRight.y, prevFrustumRight.z, 0));
+    AddFloat4(data, float4(prevFrustumUp.x, prevFrustumUp.y, prevFrustumUp.z, 0));
+    AddFloat4(data, float4(prevFrustumForward.x, prevFrustumForward.y, prevFrustumForward.z, 0));
+
     AddFloat4(data, float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, m_JitterDelta));
+
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddUint2(data, w, h);
     AddFloat2(data, 1.0f / w, 1.0f / h);
@@ -289,13 +314,14 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     AddFloat(data, m_CommonSettings.worldSpaceMotion ? 1.0f : 0.0f);
     AddFloat(data, m_IsOrtho);
     AddFloat(data, 1.0f / (0.5f * h * m_ProjectY));
-    AddFloat(data, settings.needHistoryReset ? 1.0f : 0.0f);
+    AddFloat(data, m_CommonSettings.frameIndex == 0 ? 1.0f : 0.0f);
     ValidateConstants(data);
 
     // DISOCCLUSION FIX
     data = PushDispatch(methodData, AsUint(Dispatch::DISOCCLUSION_FIX));
-    AddFloat4x4(data, m_ClipToWorld);
-    AddFloat4x4(data, m_ClipToView);
+    AddFloat4(data, float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
+    AddFloat4(data, float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
+    AddFloat4(data, float4(frustumForward.x, frustumForward.y, frustumForward.z, 0));
     AddUint2(data, w, h);
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat(data, settings.disocclusionFixEdgeStoppingZFraction);
@@ -308,6 +334,10 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING));
     AddUint2(data, w, h);
     AddFloat(data, settings.historyClampingColorBoxSigmaScale);
+    AddFloat(data, settings.specularAntiLagColorBoxSigmaScale);
+    AddFloat(data, settings.specularAntiLagPower);
+    AddFloat(data, settings.diffuseAntiLagColorBoxSigmaScale);
+    AddFloat(data, settings.diffuseAntiLagPower);
     ValidateConstants(data);
     
     // FIREFLY
@@ -325,8 +355,9 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     
     // ATROUS_1
     data = PushDispatch(methodData, AsUint(Dispatch::ATROUS_1));
-    AddFloat4x4(data, m_ClipToWorld);
-    AddFloat4x4(data, m_ViewToClip);
+    AddFloat4(data, float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
+    AddFloat4(data, float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
+    AddFloat4(data, float4(frustumForward.x, frustumForward.y, frustumForward.z, 0));
     AddUint2(data, w, h);
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat(data, settings.specularPhiLuminance);
@@ -341,8 +372,9 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
 
     // ATROUS_2
     data = PushDispatch(methodData, AsUint(Dispatch::ATROUS_2));
-    AddFloat4x4(data, m_ClipToWorld);
-    AddFloat4x4(data, m_ViewToClip);
+    AddFloat4(data, float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
+    AddFloat4(data, float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
+    AddFloat4(data, float4(frustumForward.x, frustumForward.y, frustumForward.z, 0));
     AddUint2(data, w, h);
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat(data, settings.specularPhiLuminance);
@@ -357,8 +389,9 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
 
     // ATROUS_3
     data = PushDispatch(methodData, AsUint(Dispatch::ATROUS_3));
-    AddFloat4x4(data, m_ClipToWorld);
-    AddFloat4x4(data, m_ViewToClip);
+    AddFloat4(data, float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
+    AddFloat4(data, float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
+    AddFloat4(data, float4(frustumForward.x, frustumForward.y, frustumForward.z, 0));
     AddUint2(data, w, h);
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat(data, settings.specularPhiLuminance);
@@ -373,8 +406,9 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
 
     // ATROUS_4
     data = PushDispatch(methodData, AsUint(Dispatch::ATROUS_4));
-    AddFloat4x4(data, m_ClipToWorld);
-    AddFloat4x4(data, m_ViewToClip);
+    AddFloat4(data, float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
+    AddFloat4(data, float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
+    AddFloat4(data, float4(frustumForward.x, frustumForward.y, frustumForward.z, 0));
     AddUint2(data, w, h);
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat(data, settings.specularPhiLuminance);
@@ -389,8 +423,9 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
 
     // ATROUS_5
     data = PushDispatch(methodData, AsUint(Dispatch::ATROUS_5));
-    AddFloat4x4(data, m_ClipToWorld);
-    AddFloat4x4(data, m_ViewToClip);
+    AddFloat4(data, float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
+    AddFloat4(data, float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
+    AddFloat4(data, float4(frustumForward.x, frustumForward.y, frustumForward.z, 0));
     AddUint2(data, w, h);
     AddFloat2(data, 1.0f / w, 1.0f / h);
     AddFloat(data, settings.specularPhiLuminance);

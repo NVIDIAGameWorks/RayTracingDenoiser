@@ -188,21 +188,21 @@ struct GlobalConstantBufferData
     float4x4 gViewToClip;
     float4x4 gWorldToClipPrev;
     float4x4 gWorldToClip;
+    float4 gDiffHitDistParams;
+    float4 gSpecHitDistParams;
     float4 gCameraFrustum;
-    float4 gCameraDelta_gNearZ;
     float4 gSunDirection_gExposure;
     float4 gWorldOrigin_gMipBias;
     float4 gTrimmingParams_gEmissionIntensity;
     float2 gScreenSize;
     float2 gInvScreenSize;
     float2 gJitter;
+    float gNearZ;
     float gAmbient;
     float gAmbientInComposition;
     float gSeparator;
     float gRoughnessOverride;
     float gMetalnessOverride;
-    float gDiffDistScale;
-    float gSpecDistScale;
     float gUnitsToMetersMultiplier;
     float gIndirectDiffuse;
     float gIndirectSpecular;
@@ -233,8 +233,12 @@ struct NrdSettings
     float diffAdaptiveRadiusScale = 5.0f;
     float specBlurRadius = 30.0f;
     float specAdaptiveRadiusScale = 5.0f;
-    float antilagIntensityThreshold = 1.0f;
-    float antilagSigmaScale = 2.0f;
+    float antilagSigmaScaleIntensity = 2.0f;
+    float antilagSigmaScaleHitDistance = 2.0f;
+    float antilagThresholdMinIntensity = 5.0f;
+    float antilagThresholdMinHitDistance = 2.0f;
+    float antilagThresholdMaxIntensity = 15.0f;
+    float antilagThresholdMaxHitDistance = 10.0f;
     float disocclusionThreshold = 0.5f;
     float noisinessBlurrinessBalance = 1.0f;
 
@@ -242,7 +246,8 @@ struct NrdSettings
 
     bool referenceAccumulation = false;
     bool checkerboard = true;
-    bool antilag = true;
+    bool antilagIntensity = true;
+    bool antilagHitDistance = true;
 };
 
 struct SvgfSettings
@@ -994,11 +999,21 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::SliderFloat("Disocclusion (%)", &m_Settings.nrdSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", 2.0f);
                             ImGui::SliderFloat("Noisiness / Blurriness", &m_Settings.nrdSettings.noisinessBlurrinessBalance, 0.0f, 1.0f, "%.3f");
                             ImGui::SliderInt("History frames", &m_Settings.nrdSettings.maxAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
-                            ImGui::Text("ANTILAG:");
-                            ImGui::PushID("ANTILAG");
+                            ImGui::Text("ANTILAG (INTENSITY / HIT DISTANCE):");
+                            ImGui::PushID("ANTILAG (INTENSITY / HIT DISTANCE)");
                             {
-                                ImGui::SliderFloat("Threshold", &m_Settings.nrdSettings.antilagIntensityThreshold, 0.0f, 1.0f, "%.4f", 4.0f);
-                                ImGui::SliderFloat("Sigma scale", &m_Settings.nrdSettings.antilagSigmaScale, 0.0f, 4.0f, "%.3f");
+                                ImGui::SliderFloat2("Min threshold (%)", &m_Settings.nrdSettings.antilagThresholdMinIntensity, 0.0f, 100.0f, "%.1f", 2.0f);
+                                ImGui::SliderFloat2("Max threshold (%)", &m_Settings.nrdSettings.antilagThresholdMaxIntensity, 0.0f, 100.0f, "%.1f", 2.0f);
+                                ImGui::SliderFloat2("Sigma scale", &m_Settings.nrdSettings.antilagSigmaScaleIntensity, 0.0f, 4.0f, "%.3f");
+                                ImGui::Checkbox("Intensity antilag    ", &m_Settings.nrdSettings.antilagIntensity); // TODO: spaces at the end to align better the following checkbox
+                                ImGui::SameLine();
+                                ImGui::Checkbox("Hit distance antilag", &m_Settings.nrdSettings.antilagHitDistance);
+
+                                m_Settings.nrdSettings.antilagThresholdMinIntensity = Max( m_Settings.nrdSettings.antilagThresholdMinIntensity, 0.0f );
+                                m_Settings.nrdSettings.antilagThresholdMinHitDistance = Max( m_Settings.nrdSettings.antilagThresholdMinHitDistance, 0.0f );
+
+                                m_Settings.nrdSettings.antilagThresholdMaxIntensity = Max( m_Settings.nrdSettings.antilagThresholdMaxIntensity, m_Settings.nrdSettings.antilagThresholdMinIntensity + 1.0f );
+                                m_Settings.nrdSettings.antilagThresholdMaxHitDistance = Max( m_Settings.nrdSettings.antilagThresholdMaxHitDistance, m_Settings.nrdSettings.antilagThresholdMinHitDistance + 1.0f );
                             }
                             ImGui::PopID();
                             ImGui::Text("DIFFUSE:");
@@ -1015,8 +1030,6 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                                 ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.specAdaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
                                 ImGui::Checkbox("Reference accumulation", &m_Settings.nrdSettings.referenceAccumulation);
                                 ImGui::SameLine();
-                                ImGui::Checkbox("Antilag", &m_Settings.nrdSettings.antilag);
-                                ImGui::SameLine();
                             }
                             ImGui::PopID();
                         }
@@ -1025,9 +1038,6 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Text("DENOISER - RELAX / SIGMA (F2 - next)");
                             ImGui::Separator();
                             ImGui::Text("REPROJECTION:");
-                            ImGui::Checkbox("Bicubic", &m_RelaxSettings.bicubicFilterForReprojectionEnabled);
-                            ImGui::SameLine();
-                            ImGui::Checkbox("Firefly suppression", &m_RelaxSettings.fireflySuppressionEnabled);
                             ImGui::SliderFloat("Spec alpha", &m_RelaxSettings.specularAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
                             ImGui::SliderFloat("Spec responsive alpha", &m_RelaxSettings.specularResponsiveAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
                             ImGui::SliderFloat("Spec variance boost", &m_RelaxSettings.specularVarianceBoost, 0.000f, 8.0f, "%.2f", 1.0f);
@@ -1038,8 +1048,12 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::SliderFloat("Edge-stop normal power", &m_RelaxSettings.disocclusionFixEdgeStoppingNormalPower, 0.0f, 128.0f, "%.1f", 1.0f);
                             ImGui::SliderFloat("Max kernel radius", &m_RelaxSettings.disocclusionFixMaxRadius, 0.000f, 100.0f, "%.1f", 1.0f);
                             ImGui::SliderInt("Frames to fix", &m_RelaxSettings.disocclusionFixNumFramesToFix, 0, 10);
-                            ImGui::Text("HISTORY CLAMPING:");
-                            ImGui::SliderFloat("Color Clamping Sigma", &m_RelaxSettings.historyClampingColorBoxSigmaScale, 0.000f, 10.0f, "%.1f", 1.0f);
+                            ImGui::Text("HISTORY CLAMPING & ANTILAG:");
+                            ImGui::SliderFloat("Color clamping sigma", &m_RelaxSettings.historyClampingColorBoxSigmaScale, 0.000f, 10.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Spec antilag sigma", &m_RelaxSettings.specularAntiLagColorBoxSigmaScale, 1.000f, 10.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Spec antilag power", &m_RelaxSettings.specularAntiLagPower, 0.000f, 100.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Diff antilag sigma", &m_RelaxSettings.diffuseAntiLagColorBoxSigmaScale, 1.000f, 10.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Diff antilag power", &m_RelaxSettings.diffuseAntiLagPower, 0.000f, 100.0f, "%.1f", 1.0f);
                             ImGui::Text("SPATIAL VARIANCE ESTIMATION:");
                             ImGui::SliderInt("History threshold", &m_RelaxSettings.spatialVarianceEstimationHistoryThreshold, 0, 10);
                             ImGui::Text("SPATIAL FILTER (EDGE STOPPING):");
@@ -1050,6 +1064,10 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::SliderFloat("Roughness relaxation", &m_RelaxSettings.roughnessEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
                             ImGui::SliderFloat("Normal relaxation", &m_RelaxSettings.normalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
                             ImGui::SliderFloat("Luminance relaxation", &m_RelaxSettings.luminanceEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
+                            ImGui::Checkbox("Bicubic", &m_RelaxSettings.bicubicFilterForReprojectionEnabled);
+                            ImGui::SameLine();
+                            ImGui::Checkbox("Firefly suppression", &m_RelaxSettings.fireflySuppressionEnabled);
+                            ImGui::SameLine();
                         }
                         else if(m_Settings.denoiser == SVGF)
                         {
@@ -1085,24 +1103,25 @@ void Sample::PrepareFrame(uint32_t frameIndex)
 
                     if (m_TestMode)
                     {
-                        char s[512];
                         static uint32_t lastSelected = 0;
 
                         ImGui::NewLine();
                         ImGui::Text("TESTS");
                         ImGui::Separator();
 
-                        char* p = s;
+                        char s[512];
                         strcpy_s(s, m_SceneFile);
+
+                        char* p = s;
                         while (*p++)
                         {
-                            if (*p == '/')
+                            if (*p == '.')
                             {
                                 *p = '\0';
                                 break;
                             }
                         }
-                        strcat_s(s, "/tests.bin");
+                        strcat_s(s, ".bin");
 
                         const std::string path = utils::GetFullPath(s, utils::DataFolder::SCENES);
 
@@ -1117,7 +1136,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
 
                             if (fp)
                             {
-                                // Use this code to convert "tests.bin" to reflect new layout of "Settings"
+                                // Use this code to convert tests to reflect new layout of "Settings"
                                 #if 0
                                     typedef Settings SettingsOld; // adjust if needed
                                     typedef Camera CameraOld; // adjust if needed
@@ -2506,6 +2525,12 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
     float2 screenSize = float2( (float)m_RenderResolution.x, (float)m_RenderResolution.y);
     float2 jitter = m_Settings.TAA ? m_Camera.state.viewportJitter : 0.0f;
 
+    nrd::HitDistanceParameters diffHitDistanceParameters = {};
+    diffHitDistanceParameters.A = m_Settings.diffHitDistScale;
+
+    nrd::HitDistanceParameters specHitDistanceParameters = {};
+    specHitDistanceParameters.A = m_Settings.specHitDistScale;
+
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
     const uint64_t rangeOffset = m_Frames[bufferedFrameIndex].globalConstantBufferOffset;
     nri::Buffer* globalConstants = Get(Buffer::GlobalConstants);
@@ -2516,9 +2541,9 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gViewToClip = m_Camera.state.mViewToClip;
         data->gWorldToClipPrev = m_Camera.statePrev.mWorldToClip;
         data->gWorldToClip = m_Camera.state.mWorldToClip;
+        data->gDiffHitDistParams = float4( diffHitDistanceParameters.A, diffHitDistanceParameters.B, diffHitDistanceParameters.C, diffHitDistanceParameters.D );
+        data->gSpecHitDistParams = float4( specHitDistanceParameters.A, specHitDistanceParameters.B, specHitDistanceParameters.C, specHitDistanceParameters.D );
         data->gCameraFrustum = m_Camera.state.frustum;
-        data->gCameraDelta_gNearZ = ToFloat( m_Camera.statePrev.globalPosition - m_Camera.state.globalPosition );
-        data->gCameraDelta_gNearZ.w = (CAMERA_LEFT_HANDED ? 1.0f : -1.0f) * NEAR_Z / m_Settings.unitsToMetersMultiplier;
         data->gSunDirection_gExposure = sunDirection;
         data->gSunDirection_gExposure.w = m_Settings.exposure;
         data->gWorldOrigin_gMipBias = ToFloat( m_Camera.state.globalPosition );
@@ -2528,13 +2553,12 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gScreenSize = screenSize;
         data->gInvScreenSize = float2(1.0f, 1.0f) / screenSize;
         data->gJitter = jitter / screenSize;
+        data->gNearZ = (CAMERA_LEFT_HANDED ? 1.0f : -1.0f) * NEAR_Z / m_Settings.unitsToMetersMultiplier;
         data->gAmbient = ambient * m_Settings.exposure;
         data->gAmbientInComposition = m_AmbientInComposition;
         data->gSeparator = m_Settings.separator;
         data->gRoughnessOverride = m_Settings.roughnessOverride;
         data->gMetalnessOverride = m_Settings.metalnessOverride;
-        data->gDiffDistScale = m_Settings.diffHitDistScale;
-        data->gSpecDistScale = m_Settings.specHitDistScale;
         data->gUnitsToMetersMultiplier = m_Settings.unitsToMetersMultiplier;
         data->gIndirectDiffuse = m_Settings.indirectDiffuse ? 1.0f : 0.0f;
         data->gIndirectSpecular = m_Settings.indirectSpecular ? 1.0f : 0.0f;
@@ -2600,8 +2624,6 @@ void Sample::LoadScene()
         m_Settings.skyAmbient = 1.0f;
         m_Settings.emissionIntensity = 10000.0f;
         m_Settings.emission = true;
-        m_Settings.specHitDistScale = 7.0f;
-        m_Settings.nrdSettings.antilagIntensityThreshold = 0.08f;
         m_Settings.animatedObjectScale = 0.5f;
     }
     else if (strstr(m_SceneFile, "BistroExterior"))
@@ -2611,8 +2633,7 @@ void Sample::LoadScene()
         m_Settings.skyAmbient = 1.0f;
         m_Settings.emissionIntensity = 10000.0f;
         m_Settings.emission = true;
-        m_Settings.specHitDistScale = 12.0f;
-        m_Settings.nrdSettings.antilagIntensityThreshold = 0.08f;
+        m_Settings.specHitDistScale = 10.0f;
     }
     else if (strstr(m_SceneFile, "ShaderBalls"))
     {
@@ -2621,8 +2642,12 @@ void Sample::LoadScene()
         m_Settings.specSecondBounce = true;
         m_Settings.diffSecondBounce = false;
         m_Settings.skyAmbient = 10.0f;
-        m_Settings.specHitDistScale = 10.0f;
-        m_Settings.nrdSettings.antilagIntensityThreshold = 0.1f;
+        m_Settings.nrdSettings.antilagThresholdMinIntensity = 1.0f;
+        m_Settings.nrdSettings.antilagThresholdMaxIntensity = 10.0f;
+        m_Settings.nrdSettings.antilagSigmaScaleIntensity = 1.5f;
+        m_Settings.nrdSettings.antilagThresholdMinHitDistance = 1.0f;
+        m_Settings.nrdSettings.antilagThresholdMaxHitDistance = 10.0f;
+        m_Settings.nrdSettings.antilagSigmaScaleHitDistance = 1.5f;
     }
     else if (strstr(m_SceneFile, "ZeroDay"))
     {
@@ -2640,8 +2665,13 @@ void Sample::LoadScene()
         m_Settings.sunElevation = -90.0f;
         m_Settings.sunAngularDiameter = 0.0f;
         m_Settings.diffHitDistScale = 2.0f;
-        m_Settings.specHitDistScale = 25.0f;
-        m_Settings.nrdSettings.antilagIntensityThreshold = 0.05f;
+        m_Settings.specHitDistScale = 2.0f;
+        m_Settings.nrdSettings.antilagThresholdMinIntensity = 1.0f;
+        m_Settings.nrdSettings.antilagThresholdMaxIntensity = 10.0f;
+        m_Settings.nrdSettings.antilagSigmaScaleIntensity = 1.5f;
+        m_Settings.nrdSettings.antilagThresholdMinHitDistance = 1.0f;
+        m_Settings.nrdSettings.antilagThresholdMaxHitDistance = 10.0f;
+        m_Settings.nrdSettings.antilagSigmaScaleHitDistance = 1.5f;
     }
 }
 
@@ -2784,7 +2814,6 @@ void Sample::RenderFrame(uint32_t frameIndex)
     {
         nri::CommandBuffer& commandBuffer2 = *frame.commandBuffers[1];
         float2 jitter = m_Settings.TAA ? m_Camera.state.viewportJitter : 0.0f;
-        const float3& sunDirection = GetSunDirection();
 
         nrd::CommonSettings commonSettings = {};
         memcpy(commonSettings.worldToViewMatrix, &m_Camera.state.mWorldToView, sizeof(m_Camera.state.mWorldToView));
@@ -2797,7 +2826,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
         commonSettings.cameraJitter[1] = jitter.y;
         commonSettings.denoisingRange = 4.0f * m_Scene.aabb.GetRadius() * m_Settings.unitsToMetersMultiplier;
         commonSettings.debug = m_Settings.debug;
-        commonSettings.frameIndex = frameIndex;
+        commonSettings.frameIndex = resetHistoryFactor == 0.0f ? 0 : frameIndex;
         commonSettings.worldSpaceMotion = m_Settings.worldSpaceMotion;
         commonSettings.forceReferenceAccumulation = m_Settings.nrdSettings.referenceAccumulation;
 
@@ -2846,29 +2875,23 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
             const float3 trimmingParams = GetTrimmingParams();
 
-            // TODO: replace with "a portion of the average intensity of the previous frame"
-            float threshold0 = m_Settings.nrdSettings.antilagIntensityThreshold * m_Settings.emissionIntensity * m_Settings.exposure * 0.01f;
-            float b = Smoothstep(-0.9f, 0.05f, sunDirection.z);
-            threshold0 += 0.1f * b * b;
-            threshold0 *= 1920.0f / GetWindowWidth(); // Additionally it depends on the resolution (higher resolution = better samples)
-
             nrd::IntensityAntilagSettings intensityAntilagSettings = {};
-            intensityAntilagSettings.thresholdMin = threshold0;
-            intensityAntilagSettings.thresholdMax = 3.0f * threshold0;
-            intensityAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScale;
-            intensityAntilagSettings.enable = m_Settings.nrdSettings.antilag;
+            intensityAntilagSettings.thresholdMin = m_Settings.nrdSettings.antilagThresholdMinIntensity * 0.01f;
+            intensityAntilagSettings.thresholdMax = m_Settings.nrdSettings.antilagThresholdMaxIntensity * 0.01f;
+            intensityAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScaleIntensity;
+            intensityAntilagSettings.enable = m_Settings.nrdSettings.antilagIntensity;
 
             nrd::HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
-            hitDistanceAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScale;
-            hitDistanceAntilagSettings.enable = m_Settings.nrdSettings.antilag;
+            hitDistanceAntilagSettings.thresholdMin = m_Settings.nrdSettings.antilagThresholdMinHitDistance * 0.01f;
+            hitDistanceAntilagSettings.thresholdMax = m_Settings.nrdSettings.antilagThresholdMaxHitDistance * 0.01f;
+            hitDistanceAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScaleHitDistance;
+            hitDistanceAntilagSettings.enable = m_Settings.nrdSettings.antilagHitDistance;
 
             nrd::HitDistanceParameters diffHitDistanceParameters = {};
             diffHitDistanceParameters.A = m_Settings.diffHitDistScale;
-            diffHitDistanceParameters.B = 0.1f; // see HIT_DISTANCE_LINEAR_SCALE
 
             nrd::HitDistanceParameters specHitDistanceParameters = {};
             specHitDistanceParameters.A = m_Settings.specHitDistScale;
-            specHitDistanceParameters.B = 0.1f; // see HIT_DISTANCE_LINEAR_SCALE
 
             #if( NRD_COMBINED == 1 )
                 nrd::ReblurDiffuseSpecularSettings diffuseSpecularSettings = {};

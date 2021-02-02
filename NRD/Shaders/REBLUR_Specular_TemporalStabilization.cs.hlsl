@@ -28,11 +28,12 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
     float4x4 gWorldToClip;
-    float4 gSpecHitDistParams;
     float4 gCameraDelta;
-    float4 gIntensityAntilag;
-    float4 gHitDistanceAntilag;
+    float4 gSpecHitDistParams;
+    float4 gAntilagThresholds;
+    float2 gAntilagSigmaScale;
     float2 gMotionVectorScale;
+    float gSpecMaxAccumulatedFrameNum;
 };
 
 #include "REBLUR_Common.hlsl"
@@ -41,7 +42,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ViewZ, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 2, 0 );
-NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 3, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_History_Spec, t, 4, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 5, 0 );
 
@@ -65,7 +66,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
 
     // Debug
-    #if( SHOW_MIPS )
+    #if( NRD_DEBUG == NRD_SHOW_MIPS )
         float4 s = gIn_Spec[ pixelPos ];
         gOut_Spec[ pixelPos ] = s;
         gOut_Spec_Copy[ pixelPos ] = s;
@@ -95,8 +96,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Internal data
-    float virtualMotionAmount;
-    float2 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness, virtualMotionAmount );
+    float virtualHistoryAmount;
+    float2 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness, virtualHistoryAmount );
 
     // Position
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -105,11 +106,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float3 V = STL::Geometry::RotateVector( gViewToWorld, -Xv ) * invDistToPoint;
 
     // Local variance
-    float sum = 0;
+    float sum = 1.0;
+    float3 Nsum = N;
 
-    float4 specM1 = 0;
-    float4 specM2 = 0;
-    float4 spec = 0;
+    float4 spec = s_Spec[ smemPos.y ][ smemPos.x ];
+    float4 specM1 = spec;
+    float4 specM2 = spec * spec;
     float4 specMaxInput = -INF;
     float4 specMinInput = INF;
     float specNormalParams = GetNormalWeightParamsRoughEstimate( roughness );
@@ -121,29 +123,27 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         [unroll]
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
+            if( dx == BORDER && dy == BORDER )
+                continue;
+
             int2 pos = threadId + int2( dx, dy );
-            float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
-            float4 specSignal = s_Spec[ pos.y ][ pos.x ];
+            float4 n = s_Normal_Roughness[ pos.y ][ pos.x ];
             float z = s_ViewZ[ pos.y ][ pos.x ];
 
-            float w = 1.0;
-            if( dx == BORDER && dy == BORDER )
-                spec = specSignal;
-            else
-            {
-                w = GetBilateralWeight( z, centerZ );
-                w *= GetNormalWeight( specNormalParams, N, normalAndRoughness.xyz );
-                w *= GetRoughnessWeight( roughnessParams, normalAndRoughness.w );
-
-                float s = float( w == 0.0 ) * INF;
-                specMaxInput = max( specSignal - s, specMaxInput );
-                specMinInput = min( specSignal + s, specMinInput );
-            }
-
+            float w = GetBilateralWeight( z, centerZ );
+            w *= GetNormalWeight( specNormalParams, N, n.xyz );
+            w *= GetRoughnessWeight( roughnessParams, n.w );
             w = STL::Math::Pow01( w, TS_WEIGHT_BOOST_POWER );
 
-            specM1 += specSignal * w;
-            specM2 += specSignal * specSignal * w;
+            Nsum += n.xyz * w;
+
+            float4 s = s_Spec[ pos.y ][ pos.x ];
+            float st = float( w == 0.0 ) * INF;
+            specMaxInput = max( s - st, specMaxInput );
+            specMinInput = min( s + st, specMinInput );
+
+            specM1 += s * w;
+            specM2 += s * s * w;
 
             sum += w;
         }
@@ -153,6 +153,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     specM1 *= invSum;
     specM2 *= invSum;
     float4 specSigma = GetVariance( specM1, specM2 );
+
+    float3 Navg = Nsum * invSum;
+    float roughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance( roughness, Navg );
 
     // Apply RCRS
     float rcrsWeight = ( sum - 1.0 ) / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) - 1.0 );
@@ -164,56 +167,84 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Compute previous position
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
-    float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
+    float isInScreen = IsInScreen( pixelUvPrev );
+    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() );
 
     // Sample history ( surface motion )
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
-    float4 historySurface = BicubicFilterNoCorners( gIn_History_Spec, gLinearClamp, pixelPosPrev, gInvScreenSize );
+    float4 specHistorySurface = BicubicFilterNoCorners( gIn_History_Spec, gLinearClamp, pixelPosPrev, gInvScreenSize );
 
-    // Sample history ( virtual motion ) and mix
-    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() );
-    float hitDist = GetHitDistance( spec.w, centerZ, gSpecHitDistParams, roughness );
-    float3 Xvirtual = GetXvirtual( X, Xprev, N, V, roughness, hitDist );
+    // Sample history ( virtual motion )
+    float hitDist = GetHitDist( spec.w, centerZ, gSpecHitDistParams, roughness );
+    float NoV = abs( dot( N, V ) );
+    float3 Xvirtual = GetXvirtual( X, Xprev, V, NoV, roughnessModified, hitDist );
     float2 pixelUvVirtualPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
-    float4 historyVirtual = gIn_History_Spec.SampleLevel( gLinearClamp, pixelUvVirtualPrev, 0.0 );
-    float4 specHistory = lerp( historySurface, historyVirtual, virtualMotionAmount );
+    float4 specHistoryVirtual = gIn_History_Spec.SampleLevel( gLinearClamp, pixelUvVirtualPrev, 0.0 );
+
+    float sigmaScale = 1.0 + 0.125 * gFramerateScale;
+    float4 specMin = specM1 - specSigma * sigmaScale;
+    float4 specMax = specM1 + specSigma * sigmaScale;
+    float4 specHistoryVirtualClamped = clamp( specHistoryVirtual, specMin, specMax );
 
     // Compute parallax
-    float parallax = ComputeParallax( pixelUv, 1.0, Xprev, gCameraDelta.xyz, gWorldToClip );
-    float parallaxMod = parallax * ( 1.0 - virtualMotionAmount );
+    float parallax = ComputeParallax( pixelUv, Xprev, gCameraDelta.xyz, gWorldToClip );
+
+    // Hit distance based disocclusion for virtual motion
+    float hitDistDelta = abs( specHistoryVirtual.w - spec.w ) - specSigma.w * 0.5; // TODO: was 0.1
+    float hitDistMin = max( specHistoryVirtual.w, spec.w );
+    hitDistDelta = GetHitDist( hitDistDelta, centerZ, gSpecHitDistParams, roughness );
+    hitDistMin = GetHitDist( hitDistMin, centerZ, gSpecHitDistParams, roughness );
+    hitDistDelta *= STL::Math::PositiveRcp( hitDistMin + abs( centerZ ) );
+
+    float thresholdMin = 0.02 * STL::Math::LinearStep( 0.2, 0.01, parallax ); // TODO: thresholdMin needs to be set to 0, but it requires very clean hit distances
+    float thresholdMax = lerp( 0.01, 0.25, roughnessModified * roughnessModified ) + thresholdMin;
+    float virtualHistoryConfidence = STL::Math::LinearStep( thresholdMax, thresholdMin, hitDistDelta );
+
+    // Adjust accumulation speed for virtual motion if confidence is low
+    float accumSpeedScale = lerp( 1.0, virtualHistoryConfidence, virtualHistoryAmount );
+    accumSpeedScale = lerp( accumSpeedScale, 1.0, roughness );
+    accumSpeedScale = lerp( accumSpeedScale, 1.0, 1.0 / ( 1.0 + specInternalData.y ) );
+
+    float specMinAccumSpeed = min( specInternalData.y, ( MIP_NUM - 1 ) * STL::Math::Sqrt01( roughness ) );
+    specInternalData.y = specMinAccumSpeed + ( specInternalData.y - specMinAccumSpeed ) * accumSpeedScale;
+
+    // Specular history
+    float virtualUnclampedAmount = lerp( virtualHistoryConfidence * SPEC_FORCED_VIRTUAL_CLAMPING, 1.0, roughness * roughness );
+    specHistoryVirtual = lerp( specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount );
+
+    float4 specHistory = lerp( specHistorySurface, specHistoryVirtual, virtualHistoryAmount );
 
     // History weight
-    float motionLength = length( pixelUvPrev - pixelUv );
-
-    float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specInternalData.y, motionLength, parallaxMod, roughness );
+    float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specInternalData.y, parallax, roughnessModified, virtualHistoryAmount );
     specTemporalAccumulationParams.y = 1.0 + ( specTemporalAccumulationParams.y - 1.0 ) * rcrsWeight;
 
     // Antilag
     float specAntilag = 1.0;
 
     #if( USE_ANTILAG == 1 )
-        // TODO: if compression is used delta.x needs to be decompressed, but it doesn't affect the behavior, because heavily compressed values do not lag
-        float2 specDelta = abs( specHistory.xw - specM1.xw ) - specSigma.xw * float2( gIntensityAntilag.x, gHitDistanceAntilag.x );
-        specDelta = STL::Math::LinearStep( float2( gIntensityAntilag.z, gHitDistanceAntilag.z ), float2( gIntensityAntilag.y, gHitDistanceAntilag.y ), specDelta );
+        float2 antilagSensitivityToSmallValues = gAntilagThresholds.zw * 5.0 + 0.000001;
+
+        float2 specDelta = abs( specHistory.xw - specM1.xw ) - specSigma.xw * gAntilagSigmaScale;
+        specDelta /= min( specM1.xw, specHistory.xw ) + specSigma.xw * gAntilagSigmaScale + antilagSensitivityToSmallValues;
+        specDelta = STL::Math::LinearStep( gAntilagThresholds.zw, gAntilagThresholds.xy, specDelta );
         specDelta *= specDelta;
 
         float specFade = specInternalData.y / ( 1.0 + specInternalData.y );
         specFade *= specTemporalAccumulationParams.x;
 
-        specAntilag = min( specDelta.x, specDelta.y );
+        specAntilag = specDelta.x * specDelta.y;
         specAntilag = lerp( 1.0, specAntilag, specFade );
     #endif
 
     #if( USE_LIMITED_ANTILAG == 1 )
-        float specMinAccumSpeed = min( specInternalData.y, GetMipLevel( 0.0, roughness ) );
         specInternalData.y = specMinAccumSpeed + ( specInternalData.y - specMinAccumSpeed ) * specAntilag;
     #else
         specInternalData.y *= specAntilag;
     #endif
 
     // Clamp history and combine with the current frame
-    float4 specMin = specM1 - specSigma * specTemporalAccumulationParams.y;
-    float4 specMax = specM1 + specSigma * specTemporalAccumulationParams.y;
+    specMin = specM1 - specSigma * specTemporalAccumulationParams.y;
+    specMax = specM1 + specSigma * specTemporalAccumulationParams.y;
     specHistory = clamp( specHistory, specMin, specMax );
 
     float specHistoryWeight = TS_MAX_HISTORY_WEIGHT * specAntilag;
@@ -228,10 +259,14 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( centerZ, 0.0, N, roughness, specInternalData.y );
     gOut_Spec[ pixelPos ] = specResult;
 
-    #if( SHOW_ACCUM_SPEED == 1 )
-        specResult.w = saturate( specInternalData.y / MAX_ACCUM_FRAME_NUM );
-    #elif( SHOW_ANTILAG == 1 )
+    #if( NRD_DEBUG == NRD_SHOW_ACCUM_SPEED  )
+        specResult.w = saturate( specInternalData.y / ( gSpecMaxAccumulatedFrameNum + 1.0 ) );
+    #elif( NRD_DEBUG == NRD_SHOW_ANTILAG )
         specResult.w = specAntilag;
+    #elif( NRD_DEBUG == NRD_SHOW_VIRTUAL_HISTORY_AMOUNT )
+        specResult.w = virtualHistoryAmount;
+    #elif( NRD_DEBUG == NRD_SHOW_VIRTUAL_HISTORY_CONFIDENCE )
+        specResult.w = virtualHistoryConfidence;
     #endif
 
     gOut_Spec_Copy[ pixelPos ] = specResult;

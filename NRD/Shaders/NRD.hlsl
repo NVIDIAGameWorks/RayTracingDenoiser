@@ -8,6 +8,8 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
+// NRD v1.16.1
+
 //=================================================================================================================================
 // INPUT PARAMETERS
 //=================================================================================================================================
@@ -54,32 +56,15 @@ float normHitDist:
 */
 
 //=================================================================================================================================
-// PUBLIC
-//=================================================================================================================================
-
-float NRD_GetColorCompressionExposure( float linearRoughness )
-{
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
-
-    // No compression
-    //return 0;
-
-    // Moderate compression
-    //return 0.5 / ( 1.0 + 50.0 * linearRoughness );
-
-    // Less compression for mid-high roughness
-    //return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
-
-    // Close to the previous one, but offers more compression for low roughness
-    return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 1000.0 * linearRoughness * linearRoughness ) + ( 1.0 - sqrt( saturate( linearRoughness ) ) ) * 0.03;
-
-    // A modification of the preious one ( simpler )
-    //return 0.6 * ( 1.0 - linearRoughness * linearRoughness ) / ( 1.0 + 400.0 * linearRoughness * linearRoughness );
-}
-
-//=================================================================================================================================
 // PRIVATE ( DO NOT MODIFY WITHOUT FULL RECOMPILATION OF NRD LIBRARY! )
 //=================================================================================================================================
+
+#define NRD_SHOW_MIPS                           1
+#define NRD_SHOW_ACCUM_SPEED                    2
+#define NRD_SHOW_ANTILAG                        3
+#define NRD_SHOW_VIRTUAL_HISTORY_AMOUNT         4
+#define NRD_SHOW_VIRTUAL_HISTORY_CONFIDENCE     5
+#define NRD_DEBUG                               0 // 0-5
 
 #define NRD_EPS                                 0.01
 #define NRD_FP16_VIEWZ_SCALE                    0.0125
@@ -152,6 +137,61 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
     return r;
 }
 
+float _NRD_GetColorCompressionExposure( float linearRoughness )
+{
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
+
+    // No compression
+    //return 0;
+
+    // Moderate compression
+    //return 0.5 / ( 1.0 + 50.0 * linearRoughness );
+
+    // Less compression for mid-high roughness
+    //return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
+
+    // Close to the previous one, but offers more compression for low roughness
+    return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 1000.0 * linearRoughness * linearRoughness ) + ( 1.0 - sqrt( saturate( linearRoughness ) ) ) * 0.03;
+
+    // A modification of the preious one ( simpler )
+    //return 0.6 * ( 1.0 - linearRoughness * linearRoughness ) / ( 1.0 + 400.0 * linearRoughness * linearRoughness );
+}
+
+float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
+{
+    return ( hitDistParams.x + abs( viewZ ) * hitDistParams.y ) * lerp( 1.0, hitDistParams.z, saturate( exp2( hitDistParams.w * linearRoughness * linearRoughness ) ) );
+}
+
+float _REBLUR_DecompressNormHitDistance( float compressedNormHitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
+{
+    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
+    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
+    float decompressedNormHitDist = compressedNormHitDist / max( 1.0 - compressedNormHitDist * exposure, NRD_EPS );
+    float normHitDist = saturate( decompressedNormHitDist / f );
+
+    return normHitDist;
+}
+
+//=================================================================================================================================
+// MISC
+//=================================================================================================================================
+
+// We loose G-term if trimming is high, return it back in pre-integrated form
+// A typical use case is:
+/*
+    float g = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV, roughness ), 0.0 ).x; // pre-integrated G-term
+
+    float trimmingFactor = NRD_GetTrimmingFactor( roughness, trimmingParams );
+    F *= lerp( g, 1.0, trimmingFactor );
+    Lsum += spec * F;
+*/
+float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
+{
+    float trimmingFactor = trimmingParams.x * STL::Math::SmoothStep( trimmingParams.y, trimmingParams.z, roughness );
+
+    return trimmingFactor;
+}
+
 //=================================================================================================================================
 // FRONT-END PACKING
 //=================================================================================================================================
@@ -162,16 +202,26 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 #define REBLUR_INF_DIFF     0
 #define REBLUR_INF_SPEC     0
 
-float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float linearRoughness = 1.0 )
+// This function returns AO / SO which REBLUR can decode back to "hit distance" internally
+float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
 {
+    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
+
+    return saturate( hitDist / f );
+}
+
+float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
+{
+    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
+
     radiance = _NRD_LinearToYCoCg( radiance );
+    float3 compressedRadiance = radiance / ( 1.0 + radiance.x * exposure );
 
-    float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float lum = radiance.x;
-    float k = lum * exposure;
-    float3 compressedRadiance = radiance / ( 1.0 + k );
+    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
+    float d = normHitDist * f;
+    float compressedHitDist = d / ( 1.0 + d * exposure );
 
-    return float4( compressedRadiance, normHitDist );
+    return float4( compressedRadiance, compressedHitDist );
 }
 
 // SIGMA
@@ -198,10 +248,10 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder )
 
 float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist, float linearRoughness = 1.0 )
 {
-    float exposure = NRD_GetColorCompressionExposure( linearRoughness );
+    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
+
     float lum = _NRD_Luminance( radiance );
-    float k = lum * exposure;
-    float3 compressedRadiance = radiance / ( 1.0 + k );
+    float3 compressedRadiance = radiance / ( 1.0 + lum * exposure );
 
     return float4( compressedRadiance, hitDist ); // TODO: RELAX - .w channel in the diffuse input will be ignored
 }
@@ -212,16 +262,19 @@ float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist, float linear
 
 // REBLUR
 
-float4 REBLUR_BackEnd_UnpackRadiance( float4 compressedRadiance_normHitDist, float linearRoughness = 1.0 )
+float4 REBLUR_BackEnd_UnpackRadiance( float4 compressedRadianceAndNormHitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
 {
-    float exposure = NRD_GetColorCompressionExposure( linearRoughness );
-    float lum = compressedRadiance_normHitDist.x;
-    float k = lum * exposure;
-    float3 radiance = compressedRadiance_normHitDist.xyz / max( 1.0 - k, NRD_EPS );
+    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
 
+    float3 radiance = compressedRadianceAndNormHitDist.xyz / max( 1.0 - compressedRadianceAndNormHitDist.x * exposure, NRD_EPS );
     radiance = _NRD_YCoCgToLinear( radiance );
 
-    return float4( radiance, compressedRadiance_normHitDist.w );
+    float normHitDist = compressedRadianceAndNormHitDist.w;
+    #if( NRD_DEBUG == 0 )
+        normHitDist = _REBLUR_DecompressNormHitDistance( compressedRadianceAndNormHitDist.w, viewZ, hitDistParams, linearRoughness );
+    #endif
+
+    return float4( radiance, normHitDist );
 }
 
 // SIGMA
@@ -232,10 +285,10 @@ float4 REBLUR_BackEnd_UnpackRadiance( float4 compressedRadiance_normHitDist, flo
 
 float4 RELAX_BackEnd_UnpackRadiance( float4 compressedRadiance, float linearRoughness = 1.0 )
 {
-    float exposure = NRD_GetColorCompressionExposure( linearRoughness );
+    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
+
     float lum = _NRD_Luminance( compressedRadiance.xyz );
-    float k = lum * exposure;
-    float3 radiance = compressedRadiance.xyz / max( 1.0 - k, NRD_EPS );
+    float3 radiance = compressedRadiance.xyz / max( 1.0 - lum * exposure, NRD_EPS );
 
     return float4( radiance, compressedRadiance.w ); // TODO: RELAX - output doesn't have .w channel
 }

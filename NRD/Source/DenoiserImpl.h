@@ -212,6 +212,7 @@ namespace nrd
         float4 m_Frustum = float4(0.0f);
         float4 m_FrustumPrev = float4(0.0f);
         float3 m_CameraDelta = float3(0.0f);
+        float3 m_CameraDeltaSmoothed = float3(0.0f);
         float2 m_JitterPrev = float2(0.0f);
         const char* m_PassName = nullptr;
         size_t m_ResourceOffset = 0;
@@ -224,6 +225,7 @@ namespace nrd
         uint16_t m_PermanentPoolOffset = 0;
         float m_ProjectY = 0.0f; // TODO: NRD assumes that there are no checkerboard "tricks" in Y direction, so no a separate m_ProjectX
         bool m_EnableValidation = false;
+        bool m_IsFirstUse = true;
     };
 
     // TODO: allocate aligned memory for m_Constants, and use "typecast & assign operator" instead! Don't use resize()

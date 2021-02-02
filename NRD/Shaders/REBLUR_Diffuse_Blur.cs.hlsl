@@ -83,7 +83,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float diffCenterNormHitDist = diff.w;
 
     // Blur radius
-    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffHitDistParams );
+    float diffHitDist = GetHitDist( diffCenterNormHitDist, centerZ, gDiffHitDistParams );
     float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffInternalData.x );
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 

@@ -95,7 +95,7 @@ float2 GetConeAngle( float mip, float roughness )
 
 float3 GetIndirectAmbient( float tmin, bool isDiffuse )
 {
-    float fade = saturate( tmin * gUnitsToMetersMultiplier / gSpecHitDistScale );
+    float fade = REBLUR_FrontEnd_GetNormHitDist( tmin, 0.0, gSpecHitDistParams, 1.0 ); // TODO: viewZ and roughness are set to 0 and 1
     fade = fade * 0.9 + 0.1;
     fade *= float( tmin != INF );
 
@@ -431,7 +431,7 @@ void ENTRYPOINT( )
 
     float3x3 mLocalBasis = STL::Geometry::GetBasis( materialProps0.N );
     float3 Vlocal = STL::Geometry::RotateVector( mLocalBasis, -rayDirection0 );
-    float trimmingFactor = GetTrimmingFactor( materialProps0.roughness );
+    float trimmingFactor = NRD_GetTrimmingFactor( materialProps0.roughness, gTrimmingParams );
 
 #if( CHECKERBOARD == 0 )
     for( uint i = 0; i < 2; i++ )
@@ -688,13 +688,13 @@ void ENTRYPOINT( )
         #endif
 
         // Store output
-        float f = abs( geometryProps0.viewZ ) * gUnitsToMetersMultiplier * HIT_DISTANCE_LINEAR_SCALE;
         pathLength *= gUnitsToMetersMultiplier;
 
+        float viewZ = geometryProps0.viewZ * gUnitsToMetersMultiplier;
         if( isDiffuse )
         {
-            float normDist = saturate( pathLength / ( gDiffDistScale + f ) );
-            diffIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist );
+            float normDist = REBLUR_FrontEnd_GetNormHitDist( pathLength, viewZ, gDiffHitDistParams );
+            diffIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, viewZ, gDiffHitDistParams );
 
             if( gDenoiserType != REBLUR )
                 diffIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist );
@@ -709,8 +709,8 @@ void ENTRYPOINT( )
                 Clight1 = STL::Color::ColorizeZucconi( mipNorm );
             }
 
-            float normDist = saturate( pathLength / ( gSpecHitDistScale + f ) );
-            specIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, materialProps0.roughness );
+            float normDist = REBLUR_FrontEnd_GetNormHitDist( pathLength, viewZ, gSpecHitDistParams, materialProps0.roughness );
+            specIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, viewZ, gSpecHitDistParams, materialProps0.roughness );
 
             if( gDenoiserType != REBLUR )
                 specIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist, materialProps0.roughness );

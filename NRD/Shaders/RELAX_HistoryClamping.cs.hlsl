@@ -14,6 +14,11 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
     int2 gResolution;
     float gColorBoxSigmaScale;
+    float gSpecularAntiLagSigmaScale;
+    float gSpecularAntiLagPower;
+    float gDiffuseAntiLagSigmaScale;
+    float gDiffuseAntiLagPower;
+
 }
 
 #include "RELAX_Common.hlsl"
@@ -21,11 +26,13 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 // Inputs
 NRI_RESOURCE(Texture2D<uint2>, gSpecularAndDiffuseIlluminationLogLuv, t, 0, 0);
 NRI_RESOURCE(Texture2D<uint2>, gSpecularAndDiffuseIlluminationResponsiveLogLuv, t, 1, 0);
+NRI_RESOURCE(Texture2D<float2>, gSpecularAndDiffuseHistoryLength, t, 2, 0);
 
 // Outputs
 NRI_RESOURCE(RWTexture2D<uint2>, gOutSpecularAndDiffuseIlluminationLogLuv, u, 0, 0);
+NRI_RESOURCE(RWTexture2D<float2>, gOutSpecularAndDiffuseHistoryLength, u, 1, 0);
 
-groupshared uint4 sharedPackedResponsiveIlluminationYCgCo[16 + 2][16 + 2];
+groupshared uint4 sharedPackedResponsiveIlluminationYCoCg[16 + 2][16 + 2];
 
 // Helper functions
 uint4 packIllumination(float3 specularIllum, float3 diffuseIllum)
@@ -81,7 +88,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     {
         UnpackSpecularAndDiffuseFromLogLuvUint2(specularResponsiveIllumination, diffuseResponsiveIllumination, gSpecularAndDiffuseIlluminationResponsiveLogLuv[int2(xx,yy)]);
     }
-    sharedPackedResponsiveIlluminationYCgCo[oy][ox] = packIllumination(_NRD_LinearToYCoCg(specularResponsiveIllumination), _NRD_LinearToYCoCg(diffuseResponsiveIllumination));
+    sharedPackedResponsiveIlluminationYCoCg[oy][ox] = packIllumination(_NRD_LinearToYCoCg(specularResponsiveIllumination), _NRD_LinearToYCoCg(diffuseResponsiveIllumination));
 
     // Second stage
     linearThreadIndex += 16 * 16;
@@ -102,7 +109,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
         {
             UnpackSpecularAndDiffuseFromLogLuvUint2(specularResponsiveIllumination, diffuseResponsiveIllumination, gSpecularAndDiffuseIlluminationResponsiveLogLuv[int2(xx,yy)]);
         }
-        sharedPackedResponsiveIlluminationYCgCo[oy][ox] = packIllumination(_NRD_LinearToYCoCg(specularResponsiveIllumination), _NRD_LinearToYCoCg(diffuseResponsiveIllumination));
+        sharedPackedResponsiveIlluminationYCoCg[oy][ox] = packIllumination(_NRD_LinearToYCoCg(specularResponsiveIllumination), _NRD_LinearToYCoCg(diffuseResponsiveIllumination));
     }
 
     // Ensuring all the writes to shared memory are done by now
@@ -114,11 +121,15 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
 
     if (any(int2(dispatchThreadId.xy) >= gResolution)) return;
 
-    uint2 sharedMemoryIndex = groupThreadId.xy + int2(1,1);
+    float2 historyLength = 255.0 * gSpecularAndDiffuseHistoryLength[dispatchThreadId.xy];
+
+    uint2 sharedMemoryIndex = groupThreadId.xy + int2(1, 1);
 
     float3 specularIllumination;
     float3 diffuseIllumination;
     UnpackSpecularAndDiffuseFromLogLuvUint2(specularIllumination, diffuseIllumination, gSpecularAndDiffuseIlluminationLogLuv[dispatchThreadId.xy]);
+    float3 specularIlluminationYCoCg = _NRD_LinearToYCoCg(specularIllumination);
+    float3 diffuseIlluminationYCoCg = _NRD_LinearToYCoCg(diffuseIllumination);
 
     float3 specularFirstMoment = 0;
     float3 specularSecondMoment = 0;
@@ -137,7 +148,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
 
             float3 specularIlluminationP;
             float3 diffuseIlluminationP;
-            unpackIllumination(sharedPackedResponsiveIlluminationYCgCo[sharedMemoryIndexP.y][sharedMemoryIndexP.x], specularIlluminationP, diffuseIlluminationP);
+            unpackIllumination(sharedPackedResponsiveIlluminationYCoCg[sharedMemoryIndexP.y][sharedMemoryIndexP.x], specularIlluminationP, diffuseIlluminationP);
 
             specularFirstMoment += specularIlluminationP;
             specularSecondMoment += specularIlluminationP * specularIlluminationP;
@@ -166,22 +177,44 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     // to avoid introducing bias
     float3 specularIlluminationCenter;
     float3 diffuseIlluminationCenter;
-    unpackIllumination(sharedPackedResponsiveIlluminationYCgCo[sharedMemoryIndex.y][sharedMemoryIndex.x], specularIlluminationCenter, diffuseIlluminationCenter);
+    unpackIllumination(sharedPackedResponsiveIlluminationYCoCg[sharedMemoryIndex.y][sharedMemoryIndex.x], specularIlluminationCenter, diffuseIlluminationCenter);
 
     specularColorMin = min(specularColorMin, specularIlluminationCenter);
     specularColorMax = max(specularColorMax, specularIlluminationCenter);
     diffuseColorMin = min(diffuseColorMin, diffuseIlluminationCenter);
     diffuseColorMax = max(diffuseColorMax, diffuseIlluminationCenter);
 
-    // Color clamping
-    float3 specularIlluminationYCgCo = _NRD_LinearToYCoCg(specularIllumination);
-    specularIlluminationYCgCo = clamp(specularIlluminationYCgCo, specularColorMin, specularColorMax);
-    specularIllumination = _NRD_YCoCgToLinear(specularIlluminationYCgCo);
+    // Calculating color boxes for antilag 
+    float3 specularColorMinForAntilag = specularFirstMoment - gSpecularAntiLagSigmaScale * specularSigma;
+    float3 specularColorMaxForAntilag = specularFirstMoment + gSpecularAntiLagSigmaScale * specularSigma;
+    float3 diffuseColorMinForAntilag = diffuseFirstMoment - gDiffuseAntiLagSigmaScale * diffuseSigma;
+    float3 diffuseColorMaxForAntilag = diffuseFirstMoment + gDiffuseAntiLagSigmaScale * diffuseSigma;
 
-    float3 diffuseIlluminationYCgCo = _NRD_LinearToYCoCg(diffuseIllumination);
-    diffuseIlluminationYCgCo = clamp(diffuseIlluminationYCgCo, diffuseColorMin, diffuseColorMax);
-    diffuseIllumination = _NRD_YCoCgToLinear(diffuseIlluminationYCgCo);
+    float3 specularIlluminationYCoCgClampedForAntilag = clamp(specularIlluminationYCoCg, specularColorMinForAntilag, specularColorMaxForAntilag);
+    float3 diffuseIlluminationYCoCgClampedForAntilag = clamp(diffuseIlluminationYCoCg, diffuseColorMinForAntilag, diffuseColorMaxForAntilag);
+
+    float3 specularDiffYCoCg = abs(specularIlluminationYCoCgClampedForAntilag - specularIlluminationYCoCg);
+    float3 specularDiffYCoCgScaled = (specularIlluminationYCoCg.r != 0) ? specularDiffYCoCg / (specularIlluminationYCoCg.r) : 0;
+    float specularAntilagAmount = gSpecularAntiLagPower * sqrt(dot(specularDiffYCoCgScaled, specularDiffYCoCgScaled));
+
+    float3 diffuseDiffYCoCg = abs(diffuseIlluminationYCoCgClampedForAntilag - diffuseIlluminationYCoCg);
+    float3 diffuseDiffYCoCgScaled = (diffuseIlluminationYCoCg.r != 0) ? diffuseDiffYCoCg / (diffuseIlluminationYCoCg.r) : 0;
+    float diffuseAntilagAmount = gDiffuseAntiLagPower * sqrt(dot(diffuseDiffYCoCgScaled, diffuseDiffYCoCgScaled));
+
+    float2 adjustedHistoryLength = historyLength;
+    adjustedHistoryLength.x = historyLength.x / (1.0 + specularAntilagAmount);
+    adjustedHistoryLength.y = historyLength.y / (1.0 + diffuseAntilagAmount);
+    adjustedHistoryLength = max(adjustedHistoryLength, 1.0);
+
+
+    // Color clamping
+    specularIlluminationYCoCg = clamp(specularIlluminationYCoCg, specularColorMin, specularColorMax);
+    specularIllumination = _NRD_YCoCgToLinear(specularIlluminationYCoCg);
+
+    diffuseIlluminationYCoCg = clamp(diffuseIlluminationYCoCg, diffuseColorMin, diffuseColorMax);
+    diffuseIllumination = _NRD_YCoCgToLinear(diffuseIlluminationYCoCg);
 
     // Writing out the results
     gOutSpecularAndDiffuseIlluminationLogLuv[dispatchThreadId.xy] = PackSpecularAndDiffuseToLogLuvUint2(specularIllumination, diffuseIllumination);
+    gOutSpecularAndDiffuseHistoryLength[dispatchThreadId.xy] = adjustedHistoryLength / 255.0;
 }

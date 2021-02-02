@@ -44,16 +44,17 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     albedo *= STL::ImportanceSampling::Cosine::GetInversePDF( ) / STL::Math::Pi( 1.0 );
 
     // Denoised data
+    float viewZ = gIn_ViewZ[ pixelPos ];
     float4 indirectDiff = gIn_Diff[ pixelPos ];
     if( gDenoiserType == REBLUR )
-        indirectDiff = REBLUR_BackEnd_UnpackRadiance( indirectDiff );
+        indirectDiff = REBLUR_BackEnd_UnpackRadiance( indirectDiff, viewZ, gDiffHitDistParams );
     else
         indirectDiff = RELAX_BackEnd_UnpackRadiance( indirectDiff );
     indirectDiff.xyz *= gIndirectDiffuse;
 
     float4 indirectSpec = gIn_Spec[ pixelPos ];
     if( gDenoiserType == REBLUR )
-        indirectSpec = REBLUR_BackEnd_UnpackRadiance( indirectSpec, roughness );
+        indirectSpec = REBLUR_BackEnd_UnpackRadiance( indirectSpec, viewZ, gSpecHitDistParams, roughness );
     else
         indirectSpec = RELAX_BackEnd_UnpackRadiance( indirectSpec, roughness );
     indirectSpec.xyz *= gIndirectSpecular;
@@ -72,7 +73,6 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     float3 Lsum = directLighting * shadow;
 
     // Environment (pre-integrated) specular terms
-    float viewZ = gIn_ViewZ[ pixelPos ];
     float3 Vv = STL::Geometry::ReconstructViewPosition( pixelUv, gCameraFrustum, viewZ, gIsOrtho );
     float3 V = -STL::Geometry::RotateVector( gViewToWorld, normalize( Vv ) );
     float NoV = abs( dot( N, V ) );
@@ -80,7 +80,7 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
 
     // We loose G-term if trimming is high, return it back in pre-integrated form
     float2 GG = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV, roughness ), 0.0 );
-    float trimmingFactor = GetTrimmingFactor( roughness );
+    float trimmingFactor = NRD_GetTrimmingFactor( roughness, gTrimmingParams );
     F *= lerp( GG.x, 1.0, trimmingFactor );
 
     // Add ambient

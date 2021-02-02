@@ -60,17 +60,18 @@ namespace nrd
         float cameraJitter[2] = {0.0f, 0.0f};
         float denoisingRange = 10000.0f;            // (m) (> 0)
         float debug = 0.0f;
-        uint32_t frameIndex = 0;                    // pass 0 for a single frame to reset history (method 1)
+        uint32_t frameIndex = 0;                    // pass 0 for a single frame to reset history
         bool worldSpaceMotion = false;              // if "true" IN_MV is 3D motion in world space (0 should be everywhere if the scene is static), otherwise it's 2D screen-space motion (0 should be everywhere if the camera doesn't move)
         bool forceReferenceAccumulation = false;
     };
 
-    // Hit distance = "normalized hit distance" * ( A + viewZ * B ) * lerp( 1.0, C, exp2( D * roughness ^ 2 ) )
+    // "Normalized hit distance" = saturate( "hit distance" / f ), where:
+    // f = ( A + viewZ * B ) * lerp( 1.0, C, exp2( D * roughness ^ 2 ) ), see "NRD.hlsl/REBLUR_FrontEnd_CompressHitDistance"
     struct HitDistanceParameters
     {
         float A = 3.0f;     // constant value (m)
-        float B = 0.1f;     // viewZ based linear scale (m / units), viewZ will be automatically scaled to meters using provided "metersToUnitsMultiplier" (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
-        float C = 1.0f;     // roughness based scale, "> 1" to get bigger hit distance for relatively low roughness
+        float B = 0.1f;     // viewZ based linear scale (m / units) (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
+        float C = 5.0f;     // roughness based scale, "> 1" to get bigger hit distance for low roughness
         float D = -50.0f;   // roughness based exponential scale, "< 0", absolute value should be big enough to collapse "exp2( D * roughness ^ 2 )" to "~0" for roughness = 1
     };
 
@@ -88,18 +89,18 @@ namespace nrd
     // antilag = F( delta ), delta = 0 - keep accumulation, delta = 1 - history reset
     struct IntensityAntilagSettings
     {
-        float thresholdMin = 99999.0f;      // depends on many factors, but in general it's "some percent of the local average of the final image"
-        float thresholdMax = 100000.0f;     // max > min, usually 3-4x times greater than min
+        float thresholdMin = 0.05f;          // normalized %
+        float thresholdMax = 0.15f;          // max > min, usually 3-4x times greater than min
         float sigmaScale = 2.0f;            // plain "delta" is reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
-        bool enable = false;                // Turned off by default because intensity range is only known on the application side
+        bool enable = true;
     };
 
     struct HitDistanceAntilagSettings
     {
-        float thresholdMin = 0.01f;         // can be slightly increased if noise in AO/SO is high
-        float thresholdMax = 0.1f;          // 10% is a good start
+        float thresholdMin = 0.02f;         // normalized %, can be slightly increased if noise in AO/SO is high
+        float thresholdMax = 0.10f;          // 10% is a good start
         float sigmaScale = 2.0f;            // "delta" will be reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
-        bool enable = true;                 // Turned on by default because it works with normalized hit distances
+        bool enable = true;
     };
 
     // REBLUR_DIFFUSE
@@ -113,7 +114,7 @@ namespace nrd
         HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
         float disocclusionThreshold = 0.005f;                           // normalized %
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         float noisinessBlurrinessBalance = 1.0f;
@@ -130,7 +131,7 @@ namespace nrd
         HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
         float disocclusionThreshold = 0.005f;                           // normalized %
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
         float noisinessBlurrinessBalance = 1.0f;
@@ -148,8 +149,8 @@ namespace nrd
         HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
         float disocclusionThreshold = 0.005f;                            // normalized %
         float planeDistanceSensitivity = 0.002f;                         // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        uint32_t diffMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
-        uint32_t specMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t diffMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
+        uint32_t specMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
         float diffBlurRadius = 30.0f;                                    // base (worst) diffuse denoising radius (pixels)
         float specBlurRadius = 30.0f;                                    // base (worst) specular denoising radius (pixels)
         float diffMaxAdaptiveRadiusScale = 5.0f;                         // adaptive radius scale, comes into play if error is high (0-10)
@@ -186,10 +187,13 @@ namespace nrd
         float disocclusionFixMaxRadius = 14.0f;                 // maximum radius for sparse bilateral filter, expressed in pixels
         int32_t disocclusionFixNumFramesToFix = 3;              // cross-bilateral sparse filter will be applied to frames with history length shorter than this value
 
-        float historyClampingColorBoxSigmaScale = 1.0f;         // scale for standard deviation of color box
+        float historyClampingColorBoxSigmaScale = 1.0f;         // scale for standard deviation of color box for clamping normal history color to responsive history color
+        float specularAntiLagColorBoxSigmaScale = 2.0f;         // scale for standard deviation of color box for lag detection
+        float specularAntiLagPower = 0.0f;                      // amount of history shortening when lag is detected
+        float diffuseAntiLagColorBoxSigmaScale = 2.0f;          // scale for standard deviation of color box for lag detection
+        float diffuseAntiLagPower = 0.0f;                       // amount of history shortening when lag is detected
 
-        bool fireflySuppressionEnabled = true;                  // firefly suppression
-        bool needHistoryReset = false;                          // set to true for 1 frame to reset history 
+        bool fireflySuppressionEnabled = false;                 // firefly suppression
 
         int32_t spatialVarianceEstimationHistoryThreshold = 3;  // history length threshold below which spatial variance estimation will be executed
         int32_t atrousIterations = 5;                           // number of iteration for A-Trous wavelet transform
@@ -208,8 +212,8 @@ namespace nrd
 
     struct SvgfSettings
     {
-        uint32_t maxAccumulatedFrameNum = 31;           // 0 - SVGF_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
-        uint32_t momentsMaxAccumulatedFrameNum = 5;     // 0 - SVGF_MAX_HISTORY_FRAME_NUM, use 0 for one frame to reset history (method 2)
+        uint32_t maxAccumulatedFrameNum = 31;           // 0 - SVGF_MAX_HISTORY_FRAME_NUM
+        uint32_t momentsMaxAccumulatedFrameNum = 5;     // 0 - SVGF_MAX_HISTORY_FRAME_NUM
         float disocclusionThreshold = 0.005f;           // 0.005 - 0.05 (normalized %)
         float varianceScale = 1.5f;
         float zDeltaScale = 200.0f;

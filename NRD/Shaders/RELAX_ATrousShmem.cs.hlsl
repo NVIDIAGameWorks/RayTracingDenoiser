@@ -12,8 +12,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
-    float4x4    gClipToWorld;
-    float4x4    gViewToClip;
+    float4      gFrustumRight;
+    float4      gFrustumUp;
+    float4      gFrustumForward;
 
     int2        gResolution;
     float2      gInvViewSize;
@@ -34,7 +35,7 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 // Inputs
 NRI_RESOURCE(Texture2D<float4>, gSpecularIlluminationAndVariance, t, 0, 0);
 NRI_RESOURCE(Texture2D<float4>, gDiffuseIlluminationAndVariance, t, 1, 0);
-NRI_RESOURCE(Texture2D<float>, gHistoryLength, t, 2, 0);
+NRI_RESOURCE(Texture2D<float2>, gHistoryLength, t, 2, 0);
 NRI_RESOURCE(Texture2D<float>, gSpecularReprojectionConfidence, t, 3, 0);
 NRI_RESOURCE(Texture2D<uint2>, gNormalRoughnessDepth, t, 4, 0);
 
@@ -47,23 +48,21 @@ groupshared float4      sharedNormalRoughness[16 + 1 + 1][16 + 1 + 1];
 groupshared float4      sharedWorldPos[16 + 1 + 1][16 + 1 + 1];
 
 // Helper macros
-#define linearStep(a, b, x) saturate((x - a)/(b - a))
 #define PI 3.141593
 
+#define linearStep(a, b, x) saturate((x - a)/(b - a))
 #define smoothStep01(x) (x*x*(3.0 - 2.0*x))
 
+// Helper functions
 float smoothStep(float a, float b, float x)
 {
     x = linearStep(a, b, x); return smoothStep01(x);
 }
 
-// Helper functions
 float3 getCurrentWorldPos(int2 pixelPos, float depth)
 {
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize;
-    float4 clipPos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1);
-    float4 worldPos = mul(gClipToWorld, clipPos);
-    return worldPos.xyz / worldPos.w;
+    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize * 2.0 - 1.0;
+    return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
 float getGeometryWeight(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float phiDepth)
@@ -117,18 +116,14 @@ float2 getNormalWeightParams(float roughness, float numFramesInHistory, float sp
     angle *= 3.0 - 2.666 * relaxation * saturate(numFramesInHistory / 5.0);
     angle = min(0.5 * PI, angle);
 
-    // Mitigate banding introduced by errors caused by normals being stored in octahedral 8+8 (Oct16) format
-    // See http://jcgt.org/published/0003/02/01/ "A Survey of Efficient Representations for Independent Unit Vectors"
-    angle += 0.94 * PI / 180.0;
-
     return float2(angle, f);
 }
 
 float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
 {
-    // Assuming that "n0" is normalized and "n" is not!
-    float cosa = saturate(dot(n0, n));// *STL::Math::Rsqrt(STL::Math::LengthSquared(n)));
+    float cosa = saturate(dot(n0, n));
     float a = acos(cosa);
+
     a = 1.0 - smoothStep(0.0, params0.x, a);
 
     return saturate(1.0 + (a - 1.0) * params0.y);
@@ -295,7 +290,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float centerRoughness = sharedNormalRoughness[sharedMemoryIndex.y][sharedMemoryIndex.x].a;
     float2 roughnessWeightParams = getRoughnessWeightParams(centerRoughness, specularReprojectionConfidence);
 
-    float2 normalWeightParams = getNormalWeightParams(centerRoughness, gHistoryLength[ipos], specularReprojectionConfidence);
+    float2 normalWeightParams = getNormalWeightParams(centerRoughness, 255.0*gHistoryLength[ipos].y, specularReprojectionConfidence);
 
 
     // Calculating variance, filtered using 3x3 gaussin blur

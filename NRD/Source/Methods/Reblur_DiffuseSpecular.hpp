@@ -39,7 +39,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         SCALED_VIEWZ,
     };
 
-    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::R10_G10_B10_A2_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 5} );
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 5} );
@@ -79,7 +79,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        desc.constantBufferDataSize = SumConstants(4, 4, 1, 8);
+        desc.constantBufferDataSize = SumConstants(4, 3, 1, 10);
 
         AddDispatchWithExplicitCTASize(desc, REBLUR_DiffuseSpecular_TemporalAccumulation, w, h, 8, 8);
     }
@@ -185,7 +185,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::SPEC_STABILIZED_HISTORY_2) );
         PushOutput( AsUint(ResourceType::OUT_SPEC_HIT) );
 
-        desc.constantBufferDataSize = SumConstants(3, 4, 1, 0);
+        desc.constantBufferDataSize = SumConstants(3, 4, 2, 2);
 
         AddDispatchWithExplicitCTASize(desc, REBLUR_DiffuseSpecular_TemporalStabilization, w, h, 8, 8);
     }
@@ -240,7 +240,19 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodDa
     float4 diffHitDistParams = float4(&settings.diffHitDistanceParameters.A);
     float4 specHitDistParams = float4(&settings.specHitDistanceParameters.A);
     float4 specTrimmingParams_and_specBlurRadius = float4(settings.specLobeTrimmingParameters.A, settings.specLobeTrimmingParameters.B, settings.specLobeTrimmingParameters.C, specBlurRadius);
-    float4 specTrimmingParams_and_checkerboardResolveAccumSpeed = float4(settings.specLobeTrimmingParameters.A, settings.specLobeTrimmingParameters.B, settings.specLobeTrimmingParameters.C, m_CheckerboardResolveAccumSpeed);
+    float4 antilagThresholds = float4(settings.intensityAntilagSettings.thresholdMin, settings.hitDistanceAntilagSettings.thresholdMin, settings.intensityAntilagSettings.thresholdMax, settings.hitDistanceAntilagSettings.thresholdMax);
+
+    if (!settings.intensityAntilagSettings.enable)
+    {
+        antilagThresholds.x = 99998.0f;
+        antilagThresholds.z = 99999.0f;
+    }
+
+    if (!settings.hitDistanceAntilagSettings.enable)
+    {
+        antilagThresholds.y = 99998.0f;
+        antilagThresholds.w = 99999.0f;
+    }
 
     // PRE_BLUR
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::PRE_BLUR));
@@ -262,11 +274,12 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodDa
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
+    AddFloat4(data, float4(m_CameraDeltaSmoothed));
     AddFloat4(data, m_FrustumPrev);
-    AddFloat4(data, float4( m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, m_IsOrthoPrev ) );
     AddFloat4(data, specHitDistParams);
-    AddFloat4(data, specTrimmingParams_and_checkerboardResolveAccumSpeed);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat(data, m_CheckerboardResolveAccumSpeed);
+    AddFloat(data, m_IsOrthoPrev );
     AddFloat(data, disocclusionThreshold);
     AddFloat(data, m_JitterDelta );
     AddFloat(data, diffMaxAccumulatedFrameNum);
@@ -323,10 +336,13 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodDa
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
+    AddFloat4(data, float4(m_CameraDeltaSmoothed));
+    AddFloat4(data, diffHitDistParams);
     AddFloat4(data, specHitDistParams);
-    AddFloat4(data, float4( m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f ) );  // TODO: .w - unused
-    AddFloat4(data, float4( settings.intensityAntilagSettings.sigmaScale, settings.intensityAntilagSettings.enable ? settings.intensityAntilagSettings.thresholdMin : 99998.0f, settings.intensityAntilagSettings.enable ? settings.intensityAntilagSettings.thresholdMax : 99999.0f, 0.0f ) );  // TODO: .w - unused
-    AddFloat4(data, float4( settings.hitDistanceAntilagSettings.sigmaScale, settings.hitDistanceAntilagSettings.enable ? settings.hitDistanceAntilagSettings.thresholdMin : 99998.0f, settings.hitDistanceAntilagSettings.enable ? settings.hitDistanceAntilagSettings.thresholdMax : 99999.0f, 0.0f ) );  // TODO: .w - unused
+    AddFloat4(data, antilagThresholds );
+    AddFloat2(data, settings.intensityAntilagSettings.sigmaScale, settings.hitDistanceAntilagSettings.sigmaScale );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat(data, diffMaxAccumulatedFrameNum);
+    AddFloat(data, specMaxAccumulatedFrameNum);
     ValidateConstants(data);
 }

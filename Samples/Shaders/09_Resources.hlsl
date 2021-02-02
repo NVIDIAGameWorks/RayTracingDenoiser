@@ -22,9 +22,9 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gViewToClip;
     float4x4 gWorldToClipPrev;
     float4x4 gWorldToClip;
+    float4 gDiffHitDistParams;
+    float4 gSpecHitDistParams;
     float4 gCameraFrustum;
-    float3 gCameraDelta;
-    float gNearZ;
     float3 gSunDirection;
     float gExposure;
     float3 gWorldOrigin;
@@ -34,13 +34,12 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float2 gScreenSize;
     float2 gInvScreenSize;
     float2 gJitter;
+    float gNearZ;
     float gAmbient;
     float gAmbientInComposition;
     float gSeparator;
     float gRoughnessOverride;
     float gMetalnessOverride;
-    float gDiffDistScale;
-    float gSpecHitDistScale;
     float gUnitsToMetersMultiplier;
     float gIndirectDiffuse;
     float gIndirectSpecular;
@@ -122,7 +121,6 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 #define TAA_MOTION_MAX_REUSE                0.1
 #define MAX_MIP_LEVEL                       11.0
 #define EMISSION_TEXTURE_MIP_BIAS           5.0
-#define HIT_DISTANCE_LINEAR_SCALE           0.1
 #define ZERO_TROUGHPUT_SAMPLE_NUM           16
 #define IMPORTANCE_SAMPLE_NUM               16
 #define GLASS_TINT                          float3( 0.9, 0.9, 1.0 )
@@ -196,13 +194,6 @@ float4 UnpackNormalAndRoughness( float4 p )
     #endif
 
     return r;
-}
-
-float GetTrimmingFactor( float roughness )
-{
-    float trimmingFactor = gTrimmingParams.x * STL::Math::SmoothStep( gTrimmingParams.y, gTrimmingParams.z, roughness );
-
-    return trimmingFactor;
 }
 
 float3 ApplyPostLightingComposition( uint2 pixelPos, float3 Lsum, Texture2D<float4> gIn_TransparentLighting )

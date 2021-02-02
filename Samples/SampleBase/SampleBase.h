@@ -140,6 +140,7 @@ protected:
     bool m_IsActive = true;
     bool m_TestMode = false;
     char m_SceneFile[512] = "ShaderBalls/ShaderBalls.obj";
+    uint32_t m_DlssQuality = uint32_t(-1);
 
 private:
     uint32_t m_WindowWidth = 1280;

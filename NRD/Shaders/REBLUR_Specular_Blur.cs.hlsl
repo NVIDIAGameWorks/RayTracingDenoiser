@@ -36,7 +36,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 3, 0 );
 
@@ -84,7 +84,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float specCenterNormHitDist = spec.w;
 
     // Blur radius
-    float specHitDist = GetHitDistance( spec.w, centerZ, gSpecHitDistParams, roughness );
+    float specHitDist = GetHitDist( specCenterNormHitDist, centerZ, gSpecHitDistParams, roughness );
     float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, specInternalData.x );
     specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
     float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );

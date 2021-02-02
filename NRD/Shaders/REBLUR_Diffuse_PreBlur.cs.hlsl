@@ -71,13 +71,15 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     int2 smemPos = threadId + BORDER;
     float centerZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
+    float scaledViewZ = clamp( centerZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
+    gOut_ScaledViewZ[ pixelPos ] = scaledViewZ;
+
     [branch]
     if( abs( centerZ ) > abs( gInf ) )
     {
         #if( BLACK_OUT_INF_PIXELS == 1 )
             gOut_Diff[ pixelPos ] = 0;
         #endif
-        gOut_ScaledViewZ[ pixelPos ] = NRD_FP16_MAX;
         return;
     }
 
@@ -110,7 +112,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Blur radius
-    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffHitDistParams );
+    float diffHitDist = GetHitDist( diffCenterNormHitDist, centerZ, gDiffHitDistParams );
     float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, PRE_BLUR_NON_LINEAR_ACCUM_SPEED, PRE_BLUR_RADIUS_SCALE( 1.0 ) );
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
@@ -167,8 +169,5 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     diff.w = lerp( diff.w, diffCenterNormHitDist, HIT_DIST_INPUT_MIX );
 
     // Output
-    float scaledViewZ = clamp( centerZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
-
-    gOut_ScaledViewZ[ pixelPos ] = scaledViewZ;
     gOut_Diff[ pixelPos ] = diff;
 }

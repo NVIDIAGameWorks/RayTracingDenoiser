@@ -63,8 +63,7 @@ copy "ProjectBase\.args" "_Compiler\%TARGET_VS%\09_RayTracing_NRD\09_RayTracing_
 del /q "%DATA_FOLDER%\*.dll"
 copy "_Build\TargetDeps\Assimp\Bin\*.dll" "%DATA_FOLDER%\"
 copy "_Build\TargetDeps\AGS\lib\*.dll" "%DATA_FOLDER%\"
-
-copy "Tests\Bistro.bin" "%DATA_FOLDER%\Scenes\Bistro\tests.bin"
+copy "Tests\Bistro*.bin" "%DATA_FOLDER%\Scenes\Bistro\"
 
 :: =================================================================================================================================================================================
 :: ALL GOOD

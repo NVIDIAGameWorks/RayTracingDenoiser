@@ -29,9 +29,9 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
     float4x4 gWorldToClip;
-    float3 gCameraDelta;
-    float gJitterDelta;
+    float4 gCameraDelta;
     float2 gMotionVectorScale;
+    float gJitterDelta;
     float gCheckerboardResolveAccumSpeed;
     float gDisocclusionThreshold;
     float gDiffMaxAccumulatedFrameNum;
@@ -50,7 +50,7 @@ NRI_RESOURCE( Texture2D<float4>, gIn_History_Diff, t, 4, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 5, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<unorm float>, gOut_InternalData, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<float>, gOut_InternalData, u, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 1, 0 );
 
 void Preload( int2 sharedId, int2 globalId )
@@ -112,9 +112,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Compute previous position for surface motion
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
-    float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) ); // TODO: ideally, isInScreen must be per pixel in 2x2 or 4x4 footprint
-    float2 motion = pixelUvPrev - pixelUv;
-    float motionLength = length( motion );
+    float isInScreen = IsInScreen( pixelUvPrev );
+    float2 pixelMotion = pixelUvPrev - pixelUv;
     float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() );
 
     // Previous data ( Catmull-Rom )
@@ -141,11 +140,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float3 prevNormal01 = UnpackNormalRoughness( prevPackGreen.z ).xyz;
     float3 prevNormal11 = UnpackNormalRoughness( prevPackGreen.w ).xyz;
 
-    float3 prevNflat = prevNormal00.xyz + prevNormal10.xyz + prevNormal01.xyz + prevNormal11.xyz;
+    float3 prevNflat = prevNormal00 + prevNormal10 + prevNormal01 + prevNormal11;
     prevNflat = normalize( prevNflat );
 
     // Plane distance based disocclusion for surface motion
-    float parallax = ComputeParallax( pixelUv, 1.0, Xprev, gCameraDelta, gWorldToClip );
+    float parallax = ComputeParallax( pixelUv, Xprev, gCameraDelta.xyz, gWorldToClip );
     float2 disocclusionThresholds = GetDisocclusionThresholds( gDisocclusionThreshold, gJitterDelta, viewZ, parallax, Nflat, X, invDistToPoint );
     float3 Xvprev = STL::Geometry::AffineTransform( gWorldToViewPrev, Xprev );
     float NoXprev1 = abs( dot( Nflat, Xprev ) ); // = dot( Nvflatprev, Xvprev ), "abs" is needed here only to get "max" absolute value in the next line
@@ -164,10 +163,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Avoid "got stuck in history" effect under slow motion when only 1 sample is valid from 2x2 footprint and there is a big difference between
     // foreground and background surfaces. Instead of final scalar accum speed scaling we can apply it to accum speeds from the previous frame
     float4 planeDist2x2 = float4( planeDist0.w, planeDist1.z, planeDist2.y, planeDist3.x );
-    planeDist2x2 = STL::Math::LinearStep( disocclusionThresholds.x, 0.2, planeDist2x2 );
-    planeDist2x2 = 1.0 - planeDist2x2;
+    planeDist2x2 = STL::Math::LinearStep( 0.2, disocclusionThresholds.x, planeDist2x2 );
 
     float footprintAvg = STL::Filtering::ApplyBilinearFilter( planeDist2x2.x, planeDist2x2.y, planeDist2x2.z, planeDist2x2.w, bilinearFilterAtPrevPos );
+    float fmin = min( bilinearFilterAtPrevPos.weights.x, bilinearFilterAtPrevPos.weights.y ) + 0.01;
+    float fmax = max( bilinearFilterAtPrevPos.weights.x, bilinearFilterAtPrevPos.weights.y ) + 0.01;
+    footprintAvg = lerp( footprintAvg, 1.0, STL::Math::LinearStep( 0.05, 0.5, fmin / fmax ) );
+
     diffPrevAccumSpeeds *= footprintAvg;
 
     // Ignore backfacing history
@@ -216,19 +218,19 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     bool diffHasData = gDiffCheckerboard == 2 || checkerboard == gDiffCheckerboard;
     if( !diffHasData )
     {
-        float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffAccumSpeed, motionLength );
+        float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffAccumSpeed, parallax );
         float historyWeight = gCheckerboardResolveAccumSpeed * temporalAccumulationParams.x;
 
         diff = lerp( diff, diffHistory, historyWeight );
     }
 
     // Diffuse accumulation
-    float2 diffAccumSpeeds = GetSpecAccumSpeed( diffAccumSpeed, 1.0, 0.0, 0.0 );
-    float diffHistoryAmount = 1.0 / ( diffAccumSpeedFade * diffAccumSpeeds.x + 1.0 );
+    diffAccumSpeed = GetSpecAccumSpeed( diffAccumSpeed, 1.0, 0.0, 0.0 );
+    float diffAccumSpeedNonLinear = 1.0 / ( diffAccumSpeedFade * diffAccumSpeed + 1.0 );
 
     float4 diffResult;
-    diffResult.xyz = lerp( diffHistory.xyz, diff.xyz, diffHistoryAmount );
-    diffResult.w = lerp( diffHistory.w, diff.w, max( diffHistoryAmount, HIT_DIST_MIN_ACCUM_SPEED ) );
+    diffResult.xyz = lerp( diffHistory.xyz, diff.xyz, diffAccumSpeedNonLinear );
+    diffResult.w = lerp( diffHistory.w, diff.w, max( diffAccumSpeedNonLinear, HIT_DIST_MIN_ACCUM_SPEED( 1.0 ) ) );
 
     // Get rid of possible negative values
     diffResult.xyz = _NRD_YCoCgToLinear( diffResult.xyz );
@@ -236,6 +238,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     diffResult.xyz = _NRD_LinearToYCoCg( diffResult.xyz );
 
     // Output
-    gOut_InternalData[ pixelPos ] = PackDiffInternalData( float3( diffAccumSpeeds, diffAccumSpeed ) );
+    gOut_InternalData[ pixelPos ] = PackDiffInternalData( diffAccumSpeed );
     gOut_Diff[ pixelPos ] = diffResult;
 }

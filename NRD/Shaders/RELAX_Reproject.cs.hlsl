@@ -12,11 +12,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
-    float4x4 gClipToView;
-    float4x4 gViewToClip;
-    float4x4 gClipToWorld;
-    float4x4 gPrevClipToWorld;
     float4x4 gPrevWorldToClip;
+
+    float4   gFrustumRight;
+    float4   gFrustumUp;
+    float4   gFrustumForward;
+
+    float4   gPrevFrustumRight;
+    float4   gPrevFrustumUp;
+    float4   gPrevFrustumForward;
 
     float3   gPrevCameraPosition;
     float    gJitterDelta;
@@ -53,14 +57,14 @@ NRI_RESOURCE(Texture2D<float4>, gPrevDiffuseIlluminationUnpacked, t, 7, 0);
 NRI_RESOURCE(Texture2D<float2>, gPrevSpecularAndDiffuse2ndMoments, t, 8, 0);
 NRI_RESOURCE(Texture2D<uint2>,  gPrevNormalRoughnessDepth, t, 9, 0);
 NRI_RESOURCE(Texture2D<float>,  gPrevReflectionHitT, t, 10, 0);
-NRI_RESOURCE(Texture2D<float>,  gPrevHistoryLength, t, 11, 0);
+NRI_RESOURCE(Texture2D<float2>, gPrevSpecularAndDiffuseHistoryLength, t, 11, 0);
 
 // Outputs
 NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationLogLuv, u, 0, 0);
 NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationResponsiveLogLuv, u, 1, 0);
 NRI_RESOURCE(RWTexture2D<float2>, gOutSpecularAndDiffuse2ndMoments, u, 2, 0);
 NRI_RESOURCE(RWTexture2D<float>,  gOutReflectionHitT, u, 3, 0);
-NRI_RESOURCE(RWTexture2D<float>,  gOutHistoryLength, u, 4, 0);
+NRI_RESOURCE(RWTexture2D<float2>, gOutSpecularAndDiffuseHistoryLength, u, 4, 0);
 NRI_RESOURCE(RWTexture2D<float>,  gOutSpecularReprojectionConfidence, u, 5, 0);
 
 // Helper functions
@@ -69,30 +73,18 @@ float getJitterRadius(float jitterDelta, float linearZ)
     return jitterDelta * gUnproject * (gIsOrtho > 0 ? 1.0 : linearZ);
 }
 
-float getLinearZFromDepth(int2 ipos, float depth)
-{
-    float2 uv = (float2(ipos) + 0.5) * gInvViewSize.xy;
-    float4 clipPos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1);
-    float4 viewPos = mul(gClipToView, clipPos);
-    viewPos.z /= viewPos.w;
-    return viewPos.z;
-}
-
 float3 getCurrentWorldPos(int2 pixelPos, float depth)
 {
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize;
-    float4 clipPos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1);
-    float4 worldPos = mul(gClipToWorld, clipPos);
-    return worldPos.xyz / worldPos.w;
+    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize * 2.0 - 1.0;
+    return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
 float3 getPreviousWorldPos(int2 pixelPos, float depth)
 {
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize;
-    float4 clipPos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1);
-    float4 worldPos = mul(gPrevClipToWorld, clipPos);
-    return worldPos.xyz / worldPos.w;
+    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize * 2.0 - 1.0;
+    return depth * (gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * uv.x - gPrevFrustumUp.xyz * uv.y);
 }
+
 
 float2 getRoughnessWeightParams(float roughness0)
 {
@@ -124,7 +116,7 @@ float getSpecularLobeHalfAngle(float roughness)
 float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
 {
     // Assuming that "n0" is normalized and "n" is not!
-    float cosa = saturate(dot(n0, n));// *STL::Math::Rsqrt(STL::Math::LengthSquared(n)));
+    float cosa = saturate(dot(n0, n));
     float a = acos(cosa);
     a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
 
@@ -142,18 +134,17 @@ float getModifiedRoughnessFromNormalVariance(float roughness, float3 nonNormaliz
 
 float isReprojectionTapValid(int2 pixelCoord, float currentLinearZ, float3 currentWorldPos, float3 previousWorldPos, float3 currentNormal, float3 previousNormal, float jitterRadius)
 {
-
     // Check whether reprojected pixel is inside of the screen
-    if (any(pixelCoord < int2(0, 0)) || any(pixelCoord > int2(gResolution) - int2(1, 1))) return 0;
+    if (any(pixelCoord < int2(0, 0)) || any(pixelCoord >= int2(gResolution))) return 0;
 
     // Check if plane distance is acceptable
-    float maxDot = max(abs(dot(currentWorldPos - previousWorldPos, previousNormal)), abs(dot(currentWorldPos - previousWorldPos, currentNormal)));
-    if ((maxDot / currentLinearZ) > 0.01 + jitterRadius * 2.0) return 0;
+    float3 posDiff = currentWorldPos - previousWorldPos;
+    float maxDot = max(abs(dot(posDiff, previousNormal)), abs(dot(posDiff, currentNormal)));
 
-    // No need to check normals, as plane distance check is conservative enough!
-    // if (dot(currentNormal, previousNormal) < 0.5) return 0;
+    // Reject backfacing history: if angle between current normal and previous normal is larger than 90 deg
+    if (dot(currentNormal, previousNormal) < 0.0) return 0;
 
-    return 1.0;
+    return ((maxDot / currentLinearZ) > 0.01 + jitterRadius * 2.0) ? 0.0 : 1.0;
 }
 
 
@@ -162,10 +153,6 @@ float getSpecularAlphaAdjustment(float roughness, float cosa)
     // This is the main parameter - cone angle
     float angle = getSpecularLobeHalfAngle(roughness);
 
-    // Mitigate banding introduced by errors caused by normals being stored in octahedral 8+8 (Oct16) format
-    // See http://jcgt.org/published/0003/02/01/ "A Survey of Efficient Representations for Independent Unit Vectors"
-    angle += 0.94 * 3.141592 / 180.0;
-
     float a = acos(cosa);
     a = STL::Math::SmoothStep(0.0, angle, a);
     return saturate(a);
@@ -173,12 +160,11 @@ float getSpecularAlphaAdjustment(float roughness, float cosa)
 
 
 // Returns reprojection search result based on surface motion:
-// 2 - 16 taps in 4x4 footprint are good, bicubic filtering used
-// 1 - some of 4 taps in 2x2 footprint are good, weighted bilinear used
-// 0 - candidate taps for reprojection not found, therefore reprojection is not valid = not found
+// 1 - reprojection found
+// 0 - reprojection not found
 //
 // Also returns reprojected data from previous frame calculated using filtering based on filters above.
-// For better performance, some data is filtered using cross-bilateral filtering instead of bicubic even if all bicubic taps are valid.
+// For better performance, some data is filtered using weighed bilinear instead of bicubic even if all bicubic taps are valid.
 int loadSurfaceMotionBasedPrevData(
     int2 pixelPosOnScreen,
     float3 currentWorldPos,
@@ -192,7 +178,7 @@ int loadSurfaceMotionBasedPrevData(
     out float2 prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments,
     out float3 prevWorldPos,
     out float  prevReflectionHitT,
-    out float  historyLength,
+    out float2 historyLength,
     out float3 debugOut)
 {
     // Setting default values for output
@@ -201,7 +187,7 @@ int loadSurfaceMotionBasedPrevData(
     prevSpecularResponsiveIllum = 0;
     prevDiffuseResponsiveIllum = 0;
     prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments = 0;
-    prevWorldPos = 0;
+    prevWorldPos = currentWorldPos;
     prevReflectionHitT = currentReflectionHitT;
     historyLength = 0;
     debugOut = 0;
@@ -216,8 +202,6 @@ int loadSurfaceMotionBasedPrevData(
     float2 pixelUV = (pixelPosOnScreen + 0.5) * gInvViewSize;
     float2 prevPixelUV = STL::Geometry::GetPrevUvFromMotion(pixelUV, currentWorldPos, gPrevWorldToClip, motionVector, gWorldSpaceMotion);
     float2 prevPixelPosOnScreen = prevPixelUV * gResolution;
-
-    motionVector *= gWorldSpaceMotion > 0 ? 1.0 : 0.0;
 
     // Calculating footprint origin and weights
     int2 bilinearOrigin = int2(floor(prevPixelPosOnScreen - 0.5) + 0.5);
@@ -243,32 +227,38 @@ int loadSurfaceMotionBasedPrevData(
     float3 prevWorldPosInTap;
     int2 tapPos;
     int reprojectionTapValid;
-
     float3 prevWorldPos00, prevWorldPos10, prevWorldPos01, prevWorldPos11;
+
+    // Adjusting worldspace position for disocclusion fix:
+    // Applying worldspace motion first,
+    motionVector *= gWorldSpaceMotion > 0 ? 1.0 : 0.0;
+
+    // Then taking care of camera motion, because world space is always centered at camera position in NRD
+    currentWorldPos += motionVector - gPrevCameraPosition;
 
     // 1st row
     tapPos = bilinearOrigin + int2(0, -1);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(1, -1);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
     // 2nd row
     tapPos = bilinearOrigin + int2(-1, 0);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(0, 0);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.x = reprojectionTapValid ? 1.0 : 0.0;
@@ -276,7 +266,7 @@ int loadSurfaceMotionBasedPrevData(
 
     tapPos = bilinearOrigin + int2(1, 0);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.y = reprojectionTapValid ? 1.0 : 0.0;
@@ -284,20 +274,20 @@ int loadSurfaceMotionBasedPrevData(
 
     tapPos = bilinearOrigin + int2(2, 0);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
     // 3rd row
     tapPos = bilinearOrigin + int2(-1, 1);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(0, 1);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.z = reprojectionTapValid ? 1.0 : 0.0;
@@ -305,7 +295,7 @@ int loadSurfaceMotionBasedPrevData(
 
     tapPos = bilinearOrigin + int2(1, 1);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.w = reprojectionTapValid ? 1.0 : 0.0;
@@ -313,20 +303,20 @@ int loadSurfaceMotionBasedPrevData(
 
     tapPos = bilinearOrigin + int2(2, 1);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
     // 4th row
     tapPos = bilinearOrigin + int2(0, 2);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(1, 2);
     UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessDontCare, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap) - motionVector;
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
     reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
     bicubicFootprintValid *= reprojectionTapValid;
 
@@ -336,56 +326,49 @@ int loadSurfaceMotionBasedPrevData(
     float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
     interpolatedBinaryWeight = max(1e-2, interpolatedBinaryWeight);
 
-    //Applying reprojection filters
+    // Applying reprojection filters
     int reprojectionFound = 0;
 
-    // Trying to apply bicubic filter first
-    if (gUseBicubic && (bicubicFootprintValid > 0))
+    if (any(bilinearTapsValid))
     {
-        // Bicubic for illumination and 2nd moments
-        // BicubicSampleCatmullRomFromPackedLogLuvX2(prevSpecularIllum, prevDiffuseIllum, gPrevSpecularAndDiffuseIlluminationLogLuv, prevPixelPosOnScreen);
-        // ^- unfortunately this is very slow, so passing uncompressed temporally accumulated data and using bicubic with hardware bilinear fetches is a net win.
+        // Trying to apply bicubic filter first
+        if (gUseBicubic && (bicubicFootprintValid > 0))
+        {
+            // Bicubic for illumination and 2nd moments
+            prevSpecularIllum =
+                max(0, BicubicSampleCatmullRomFloat4UsingBilinear(gPrevSpecularIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
+            prevDiffuseIllum =
+                max(0, BicubicSampleCatmullRomFloat4UsingBilinear(gPrevDiffuseIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
+            prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments =
+                max(0, BicubicSampleCatmullRomFloat2UsingBilinear(gPrevSpecularAndDiffuse2ndMoments, gLinearClamp, prevPixelPosOnScreen, gInvViewSize));
+        }
+        else
+        {
+            // If no success with the bicubic, then do weighted bilinear
+            prevSpecularIllum = 
+                LinearInterpolationWithBinaryWeightsFloat4(gPrevSpecularIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
+            prevDiffuseIllum = 
+                LinearInterpolationWithBinaryWeightsFloat4(gPrevDiffuseIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
+            prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments = 
+                max(0, LinearInterpolationWithBinaryWeightsFloat2(gPrevSpecularAndDiffuse2ndMoments, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight));
+        }
 
-        prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments = max(0, BicubicSampleCatmullRomFloat2UsingBilinear(gPrevSpecularAndDiffuse2ndMoments, gLinearClamp, prevPixelPosOnScreen, gInvViewSize));
-        prevSpecularIllum = max(0, BicubicSampleCatmullRomFloat4UsingBilinear(gPrevSpecularIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
-        prevDiffuseIllum = max(0, BicubicSampleCatmullRomFloat4UsingBilinear(gPrevDiffuseIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
-
-        // Bilinear for responsive illumination
+        // Always weighted Bilinear for responsive illumination
         LinearInterpolationWithBinaryWeightsFromPackedLogLuvX2(prevSpecularResponsiveIllum, prevDiffuseResponsiveIllum, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
-        reprojectionFound = 2;
+        // Calculating previousd worldspace position
+        // by applying weighted bilinear to worldspace positions in taps.
+        // Also calculating history length by using weighted bilinear
+            prevWorldPos = 
+                LinearInterpolationWithBinaryWeightsImmediateFloat3(
+                prevWorldPos00, prevWorldPos10, prevWorldPos01, prevWorldPos11,
+                bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+
+            historyLength = 255.0 * LinearInterpolationWithBinaryWeightsFloat2(gPrevSpecularAndDiffuseHistoryLength, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+            prevReflectionHitT = LinearInterpolationWithBinaryWeightsFloat(gPrevReflectionHitT, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+
+            reprojectionFound = 1;
     }
-
-    // If no success with the bicubic, but any bilinear taps are valid, then do weighted bilinear
-    if (any(bilinearTapsValid) && (reprojectionFound == 0))
-    {
-
-        LinearInterpolationWithBinaryWeightsFromPackedLogLuvX2(prevSpecularIllum, prevDiffuseIllum, gPrevSpecularAndDiffuseIlluminationLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-        LinearInterpolationWithBinaryWeightsFromPackedLogLuvX2(prevSpecularResponsiveIllum, prevDiffuseResponsiveIllum, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-        prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments = max(0, LinearInterpolationWithBinaryWeightsFloat2(gPrevSpecularAndDiffuse2ndMoments, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight));
-
-        reprojectionFound = 1;
-    }
-
-    // If reprojection was found, calculating previousd worldspace position
-    // by applying weighted bilinear to worldspace positions in taps.
-    // Also calculating history length by using weighted bilinear
-    if (reprojectionFound > 0)
-    {
-
-        prevWorldPos = LinearInterpolationWithBinaryWeightsImmediateFloat3(
-                                prevWorldPos00, prevWorldPos10, prevWorldPos01, prevWorldPos11,
-                                bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-
-        historyLength = LinearInterpolationWithBinaryWeightsFloat(gPrevHistoryLength, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-        prevReflectionHitT = LinearInterpolationWithBinaryWeightsFloat(gPrevReflectionHitT, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-    }
-    else
-    {
-        historyLength = 0;
-        prevWorldPos = currentWorldPos;
-    }
-
     return reprojectionFound;
 }
 
@@ -414,6 +397,10 @@ int loadVirtualMotionBasedPrevData(
     prevRoughness = 0;
     prevReflectionHitT = currentReflectionHitT;
     debugOut = 0;
+
+    // Taking care of camera motion, because world space is always centered at camera position in NRD
+    prevWorldPos += gPrevCameraPosition;
+    currentWorldPos -= gPrevCameraPosition;
 
     // Calculating previous worldspace virtual position based on reflection hitT
     float3 virtualViewVector = normalize(currentViewVector) * currentReflectionHitT;
@@ -492,9 +479,10 @@ int loadVirtualMotionBasedPrevData(
     // Weighted bilinear for prev specular data based on virtual motion
     if (any(bilinearTapsValid))
     {
+        prevSpecularIllum = LinearInterpolationWithBinaryWeightsFloat4(gPrevSpecularIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
         float3 diffuseIllumDontCare = 0;
-        LinearInterpolationWithBinaryWeightsFromPackedLogLuvX2(prevSpecularIllum, diffuseIllumDontCare, gPrevSpecularAndDiffuseIlluminationLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
         LinearInterpolationWithBinaryWeightsFromPackedLogLuvX2(prevSpecularResponsiveIllum, diffuseIllumDontCare, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+
         prevSpecular2ndMoment = max(0, LinearInterpolationWithBinaryWeightsFloat2(gPrevSpecularAndDiffuse2ndMoments, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight)).r;
         prevNormal = LinearInterpolationWithBinaryWeightsImmediateFloat3(
                                     prevNormal00, prevNormal10, prevNormal01, prevNormal11,
@@ -516,8 +504,8 @@ int loadVirtualMotionBasedPrevData(
 // Main
 //
 
-[numthreads(16, 16, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+[numthreads(8, 8, 1)]
+void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     if (any(dispatchThreadId.xy >= gResolution)) return;
 
@@ -537,7 +525,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float currentRoughness;
     float currentDepth;
     UnpackNormalRoughnessDepth(currentNormal, currentRoughness, currentDepth, gNormalRoughnessDepth[ipos]);
-    float currentLinearZ = getLinearZFromDepth(ipos, currentDepth);
+    float currentLinearZ = currentDepth;
 
     // Calculating average normal in 3x3 area around current pixel
     // TODO: move this to shmem?
@@ -553,9 +541,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             int2 p = ipos + int2(i, j);
             float3 pNormal;
             float pRoughness;
-            float pDepth;
-            UnpackNormalRoughnessDepth(pNormal, pRoughness, pDepth, gNormalRoughnessDepth[p]);
-            float pZ = getLinearZFromDepth(p, pDepth);
+            float pZ;
+            UnpackNormalRoughnessDepth(pNormal, pRoughness, pZ, gNormalRoughnessDepth[p]);
 
             float w = abs(pZ - currentLinearZ) / (min(abs(currentLinearZ), abs(pZ)) + 0.001) < 0.05 ? 1.0 : 0.0;
 
@@ -588,7 +575,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float2 prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments;
     float  prevSurfaceMotionBasedReflectionHitT;
     float3 prevSurfaceMotionBasedWorldPos;
-    float  historyLength;
+    float2 historyLength;
     float3 debugOut1;
 
     int surfaceMotionBasedReprojectionFound = loadSurfaceMotionBasedPrevData(ipos.xy,
@@ -617,11 +604,11 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     // This adjusts the alpha for the case where insufficient history is available.
     // It boosts the temporal accumulation to give the samples equal weights in
     // the beginning.
-    float specularAlpha = surfaceMotionBasedReprojectionFound ? max(gSpecularAlpha, 1.0 / historyLength) : 1.0;
-    float specularAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(gSpecularResponsiveAlpha, 1.0 / historyLength) : 1.0;
+    float specularAlpha = surfaceMotionBasedReprojectionFound ? max(gSpecularAlpha, 1.0 / historyLength.x) : 1.0;
+    float specularAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(gSpecularResponsiveAlpha, 1.0 / historyLength.x) : 1.0;
 
-    float diffuseAlpha = surfaceMotionBasedReprojectionFound ? max(gDiffuseAlpha, 1.0 / historyLength) : 1.0;
-    float diffuseAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(gDiffuseResponsiveAlpha, 1.0 / historyLength) : 1.0;
+    float diffuseAlpha = surfaceMotionBasedReprojectionFound ? max(gDiffuseAlpha, 1.0 / historyLength.y) : 1.0;
+    float diffuseAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(gDiffuseResponsiveAlpha, 1.0 / historyLength.y) : 1.0;
 
     // Temporal accumulation of reflection HitT will happen later in the shader
     float accumulatedReflectionHitT = prevSurfaceMotionBasedReflectionHitT;
@@ -675,7 +662,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     // TODO: increase current roughness based on current normal variance
     float2 normalParams;
     normalParams.x = getSpecularLobeHalfAngle(currentRoughnessModified);
-    normalParams.x *= 0.33;
     normalParams.x += 2.5 * 3.141592 / 180.0; // adding 2.5 deg of slack to increase reprojection confidence
     normalParams.y = 1.0;
     virtualMotionBasedReprojectionConfidence *= getSpecularNormalWeight(normalParams, currentNormal, prevVirtualMotionBasedNormal);
@@ -718,9 +704,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     // Adjusting weighing between virtual motion based and surface motion based reprojection for specular,
     // based on current roughness: virtual motion is perfectly valid for perfect mirrors only
-    virtualVsSurfaceWeight *= 1.0 - STL::Math::SmoothStep(0.4, 1.0, currentRoughness);
-
-    //virtualVsSurfaceWeight = 1.0;
+    virtualVsSurfaceWeight *= 1.0 - STL::Math::SmoothStep(0.1, 0.4, currentRoughnessModified);
 
     // Calculating overall specular reprojection confidence
     float specularConfidence = lerp(surfaceMotionBasedReprojectionConfidence,
@@ -737,11 +721,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float virtualMotionBasedAccumulatedReflectionHitT = lerp(prevVirtualMotionBasedReflectionHitT, specularIllumination.a, specularHitTAlphaVirtualMotionBased);
 
     accumulatedReflectionHitT = virtualMotionBasedAccumulatedReflectionHitT;
-                                    /*
-                                    lerp(surfaceMotionBasedAccumulatedReflectionHitT,
-                                    virtualMotionBasedAccumulatedReflectionHitT,
-                                    virtualVsSurfaceWeight);
-                                    */
 
     accumulatedReflectionHitT = min(1000.0, max(0.01, accumulatedReflectionHitT));
 
@@ -778,7 +757,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     gOutReflectionHitT[ipos] = accumulatedReflectionHitT;
 
-    gOutHistoryLength[ipos] = historyLength;
+    gOutSpecularAndDiffuseHistoryLength[ipos] = historyLength / 255.0;
 
     gOutSpecularReprojectionConfidence[ipos] = specularConfidence;
 }

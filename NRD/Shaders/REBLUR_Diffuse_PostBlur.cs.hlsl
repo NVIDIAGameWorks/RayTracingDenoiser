@@ -58,7 +58,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     PRELOAD_INTO_SMEM;
 
     // Debug
-    #if( SHOW_MIPS )
+    #if( NRD_DEBUG == NRD_SHOW_MIPS )
         gOut_Diff[ pixelPos ] = gIn_Diff[ pixelPos ];
         return;
     #endif
@@ -90,17 +90,18 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 diff = gIn_Diff[ pixelPos ];
     float diffCenterNormHitDist = diff.w;
 
-    // Blur radius
-    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffHitDistParams );
-    float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffInternalData.x );
-    float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
-
     // Blur radius scale
-    float diffLuma = diff.x;
-    float diffLumaPrev = gIn_DiffTemporalAccumulationOutput[ pixelPos ].x;
-    float diffError = GetColorErrorForAdaptiveRadiusScale( diffLuma, diffLumaPrev, diffInternalData.x );
-    float diffBlurRadiusScale = POST_BLUR_RADIUS_SCALE + diffError * gDiffBlurRadiusScale;
-    diffWorldBlurRadius *= diffBlurRadiusScale;
+    float2 diffCurr = diff.xw;
+    float2 diffPrev = gIn_DiffTemporalAccumulationOutput[ pixelPos ].xw;
+    float diffError = GetColorErrorForAdaptiveRadiusScale( diffCurr, diffPrev, diffInternalData.x );
+    float diffRadiusScale = POST_BLUR_RADIUS_SCALE + diffError * gDiffBlurRadiusScale;
+    float diffRadiusBias = diffError * gDiffBlurRadiusScale;
+
+    // Blur radius
+    float diffHitDist = GetHitDist( diffCenterNormHitDist, centerZ, gDiffHitDistParams );
+    float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffInternalData.x );
+    diffBlurRadius = diffBlurRadius * diffRadiusScale + diffRadiusBias;
+    float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( POST_BLUR_ROTATOR_MODE, pixelPos, gRotator );

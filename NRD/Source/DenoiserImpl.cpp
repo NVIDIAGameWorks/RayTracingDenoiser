@@ -307,7 +307,7 @@ void DenoiserImpl::AddNrdSharedConstants(const MethodData& methodData, float pla
     float unproject = 1.0f / (0.5f * h * m_ProjectY);
     float infWithViewZSign = m_CommonSettings.denoisingRange * ( ( m_ProjectionFlags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );
     float frameRateScale = Min( 33.333f / m_Timer.GetSmoothedElapsedTime(), 4.0f );
-    
+
     uint32_t bools = 0;
     if (m_CommonSettings.worldSpaceMotion)
         bools |= 0x1;
@@ -334,6 +334,13 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     m_JitterPrev.y = m_CommonSettings.cameraJitter[1];
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
+
+    // There are many cases, where history buffers contain garbage - handle at least one of them internally
+    if (m_IsFirstUse)
+    {
+        m_CommonSettings.frameIndex = 0;
+        m_IsFirstUse = false;
+    }
 
     float whiteNoise = Rand::uf1() * DegToRad(360.0f);
     float ca = Cos( whiteNoise );
@@ -381,9 +388,23 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
     m_ViewToWorldPrev = m_WorldToViewPrev;
     m_ViewToWorldPrev.InvertOrtho();
-    float3 cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
 
+    float3 cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
     m_CameraDelta = cameraPositionPrev - cameraPosition;
+
+    if( m_CommonSettings.frameIndex == 0 )
+        m_CameraDeltaSmoothed = m_CameraDelta;
+    else
+    {
+        float l1 = Length(m_CameraDeltaSmoothed);
+        float l2 = Length(m_CameraDelta);
+
+        float relativeDelta = Abs(l1 - l2) / ( Min( l1, l2 ) + 1e-7f );
+        float f = relativeDelta / ( 1.0f + relativeDelta );
+        f = Max(f, 0.1f);
+
+        m_CameraDeltaSmoothed = Lerp( m_CameraDeltaSmoothed, m_CameraDelta, float3(f) );
+    }
 
     // IMPORTANT: this part is mandatory needed to preserve precision by making matrices camera relative
     m_ViewToWorld.SetTranslation( float3::Zero() );

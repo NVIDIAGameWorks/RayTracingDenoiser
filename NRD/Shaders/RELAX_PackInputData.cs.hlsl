@@ -45,7 +45,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 normal = normalAndRoughness.xyz;
 
     // Read depth
-    float depth = deLinearizeDepth(gIn_ViewZ[pixelPos]);
+    float depth = gIn_ViewZ[pixelPos];
 
     // Pack and store
     gOutNormalRoughnessDepth[pixelPos] = PackNormalRoughnessDepth(normal, roughness, depth);

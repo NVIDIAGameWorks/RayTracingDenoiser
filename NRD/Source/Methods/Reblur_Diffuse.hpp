@@ -59,13 +59,13 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
-        PushInput( AsUint(Permanent::HISTORY) ); // TODO: STABILIZED_HISTORY can be used here - it looks better, but adds lag because TS uses wide variance clamping
+        PushInput( AsUint(Permanent::HISTORY) );
         PushInput( TEMP );
 
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ACCUMULATED) );
 
-        desc.constantBufferDataSize = SumConstants(4, 1, 1, 5);
+        desc.constantBufferDataSize = SumConstants(4, 1, 1, 6);
 
         AddDispatch(desc, REBLUR_Diffuse_TemporalAccumulation, w, h);
     }
@@ -144,7 +144,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::STABILIZED_HISTORY_2) );
         PushOutput( AsUint(ResourceType::OUT_DIFF_HIT) );
 
-        desc.constantBufferDataSize = SumConstants(2, 2, 1, 0);
+        desc.constantBufferDataSize = SumConstants(3, 3, 2, 1);
 
         AddDispatch(desc, REBLUR_Diffuse_TemporalStabilization, w, h);
     }
@@ -184,6 +184,20 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
         disocclusionThreshold = 0.005f;
     }
 
+    float4 antilagThresholds = float4(settings.intensityAntilagSettings.thresholdMin, settings.hitDistanceAntilagSettings.thresholdMin, settings.intensityAntilagSettings.thresholdMax, settings.hitDistanceAntilagSettings.thresholdMax);
+
+    if (!settings.intensityAntilagSettings.enable)
+    {
+        antilagThresholds.x = 99998.0f;
+        antilagThresholds.z = 99999.0f;
+    }
+
+    if (!settings.hitDistanceAntilagSettings.enable)
+    {
+        antilagThresholds.y = 99998.0f;
+        antilagThresholds.w = 99999.0f;
+    }
+
     // PRE_BLUR
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::PRE_BLUR));
     AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
@@ -201,8 +215,9 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
-    AddFloat4(data, float4( m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, m_JitterDelta ) );
+    AddFloat4(data, float4(m_CameraDeltaSmoothed));
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat(data, m_JitterDelta );
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, disocclusionThreshold );
     AddFloat(data, maxAccumulatedFrameNum);
@@ -245,8 +260,12 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddNrdSharedConstants(methodData, settings.planeDistanceSensitivity, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
-    AddFloat4(data, float4( settings.intensityAntilagSettings.sigmaScale, settings.intensityAntilagSettings.enable ? settings.intensityAntilagSettings.thresholdMin : 99998.0f, settings.intensityAntilagSettings.enable ? settings.intensityAntilagSettings.thresholdMax : 99999.0f, 0.0f ) );  // TODO: .w - unused
-    AddFloat4(data, float4( settings.hitDistanceAntilagSettings.sigmaScale, settings.hitDistanceAntilagSettings.enable ? settings.hitDistanceAntilagSettings.thresholdMin : 99998.0f, settings.hitDistanceAntilagSettings.enable ? settings.hitDistanceAntilagSettings.thresholdMax : 99999.0f, 0.0f ) );  // TODO: .w - unused
+    AddFloat4x4(data, m_WorldToClip);
+    AddFloat4(data, float4(m_CameraDeltaSmoothed));
+    AddFloat4(data, diffHitDistParams);
+    AddFloat4(data, antilagThresholds );
+    AddFloat2(data, settings.intensityAntilagSettings.sigmaScale, settings.hitDistanceAntilagSettings.sigmaScale );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat(data, maxAccumulatedFrameNum);
     ValidateConstants(data);
 }

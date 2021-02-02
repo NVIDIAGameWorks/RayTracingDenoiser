@@ -118,7 +118,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     variance *= max( 1.0, MAX_FRAME_NUM_WITH_VARIANCE_BOOST / ( historyLength + 1.0 ) );
 
     // Output
-    #if( SHOW_ACCUM_SPEED == 1 )
+    #if( NRD_DEBUG == NRD_SHOW_ACCUM_SPEED  )
         input.w = saturate( historyLength / 31.0 );
     #endif
 

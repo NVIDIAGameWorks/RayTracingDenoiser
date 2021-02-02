@@ -780,6 +780,7 @@ void SampleBase::ParseCommandLine(const wchar_t* commandLine)
         L"--height=<window height>\n"
         L"--frameNum=<num>\n"
         L"--swapInterval=<0/1>\n"
+        L"--dlssQuality=<0/1/2>\n"
         L"--scene=<scene path relative to '_Data/Scenes' folder>\n"
         L"--debugAPI\n"
         L"--debugNRI\n"
@@ -828,6 +829,10 @@ void SampleBase::ParseCommandLine(const wchar_t* commandLine)
 
     CLARG_START(commandLine, L"--swapInterval=", false)
         m_SwapInterval = CLARG_TO_UINT;
+    CLARG_END;
+
+    CLARG_START(commandLine, L"--dlssQuality=", false)
+        m_DlssQuality = CLARG_TO_UINT;
     CLARG_END;
 
     CLARG_START(commandLine, L"--scene=", false)

@@ -23,7 +23,7 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 // Inputs
 NRI_RESOURCE(Texture2D<uint2>, gSpecularAndDiffuseIlluminationLogLuv, t, 0, 0);
 NRI_RESOURCE(Texture2D<float2>, gSpecularAndDiffuse2ndMoments, t, 1, 0);
-NRI_RESOURCE(Texture2D<float>, gHistoryLength, t, 2, 0);
+NRI_RESOURCE(Texture2D<float2>, gHistoryLength, t, 2, 0);
 NRI_RESOURCE(Texture2D<uint2>, gNormalRoughnessDepth, t, 3, 0);
 
 // Outputs
@@ -160,7 +160,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
 
     int2 sharedMemoryCenterIndex = groupThreadId.xy + int2(2,2);
 
-    float historyLength = gHistoryLength[ipos].x;
+    // Using diffuse history length for spatial variance estimation
+    float historyLength = 255.0*gHistoryLength[ipos].y;
 
     float3 centerSpecularIllumination;
     float3 centerDiffuseIllumination;

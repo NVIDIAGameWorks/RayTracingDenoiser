@@ -123,7 +123,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Compute previous pixel position
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
-    float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
+    float isInScreen = IsInScreen( pixelUvPrev );
 
     // Sample history
     SHADOW_TYPE history = gIn_History.SampleLevel( gLinearClamp, pixelUvPrev, 0.0 );

@@ -27,9 +27,13 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
-    float4 gIntensityAntilag;
-    float4 gHitDistanceAntilag;
+    float4x4 gWorldToClip;
+    float4 gCameraDelta;
+    float4 gDiffHitDistParams;
+    float4 gAntilagThresholds;
+    float2 gAntilagSigmaScale;
     float2 gMotionVectorScale;
+    float gDiffMaxAccumulatedFrameNum;
 };
 
 #include "REBLUR_Common.hlsl"
@@ -62,7 +66,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
 
     // Debug
-    #if( SHOW_MIPS )
+    #if( NRD_DEBUG == NRD_SHOW_MIPS )
         float4 d = gIn_Diff[ pixelPos ];
         gOut_Diff[ pixelPos ] = d;
         gOut_Diff_Copy[ pixelPos ] = d;
@@ -99,11 +103,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float3 X = STL::Geometry::AffineTransform( gViewToWorld, Xv );
 
     // Local variance
-    float sum = 0;
+    float sum = 1.0;
 
-    float4 diffM1 = 0;
-    float4 diffM2 = 0;
-    float4 diff = 0;
+    float4 diff = s_Diff[ smemPos.y ][ smemPos.x ];
+    float4 diffM1 = diff;
+    float4 diffM2 = diff * diff;
     float4 diffMaxInput = -INF;
     float4 diffMinInput = INF;
     float diffNormalParams = GetNormalWeightParamsRoughEstimate( 1.0 );
@@ -114,28 +118,24 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         [unroll]
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
+            if( dx == BORDER && dy == BORDER )
+                continue;
+
             int2 pos = threadId + int2( dx, dy );
-            float4 diffSignal = s_Diff[ pos.y ][ pos.x ];
-            float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
+            float4 n = s_Normal_Roughness[ pos.y ][ pos.x ];
             float z = s_ViewZ[ pos.y ][ pos.x ];
 
-            float w = 1.0;
-            if( dx == BORDER && dy == BORDER )
-                diff = diffSignal;
-            else
-            {
-                w = GetBilateralWeight( z, centerZ );
-                w *= GetNormalWeight( diffNormalParams, N, normalAndRoughness.xyz );
-
-                float d = float( w == 0.0 ) * INF;
-                diffMaxInput = max( diffSignal - d, diffMaxInput );
-                diffMinInput = min( diffSignal + d, diffMinInput );
-            }
-
+            float w = GetBilateralWeight( z, centerZ );
+            w *= GetNormalWeight( diffNormalParams, N, n.xyz );
             w = STL::Math::Pow01( w, TS_WEIGHT_BOOST_POWER );
 
-            diffM1 += diffSignal * w;
-            diffM2 += diffSignal * diffSignal * w;
+            float4 d = s_Diff[ pos.y ][ pos.x ];
+            float dt = float( w == 0.0 ) * INF;
+            diffMaxInput = max( d - dt, diffMaxInput );
+            diffMinInput = min( d + dt, diffMinInput );
+
+            diffM1 += d * w;
+            diffM2 += d * d * w;
 
             sum += w;
         }
@@ -156,31 +156,34 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Compute previous position
     float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
-    float isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
+    float isInScreen = IsInScreen( pixelUvPrev );
+    float2 pixelMotion = pixelUvPrev - pixelUv;
+    float3 Xprev = X + motionVector * float( IsWorldSpaceMotion() );
 
     // Sample history ( surface motion )
     float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
     float4 diffHistory = BicubicFilterNoCorners( gIn_History_Diff, gLinearClamp, pixelPosPrev, gInvScreenSize );
 
     // History weight
-    float motionLength = length( pixelUvPrev - pixelUv );
-
-    float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffInternalData.y, motionLength );
+    float parallax = ComputeParallax( pixelUv, Xprev, gCameraDelta.xyz, gWorldToClip );
+    float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffInternalData.y, parallax );
     diffTemporalAccumulationParams.y = 1.0 + ( diffTemporalAccumulationParams.y - 1.0 ) * rcrsWeight.x;
 
     // Antilag
     float diffAntilag = 1.0;
 
     #if( USE_ANTILAG == 1 )
-        // TODO: if compression is used delta.x needs to be decompressed, but it doesn't affect the behavior, because heavily compressed values do not lag
-        float2 diffDelta = abs( diffHistory.xw - diffM1.xw ) - diffSigma.xw * float2( gIntensityAntilag.x, gHitDistanceAntilag.x );
-        diffDelta = STL::Math::LinearStep( float2( gIntensityAntilag.z, gHitDistanceAntilag.z ), float2( gIntensityAntilag.y, gHitDistanceAntilag.y ), diffDelta );
+        float2 antilagSensitivityToSmallValues = gAntilagThresholds.zw * 5.0 + 0.000001;
+
+        float2 diffDelta = abs( diffHistory.xw - diffM1.xw ) - diffSigma.xw * gAntilagSigmaScale;
+        diffDelta /= min( diffM1.xw, diffHistory.xw ) + diffSigma.xw * gAntilagSigmaScale + antilagSensitivityToSmallValues;
+        diffDelta = STL::Math::LinearStep( gAntilagThresholds.zw, gAntilagThresholds.xy, diffDelta );
         diffDelta *= diffDelta;
 
         float diffFade = diffInternalData.y / ( 1.0 + diffInternalData.y );
         diffFade *= diffTemporalAccumulationParams.x;
 
-        diffAntilag = min( diffDelta.x, diffDelta.y );
+        diffAntilag = diffDelta.x * diffDelta.y;
         diffAntilag = lerp( 1.0, diffAntilag, diffFade );
     #endif
 
@@ -208,9 +211,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( centerZ, diffInternalData.y, N, 1.0, 0.0 );
     gOut_Diff[ pixelPos ] = diffResult;
 
-    #if( SHOW_ACCUM_SPEED == 1 )
-        diffResult.w = saturate( diffInternalData.y / MAX_ACCUM_FRAME_NUM );
-    #elif( SHOW_ANTILAG == 1 )
+    #if( NRD_DEBUG == NRD_SHOW_ACCUM_SPEED  )
+        diffResult.w = saturate( diffInternalData.y / ( gDiffMaxAccumulatedFrameNum + 1.0 ) );
+    #elif( NRD_DEBUG == NRD_SHOW_ANTILAG )
         diffResult.w = diffAntilag;
     #endif
 

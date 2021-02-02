@@ -16,10 +16,6 @@ NRI_RESOURCE( SamplerState, gNearestMirror, s, 1, 0 );
 NRI_RESOURCE( SamplerState, gLinearClamp, s, 2, 0 );
 NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 
-// Debug
-
-#define SHOW_ACCUM_SPEED                        0
-
 // Booleans
 
 #define BLACK_OUT_INF_PIXELS                    0

@@ -32,7 +32,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 ); // mips 0-4
 NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 3, 0 ); // mips 1-4, mip = 0 actually samples from mip#1!
 
@@ -46,7 +46,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float scaledViewZ = gIn_ScaledViewZ[ pixelPos ];
 
     // Debug
-    #if( SHOW_MIPS != 0 )
+    #if( NRD_DEBUG == NRD_SHOW_MIPS )
     {
         int realMipLevel = int( gDebug * MIP_NUM );
         int mipLevel = realMipLevel - 1;
@@ -56,7 +56,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
         float2 mipSize = float2( gScreenSizei >> realMipLevel );
         float2 mipUv = pixelUv * gScreenSize / ( mipSize * float( 1 << realMipLevel ) );
 
-        #if( SHOW_MIPS == 1 )
+        #if 0
             float4 spec = gIn_Spec.SampleLevel( gLinearClamp, mipUv, mipLevel );
         #else
             STL::Filtering::Bilinear filter = STL::Filtering::GetBilinearFilter( mipUv, mipSize );

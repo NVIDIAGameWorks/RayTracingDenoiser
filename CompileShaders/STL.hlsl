@@ -917,7 +917,7 @@ namespace STL
         // Half float
         uint Rg16fToUint( float2 c )
         {
-            return ( f32tof16( c.y ) << 16 ) | ( f32tof16( c.x ) & 0xFFFF ); // TODO: 0xFFFF is a WAR for VK
+            return ( f32tof16( c.y ) << 16 ) | ( f32tof16( c.x ) & 0xFFFF ); // TODO: 0xFFFF is a WAR for NV VK compiler bug (<= 461.xx)
         }
 
         float2 UintToRg16f( uint p )
@@ -1349,28 +1349,39 @@ namespace STL
         #define STL_SPECULAR_DOMINANT_DIRECTION_G2      1
         #define STL_SPECULAR_DOMINANT_DIRECTION_APPROX  2
 
-        float4 GetSpecularDominantDirection( float3 N, float3 V, float linearRoughness, compiletime const uint mode = STL_SPECULAR_DOMINANT_DIRECTION_DEFAULT )
+        float GetSpecularDominantFactor( float NoV, float linearRoughness, compiletime const uint mode = STL_SPECULAR_DOMINANT_DIRECTION_DEFAULT )
         {
-            float NoV = abs( dot( N, V ) );
-
-            float f;
+            float dominantFactor;
             if( mode == STL_SPECULAR_DOMINANT_DIRECTION_G2 )
             {
                 float a = 0.298475 * log( 39.4115 - 39.0029 * linearRoughness );
-                f = Math::Pow01( 1.0 - NoV, 10.8649 ) * ( 1.0 - a ) + a;
+                dominantFactor = Math::Pow01( 1.0 - NoV, 10.8649 ) * ( 1.0 - a ) + a;
             }
             else if( mode == STL_SPECULAR_DOMINANT_DIRECTION_G1 )
-                f = 0.298475 * NoV * log( 39.4115 - 39.0029 * linearRoughness ) + ( 0.385503 - 0.385503 * NoV ) * log( 13.1567 - 12.2848 * linearRoughness );
+                dominantFactor = 0.298475 * NoV * log( 39.4115 - 39.0029 * linearRoughness ) + ( 0.385503 - 0.385503 * NoV ) * log( 13.1567 - 12.2848 * linearRoughness );
             else
             {
                 float s = 1.0 - linearRoughness;
-                f = s * ( Math::Sqrt01( s ) + linearRoughness );
+                dominantFactor = s * ( Math::Sqrt01( s ) + linearRoughness );
             }
 
-            float3 R = reflect( -V, N );
-            float3 lobeAxis = normalize( lerp( N, R, f ) );
+            return saturate( dominantFactor );
+        }
 
-            return float4( lobeAxis, f );
+        float3 GetSpecularDominantDirectionWithFactor( float3 N, float3 V, float dominantFactor )
+        {
+            float3 R = reflect( -V, N );
+            float3 D = lerp( N, R, dominantFactor );
+
+            return normalize( D );
+        }
+
+        float4 GetSpecularDominantDirection( float3 N, float3 V, float linearRoughness, compiletime const uint mode = STL_SPECULAR_DOMINANT_DIRECTION_DEFAULT )
+        {
+            float NoV = abs( dot( N, V ) );
+            float dominantFactor = GetSpecularDominantFactor( NoV, linearRoughness, mode );
+
+            return float4( GetSpecularDominantDirectionWithFactor( N, V, dominantFactor ), dominantFactor );
         }
 
         //=================================================================================

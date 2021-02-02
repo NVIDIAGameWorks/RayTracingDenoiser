@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoiser v1.14.1
+# NVIDIA Real-time (Ray tracing) Denoiser v1.16.1
 
 ## QUICK START GUIDE
 
@@ -15,7 +15,7 @@ These signals can be denoised using the following denoisers:
 
 NRD is distributed as source as well with a “ready-to-use” library (if used in a precompiled form).
 
-It can easily be integrated into any DX12, VULKAN or even DX11 engines using 2 methods:
+It can be integrated into any DX12, VULKAN or even DX11 engines using 2 methods:
 1. Native implementation of the NRD API using engine capabilities
 2. Integration via an abstraction layer. In this case, the engine should expose native Graphics API pointers for certain types of objects. The integration layer, provided as a part of SDK, can be used to simplify this kind of integration
 
@@ -118,9 +118,9 @@ The following textures can be requested as inputs for a method. Brackets contain
 
 * IN\_VIEWZ (R32f) - .x - linear view depth, not HW depth ("+" for LHS, "-" for RHS)
 
-* IN\_SHADOW (RG16f+) - the input for shadow method, needs to be packed using ``XXX_FrontEnd_PackShadow`` function from ``NRD.hlsl``. Infinite (sky) pixels must be cleared using ``XXX_INF_SHADOW`` macros
+* IN\_SHADOW (RG16f+) - the input for the shadow method, needs to be packed using a ``XXX_FrontEnd_PackShadow`` function from ``NRD.hlsl``. Infinite (sky) pixels must be cleared using ``XXX_INF_SHADOW`` macros
 
-* IN\_DIFF_HIT (RGBA16f+), IN\_SPEC\_HIT (RGBA16f+) - main inputs for diffuse and specular methods respectively. These inputs should be prepared using the ``XXX_FrontEnd_PackRadiance`` function from ``NRD.hlsl``. It is recommented to clear infinite (sky) pixels using corresponding ``XXX_INF_DIFF / XXX_INF_SPEC`` macros
+* IN\_DIFF_HIT (RGBA16f+), IN\_SPEC\_HIT (RGBA16f+) - main inputs for diffuse and specular methods respectively. These inputs should be prepared using the ``XXX_FrontEnd_PackRadiance`` function from ``NRD.hlsl``. It is recommended to clear infinite (sky) pixels using corresponding ``XXX_INF_DIFF / XXX_INF_SPEC`` macros. REBLUR denoises AO and SO for free, but at the same time real hit distances are needed for controlling denoising and specular tracking. To simplify this REBLUR suggests using ``REBLUR_FrontEnd_GetNormHitDist`` for hit distance normalization. This value needs to be passed in to ``REBLUR_FrontEnd_PackRadiance`` along with normalization parameters for further compression. Normalization parameters should be passed into NRD as ``HitDistanceParameters`` for diffuse and specular separately for internal use. After denoising on the user side the function ``REBLUR_BackEnd_UnpackRadiance`` decompresses data back to color and normalized hit distance.
 
 * IN\_TRANSLUCENCY - translucency to be used by XXX\_TRANSLUCENT\_SHADOW denoiser. There are two ways how it can be used (see OUT\_SHADOW)
   - ``final shadow = lerp( translucency, 1.0, shadow )`` (recommended)
@@ -140,20 +140,27 @@ The following textures can be requested as inputs for a method. Brackets contain
 
 Denoising is not a panacea or miracle. Denoising works best with ray tracing results produced by a suitable form of importance sampling. Additionally, NRD has its own restrictions. The following suggestions should help to achieve best image quality:
 
-1. NRD has been designed to work with pure radiance coming from a particular direction. It means that BRDF should be applied **after** denoising:
+1. [NRD] Read all comments from ``NRDDescs.h`` and ``NRD.hlsl``
 
-	Denoising( DiffuseRadiance * Albedo ) → Denosing( DiffuseRadiance ) * Albedo
-	Denoising( SpecularRadiance * BRDF( micro params ) ) → Denoising( SpecularRadiance ) * BRDF( macro params )
+2. [NRD] NRD has been designed to work with pure radiance coming from a particular direction. It means that data in the form "something / probability" should be avoided (but it doesn't mean that it won't work), because spatial filtering passes can start to distribute wrong energy to the neighboring pixels. Additionally, it means that BRDF should be applied **after** denoising:
 
-2. Importance sampling is recommended to achieve good results in case of complex lighting environments. Consider using:
+    Denoising( DiffuseRadiance * Albedo ) → Denosing( DiffuseRadiance ) * Albedo
+
+    Denoising( SpecularRadiance * BRDF( micro params ) ) → Denoising( SpecularRadiance ) * INTEGRATED_BRDF( macro params )
+
+3. [NRD] Importance sampling is recommended to achieve good results in case of complex lighting environments. Consider using:
    - Cosine distribution for diffuse from non-local light sources
    - VNDF sampling for specular
-   - Custom importance sampling for local light sources
+   - Custom importance sampling for local light sources (RTXDI)
 
-3. For diffuse and specular NRD expects hit distance input in normalized form. Some tweaking can be needed here, but in most cases normalization to 3-40 meters works well (can be roughness or view distance dependent). NRD outputs denoised normalized hit distance, which can be used by the application (see unpacking functions from ``NRD.hlsl``)
+4. [NRD] Hit distances should come from an importance sampling method. But if in case of REBLUR, for example, denoising of AO and a custom direct / indirect lighting is needed, AO can come from cos-weighted sampling and radiance can be computed by a different method in a tradeoff of IQ.
 
-4. To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
+5. [NRD] Low discrepancy sampling helps to have a more stable output
 
-5. Low discrepancy sampling helps to have a cleaner output
+6. [NRD] If history reset is needed set ``CommonSettings::frameIndex`` to 0 for a single frame
 
-6. Read all comments from ``NRDDescs.h`` and ``NRD.hlsl``
+7. [REBLUR] For diffuse and specular REBLUR expects hit distance input in a normalized form. To avoid mismatching ``REBLUR_FrontEnd_GetNormHitDist`` should be used for normalization. Some tweaking can be needed here, but in most cases normalization to the default ``HitDistanceParameters`` works well. REBLUR outputs denoised normalized hit distance, which can be used by the application as ambient or specular occlusion (AO & SO) (see unpacking functions from ``NRD.hlsl``)
+
+8. [REBLUR] REBLUR handles specular lobe trimming, trying to reconstruct trimmed signal. Similarly to hit distance normalization, REBLUR needs to be aware about trimming parameters. If this feature is used in a ray tracer, ``LobeTrimmingParameters`` must be passed into REBLUR. To avoid code duplication ``NRD_GetTrimmingFactor`` can be used in a shader code on the application side.
+
+9. [SIGMA] To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen

@@ -40,7 +40,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_DiffTemporalAccumulationOutput, t, 4, 0 );
@@ -65,7 +65,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     PRELOAD_INTO_SMEM;
 
     // Debug
-    #if( SHOW_MIPS )
+    #if( NRD_DEBUG == NRD_SHOW_MIPS )
         gOut_Diff[ pixelPos ] = gIn_Diff[ pixelPos ];
         gOut_Spec[ pixelPos ] = gIn_Spec[ pixelPos ];
         return;
@@ -92,9 +92,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Accumulations speeds
-    float2x2 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
-    float2 diffInternalData = internalData[ 0 ];
-    float2 specInternalData = internalData[ 1 ];
+    float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
+    float2 diffInternalData = internalData.xy;
+    float2 specInternalData = internalData.zw;
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -103,28 +103,30 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 spec = gIn_Spec[ pixelPos ];
     float specCenterNormHitDist = spec.w;
 
+    // Blur radius scale
+    float2 diffCurr = diff.xw;
+    float2 diffPrev = gIn_DiffTemporalAccumulationOutput[ pixelPos ].xw;
+    float diffError = GetColorErrorForAdaptiveRadiusScale( diffCurr, diffPrev, diffInternalData.x );
+    float diffRadiusScale = POST_BLUR_RADIUS_SCALE + diffError * gDiffBlurRadiusScale;
+    float diffRadiusBias = diffError * gDiffBlurRadiusScale;
+
+    float2 specCurr = spec.xw;
+    float2 specPrev = gIn_SpecTemporalAccumulationOutput[ pixelPos ].xw;
+    float specError = GetColorErrorForAdaptiveRadiusScale( specCurr, specPrev, specInternalData.x, roughness );
+    float specRadiusScale = POST_BLUR_RADIUS_SCALE + specError * gSpecBlurRadiusScale;
+    float specRadiusBias = specError * gSpecBlurRadiusScale;
+
     // Blur radius
-    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffHitDistParams );
+    float diffHitDist = GetHitDist( diffCenterNormHitDist, centerZ, gDiffHitDistParams );
     float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffInternalData.x );
+    diffBlurRadius = diffBlurRadius * diffRadiusScale + diffRadiusBias;
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
-    float specHitDist = GetHitDistance( spec.w, centerZ, gSpecHitDistParams, roughness );
+    float specHitDist = GetHitDist( specCenterNormHitDist, centerZ, gSpecHitDistParams, roughness );
     float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, specInternalData.x );
     specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
+    specBlurRadius = specBlurRadius * specRadiusScale + specRadiusBias;
     float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );
-
-    // Blur radius scale
-    float diffLuma = diff.x;
-    float diffLumaPrev = gIn_DiffTemporalAccumulationOutput[ pixelPos ].x;
-    float diffError = GetColorErrorForAdaptiveRadiusScale( diffLuma, diffLumaPrev, diffInternalData.x );
-    float diffBlurRadiusScale = POST_BLUR_RADIUS_SCALE + diffError * gDiffBlurRadiusScale;
-    diffWorldBlurRadius *= diffBlurRadiusScale;
-
-    float specLuma = spec.x;
-    float specLumaPrev = gIn_SpecTemporalAccumulationOutput[ pixelPos ].x;
-    float specError = GetColorErrorForAdaptiveRadiusScale( specLuma, specLumaPrev, specInternalData.x, roughness );
-    float specBlurRadiusScale = POST_BLUR_RADIUS_SCALE + specError * gSpecBlurRadiusScale;
-    specWorldBlurRadius *= specBlurRadiusScale;
 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( POST_BLUR_ROTATOR_MODE, pixelPos, gRotator );

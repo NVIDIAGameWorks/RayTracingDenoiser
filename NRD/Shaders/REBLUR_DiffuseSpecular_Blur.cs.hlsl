@@ -38,7 +38,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float4>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 4, 0 );
@@ -81,9 +81,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Accumulations speeds
-    float2x2 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
-    float2 diffInternalData = internalData[ 0 ];
-    float2 specInternalData = internalData[ 1 ];
+    float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
+    float2 diffInternalData = internalData.xy;
+    float2 specInternalData = internalData.zw;
 
     // Center data
     float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
@@ -93,11 +93,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float specCenterNormHitDist = spec.w;
 
     // Blur radius
-    float diffHitDist = GetHitDistance( diff.w, centerZ, gDiffHitDistParams );
+    float diffHitDist = GetHitDist( diffCenterNormHitDist, centerZ, gDiffHitDistParams );
     float diffBlurRadius = GetBlurRadius( gDiffBlurRadius, 1.0, diffHitDist, centerPos, diffInternalData.x );
     float diffWorldBlurRadius = PixelRadiusToWorld( diffBlurRadius, centerZ );
 
-    float specHitDist = GetHitDistance( spec.w, centerZ, gSpecHitDistParams, roughness );
+    float specHitDist = GetHitDist( specCenterNormHitDist, centerZ, gSpecHitDistParams, roughness );
     float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, specInternalData.x );
     specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
     float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );

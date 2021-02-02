@@ -45,7 +45,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float scaledViewZ = gIn_ScaledViewZ[ pixelPos ];
 
     // Debug
-    #if( SHOW_MIPS != 0 )
+    #if( NRD_DEBUG == NRD_SHOW_MIPS )
     {
         int realMipLevel = int( gDebug * MIP_NUM );
         int mipLevel = realMipLevel - 1;
@@ -55,7 +55,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
         float2 mipSize = float2( gScreenSizei >> realMipLevel );
         float2 mipUv = pixelUv * gScreenSize / ( mipSize * float( 1 << realMipLevel ) );
 
-        #if( SHOW_MIPS == 1 )
+        #if 0
             float4 diff = gIn_Diff.SampleLevel( gLinearClamp, mipUv, mipLevel );
         #else
             STL::Filtering::Bilinear filter = STL::Filtering::GetBilinearFilter( mipUv, mipSize );
