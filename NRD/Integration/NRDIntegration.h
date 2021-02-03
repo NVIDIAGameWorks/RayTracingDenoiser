@@ -41,14 +41,14 @@ public:
     { NRD_ASSERT( m_NRI == nullptr ); }
 
     // There is not "Resize" functionallity, because NRD full recreation costs nothing. The main cost comes from render targets resizing which needs to be done in any case
-    bool Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCoreInterface, const nri::HelperInterface& nriHelperInterface, const nrd::DenoiserCreationDesc& denoiserCreationDesc, bool ignoreNRIProvidedBindingOffsets = true);
+    bool Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCoreInterface, const nri::HelperInterface& nriHelperInterface, const nrd::DenoiserCreationDesc& denoiserCreationDesc);
     void Destroy();
 
     void SetMethodSettings(nrd::Method method, const void* methodSettings);
     void Denoise(nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool);
 
     // Should not be called explicitly, unless you want to reload pipelines
-    void CreatePipelines(bool ignoreNRIProvidedBindingOffsets = false);
+    void CreatePipelines();
 
 private:
     Nrd(const Nrd&) = delete;

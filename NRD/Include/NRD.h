@@ -31,8 +31,8 @@ CREDITS:
 
 #define NRD_VERSION_MAJOR 1
 #define NRD_VERSION_MINOR 16
-#define NRD_VERSION_BUILD 1
-#define NRD_VERSION_DATE "31 January 2021 (WIP)"
+#define NRD_VERSION_BUILD 2
+#define NRD_VERSION_DATE "3 February 2021"
 #define NRD_CALL __fastcall
 
 #ifndef NRD_API

@@ -144,7 +144,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::STABILIZED_HISTORY_2) );
         PushOutput( AsUint(ResourceType::OUT_DIFF_HIT) );
 
-        desc.constantBufferDataSize = SumConstants(3, 3, 2, 1);
+        desc.constantBufferDataSize = SumConstants(3, 4, 1, 1);
 
         AddDispatch(desc, REBLUR_Diffuse_TemporalStabilization, w, h);
     }
@@ -184,18 +184,19 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
         disocclusionThreshold = 0.005f;
     }
 
-    float4 antilagThresholds = float4(settings.intensityAntilagSettings.thresholdMin, settings.hitDistanceAntilagSettings.thresholdMin, settings.intensityAntilagSettings.thresholdMax, settings.hitDistanceAntilagSettings.thresholdMax);
+    float4 antilag1 = float4(settings.antilagIntensitySettings.sigmaScale, settings.antilagHitDistanceSettings.sigmaScale, settings.antilagIntensitySettings.sensitivityToDarkness, settings.antilagHitDistanceSettings.sensitivityToDarkness);
+    float4 antilag2 = float4(settings.antilagIntensitySettings.thresholdMin, settings.antilagHitDistanceSettings.thresholdMin, settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
 
-    if (!settings.intensityAntilagSettings.enable)
+    if (!settings.antilagIntensitySettings.enable)
     {
-        antilagThresholds.x = 99998.0f;
-        antilagThresholds.z = 99999.0f;
+        antilag2.x = 99998.0f;
+        antilag2.z = 99999.0f;
     }
 
-    if (!settings.hitDistanceAntilagSettings.enable)
+    if (!settings.antilagHitDistanceSettings.enable)
     {
-        antilagThresholds.y = 99998.0f;
-        antilagThresholds.w = 99999.0f;
+        antilag2.y = 99998.0f;
+        antilag2.w = 99999.0f;
     }
 
     // PRE_BLUR
@@ -263,8 +264,8 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddFloat4x4(data, m_WorldToClip);
     AddFloat4(data, float4(m_CameraDeltaSmoothed));
     AddFloat4(data, diffHitDistParams);
-    AddFloat4(data, antilagThresholds );
-    AddFloat2(data, settings.intensityAntilagSettings.sigmaScale, settings.hitDistanceAntilagSettings.sigmaScale );
+    AddFloat4(data, antilag1 );
+    AddFloat4(data, antilag2 );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, maxAccumulatedFrameNum);
     ValidateConstants(data);

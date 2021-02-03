@@ -30,8 +30,8 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToClip;
     float4 gCameraDelta;
     float4 gDiffHitDistParams;
-    float4 gAntilagThresholds;
-    float2 gAntilagSigmaScale;
+    float4 gAntilag1;
+    float4 gAntilag2;
     float2 gMotionVectorScale;
     float gDiffMaxAccumulatedFrameNum;
 };
@@ -170,29 +170,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     diffTemporalAccumulationParams.y = 1.0 + ( diffTemporalAccumulationParams.y - 1.0 ) * rcrsWeight.x;
 
     // Antilag
-    float diffAntilag = 1.0;
-
-    #if( USE_ANTILAG == 1 )
-        float2 antilagSensitivityToSmallValues = gAntilagThresholds.zw * 5.0 + 0.000001;
-
-        float2 diffDelta = abs( diffHistory.xw - diffM1.xw ) - diffSigma.xw * gAntilagSigmaScale;
-        diffDelta /= min( diffM1.xw, diffHistory.xw ) + diffSigma.xw * gAntilagSigmaScale + antilagSensitivityToSmallValues;
-        diffDelta = STL::Math::LinearStep( gAntilagThresholds.zw, gAntilagThresholds.xy, diffDelta );
-        diffDelta *= diffDelta;
-
-        float diffFade = diffInternalData.y / ( 1.0 + diffInternalData.y );
-        diffFade *= diffTemporalAccumulationParams.x;
-
-        diffAntilag = diffDelta.x * diffDelta.y;
-        diffAntilag = lerp( 1.0, diffAntilag, diffFade );
-    #endif
-
-    #if( USE_LIMITED_ANTILAG == 1 )
-        float diffMinAccumSpeed = min( diffInternalData.y, GetMipLevel( 0.0 ) );
-        diffInternalData.y = diffMinAccumSpeed + ( diffInternalData.y - diffMinAccumSpeed ) * diffAntilag;
-    #else
-        diffInternalData.y *= diffAntilag;
-    #endif
+    float diffAntilag = ComputeAntilagScale( diffInternalData.y, diffHistory.xw, diffM1.xw, diffSigma.xw, diffTemporalAccumulationParams, gAntilag1, gAntilag2 );
 
     // Clamp history and combine with the current frame
     float4 diffMin = diffM1 - diffSigma * diffTemporalAccumulationParams.y;
@@ -213,8 +191,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     #if( NRD_DEBUG == NRD_SHOW_ACCUM_SPEED  )
         diffResult.w = saturate( diffInternalData.y / ( gDiffMaxAccumulatedFrameNum + 1.0 ) );
-    #elif( NRD_DEBUG == NRD_SHOW_ANTILAG )
-        diffResult.w = diffAntilag;
+    #elif( NRD_DEBUG == NRD_SHOW_PARALLAX )
+        diffResult.w = parallax;
     #endif
 
     gOut_Diff_Copy[ pixelPos ] = diffResult;

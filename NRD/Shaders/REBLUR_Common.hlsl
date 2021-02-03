@@ -34,6 +34,7 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 
 #define USE_QUADRATIC_DISTRIBUTION              0
 #define USE_LIMITED_ANTILAG                     0 // TODO: useful if the input signal has fireflies with gigantic energy
+#define USE_FASTER_BUT_DIRTIER_ANTILAG          0 // a bit better response, but potentially leaves more dirt (if variance is high)
 #define USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX       1
 #define USE_HISTORY_FIX                         1
 #define USE_MIX_WITH_ORIGINAL                   1
@@ -56,7 +57,6 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define SPEC_ACCUM_BASE_POWER                   0.5 // previously was 0.66 (less agressive accumulation, but virtual reprojection works well on flat surfaces and fixes the issue)
 #define SPEC_ACCUM_CURVE                        1.0 // aggressiveness of history rejection depending on viewing angle (1 - low, 0.66 - medium, 0.5 - high)
 #define SPEC_DOMINANT_DIRECTION                 STL_SPECULAR_DOMINANT_DIRECTION_G2
-#define SPEC_FORCED_VIRTUAL_CLAMPING            0.75 // take 25% of clamped history to keep virtual history in a good shape // TODO: find a better way
 
 #define SHADOW_POISSON_SAMPLE_NUM               8
 #define SHADOW_POISSON_SAMPLES                  g_Poisson8
@@ -74,6 +74,7 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 #define NORMAL_BANDING_FIX                      STL::Math::DegToRad( 0.625 ) // mitigate banding introduced by normals stored in RGB8 format // TODO: move to CommonSettings?
 #define BLACK_OUT_INF_PIXELS                    0 // can be used to avoid killing INF pixels during composition
 #define PARALLAX_COMPRESSION_STRENGTH           0 // TODO: 0.1?
+#define PARALLAX_NORMALIZATION                  60.0 // FPS, smaller values adds a bit of lag, but preserve smoothness. Normalization to less than 15 FPS is unrecommended. // TODO: move to settings or make "gFramerateScale" dependent
 #define CHECKERBOARD_SIDE_WEIGHT                0.6
 #define ANTILAG_MIN                             0.02
 #define ANTILAG_MAX                             0.1
@@ -261,7 +262,7 @@ float ComputeParallax( float2 pixelUv, float3 Xprev, float3 cameraDelta, float4x
     float parallaxInPixels = length( parallaxInUv * gScreenSize );
     float parallaxInUnits = PixelRadiusToWorld( parallaxInPixels, clip.z );
     float parallax = parallaxInUnits / abs( clip.z );
-    parallax *= 60.0;
+    parallax *= PARALLAX_NORMALIZATION;
 
     parallax /= 1.0 + PARALLAX_COMPRESSION_STRENGTH * parallax;
 
@@ -273,7 +274,7 @@ float GetParallaxInPixels( float parallax )
     parallax /= 1.0 - PARALLAX_COMPRESSION_STRENGTH * parallax;
 
     // TODO: add ortho projection support (see ComputeParallax)
-    float parallaxInPixels = parallax / ( 60.0 * gUnproject );
+    float parallaxInPixels = parallax / ( PARALLAX_NORMALIZATION * gUnproject );
 
     return parallaxInPixels;
 }
@@ -345,6 +346,37 @@ float GetHitDist( float compressedNormHitDist, float viewZ, float4 hitDistParams
     float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
 
     return normHitDist * f;
+}
+
+float ComputeAntilagScale( inout float accumSpeed, float2 history, float2 m1, float2 sigma, float2 temporalAccumulationParams, float4 antilag1, float4 antilag2, float roughness = 1.0 )
+{
+    float antilag = 1.0;
+
+    #if( USE_ANTILAG == 1 )
+        float2 delta = abs( history - m1 ) - sigma * antilag1.xy;
+        delta /= max( m1, history ) + sigma * antilag1.xy + antilag1.zw;
+        delta = STL::Math::LinearStep( antilag2.zw, antilag2.xy, delta );
+        delta *= delta;
+
+        float fade = accumSpeed / ( 1.0 + accumSpeed );
+        fade *= temporalAccumulationParams.x;
+
+        antilag = delta.x * delta.y;
+        antilag = lerp( 1.0, antilag, fade );
+    #endif
+
+    #if( USE_LIMITED_ANTILAG == 1 )
+        float minAccumSpeed = min( accumSpeed, ( MIP_NUM - 1 ) * STL::Math::Sqrt01( roughness ) );
+        accumSpeed = minAccumSpeed + ( accumSpeed - minAccumSpeed ) * antilag;
+    #else
+        accumSpeed *= antilag;
+    #endif
+
+    #if( USE_FASTER_BUT_DIRTIER_ANTILAG == 1 )
+        antilag = 1.0; // It means that antilag won't affect TS accumulation parameters
+    #endif
+
+    return antilag;
 }
 
 // Internal data - diffuse
@@ -500,8 +532,7 @@ float GetBlurRadius( float radius, float roughness, float hitDist, float3 Xv, fl
     // A non zero addition is needed to:
     // - avoid getting ~0 blur radius
     // - avoid "fluffiness"
-    // - keep adaptive scale in post blur in working state
-    // TODO: ideally, "blur addon" needs to be variance driven, but it requires adding preloading into SMEM to blur and post-blur passes
+    // - keep adaptive scale in post blur in a working state (TODO: adaptive scale adds own addon)
     float addon = 1.5 * STL::Math::SmoothStep( 0.0, 0.25, roughness );
     addon *= lerp( 0.5, 1.0, hitDistFactor );
     addon *= float( radius != 0.0 );

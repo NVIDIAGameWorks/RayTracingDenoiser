@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoiser v1.16.1
+# NVIDIA Real-time (Ray tracing) Denoiser v1.16.2
 
 ## QUICK START GUIDE
 
@@ -159,8 +159,10 @@ Denoising is not a panacea or miracle. Denoising works best with ray tracing res
 
 6. [NRD] If history reset is needed set ``CommonSettings::frameIndex`` to 0 for a single frame
 
-7. [REBLUR] For diffuse and specular REBLUR expects hit distance input in a normalized form. To avoid mismatching ``REBLUR_FrontEnd_GetNormHitDist`` should be used for normalization. Some tweaking can be needed here, but in most cases normalization to the default ``HitDistanceParameters`` works well. REBLUR outputs denoised normalized hit distance, which can be used by the application as ambient or specular occlusion (AO & SO) (see unpacking functions from ``NRD.hlsl``)
+7. [NRD] Functions ``XXX_FrontEnd_PackRadiance`` apply Reinhard-like color compression to the provided radiance. It assumes that the input is in HDR range (less than 1 = LDR, greater than 1 = HDR). The efficiency of compression is reduced if the input is in [0; 1] range. But if the latter is true, for NRD needs the input radiance can be pre-multiplied with a known constant and divided back after denoising.
 
-8. [REBLUR] REBLUR handles specular lobe trimming, trying to reconstruct trimmed signal. Similarly to hit distance normalization, REBLUR needs to be aware about trimming parameters. If this feature is used in a ray tracer, ``LobeTrimmingParameters`` must be passed into REBLUR. To avoid code duplication ``NRD_GetTrimmingFactor`` can be used in a shader code on the application side.
+8. [REBLUR] For diffuse and specular REBLUR expects hit distance input in a normalized form. To avoid mismatching ``REBLUR_FrontEnd_GetNormHitDist`` should be used for normalization. Some tweaking can be needed here, but in most cases normalization to the default ``HitDistanceParameters`` works well. REBLUR outputs denoised normalized hit distance, which can be used by the application as ambient or specular occlusion (AO & SO) (see unpacking functions from ``NRD.hlsl``)
 
-9. [SIGMA] To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
+9. [REBLUR] REBLUR handles specular lobe trimming, trying to reconstruct trimmed signal. Similarly to hit distance normalization, REBLUR needs to be aware about trimming parameters. If this feature is used in a ray tracer, ``LobeTrimmingParameters`` must be passed into REBLUR. To avoid code duplication ``NRD_GetTrimmingFactor`` can be used in a shader code on the application side.
+
+10. [SIGMA] To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen

@@ -233,12 +233,12 @@ struct NrdSettings
     float diffAdaptiveRadiusScale = 5.0f;
     float specBlurRadius = 30.0f;
     float specAdaptiveRadiusScale = 5.0f;
-    float antilagSigmaScaleIntensity = 2.0f;
-    float antilagSigmaScaleHitDistance = 2.0f;
-    float antilagThresholdMinIntensity = 5.0f;
-    float antilagThresholdMinHitDistance = 2.0f;
-    float antilagThresholdMaxIntensity = 15.0f;
-    float antilagThresholdMaxHitDistance = 10.0f;
+    float antilagIntensitySigmaScale = 2.0f;
+    float antilagHitDistanceSigmaScale = 2.0f;
+    float antilagIntensityThresholdMin = 5.0f;
+    float antilagHitDistanceThresholdMin = 2.0f;
+    float antilagIntensityThresholdMax = 15.0f;
+    float antilagHitDistanceThresholdMax = 10.0f;
     float disocclusionThreshold = 0.5f;
     float noisinessBlurrinessBalance = 1.0f;
 
@@ -660,7 +660,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         nrd::DenoiserCreationDesc denoiserCreationDesc = {};
         denoiserCreationDesc.requestedMethods = methodDescs;
         denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs);
-        NRI_ABORT_ON_FALSE( m_NRD.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
+        NRI_ABORT_ON_FALSE( m_NRD.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc) );
     }
 
     // RELAX
@@ -676,7 +676,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         denoiserCreationDesc.requestedMethods = methodDescs;
         denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs);
 
-        NRI_ABORT_ON_FALSE(m_RELAX.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false));
+        NRI_ABORT_ON_FALSE(m_RELAX.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc));
     }
 
     // SVGF
@@ -692,7 +692,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         denoiserCreationDesc.requestedMethods = methodDescs1;
         denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs1);
 
-        NRI_ABORT_ON_FALSE( m_SVGF_Diff.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
+        NRI_ABORT_ON_FALSE( m_SVGF_Diff.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc) );
 
         const nrd::MethodDesc methodDescs2[] =
         {
@@ -702,7 +702,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         denoiserCreationDesc.requestedMethods = methodDescs2;
         denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs2);
 
-        NRI_ABORT_ON_FALSE( m_SVGF_Spec.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc, false) );
+        NRI_ABORT_ON_FALSE( m_SVGF_Spec.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc) );
     }
 
     m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, CAMERA_RELATIVE);
@@ -1002,18 +1002,18 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Text("ANTILAG (INTENSITY / HIT DISTANCE):");
                             ImGui::PushID("ANTILAG (INTENSITY / HIT DISTANCE)");
                             {
-                                ImGui::SliderFloat2("Min threshold (%)", &m_Settings.nrdSettings.antilagThresholdMinIntensity, 0.0f, 100.0f, "%.1f", 2.0f);
-                                ImGui::SliderFloat2("Max threshold (%)", &m_Settings.nrdSettings.antilagThresholdMaxIntensity, 0.0f, 100.0f, "%.1f", 2.0f);
-                                ImGui::SliderFloat2("Sigma scale", &m_Settings.nrdSettings.antilagSigmaScaleIntensity, 0.0f, 4.0f, "%.3f");
+                                ImGui::SliderFloat2("Min threshold (%)", &m_Settings.nrdSettings.antilagIntensityThresholdMin, 0.0f, 100.0f, "%.1f", 2.0f);
+                                ImGui::SliderFloat2("Max threshold (%)", &m_Settings.nrdSettings.antilagIntensityThresholdMax, 0.0f, 100.0f, "%.1f", 2.0f);
+                                ImGui::SliderFloat2("Sigma scale", &m_Settings.nrdSettings.antilagIntensitySigmaScale, 0.0f, 4.0f, "%.3f");
                                 ImGui::Checkbox("Intensity antilag    ", &m_Settings.nrdSettings.antilagIntensity); // TODO: spaces at the end to align better the following checkbox
                                 ImGui::SameLine();
                                 ImGui::Checkbox("Hit distance antilag", &m_Settings.nrdSettings.antilagHitDistance);
 
-                                m_Settings.nrdSettings.antilagThresholdMinIntensity = Max( m_Settings.nrdSettings.antilagThresholdMinIntensity, 0.0f );
-                                m_Settings.nrdSettings.antilagThresholdMinHitDistance = Max( m_Settings.nrdSettings.antilagThresholdMinHitDistance, 0.0f );
+                                m_Settings.nrdSettings.antilagIntensityThresholdMin = Max( m_Settings.nrdSettings.antilagIntensityThresholdMin, 0.0f );
+                                m_Settings.nrdSettings.antilagHitDistanceThresholdMin = Max( m_Settings.nrdSettings.antilagHitDistanceThresholdMin, 0.0f );
 
-                                m_Settings.nrdSettings.antilagThresholdMaxIntensity = Max( m_Settings.nrdSettings.antilagThresholdMaxIntensity, m_Settings.nrdSettings.antilagThresholdMinIntensity + 1.0f );
-                                m_Settings.nrdSettings.antilagThresholdMaxHitDistance = Max( m_Settings.nrdSettings.antilagThresholdMaxHitDistance, m_Settings.nrdSettings.antilagThresholdMinHitDistance + 1.0f );
+                                m_Settings.nrdSettings.antilagIntensityThresholdMax = Max( m_Settings.nrdSettings.antilagIntensityThresholdMax, m_Settings.nrdSettings.antilagIntensityThresholdMin + 1.0f );
+                                m_Settings.nrdSettings.antilagHitDistanceThresholdMax = Max( m_Settings.nrdSettings.antilagHitDistanceThresholdMax, m_Settings.nrdSettings.antilagHitDistanceThresholdMin + 1.0f );
                             }
                             ImGui::PopID();
                             ImGui::Text("DIFFUSE:");
@@ -2642,12 +2642,12 @@ void Sample::LoadScene()
         m_Settings.specSecondBounce = true;
         m_Settings.diffSecondBounce = false;
         m_Settings.skyAmbient = 10.0f;
-        m_Settings.nrdSettings.antilagThresholdMinIntensity = 1.0f;
-        m_Settings.nrdSettings.antilagThresholdMaxIntensity = 10.0f;
-        m_Settings.nrdSettings.antilagSigmaScaleIntensity = 1.5f;
-        m_Settings.nrdSettings.antilagThresholdMinHitDistance = 1.0f;
-        m_Settings.nrdSettings.antilagThresholdMaxHitDistance = 10.0f;
-        m_Settings.nrdSettings.antilagSigmaScaleHitDistance = 1.5f;
+        m_Settings.nrdSettings.antilagIntensityThresholdMin = 1.0f;
+        m_Settings.nrdSettings.antilagIntensityThresholdMax = 10.0f;
+        m_Settings.nrdSettings.antilagIntensitySigmaScale = 1.5f;
+        m_Settings.nrdSettings.antilagHitDistanceThresholdMin = 1.0f;
+        m_Settings.nrdSettings.antilagHitDistanceThresholdMax = 10.0f;
+        m_Settings.nrdSettings.antilagHitDistanceSigmaScale = 1.5f;
     }
     else if (strstr(m_SceneFile, "ZeroDay"))
     {
@@ -2666,12 +2666,12 @@ void Sample::LoadScene()
         m_Settings.sunAngularDiameter = 0.0f;
         m_Settings.diffHitDistScale = 2.0f;
         m_Settings.specHitDistScale = 2.0f;
-        m_Settings.nrdSettings.antilagThresholdMinIntensity = 1.0f;
-        m_Settings.nrdSettings.antilagThresholdMaxIntensity = 10.0f;
-        m_Settings.nrdSettings.antilagSigmaScaleIntensity = 1.5f;
-        m_Settings.nrdSettings.antilagThresholdMinHitDistance = 1.0f;
-        m_Settings.nrdSettings.antilagThresholdMaxHitDistance = 10.0f;
-        m_Settings.nrdSettings.antilagSigmaScaleHitDistance = 1.5f;
+        m_Settings.nrdSettings.antilagIntensityThresholdMin = 1.0f;
+        m_Settings.nrdSettings.antilagIntensityThresholdMax = 10.0f;
+        m_Settings.nrdSettings.antilagIntensitySigmaScale = 1.5f;
+        m_Settings.nrdSettings.antilagHitDistanceThresholdMin = 1.0f;
+        m_Settings.nrdSettings.antilagHitDistanceThresholdMax = 10.0f;
+        m_Settings.nrdSettings.antilagHitDistanceSigmaScale = 1.5f;
     }
 }
 
@@ -2875,17 +2875,17 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
             const float3 trimmingParams = GetTrimmingParams();
 
-            nrd::IntensityAntilagSettings intensityAntilagSettings = {};
-            intensityAntilagSettings.thresholdMin = m_Settings.nrdSettings.antilagThresholdMinIntensity * 0.01f;
-            intensityAntilagSettings.thresholdMax = m_Settings.nrdSettings.antilagThresholdMaxIntensity * 0.01f;
-            intensityAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScaleIntensity;
-            intensityAntilagSettings.enable = m_Settings.nrdSettings.antilagIntensity;
+            nrd::AntilagIntensitySettings antilagIntensitySettings = {};
+            antilagIntensitySettings.thresholdMin = m_Settings.nrdSettings.antilagIntensityThresholdMin * 0.01f;
+            antilagIntensitySettings.thresholdMax = m_Settings.nrdSettings.antilagIntensityThresholdMax * 0.01f;
+            antilagIntensitySettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagIntensitySigmaScale;
+            antilagIntensitySettings.enable = m_Settings.nrdSettings.antilagIntensity;
 
-            nrd::HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
-            hitDistanceAntilagSettings.thresholdMin = m_Settings.nrdSettings.antilagThresholdMinHitDistance * 0.01f;
-            hitDistanceAntilagSettings.thresholdMax = m_Settings.nrdSettings.antilagThresholdMaxHitDistance * 0.01f;
-            hitDistanceAntilagSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagSigmaScaleHitDistance;
-            hitDistanceAntilagSettings.enable = m_Settings.nrdSettings.antilagHitDistance;
+            nrd::AntilagHitDistanceSettings antilagHitDistanceSettings = {};
+            antilagHitDistanceSettings.thresholdMin = m_Settings.nrdSettings.antilagHitDistanceThresholdMin * 0.01f;
+            antilagHitDistanceSettings.thresholdMax = m_Settings.nrdSettings.antilagHitDistanceThresholdMax * 0.01f;
+            antilagHitDistanceSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagHitDistanceSigmaScale;
+            antilagHitDistanceSettings.enable = m_Settings.nrdSettings.antilagHitDistance;
 
             nrd::HitDistanceParameters diffHitDistanceParameters = {};
             diffHitDistanceParameters.A = m_Settings.diffHitDistScale;
@@ -2895,8 +2895,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
             #if( NRD_COMBINED == 1 )
                 nrd::ReblurDiffuseSpecularSettings diffuseSpecularSettings = {};
-                diffuseSpecularSettings.intensityAntilagSettings = intensityAntilagSettings;
-                diffuseSpecularSettings.hitDistanceAntilagSettings = hitDistanceAntilagSettings;
+                diffuseSpecularSettings.antilagIntensitySettings = antilagIntensitySettings;
+                diffuseSpecularSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
                 diffuseSpecularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
                 diffuseSpecularSettings.diffHitDistanceParameters = diffHitDistanceParameters;
                 diffuseSpecularSettings.diffMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
@@ -2915,8 +2915,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
             #else
                 nrd::ReblurDiffuseSettings diffuseSettings = {};
                 diffuseSettings.hitDistanceParameters = diffHitDistanceParameters;
-                diffuseSettings.intensityAntilagSettings = intensityAntilagSettings;
-                diffuseSettings.hitDistanceAntilagSettings = hitDistanceAntilagSettings;
+                diffuseSettings.antilagIntensitySettings = antilagIntensitySettings;
+                diffuseSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
                 diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 diffuseSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 diffuseSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
@@ -2928,8 +2928,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 nrd::ReblurSpecularSettings specularSettings = {};
                 specularSettings.hitDistanceParameters = specHitDistanceParameters;
                 specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
-                specularSettings.intensityAntilagSettings = intensityAntilagSettings;
-                specularSettings.hitDistanceAntilagSettings = hitDistanceAntilagSettings;
+                specularSettings.antilagIntensitySettings = antilagIntensitySettings;
+                specularSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
                 specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
                 specularSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
                 specularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;

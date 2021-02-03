@@ -71,7 +71,7 @@ namespace nrd
     {
         float A = 3.0f;     // constant value (m)
         float B = 0.1f;     // viewZ based linear scale (m / units) (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
-        float C = 5.0f;     // roughness based scale, "> 1" to get bigger hit distance for low roughness
+        float C = 5.0f;    // roughness based scale, "> 1" to get bigger hit distance for low roughness
         float D = -50.0f;   // roughness based exponential scale, "< 0", absolute value should be big enough to collapse "exp2( D * roughness ^ 2 )" to "~0" for roughness = 1
     };
 
@@ -84,22 +84,28 @@ namespace nrd
         float C = 0.0001f;
     };
 
-    // Optional antilag settings
-    // delta = remap "abs( old - new ) - localVariance * sigmaScale" to [0; 1] range using thresholds
-    // antilag = F( delta ), delta = 0 - keep accumulation, delta = 1 - history reset
-    struct IntensityAntilagSettings
+    /*
+    Optional antilag settings:
+        delta = ( abs( old - new ) - localVariance * sigmaScale ) / ( max( old, new ) + localVariance * sigmaScale + sensitivityToDarkness )
+        delta = LinearStep( thresholdMax, thresholdMin, delta )
+            - 1 - keep accumulation
+            - 0 - history reset
+    */
+    struct AntilagIntensitySettings
     {
-        float thresholdMin = 0.05f;          // normalized %
-        float thresholdMax = 0.15f;          // max > min, usually 3-4x times greater than min
-        float sigmaScale = 2.0f;            // plain "delta" is reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
+        float thresholdMin = 0.05f;             // normalized %
+        float thresholdMax = 0.15f;             // max > min, usually 2-4x times greater than min
+        float sigmaScale = 2.0f;                // plain "delta" is reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
+        float sensitivityToDarkness = 0.75f;    // the only value which is a real intensity!
         bool enable = true;
     };
 
-    struct HitDistanceAntilagSettings
+    struct AntilagHitDistanceSettings
     {
-        float thresholdMin = 0.02f;         // normalized %, can be slightly increased if noise in AO/SO is high
-        float thresholdMax = 0.10f;          // 10% is a good start
-        float sigmaScale = 2.0f;            // "delta" will be reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
+        float thresholdMin = 0.02f;             // normalized %, can be slightly increased if noise in AO/SO is high
+        float thresholdMax = 0.10f;             // 10% is a good start
+        float sigmaScale = 2.0f;                // "delta" will be reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
+        float sensitivityToDarkness = 0.5f;     // hit distances are normalized, this value is in range (0; 1]
         bool enable = true;
     };
 
@@ -110,8 +116,8 @@ namespace nrd
     struct ReblurDiffuseSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
-        IntensityAntilagSettings intensityAntilagSettings = {};
-        HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
+        AntilagIntensitySettings antilagIntensitySettings = {};
+        AntilagHitDistanceSettings antilagHitDistanceSettings = {};
         float disocclusionThreshold = 0.005f;                           // normalized %
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
@@ -127,8 +133,8 @@ namespace nrd
     {
         HitDistanceParameters hitDistanceParameters = {};
         LobeTrimmingParameters lobeTrimmingParameters = {};
-        IntensityAntilagSettings intensityAntilagSettings = {};
-        HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
+        AntilagIntensitySettings antilagIntensitySettings = {};
+        AntilagHitDistanceSettings antilagHitDistanceSettings = {};
         float disocclusionThreshold = 0.005f;                           // normalized %
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
@@ -145,8 +151,8 @@ namespace nrd
         HitDistanceParameters diffHitDistanceParameters = {};
         HitDistanceParameters specHitDistanceParameters = {};
         LobeTrimmingParameters specLobeTrimmingParameters = {};
-        IntensityAntilagSettings intensityAntilagSettings = {};
-        HitDistanceAntilagSettings hitDistanceAntilagSettings = {};
+        AntilagIntensitySettings antilagIntensitySettings = {};
+        AntilagHitDistanceSettings antilagHitDistanceSettings = {};
         float disocclusionThreshold = 0.005f;                            // normalized %
         float planeDistanceSensitivity = 0.002f;                         // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         uint32_t diffMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM

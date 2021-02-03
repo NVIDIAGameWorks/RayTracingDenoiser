@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v1.16.1
+// NRD v1.16.2
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -61,9 +61,9 @@ float normHitDist:
 
 #define NRD_SHOW_MIPS                           1
 #define NRD_SHOW_ACCUM_SPEED                    2
-#define NRD_SHOW_ANTILAG                        3
-#define NRD_SHOW_VIRTUAL_HISTORY_AMOUNT         4
-#define NRD_SHOW_VIRTUAL_HISTORY_CONFIDENCE     5
+#define NRD_SHOW_VIRTUAL_HISTORY_AMOUNT         3
+#define NRD_SHOW_VIRTUAL_HISTORY_CONFIDENCE     4
+#define NRD_SHOW_PARALLAX                       5
 #define NRD_DEBUG                               0 // 0-5
 
 #define NRD_EPS                                 0.01

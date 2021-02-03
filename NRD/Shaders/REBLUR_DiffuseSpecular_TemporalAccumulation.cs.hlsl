@@ -396,7 +396,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     virtualHistoryAmount *= float( !IsReference() ); // no virtual motion in reference mode (it's by design, useful for integration debugging)
 
     // Hit distance based disocclusion for virtual motion
-    float hitDistDelta = abs( specHistoryVirtual.w - currentSurface.w ) - specSigma.w * 0.5; // TODO: was 0.1
+    float hitDistDelta = abs( specHistoryVirtual.w - currentSurface.w ); // no sigma substraction here - it's too noisy
     float hitDistMin = max( specHistoryVirtual.w, currentSurface.w );
     hitDistDelta = GetHitDist( hitDistDelta, viewZ, gSpecHitDistParams, roughness );
     hitDistMin = GetHitDist( hitDistMin, viewZ, gSpecHitDistParams, roughness );
@@ -405,6 +405,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     thresholdMin = 0.02 * STL::Math::LinearStep( 0.2, 0.01, parallax ); // TODO: thresholdMin needs to be set to 0, but it requires very clean hit distances
     thresholdMax = lerp( 0.01, 0.25, roughnessModified * roughnessModified ) + thresholdMin;
     float virtualHistoryConfidence = STL::Math::LinearStep( thresholdMax, thresholdMin, hitDistDelta );
+    virtualHistoryConfidence *= 1.0 - STL::Math::SmoothStep( 0.25, 1.0, parallax ); // TODO: I would be glad to avoid doing this, but I can't because the hit distance test doesn't give 100% results
     virtualHistoryConfidence *= STL::Math::SmoothStep( 0.0, 0.5, virtualRoughnessWeight );
 
     // Adjust virtual motion amount if surface history is confident
@@ -428,12 +429,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float accumSpeedVirtual = GetSpecAccumSpeed( specAccumSpeed, roughnessModified, avgNoV, 0.0 ); // parallax = 0 cancels NoV too
     float accumSpeedVirtualNonLinear = 1.0 / ( specAccumSpeedFade * accumSpeedVirtual + 1.0 );
 
-    float sigmaScale = 1.0 + TS_SIGMA_AMPLITUDE * STL::Math::SmoothStep( 0.0, 0.5, roughnessModified );
+    float sigmaScale = 3.0 + TS_SIGMA_AMPLITUDE * STL::Math::SmoothStep( 0.0, 0.5, roughnessModified );
     float4 specMin = specM1 - specSigma * sigmaScale;
     float4 specMax = specM1 + specSigma * sigmaScale;
     float4 specHistoryVirtualClamped = clamp( specHistoryVirtual, specMin, specMax );
 
-    float virtualUnclampedAmount = lerp( virtualHistoryConfidence * SPEC_FORCED_VIRTUAL_CLAMPING, 1.0, roughnessModified * roughnessModified );
+    float virtualForcedConfidence = lerp( 0.75, 0.95, STL::Math::LinearStep( 0.04, 0.25, roughnessModified ) );
+    float virtualUnclampedAmount = lerp( virtualHistoryConfidence * virtualForcedConfidence, 1.0, roughnessModified * roughnessModified );
     specHistoryVirtual = lerp( specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount );
 
     float4 currentVirtual;

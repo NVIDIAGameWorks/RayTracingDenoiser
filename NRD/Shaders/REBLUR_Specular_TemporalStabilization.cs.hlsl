@@ -30,8 +30,8 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToClip;
     float4 gCameraDelta;
     float4 gSpecHitDistParams;
-    float4 gAntilagThresholds;
-    float2 gAntilagSigmaScale;
+    float4 gAntilag1;
+    float4 gAntilag2;
     float2 gMotionVectorScale;
     float gSpecMaxAccumulatedFrameNum;
 };
@@ -199,6 +199,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float thresholdMin = 0.02 * STL::Math::LinearStep( 0.2, 0.01, parallax ); // TODO: thresholdMin needs to be set to 0, but it requires very clean hit distances
     float thresholdMax = lerp( 0.01, 0.25, roughnessModified * roughnessModified ) + thresholdMin;
     float virtualHistoryConfidence = STL::Math::LinearStep( thresholdMax, thresholdMin, hitDistDelta );
+    virtualHistoryConfidence *= 1.0 - STL::Math::SmoothStep( 0.25, 1.0, parallax );
 
     // Adjust accumulation speed for virtual motion if confidence is low
     float accumSpeedScale = lerp( 1.0, virtualHistoryConfidence, virtualHistoryAmount );
@@ -209,7 +210,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     specInternalData.y = specMinAccumSpeed + ( specInternalData.y - specMinAccumSpeed ) * accumSpeedScale;
 
     // Specular history
-    float virtualUnclampedAmount = lerp( virtualHistoryConfidence * SPEC_FORCED_VIRTUAL_CLAMPING, 1.0, roughness * roughness );
+    float virtualForcedConfidence = lerp( 0.75, 0.95, STL::Math::LinearStep( 0.04, 0.25, roughness ) );
+    float virtualUnclampedAmount = lerp( virtualHistoryConfidence * virtualForcedConfidence, 1.0, roughness * roughness );
     specHistoryVirtual = lerp( specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount );
 
     float4 specHistory = lerp( specHistorySurface, specHistoryVirtual, virtualHistoryAmount );
@@ -219,28 +221,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     specTemporalAccumulationParams.y = 1.0 + ( specTemporalAccumulationParams.y - 1.0 ) * rcrsWeight;
 
     // Antilag
-    float specAntilag = 1.0;
-
-    #if( USE_ANTILAG == 1 )
-        float2 antilagSensitivityToSmallValues = gAntilagThresholds.zw * 5.0 + 0.000001;
-
-        float2 specDelta = abs( specHistory.xw - specM1.xw ) - specSigma.xw * gAntilagSigmaScale;
-        specDelta /= min( specM1.xw, specHistory.xw ) + specSigma.xw * gAntilagSigmaScale + antilagSensitivityToSmallValues;
-        specDelta = STL::Math::LinearStep( gAntilagThresholds.zw, gAntilagThresholds.xy, specDelta );
-        specDelta *= specDelta;
-
-        float specFade = specInternalData.y / ( 1.0 + specInternalData.y );
-        specFade *= specTemporalAccumulationParams.x;
-
-        specAntilag = specDelta.x * specDelta.y;
-        specAntilag = lerp( 1.0, specAntilag, specFade );
-    #endif
-
-    #if( USE_LIMITED_ANTILAG == 1 )
-        specInternalData.y = specMinAccumSpeed + ( specInternalData.y - specMinAccumSpeed ) * specAntilag;
-    #else
-        specInternalData.y *= specAntilag;
-    #endif
+    float specAntilag = ComputeAntilagScale( specInternalData.y, specHistory.xw, specM1.xw, specSigma.xw, specTemporalAccumulationParams, gAntilag1, gAntilag2, roughness );
 
     // Clamp history and combine with the current frame
     specMin = specM1 - specSigma * specTemporalAccumulationParams.y;
@@ -261,12 +242,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     #if( NRD_DEBUG == NRD_SHOW_ACCUM_SPEED  )
         specResult.w = saturate( specInternalData.y / ( gSpecMaxAccumulatedFrameNum + 1.0 ) );
-    #elif( NRD_DEBUG == NRD_SHOW_ANTILAG )
-        specResult.w = specAntilag;
     #elif( NRD_DEBUG == NRD_SHOW_VIRTUAL_HISTORY_AMOUNT )
         specResult.w = virtualHistoryAmount;
     #elif( NRD_DEBUG == NRD_SHOW_VIRTUAL_HISTORY_CONFIDENCE )
         specResult.w = virtualHistoryConfidence;
+    #elif( NRD_DEBUG == NRD_SHOW_PARALLAX )
+        specResult.w = parallax;
     #endif
 
     gOut_Spec_Copy[ pixelPos ] = specResult;

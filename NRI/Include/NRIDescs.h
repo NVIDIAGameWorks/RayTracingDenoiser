@@ -957,7 +957,7 @@ namespace nri
         uint32_t samplerOffset;
         uint32_t textureOffset;
         uint32_t constantBufferOffset;
-        uint32_t storageTextureOffset;
+        uint32_t storageTextureAndBufferOffset;
     };
 
     struct ShaderDesc
