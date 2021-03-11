@@ -29,6 +29,7 @@ Any Ray Tracing compatible GPU. NVIDIA Ray Tracing compatible GPUs:
 ### How to Compile and Run
 - Update Windows to the latest version (2004)
 - Install latest Vulkan SDK
+- Set the variable "WINSDK_PATH" in the "CompileShaders/CompileShader.bat" file to where you installed your Windows SDK.
 - Run ``1-Deploy.bat`` and choose Visual Studio version
 - Install required Windows SDK (you will be prompted)
 - Open ``_Compiler\vs(2017/2019)\SANDBOX.sln``
@@ -42,6 +43,7 @@ Any Ray Tracing compatible GPU. NVIDIA Ray Tracing compatible GPUs:
 If you only need to run the sample and don't want to interact with the code:
 - Update Windows to the latest version (2004)
 - Install latest Vulkan SDK
+- Set the variable "WINSDK_PATH" in the "CompileShaders/CompileShader.bat" file to where you installed your Windows SDK.
 - Run ``1-Deploy.bat`` and choose Visual Studio version
 - Install required Windows SDK (you will be prompted)
 - Run ``2-Build.bat``
