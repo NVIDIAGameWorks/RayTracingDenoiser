@@ -11,11 +11,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 /*
 CREDITS:
     Developed by:
-        Library, REBLUR, SIGMA and SVGF denoisers:
+        Library, REBLUR and SIGMA denoisers:
             Dmitry Zhdan (dzhdan@nvidia.com)
 
         ReLAX denoiser:
-            Tim Cheblokov (tcheblokov@nvidia.com)
+            Tim Cheblokov (ttcheblokov@nvidia.com)
             Pawel Kozlowski (pkozlowski@nvidia.com) 
 
     Special thanks:
@@ -28,12 +28,20 @@ CREDITS:
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 
-#define NRD_VERSION_MAJOR 1
-#define NRD_VERSION_MINOR 16
-#define NRD_VERSION_BUILD 2
-#define NRD_VERSION_DATE "3 February 2021"
-#define NRD_CALL __fastcall
+#define NRD_VERSION_MAJOR 2
+#define NRD_VERSION_MINOR 0
+#define NRD_VERSION_BUILD 0
+#define NRD_VERSION_DATE "12 April 2021"
+
+#if defined(_MSC_VER)
+    #define NRD_CALL __fastcall
+#elif !defined(__x86_64) && (defined(__GNUC__)  || defined (__clang__))
+    #define NRD_CALL __attribute__((fastcall))
+#else
+    #define NRD_CALL 
+#endif
 
 #ifndef NRD_API
     #define NRD_API extern "C"

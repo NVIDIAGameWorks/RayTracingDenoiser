@@ -49,7 +49,6 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
         MethodData methodData = {};
         methodData.desc = methodDesc;
         methodData.dispatchOffset = m_Dispatches.size();
-        methodData.constantOffset = m_Constants.size();
         methodData.textureOffset = m_Resources.size();
         methodData.pingPongOffset = m_PingPongs.size();
 
@@ -65,13 +64,10 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
             methodData.settingsSize = AddMethod_SigmaTranslucentShadow(w, h);
         else if (methodDesc.method == Method::RELAX_DIFFUSE_SPECULAR)
             methodData.settingsSize = AddMethod_RelaxDiffuseSpecular(w, h);
-        else if (methodDesc.method == Method::SVGF)
-            methodData.settingsSize = AddMethod_Svgf(w, h);
         else
             return Result::INVALID_ARGUMENT;
 
         methodData.dispatchNum = m_Dispatches.size() - methodData.dispatchOffset;
-        methodData.constantNum = m_Constants.size() - methodData.constantOffset;
         methodData.textureNum = m_Resources.size() - methodData.textureOffset;
         methodData.permanentPoolNum = m_PermanentPool.size() - m_PermanentPoolOffset;
         methodData.transientPoolNum = m_TransientPool.size() - m_TransientPoolOffset;
@@ -92,7 +88,6 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
 
     UpdateCommonSettings(commonSettings);
 
-    m_ActiveDispatchIndices.clear();
     m_ActiveDispatches.clear();
 
     for (const MethodData& methodData : m_MethodData)
@@ -112,12 +107,7 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
             UpdateMethod_SigmaTranslucentShadow(methodData);
         else if (methodData.desc.method == Method::RELAX_DIFFUSE_SPECULAR)
             UpdateMethod_RelaxDiffuseSpecular(methodData);
-        else if (methodData.desc.method == Method::SVGF)
-            UpdateMethod_Svgf(methodData);
     }
-
-    for (const auto& dispatchIndex : m_ActiveDispatchIndices)
-        m_ActiveDispatches.push_back( m_Dispatches[dispatchIndex] );
 
     dispatchDescs = m_ActiveDispatches.data();
     dispatchDescNum = (uint32_t)m_ActiveDispatches.size();
@@ -164,25 +154,26 @@ void DenoiserImpl::PrepareDesc()
     m_Desc.transientPool = m_TransientPool.data();
     m_Desc.transientPoolSize = (uint32_t)m_TransientPool.size();
 
-    m_Desc.descriptorSetDesc.setNum = (uint32_t)m_Dispatches.size();
-    m_Desc.descriptorSetDesc.constantBufferNum = (uint32_t)m_Dispatches.size();
-    for (const Resource& resource : m_Resources)
-    {
-        if (resource.stateNeeded == DescriptorType::TEXTURE)
-            m_Desc.descriptorSetDesc.textureNum++;
-        else if (resource.stateNeeded == DescriptorType::STORAGE_TEXTURE)
-            m_Desc.descriptorSetDesc.storageTextureNum++;
-    }
-
+    m_Desc.descriptorSetDesc.textureNum = 0;
+    m_Desc.descriptorSetDesc.storageTextureNum = 0;
     m_Desc.constantBufferDesc.registerIndex = 0;
     m_Desc.constantBufferDesc.maxDataSize = 0;
-    for (DispatchDesc& dispatchDesc : m_Dispatches)
+    for (InternalDispatchDesc& dispatchDesc : m_Dispatches)
     {
-        size_t constantOffset = (size_t)dispatchDesc.constantBufferData;
-        dispatchDesc.constantBufferData = (uint8_t*)&m_Constants[constantOffset];
-
         size_t textureOffset = (size_t)dispatchDesc.resources;
         dispatchDesc.resources = &m_Resources[textureOffset];
+
+        for (uint32_t i = 0; i < dispatchDesc.resourceNum; i++)
+        {
+            const Resource& resource = dispatchDesc.resources[i];
+            if (resource.stateNeeded == DescriptorType::TEXTURE)
+                m_Desc.descriptorSetDesc.textureNum += dispatchDesc.maxRepeatNum;
+            else if (resource.stateNeeded == DescriptorType::STORAGE_TEXTURE)
+                m_Desc.descriptorSetDesc.storageTextureNum += dispatchDesc.maxRepeatNum;
+        }
+
+        m_Desc.descriptorSetDesc.setNum += dispatchDesc.maxRepeatNum;
+        m_Desc.descriptorSetDesc.constantBufferNum += dispatchDesc.maxRepeatNum;
 
         m_Desc.constantBufferDesc.maxDataSize = std::max(dispatchDesc.constantBufferDataSize, m_Desc.constantBufferDesc.maxDataSize);
     }
@@ -199,11 +190,8 @@ void DenoiserImpl::PrepareDesc()
     // Since now all std::vectors become "locked" (no reallocations)
 }
 
-void DenoiserImpl::AddComputeDispatchDesc(DispatchDesc& computeDispatchDesc, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv, uint32_t width, uint32_t height, uint32_t ctaWidth, uint32_t ctaHeight)
+void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv)
 {
-    const size_t rangeOffset = m_DescriptorRanges.size();
-    const uint32_t pipelineIndex = (uint32_t)m_Pipelines.size();
-
     // Resource binding
     DescriptorRangeDesc descriptorRanges[2] =
     {
@@ -220,6 +208,7 @@ void DenoiserImpl::AddComputeDispatchDesc(DispatchDesc& computeDispatchDesc, con
             descriptorRanges[1].descriptorNum++;
     }
 
+    const size_t rangeOffset = m_DescriptorRanges.size();
     m_DescriptorRanges.push_back(descriptorRanges[0]);
     m_DescriptorRanges.push_back(descriptorRanges[1]);
 
@@ -232,15 +221,15 @@ void DenoiserImpl::AddComputeDispatchDesc(DispatchDesc& computeDispatchDesc, con
     pipelineDesc.computeShaderDXIL = dxil;
     pipelineDesc.computeShaderSPIRV = spirv;
 
+    const uint32_t pipelineIndex = (uint32_t)m_Pipelines.size();
     m_Pipelines.push_back( pipelineDesc );
-    computeDispatchDesc.pipelineIndex = pipelineIndex;
+
+    InternalDispatchDesc computeDispatchDesc = {};
+    computeDispatchDesc.pipelineIndex = (uint16_t)pipelineIndex;
+    computeDispatchDesc.maxRepeatNum = (uint16_t)maxRepeatNum;
 
     // Constants
-    size_t lastConstant = m_Constants.size();
-    computeDispatchDesc.constantBufferData = (uint8_t*)lastConstant;
-
-    Constant zeroConstant = {};
-    m_Constants.resize(lastConstant + computeDispatchDesc.constantBufferDataSize / sizeof(uint32_t), zeroConstant);
+    computeDispatchDesc.constantBufferDataSize = constantBufferDataSize;
 
     // Resources
     computeDispatchDesc.resourceNum = uint32_t(m_Resources.size() - m_ResourceOffset);
@@ -248,8 +237,8 @@ void DenoiserImpl::AddComputeDispatchDesc(DispatchDesc& computeDispatchDesc, con
 
     // Dispatch
     computeDispatchDesc.name = m_PassName;
-    computeDispatchDesc.gridWidth = DivideUp(width, ctaWidth);
-    computeDispatchDesc.gridHeight = DivideUp(height, ctaHeight);
+    computeDispatchDesc.workgroupDim = workgroupDim;
+    computeDispatchDesc.downsampleFactor = downsampleFactor;
 
     m_Dispatches.push_back(computeDispatchDesc);
 }
@@ -300,38 +289,11 @@ void DenoiserImpl::UpdatePingPong(const MethodData& methodData)
     }
 }
 
-void DenoiserImpl::AddNrdSharedConstants(const MethodData& methodData, float planeDistSensitivity, Constant*& data)
-{
-    float w = float(methodData.desc.fullResolutionWidth);
-    float h = float(methodData.desc.fullResolutionHeight);
-    float unproject = 1.0f / (0.5f * h * m_ProjectY);
-    float infWithViewZSign = m_CommonSettings.denoisingRange * ( ( m_ProjectionFlags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );
-    float frameRateScale = Min( 33.333f / m_Timer.GetSmoothedElapsedTime(), 4.0f );
-
-    uint32_t bools = 0;
-    if (m_CommonSettings.worldSpaceMotion)
-        bools |= 0x1;
-    if (m_CommonSettings.forceReferenceAccumulation)
-        bools |= 0x2;
-
-    AddFloat4x4(data, m_ViewToClip);
-    AddFloat4(data, m_Frustum);
-    AddFloat2(data, 1.0f / w, 1.0f / h);
-    AddFloat2(data, w, h);
-    AddUint(data, bools);
-    AddFloat(data, m_IsOrtho);
-    AddFloat(data, unproject);
-    AddFloat(data, m_CommonSettings.debug);
-    AddFloat(data, infWithViewZSign);
-    AddFloat(data, 1.0f / planeDistSensitivity);
-    AddUint(data, m_CommonSettings.frameIndex);
-    AddFloat(data, frameRateScale);
-}
-
 void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 {
-    m_JitterPrev.x = m_CommonSettings.cameraJitter[0]; // TODO: add to CommonSettings?
-    m_JitterPrev.y = m_CommonSettings.cameraJitter[1];
+    // TODO: add to CommonSettings?
+    m_JitterPrev = float2(m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
+    m_ResolutionScalePrev = m_CommonSettings.resolutionScale;
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
@@ -342,6 +304,7 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
         m_IsFirstUse = false;
     }
 
+    // Rotators
     float whiteNoise = Rand::uf1() * DegToRad(360.0f);
     float ca = Cos( whiteNoise );
     float sa = Sin( whiteNoise );
@@ -350,6 +313,7 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     m_Rotator[1] = float4( -sa, ca, -ca, -sa );
     m_Rotator[2] = float4( ca, sa, -sa, ca );
 
+    // Main matrices
     m_ViewToClip = float4x4
     (
         float4(commonSettings.viewToClipMatrix),
@@ -368,29 +332,49 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
     m_WorldToView = float4x4
     (
-        float4(commonSettings.worldToViewMatrix),
-        float4(commonSettings.worldToViewMatrix + 4),
-        float4(commonSettings.worldToViewMatrix + 8),
-        float4(commonSettings.worldToViewMatrix + 12)
+        float4(commonSettings.worldToViewRotationMatrix),
+        float4(commonSettings.worldToViewRotationMatrix + 4),
+        float4(commonSettings.worldToViewRotationMatrix + 8),
+        float4(commonSettings.worldToViewRotationMatrix + 12)
     );
 
     m_WorldToViewPrev = float4x4
     (
-        float4(commonSettings.worldToViewMatrixPrev),
-        float4(commonSettings.worldToViewMatrixPrev + 4),
-        float4(commonSettings.worldToViewMatrixPrev + 8),
-        float4(commonSettings.worldToViewMatrixPrev + 12)
+        float4(commonSettings.worldToViewRotationMatrixPrev),
+        float4(commonSettings.worldToViewRotationMatrixPrev + 4),
+        float4(commonSettings.worldToViewRotationMatrixPrev + 8),
+        float4(commonSettings.worldToViewRotationMatrixPrev + 12)
     );
 
+    // Convert main matrices to LHS ("viewZ" MUST BE always used as "abs( viewZ )")
+    uint32_t flags = 0;
+    DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
+    if ( (flags & PROJ_LEFT_HANDED) == 0 )
+    {
+        m_ViewToClip.col2 = xmm_negate(m_ViewToClip.col2);
+        m_ViewToClipPrev.col2 = xmm_negate(m_ViewToClipPrev.col2);
+    }
+
+    bool isViewMatrixRightHanded = m_WorldToView.IsRightHanded();
+    if (isViewMatrixRightHanded)
+    {
+        m_WorldToView.InvertOrtho();
+        m_WorldToView.col2 = xmm_negate(m_WorldToView.col2);
+        m_WorldToView.InvertOrtho();
+
+        m_WorldToViewPrev.InvertOrtho();
+        m_WorldToViewPrev.col2 = xmm_negate(m_WorldToViewPrev.col2);
+        m_WorldToViewPrev.InvertOrtho();
+    }
+
+    // Compute other matrices
     m_ViewToWorld = m_WorldToView;
     m_ViewToWorld.InvertOrtho();
-    float3 cameraPosition = m_ViewToWorld.GetCol3().To3d();
 
     m_ViewToWorldPrev = m_WorldToViewPrev;
     m_ViewToWorldPrev.InvertOrtho();
 
-    float3 cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
-    m_CameraDelta = cameraPositionPrev - cameraPosition;
+    m_CameraDelta = float3(commonSettings.cameraMotion);
 
     if( m_CommonSettings.frameIndex == 0 )
         m_CameraDeltaSmoothed = m_CameraDelta;
@@ -399,11 +383,11 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
         float l1 = Length(m_CameraDeltaSmoothed);
         float l2 = Length(m_CameraDelta);
 
-        float relativeDelta = Abs(l1 - l2) / ( Min( l1, l2 ) + 1e-7f );
-        float f = relativeDelta / ( 1.0f + relativeDelta );
+        float relativeDelta = Abs(l1 - l2) / (Min(l1, l2) + 1e-7f);
+        float f = relativeDelta / (1.0f + relativeDelta);
         f = Max(f, 0.1f);
 
-        m_CameraDeltaSmoothed = Lerp( m_CameraDeltaSmoothed, m_CameraDelta, float3(f) );
+        m_CameraDeltaSmoothed = Lerp(m_CameraDeltaSmoothed, m_CameraDelta, float3(f));
     }
 
     // IMPORTANT: this part is mandatory needed to preserve precision by making matrices camera relative
@@ -415,7 +399,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     m_WorldToViewPrev = m_ViewToWorldPrev;
     m_WorldToViewPrev.InvertOrtho();
 
-    // Compute other matrices
     m_WorldToClip = m_ViewToClip * m_WorldToView;
     m_WorldToClipPrev = m_ViewToClipPrev * m_WorldToViewPrev;
 
@@ -433,23 +416,22 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
     float project[3];
     float settings[PROJ_NUM];
-    uint32_t flags = 0;
     DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
-
     m_ProjectY = project[1];
-    m_IsOrtho = ( flags & PROJ_ORTHO ) == 0 ? 0.0f : ( ( flags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );
-    m_ProjectionFlags = flags;
+    m_IsOrtho = (flags & PROJ_ORTHO) == 0 ? 0.0f : 1.0f;
 
     DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
-    m_IsOrthoPrev = ( flags & PROJ_ORTHO ) == 0 ? 0.0f : ( ( flags & PROJ_LEFT_HANDED ) ? 1.0f : -1.0f );
 
-    float dx = Abs( m_CommonSettings.cameraJitter[0] - m_JitterPrev.x );
-    float dy = Abs( m_CommonSettings.cameraJitter[1] - m_JitterPrev.y );
+    float dx = Abs(m_CommonSettings.cameraJitter[0] - m_JitterPrev.x);
+    float dy = Abs(m_CommonSettings.cameraJitter[1] - m_JitterPrev.y);
     m_JitterDelta = Max(dx, dy);
-    m_CheckerboardResolveAccumSpeed = Lerp( 0.95f, 0.5f, m_JitterDelta );
+    m_CheckerboardResolveAccumSpeed = Lerp(0.95f, 0.5f, m_JitterDelta);
 
     m_Timer.UpdateElapsedTimeSinceLastSave();
     m_Timer.SaveCurrentTime();
+
+    m_TimeDelta = m_CommonSettings.timeDeltaBetweenFrames > 0.0f ? m_CommonSettings.timeDeltaBetweenFrames : m_Timer.GetSmoothedElapsedTime();
+    m_FrameRateScale = Clamp(33.333f / m_TimeDelta, 2.0f / 16.0f, 4.0f);
 }
 
 #ifndef BYTE
@@ -458,17 +440,21 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
 // METHODS =================================================================================
 
-// SHARED
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4.cs.dxbc.h"
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4.cs.dxil.h"
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4.cs.spirv.h"
-
+// NRD
 #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxbc.h"
 #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxil.h"
 #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.spirv.h"
 
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.dxbc.h"
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.dxil.h"
+#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.spirv.h"
+
 
 // REBLUR_DIFFUSE
+#include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.spirv.h"
+
 #include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxbc.h"
 #include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxil.h"
 #include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.spirv.h"
@@ -492,6 +478,10 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxbc.h"
 #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxil.h"
 #include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.spirv.h"
+
+#include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.spirv.h"
 
 #include "Methods/Reblur_Diffuse.hpp"
 
@@ -521,6 +511,10 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.dxil.h"
 #include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.spirv.h"
 
+#include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.spirv.h"
+
 #include "Methods/Reblur_Specular.hpp"
 
 
@@ -549,6 +543,10 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.dxil.h"
 #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
 
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.dxbc.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.dxil.h"
+#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.spirv.h"
+
 #include "Methods/Reblur_DiffuseSpecular.hpp"
 
 
@@ -564,6 +562,10 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxbc.h"
 #include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxil.h"
 #include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.spirv.h"
+
+#include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.dxbc.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.dxil.h"
+#include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.spirv.h"
 
 #include "Methods/Sigma_Shadow.hpp"
 
@@ -617,20 +619,8 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #include "../../_Build/Shaders/RELAX_ATrousStandard.cs.dxil.h"
 #include "../../_Build/Shaders/RELAX_ATrousStandard.cs.spirv.h"
 
+#include "../../_Build/Shaders/RELAX_SplitScreen.cs.dxbc.h"
+#include "../../_Build/Shaders/RELAX_SplitScreen.cs.dxil.h"
+#include "../../_Build/Shaders/RELAX_SplitScreen.cs.spirv.h"
+
 #include "Methods/Relax_DiffuseSpecular.hpp"
-
-
-// SVGF
-#include "../../_Build/Shaders/SVGF_Reproject.cs.dxbc.h"
-#include "../../_Build/Shaders/SVGF_Reproject.cs.dxil.h"
-#include "../../_Build/Shaders/SVGF_Reproject.cs.spirv.h"
-
-#include "../../_Build/Shaders/SVGF_FilterMoments.cs.dxbc.h"
-#include "../../_Build/Shaders/SVGF_FilterMoments.cs.dxil.h"
-#include "../../_Build/Shaders/SVGF_FilterMoments.cs.spirv.h"
-
-#include "../../_Build/Shaders/SVGF_Atrous.cs.dxbc.h"
-#include "../../_Build/Shaders/SVGF_Atrous.cs.dxil.h"
-#include "../../_Build/Shaders/SVGF_Atrous.cs.spirv.h"
-
-#include "Methods/Svgf.hpp"

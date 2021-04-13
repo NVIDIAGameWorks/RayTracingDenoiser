@@ -23,60 +23,39 @@ NRI_RESOURCE( RWTexture2D<float3>, gOut_ObjectMotion, u, 7, 1 ); // TODO: .w is 
 NRI_RESOURCE( RWTexture2D<float>, gOut_ViewZ, u, 8, 1 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 9, 1 );
 NRI_RESOURCE( RWTexture2D<unorm float4>, gOut_BaseColor_Metalness, u, 10, 1 );
-NRI_RESOURCE( RWTexture2D<float2>, gOut_Shadow, u, 11, 1 );
+NRI_RESOURCE( RWTexture2D<float2>, gOut_ShadowData, u, 11, 1 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 12, 1 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 13, 1 );
-NRI_RESOURCE( RWTexture2D<float3>, gOut_Translucency, u, 14, 1 );
+NRI_RESOURCE( RWTexture2D<unorm float4>, gOut_Shadow_Translucency, u, 14, 1 );
 
 // SPP - must be POW of 2!
-// Virtual 32 spp tuned for REBLUR purposes (actually, 1 spp but distributed in time)
+// Virtual 32 spp tuned for REBLUR / RELAX purposes (actually, 1 spp but distributed in time)
 // Final SPP = sppVirtual x spp (for this value there is a different "gIn_Scrambling_Ranking" texture!)
-float2 GetRandom( bool isCheckerboard, uint seed, Texture2D<uint3> texScramblingRanking, uint sampleIndex, const uint sppVirtual, const uint spp )
+float2 GetBlueNoise( bool isCheckerboard, uint seed, Texture2D<uint3> texScramblingRanking, uint sampleIndex, const uint sppVirtual, const uint spp )
 {
-    // WHITE NOISE (for testing purposes)
-
-    float4 white = STL::Rng::GetFloat4( );
-    bool forceWhiteNoise = gDenoiserType != REBLUR && sppVirtual != 1; // TODO: modify some settings to WAR unsupported and not working stuff in non-REBLUR
-    if( !gUseBlueNoise || forceWhiteNoise )
-        return white.xy;
-
-    // BLUE NOISE
-
-    // Based on - https://eheitzresearch.wordpress.com/772-2/
-    // Source code and textures can be found here - https://belcour.github.io/blog/research/2019/06/17/sampling-bluenoise.html (but 2D only)
-
-    // TODO: virtual sampling assumes that the camera doesn't move, under motion the sampling pattern gets shifted,
-    // but it's barely visible even if denoising radius is 0, with spatial filtering the problem completely disappers.
-    // Ideally, "sppVirtual" number should be adjusted to motion...
+    // Based on:
+    //     https://eheitzresearch.wordpress.com/772-2/
+    // Source code and textures can be found here:
+    //     https://belcour.github.io/blog/research/2019/06/17/sampling-bluenoise.html (but 2D only)
 
     uint2 pixelPos = DispatchRaysIndex( ).xy;
+    pixelPos.x >>= isCheckerboard ? 1 : 0;
 
     // Sample index
-    uint frameIndex = isCheckerboard ? ( gFrameIndex >> 1 ) : gFrameIndex;
-    uint virtualSampleIndex = ( frameIndex + seed ) & ( sppVirtual - 1 );
+    uint virtualSampleIndex = ( gFrameIndex + seed ) & ( sppVirtual - 1 );
     sampleIndex &= spp - 1;
     sampleIndex += virtualSampleIndex * spp;
 
-    // Offset retarget (advance each "sppVirtual" frames)
-    uint2 offset = pixelPos;
-    #if 0 // to keep image stable after "sppVirtual" frames...
-        offset += uint2( float2( 0.754877669, 0.569840296 ) * gScreenSize * float( gFrameIndex / sppVirtual ) );
-    #endif
-
     // The algorithm
-    uint3 A = texScramblingRanking[ offset & 127 ];
+    uint3 A = texScramblingRanking[ pixelPos & 127 ];
     uint rankedSampleIndex = sampleIndex ^ A.z;
     uint4 B = gIn_Sobol[ uint2( rankedSampleIndex & 255, 0 ) ];
     float4 blue = ( float4( B ^ A.xyxy ) + 0.5 ) * ( 1.0 / 256.0 );
 
     // Randomize in [ 0; 1 / 256 ] area to get rid of possible banding
-    #if 1
-        uint d = STL::Sequence::Bayer4x4ui( pixelPos, gFrameIndex );
-        float2 dither = ( float2( d & 3, d >> 2 ) + 0.5 ) * ( 1.0 / 4.0 );
-        blue += ( dither.xyxy - 0.5 ) * ( 1.0 / 256.0 );
-    #else
-        blue += ( white - 0.5 ) * ( 1.0 / 256.0 );
-    #endif
+    uint d = STL::Sequence::Bayer4x4ui( pixelPos, gFrameIndex );
+    float2 dither = ( float2( d & 3, d >> 2 ) + 0.5 ) * ( 1.0 / 4.0 );
+    blue += ( dither.xyxy - 0.5 ) * ( 1.0 / 256.0 );
 
     return saturate( blue.xy );
 }
@@ -138,7 +117,7 @@ float4 CastSoftShadowRay( GeometryProps geometryProps, MaterialProps materialPro
     bool isOpaqueRayNeeded = STL::Color::Luminance( materialProps.Lsum ) != 0.0 && !materialProps.isEmissive && gDisableShadowsAndEnableImportanceSampling == 0; // also skips INF rays
 
     // Sample sun disk
-    float2 rnd = GetRandom( false, 0, gIn_Scrambling_Ranking_1spp, 0, 1, 1 );
+    float2 rnd = GetBlueNoise( false, 0, gIn_Scrambling_Ranking_1spp, 0, 1, 1 );
     rnd = STL::ImportanceSampling::Cosine::GetRay( rnd ).xy;
     rnd *= gTanSunAngularRadius;
 
@@ -202,16 +181,18 @@ float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps 
     // The simplest way is to fade out more if REBLUR's "maxAccumulatedFrameNum" is low
 
     float3 albedo, Rf0;
-    STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( materialProps.baseColor, materialProps.metalness, albedo, Rf0 );
+    STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( materialProps.baseColor, materialProps.metalness, albedo, Rf0 );
 
     float4 clipPrev = STL::Geometry::ProjectiveTransform( gWorldToClipPrev, geometryProps.X ); // Not Xprev because confidence is based on viewZ
     float2 uvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5 - gJitter;
-    float4 prevLsum = gIn_PrevColor_PrevViewZ.SampleLevel( gNearestMipmapNearestSampler, uvPrev, 0.0 );
+    float4 prevLsum = gIn_PrevColor_PrevViewZ.SampleLevel( gNearestMipmapNearestSampler, uvPrev * gRectSizePrev * gInvScreenSize, 0 );
     float prevViewZ = abs( prevLsum.w ) / NRD_FP16_VIEWZ_SCALE;
 
     // Fade-out on screen edges
     float2 f = STL::Math::LinearStep( 0.0, 0.1, uvPrev ) * STL::Math::LinearStep( 1.0, 0.9, uvPrev );
     float fade = f.x * f.y;
+    fade *= float( pixelUv.x < gSeparator );
+    fade *= float( uvPrev.x < gSeparator );
 
     // Confidence - viewZ
     // No "abs" for clipPrev.w, because if it's negative we have a back-projection!
@@ -226,7 +207,7 @@ float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps 
     // Confidence - ignore too short rays
     float4 clip = STL::Geometry::ProjectiveTransform( gWorldToClip, geometryProps.X );
     float2 uv = ( clip.xy / clip.w ) * float2( 0.5, -0.5 ) + 0.5 - gJitter;
-    float d = length( ( uv - pixelUv ) * gScreenSize );
+    float d = length( ( uv - pixelUv ) * gRectSize );
     fade *= STL::Math::LinearStep( 1.0, 3.0, d );
 
     // Confidence - ignore mirror specular
@@ -248,10 +229,11 @@ float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps 
 [shader( "raygeneration" )]
 void ENTRYPOINT( )
 {
-    // Pixel position
     uint2 pixelPos = DispatchRaysIndex( ).xy;
-    float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvScreenSize;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
     float2 sampleUv = pixelUv + gJitter;
+
+    STL::Rng::Initialize( pixelPos, gFrameIndex );
 
     // Primary ray
     float3 rayOrigin0 = STL::Geometry::ReconstructViewPosition( sampleUv, gCameraFrustum, gNearZ, gIsOrtho );
@@ -271,7 +253,6 @@ void ENTRYPOINT( )
         float2 mipAndCone = GetConeAngle( 0.0, 0.0 );
         Payload payload = InitPayload( mipAndCone );
         {
-            // TODO: use raster for primary rays
             const uint rayFlags = 0;
             const uint instanceInclusionMask = FLAGS_DEFAULT;
             const uint rayContributionToHitGroupIndex = 0;
@@ -388,42 +369,19 @@ void ENTRYPOINT( )
     // Early out
     if( geometryProps0.IsSky( ) )
     {
-        gOut_Shadow[ pixelPos ] = SIGMA_INF_SHADOW;
-        gOut_Translucency[ pixelPos ] = 1.0;
-
-        #if( USE_BIG_VALUE_CHECK == 1 )
-            // Write extremely large values to INF pixels
-            const float big = 32000.0;
-
-            #if( CHECKERBOARD == 0 )
-                gOut_Diff[ pixelPos ] = big;
-                gOut_Spec[ pixelPos ] = big;
-            #else
-                uint halfWidth = uint( gScreenSize.x * 0.5 + 0.5 );
-                bool isDiffuse = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex ) != 0;
-                pixelPos.x >>= 1;
-                if( isDiffuse )
-                {
-                    gOut_Diff[ pixelPos ] = big;
-                    gOut_Spec[ pixelPos + uint2( halfWidth, 0 ) ] = big;
-                }
-                else
-                {
-                    gOut_Spec[ pixelPos ] = big;
-                    gOut_Diff[ pixelPos + uint2( halfWidth, 0 ) ] = big;
-                }
-            #endif
-        #endif
+        gOut_ShadowData[ pixelPos ] = SIGMA_INF_SHADOW;
 
         return;
     }
 
-    STL::Rng::Initialize( pixelPos, gFrameIndex );
-
     // Sun shadow
     float4 shadowData0 = CastSoftShadowRay( geometryProps0, materialProps0 );
-    gOut_Shadow[ pixelPos ] = SIGMA_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.w == INF ? NRD_FP16_MAX : shadowData0.w );
-    gOut_Translucency[ pixelPos ] = shadowData0.xyz;
+
+    float shadow;
+    float2 shadowData = SIGMA_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.w == INF ? NRD_FP16_MAX : shadowData0.w, gTanSunAngularRadius, shadow );
+
+    gOut_ShadowData[ pixelPos ] = shadowData;
+    gOut_Shadow_Translucency[ pixelPos ] = float4( shadow, shadowData0.xyz );
 
     // Secondary rays
     float4 diffIndirect = 0;
@@ -447,12 +405,18 @@ void ENTRYPOINT( )
         float throughput1 = 0.0;
         uint sampleNum = 0;
 
-    #if( USE_IMPORTANCE_SAMPLING > 0 )
+    #if( USE_IMPORTANCE_SAMPLING > 0 && USE_BLUE_NOISE == 0 )
+        // Adds a non significant overhead, but allows to skip rays with zero throughput (for specular rays).
+        // Doesn't make a lot of sense if "blue" noise is on (becomes less efficient).
         while( sampleNum < ZERO_TROUGHPUT_SAMPLE_NUM && throughput1 == 0.0 )
     #endif
         {
-            // Get noise which converges to 32spp blue noise over time
-            float2 rnd = GetRandom( isCheckerboard, sampleNum, gIn_Scrambling_Ranking_32spp, 0, 32, 1 );
+            #if( USE_BLUE_NOISE == 1 )
+                // Low descrepancy sampling is your friend in the "Low Rpp World"
+                float2 rnd = GetBlueNoise( isCheckerboard, sampleNum, gIn_Scrambling_Ranking_32spp, 0, 32, 1 );
+            #else
+                float2 rnd = STL::Rng::GetFloat2( );
+            #endif
 
             if( isDiffuse )
             {
@@ -530,10 +494,10 @@ void ENTRYPOINT( )
 
             // 2nd bounce (can be approximated if data prom the previous frame is invalid or specular is needed)
             float3 albedo1, Rf01;
-            STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( materialProps1.baseColor, materialProps1.metalness, albedo1, Rf01 );
+            STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( materialProps1.baseColor, materialProps1.metalness, albedo1, Rf01 );
             float NoV1 = abs( dot( materialProps1.N, rayDirection1 ) );
             float3 F1 = STL::BRDF::EnvironmentTerm_Ross( Rf01, NoV1, materialProps1.roughness );
-            float2 GG1 = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV1, materialProps1.roughness ), 0.0 );
+            float2 GG1 = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV1, materialProps1.roughness ), 0 );
             float3 brdf1 = F1 * GG1.x + albedo1 * GG1.y / STL::Math::Pi( 1.0 );
 
             float3 Clight2 = GetIndirectAmbient( geometryProps1.tmin, isDiffuse );
@@ -577,10 +541,10 @@ void ENTRYPOINT( )
                         Clight2 *= float( distanceToOccluder2 == INF );
 
                         float3 albedo2, Rf02;
-                        STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( materialProps2.baseColor, materialProps2.metalness, albedo2, Rf02 );
+                        STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( materialProps2.baseColor, materialProps2.metalness, albedo2, Rf02 );
                         float NoV2 = abs( dot( materialProps2.N, ggxDominantDirection ) );
                         float3 F2 = STL::BRDF::EnvironmentTerm_Ross( Rf02, NoV2, materialProps2.roughness );
-                        float2 GG2 = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV2, materialProps2.roughness ), 0.0 );
+                        float2 GG2 = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV2, materialProps2.roughness ), 0 );
                         float3 brdf2 = F2 * GG2.x + albedo2 * GG2.y / STL::Math::Pi( 1.0 );
 
                         Clight2 += GetIndirectAmbient( geometryProps2.tmin, isDiffuse ) * brdf2;
@@ -697,7 +661,7 @@ void ENTRYPOINT( )
             diffIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, viewZ, gDiffHitDistParams );
 
             if( gDenoiserType != REBLUR )
-                diffIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist );
+                diffIndirect = RELAX_FrontEnd_PackRadiance( Clight1, pathLength );
         }
         else
         {
@@ -713,7 +677,7 @@ void ENTRYPOINT( )
             specIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, viewZ, gSpecHitDistParams, materialProps0.roughness );
 
             if( gDenoiserType != REBLUR )
-                specIndirect = RELAX_FrontEnd_PackRadiance( Clight1, gDenoiserType == RELAX ? pathLength : normDist, materialProps0.roughness );
+                specIndirect = RELAX_FrontEnd_PackRadiance( Clight1, pathLength, materialProps0.roughness );
         }
 
 #if( CHECKERBOARD == 0 )
@@ -725,30 +689,11 @@ void ENTRYPOINT( )
     gOut_Diff[ pixelPos ] = diffIndirect;
     gOut_Spec[ pixelPos ] = specIndirect;
 #else
-    if( gDenoiserType != REBLUR ) // TODO: No checkerboard support
-    {
-        uint2 pixelPosA = uint2( pixelPos.x & ~0x1, pixelPos.y );
-        uint2 pixelPosB = pixelPosA + uint2( 1, 0 );
+    pixelPos.x >>= 1;
 
-        if( isDiffuse )
-        {
-            gOut_Diff[ pixelPosA ] = diffIndirect;
-            gOut_Diff[ pixelPosB ] = diffIndirect;
-        }
-        else
-        {
-            gOut_Spec[ pixelPosA ] = specIndirect;
-            gOut_Spec[ pixelPosB ] = specIndirect;
-        }
-    }
+    if( isDiffuse )
+        gOut_Diff[ pixelPos ] = diffIndirect;
     else
-    {
-        pixelPos.x >>= 1;
-
-        if( isDiffuse )
-            gOut_Diff[ pixelPos ] = diffIndirect;
-        else
-            gOut_Spec[ pixelPos ] = specIndirect;
-    }
+        gOut_Spec[ pixelPos ] = specIndirect;
 #endif
 }

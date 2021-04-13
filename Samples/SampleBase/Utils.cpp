@@ -499,12 +499,12 @@ bool utils::LoadTexture(const std::string& path, Texture& texture, bool computeA
         }
 
         // Average color
-        double4 avgColor = double4(0.0f);
+        float4 avgColor = float4(0.0f);
         const size_t pixelNum = lastMip->width * lastMip->height;
         for (size_t i = 0; i < pixelNum; i++)
-            avgColor += ToDouble( Packed::uint_to_uf4<8, 8, 8, 8>(*(uint32_t*)(rgba8 + i * 4)) );
+            avgColor += Packed::uint_to_uf4<8, 8, 8, 8>(*(uint32_t*)(rgba8 + i * 4));
         avgColor /= float(pixelNum);
-        texture.averageColor = Packed::uf4_to_uint<8, 8, 8, 8>( ToFloat( avgColor ) );
+        texture.avgColor = avgColor;
 
         if (texture.alphaMode != AlphaMode::PREMULTIPLIED && avgColor.w < 254.5f / 255.0f)
             texture.alphaMode = avgColor.w == 0.0f ? AlphaMode::OFF : AlphaMode::TRANSPARENT;
@@ -988,14 +988,14 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
                 auto findResult = std::find_if(scene.textures.begin(), scene.textures.end(), comparePred);
                 if (findResult == scene.textures.end())
                 {
-                    const bool computeAverageColor = type == aiTextureType_DIFFUSE || type == aiTextureType_EMISSIVE;
+                    const bool isMaterial = type == aiTextureType_DIFFUSE || type == aiTextureType_EMISSIVE || type == aiTextureType_SPECULAR;
 
                     Texture* texture = new Texture;
-                    bool isLoaded = LoadTexture(texPath, *texture, computeAverageColor);
+                    bool isLoaded = LoadTexture(texPath, *texture, isMaterial);
 
                     if (isLoaded)
                     {
-                        if( type == aiTextureType_DIFFUSE || type == aiTextureType_EMISSIVE || type == aiTextureType_SPECULAR )
+                        if (isMaterial)
                             texture->OverrideFormat(MakeSRGBFormat(texture->format));
 
                         textureIndices[j] = (uint32_t)scene.textures.size();
@@ -1010,22 +1010,28 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
         }
 
         const Texture* diffuseTexture = scene.textures[material.diffuseMapIndex];
+        const Texture* specularTexture = scene.textures[material.specularMapIndex];
         const Texture* emissionTexture = scene.textures[material.emissiveMapIndex];
 
         material.alphaMode = diffuseTexture->alphaMode;
-        if (emissionTexture->averageColor)
+        material.avgSpecularColor = specularTexture->avgColor;
+        material.isEmissive = Dot33(emissionTexture->avgColor.xmm, float3(1.0f)) != 0.0f;
+
+        if (material.isEmissive)
         {
-            float4 baseColor = Packed::uint_to_uf4<8, 8, 8, 8>(diffuseTexture->averageColor);
-            float4 emissionColor = Packed::uint_to_uf4<8, 8, 8, 8>(emissionTexture->averageColor);
+            float4 baseColor = diffuseTexture->avgColor;
             baseColor = Pow( baseColor, float4( 2.2f ) );
+
+            float4 emissionColor = emissionTexture->avgColor;
             emissionColor = Pow( emissionColor, float4( 2.2f ) );
+
             emissionColor *= (baseColor + 0.01f) / (Max(baseColor.x, Max(baseColor.y, baseColor.z)) + 0.01f);
-            emissionColor.w = 1.0f;
             emissionColor = Pow( emissionColor, float4( 1.0f / 2.2f ) );
-            material.averageBaseColor = Packed::uf4_to_uint<8, 8, 8, 8>(emissionColor);
+
+            material.avgBaseColor = emissionColor;
         }
         else
-            material.averageBaseColor = diffuseTexture->averageColor & 0x00FFFFFF;
+            material.avgBaseColor = diffuseTexture->avgColor;
     }
 
     // Sort materials by transparency type

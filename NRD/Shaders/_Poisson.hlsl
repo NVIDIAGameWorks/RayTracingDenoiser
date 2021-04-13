@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 /*
 float2 v[] =
 {
-    // generator http://www.coderhaus.com/?p=11
+    // find a generator somewhere
     ...
 };
 
@@ -31,7 +31,7 @@ const uint N = sizeof( v ) / sizeof( float2 );
 Sort_heap<float2, cmp>( v, N );
 
 for( uint i = 0; i < N; i++ )
-    pConsole->Print( 0, "\tfloat2( % .7f, % .7f ),\n", v[i].x, v[i].y );
+    Print( 0, "\tfloat2( % .7f, % .7f ),\n", v[i].x, v[i].y );
 */
 
 // .z = length( .xy )

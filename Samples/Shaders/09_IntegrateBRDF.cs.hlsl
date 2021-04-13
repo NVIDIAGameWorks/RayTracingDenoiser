@@ -14,7 +14,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 NRI_RESOURCE( RWTexture2D<float2>, gOutput, u, 0, 0 );
 
 [numthreads( 16, 16, 1 )]
-void main( uint2 pixelPos : SV_DISPATCHTHREADID )
+void main( uint2 pixelPos : SV_DispatchThreadId )
 {
     const uint SAMPLE_NUM = 16384;
     const float invTexSize = 1.0 / 256.0;

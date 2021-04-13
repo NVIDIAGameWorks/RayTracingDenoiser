@@ -293,7 +293,7 @@ void Nrd::CreateResources()
     descriptorPoolDesc.storageTextureMaxNum = denoiserDesc.descriptorSetDesc.storageTextureNum;
     descriptorPoolDesc.textureMaxNum = denoiserDesc.descriptorSetDesc.textureNum;
     descriptorPoolDesc.dynamicConstantBufferMaxNum = denoiserDesc.descriptorSetDesc.constantBufferNum;
-    descriptorPoolDesc.staticSamplerMaxNum = denoiserDesc.pipelineNum * denoiserDesc.staticSamplerNum;
+    descriptorPoolDesc.staticSamplerMaxNum = denoiserDesc.descriptorSetDesc.constantBufferNum * denoiserDesc.staticSamplerNum; // 1 CB per pass
 
     for (nri::DescriptorPool*& descriptorPool : m_DescriptorPools)
         NRD_ABORT_ON_FAILURE(m_NRI->CreateDescriptorPool(*m_Device, descriptorPoolDesc, descriptorPool));
@@ -313,7 +313,7 @@ void Nrd::AllocateAndBindMemory()
     size_t baseAllocation = m_MemoryAllocations.size();
     const size_t allocationNum = m_NRIHelper->CalculateAllocationNumber(*m_Device, resourceGroupDesc);
     m_MemoryAllocations.resize(baseAllocation + allocationNum, nullptr);
-    NRI_ABORT_ON_FAILURE(m_NRIHelper->AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
+    NRD_ABORT_ON_FAILURE(m_NRIHelper->AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     resourceGroupDesc = {};
     resourceGroupDesc.memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
@@ -331,11 +331,11 @@ void Nrd::SetMethodSettings(nrd::Method method, const void* methodSettings)
     assert(result == nrd::Result::SUCCESS);
 }
 
-void Nrd::Denoise(nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool)
+void Nrd::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool)
 {
     #if( NRD_DEBUG_LOGGING == 1 )
         char s[128];
-        sprintf_s(s, "Frame %u ==============================================================================\n", commonSettings.frameIndex);
+        sprintf_s(s, "Frame %u ==============================================================================\n", consecutiveFrameIndex);
         OutputDebugStringA(s);
     #endif
 
@@ -344,7 +344,7 @@ void Nrd::Denoise(nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& 
     nrd::Result result = nrd::GetComputeDispatches(*m_Denoiser, commonSettings, dispatchDescs, dispatchDescNum);
     assert(result == nrd::Result::SUCCESS);
 
-    const uint32_t bufferedFrameIndex = commonSettings.frameIndex % m_BufferedFrameMaxNum;
+    const uint32_t bufferedFrameIndex = consecutiveFrameIndex % m_BufferedFrameMaxNum;
     nri::DescriptorPool* descriptorPool = m_DescriptorPools[bufferedFrameIndex];
     m_NRI->ResetDescriptorPool(*descriptorPool);
     m_NRI->CmdSetDescriptorPool(commandBuffer, *descriptorPool);
@@ -470,12 +470,11 @@ void Nrd::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descr
             "IN_MV ",
             "IN_NORMAL_ROUGHNESS ",
             "IN_VIEWZ ",
-            "IN_SHADOW ",
             "IN_DIFF_HIT ",
             "IN_SPEC_HIT ",
-            "IN_TRANSLUCENCY ",
+            "IN_SHADOWDATA ",
+            "IN_SHADOW_TRANSLUCENCY ",
 
-            "OUT_SHADOW ",
             "OUT_SHADOW_TRANSLUCENCY ",
             "OUT_DIFF_HIT ",
             "OUT_SPEC_HIT ",

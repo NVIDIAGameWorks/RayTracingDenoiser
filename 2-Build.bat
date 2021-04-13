@@ -29,6 +29,15 @@ if NOT exist "%VCVARS%" (
 )
 
 call "%VCVARS%"
+
 msbuild /t:Build /p:Configuration=Release /p:Platform=x64 "_Compiler\%TARGET_VS%\SANDBOX.sln"
 
+echo.
+set /P M=Do you want to build DEBUG configuration? [y/n]
+if /I "%M%" neq "y" goto END
+
+:BUILD_DEBUG
+msbuild /t:Build /p:Configuration=Debug /p:Platform=x64 "_Compiler\%TARGET_VS%\SANDBOX.sln"
+
+:END
 pause

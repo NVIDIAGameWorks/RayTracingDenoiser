@@ -9,28 +9,34 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "RELAX_Config.hlsl"
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
-    float4      gFrustumRight;
-    float4      gFrustumUp;
-    float4      gFrustumForward;
-
-    int2        gResolution;
-    float2      gInvViewSize;
-
-    float       gSpecularPhiLuminance;
-    float       gDiffusePhiLuminance;
-    float       gPhiDepth;
-    float       gPhiNormal;
-
-    uint        gStepSize;
-    float       gRoughnessEdgeStoppingRelaxation;
-    float       gNormalEdgeStoppingRelaxation;
-    float       gLuminanceEdgeStoppingRelaxation;
+    float4 gFrustumRight;
+    float4 gFrustumUp;
+    float4 gFrustumForward;
+    int2   gResolution;
+    float2 gInvRectSize;
+    float  gSpecularPhiLuminance;
+    float  gDiffusePhiLuminance;
+    float  gPhiDepth;
+    float  gPhiNormal;
+    uint   gStepSize;
+    uint   gIsLastPass;
+    float  gRoughnessEdgeStoppingRelaxation;
+    float  gNormalEdgeStoppingRelaxation;
+    float  gLuminanceEdgeStoppingRelaxation;
+    float  gDenoisingRange;
 };
 
+#include "NRD_Common.hlsl"
 #include "RELAX_Common.hlsl"
+
+#define THREAD_GROUP_SIZE 8
+#define SKIRT 1
 
 // Inputs
 NRI_RESOURCE(Texture2D<float4>, gSpecularIlluminationAndVariance, t, 0, 0);
@@ -43,25 +49,14 @@ NRI_RESOURCE(Texture2D<uint2>, gNormalRoughnessDepth, t, 4, 0);
 NRI_RESOURCE(RWTexture2D<float4>, gOutSpecularIlluminationAndVariance, u, 0, 0);
 NRI_RESOURCE(RWTexture2D<float4>, gOutDiffuseIlluminationAndVariance, u, 1, 0);
 
-groupshared uint4       sharedPackedIlluminationAndVariance[16 + 1 + 1][16 + 1 + 1];
-groupshared float4      sharedNormalRoughness[16 + 1 + 1][16 + 1 + 1];
-groupshared float4      sharedWorldPos[16 + 1 + 1][16 + 1 + 1];
-
-// Helper macros
-#define PI 3.141593
-
-#define linearStep(a, b, x) saturate((x - a)/(b - a))
-#define smoothStep01(x) (x*x*(3.0 - 2.0*x))
+groupshared uint4       sharedPackedIlluminationAndVariance[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
+groupshared float4      sharedNormalRoughness[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
+groupshared float4      sharedWorldPos[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 
 // Helper functions
-float smoothStep(float a, float b, float x)
-{
-    x = linearStep(a, b, x); return smoothStep01(x);
-}
-
 float3 getCurrentWorldPos(int2 pixelPos, float depth)
 {
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize * 2.0 - 1.0;
+    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
     return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
@@ -79,15 +74,9 @@ float getDiffuseNormalWeight(float3 centerNormal, float3 sampleNormal, float phi
 float getSpecularLobeHalfAngle(float roughness)
 {
     // Defines a cone angle, where micro-normals are distributed
-    float m = roughness * roughness;
-
-    // Approximation of https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf (page 72)
-    // for [0..1] domain:
-
-    // float k = 0.75; // % of NDF volume. Is it the trimming factor from VNDF sampling?
-    // return atan(m * k / (1.0 - k));
-
-    return PI * m / (1.0 + 0.5*m + m * roughness);
+    float r2 = roughness * roughness;
+    float r3 = roughness * r2;
+    return 3.141592 * r2 / (1.0 + 0.5*r2 + r3);
 }
 
 float2 getRoughnessWeightParams(float roughness0, float specularReprojectionConfidence)
@@ -114,7 +103,7 @@ float2 getNormalWeightParams(float roughness, float numFramesInHistory, float sp
 
     // Increasing angle ~10x to relax rejection of the neighbors if specular reprojection confidence is low
     angle *= 3.0 - 2.666 * relaxation * saturate(numFramesInHistory / 5.0);
-    angle = min(0.5 * PI, angle);
+    angle = min(0.5 * 3.141592, angle);
 
     return float2(angle, f);
 }
@@ -122,10 +111,16 @@ float2 getNormalWeightParams(float roughness, float numFramesInHistory, float sp
 float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
 {
     float cosa = saturate(dot(n0, n));
-    float a = acos(cosa);
+    float a = STL::Math::AcosApprox(cosa);
+    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
+    return saturate(1.0 + (a - 1.0) * params0.y);
+}
 
-    a = 1.0 - smoothStep(0.0, params0.x, a);
-
+float getSpecularVWeight(float2 params0, float3 v0, float3 v)
+{
+    float cosa = saturate(dot(v0, v));
+    float a = STL::Math::AcosApprox(cosa) * 0.5;
+    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
     return saturate(1.0 + (a - 1.0) * params0.y);
 }
 
@@ -133,22 +128,22 @@ float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
 // at the stage of populating the shared memory
 uint4 packIlluminationAndVariance(float4 specularIlluminationAndVariance, float4 diffuseIlluminationAndVariance)
 {
-	uint4 result;
+    uint4 result;
     result.r = f32tof16(specularIlluminationAndVariance.r) | f32tof16(specularIlluminationAndVariance.g) << 16;
-	result.g = f32tof16(specularIlluminationAndVariance.b) | f32tof16(specularIlluminationAndVariance.a) << 16;
+    result.g = f32tof16(specularIlluminationAndVariance.b) | f32tof16(specularIlluminationAndVariance.a) << 16;
     result.b = f32tof16(diffuseIlluminationAndVariance.r) | f32tof16(diffuseIlluminationAndVariance.g) << 16;
-	result.a = f32tof16(diffuseIlluminationAndVariance.b) | f32tof16(diffuseIlluminationAndVariance.a) << 16;
-	return result;
+    result.a = f32tof16(diffuseIlluminationAndVariance.b) | f32tof16(diffuseIlluminationAndVariance.a) << 16;
+    return result;
 }
 
 void unpackIlluminationAndVariance(uint4 packed, out float4 specularIllum, out float4 diffuseIllum)
 {
-	specularIllum.r = f16tof32(packed.r);
-	specularIllum.g = f16tof32(packed.r >> 16);
+    specularIllum.r = f16tof32(packed.r);
+    specularIllum.g = f16tof32(packed.r >> 16);
     specularIllum.b = f16tof32(packed.g);
     specularIllum.a = f16tof32(packed.g >>16);
-	diffuseIllum.r = f16tof32(packed.b);
-	diffuseIllum.g = f16tof32(packed.b >> 16);
+    diffuseIllum.r = f16tof32(packed.b);
+    diffuseIllum.g = f16tof32(packed.b >> 16);
     diffuseIllum.b = f16tof32(packed.a);
     diffuseIllum.a = f16tof32(packed.a >>16);
 }
@@ -186,83 +181,79 @@ void computeVariance(int2 groupThreadId, out float specularVariance, out float d
 
 float kernelWeight3x3(float index)
 {
-	float distanceFromCenter = abs(index);
-	return (1.0 - 0.5*distanceFromCenter);
+    float distanceFromCenter = abs(index);
+    return (1.0 - 0.5*distanceFromCenter);
 }
 
-[numthreads(16, 16, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
+void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
-    //if (any(dispatchThreadId.xy >= gResolution)) return;
-
-    const int2 ipos = dispatchThreadId.xy;
-
     // Populating shared memory
     //
-	// Renumerating threads to load 18x18 (16+2 x 16+2) block of data to shared memory
-	//
-	// The preloading will be done in two stages:
-	// at the first stage the group will load 16x16 / 18 = 14.2 rows of the shared memory,
-	// and all threads in the group will be following the same path.
-	// At the second stage, the rest 18x18 - 16x16 = 68 threads = 2.125 warps will load the rest of data
+    // Renumerating threads to load 18x18 (16+2 x 16+2) block of data to shared memory
+    //
+    // The preloading will be done in two stages:
+    // at the first stage the group will load 16x16 / 18 = 14.2 rows of the shared memory,
+    // and all threads in the group will be following the same path.
+    // At the second stage, the rest 18x18 - 16x16 = 68 threads = 2.125 warps will load the rest of data
 
-	uint linearThreadIndex = groupThreadId.y * 16 + groupThreadId.x;
-	uint newIdxX = linearThreadIndex % 18;
-	uint newIdxY = linearThreadIndex / 18;
+    uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
+    uint newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+    uint newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
-    uint blockXStart = groupId.x * 16;
-    uint blockYStart = groupId.y * 16;
+    uint blockXStart = groupId.x * THREAD_GROUP_SIZE;
+    uint blockYStart = groupId.y * THREAD_GROUP_SIZE;
 
-	// First stage
-	int ox = newIdxX;
-	int oy = newIdxY;
-	int xx = blockXStart + newIdxX - 1;
-	int yy = blockYStart + newIdxY - 1;
+    // First stage
+    int ox = newIdxX;
+    int oy = newIdxY;
+    int xx = blockXStart + newIdxX - SKIRT;
+    int yy = blockYStart + newIdxY - SKIRT;
 
     uint4 packedIlluminationAndVariance = 0;
     float3 normal = 0;
     float roughness = 1.0;
     float4 worldPos = 0;
-    float depth = 1.0;
+    float depth = 0.0;
 
 	if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
-	{
+    {
         packedIlluminationAndVariance = packIlluminationAndVariance(gSpecularIlluminationAndVariance[int2(xx,yy)], gDiffuseIlluminationAndVariance[int2(xx,yy)]);
         UnpackNormalRoughnessDepth(normal, roughness, depth, gNormalRoughnessDepth[int2(xx, yy)]);
-        worldPos = float4(getCurrentWorldPos(int2(xx,yy), depth), 0);
-	}
+        worldPos = float4(getCurrentWorldPos(int2(xx,yy), depth), depth);
+    }
     sharedPackedIlluminationAndVariance[oy][ox] = packedIlluminationAndVariance;
     sharedNormalRoughness[oy][ox] = float4(normal, roughness);
     sharedWorldPos[oy][ox] = worldPos;
 
-	// Second stage
-	linearThreadIndex += 16 * 16;
-	newIdxX = linearThreadIndex % 18;
-	newIdxY = linearThreadIndex / 18;
+    // Second stage
+    linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
+    newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+    newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
-	ox = newIdxX;
-	oy = newIdxY;
-	xx = blockXStart + newIdxX - 1;
-	yy = blockYStart + newIdxY - 1;
+    ox = newIdxX;
+    oy = newIdxY;
+    xx = blockXStart + newIdxX - SKIRT;
+    yy = blockYStart + newIdxY - SKIRT;
 
     packedIlluminationAndVariance = 0;
     normal = 0;
     roughness = 1.0;
     worldPos = 0;
-    depth = 1.0;
+    depth = 0.0;
 
-	if (linearThreadIndex < 18 * 18)
-	{
+    if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
+    {
         if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
-	    {
+        {
             packedIlluminationAndVariance = packIlluminationAndVariance(gSpecularIlluminationAndVariance[int2(xx, yy)], gDiffuseIlluminationAndVariance[int2(xx, yy)]);
             UnpackNormalRoughnessDepth(normal, roughness, depth, gNormalRoughnessDepth[int2(xx, yy)]);
-            worldPos = float4(getCurrentWorldPos(int2(xx, yy), depth), 0);
+            worldPos = float4(getCurrentWorldPos(int2(xx, yy), depth), depth);
         }
         sharedPackedIlluminationAndVariance[oy][ox] = packedIlluminationAndVariance;
         sharedNormalRoughness[oy][ox] = float4(normal, roughness);
         sharedWorldPos[oy][ox] = worldPos;
-	}
+    }
 
     // Ensuring all the writes to shared memory are done by now
     GroupMemoryBarrierWithGroupSync();
@@ -270,17 +261,29 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     //
     // Shared memory is populated now and can be used for filtering
     //
-    uint2 sharedMemoryIndex = groupThreadId.xy + int2(1,1);
+    uint2 sharedMemoryIndex = groupThreadId.xy + int2(SKIRT, SKIRT);
 
     // Fetching center data
+    float4 centerWorldPosAndLinearZ = sharedWorldPos[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float3 centerWorldPos = centerWorldPosAndLinearZ.xyz;
+    float centerLinearZ = centerWorldPosAndLinearZ.w;
+    float3 centerV = normalize(centerWorldPos);
+    
+    // Early out if linearZ is beyond denoising range
+    [branch]
+    if (centerLinearZ > gDenoisingRange)
+    {
+        return;
+    }
+
     float3 centerNormal = sharedNormalRoughness[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb;
-    float3 centerWorldPos = sharedWorldPos[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb;
     float specularReprojectionConfidence = gSpecularReprojectionConfidence[ipos];
 
     uint4 centerPackedIlluminationAndVariance = sharedPackedIlluminationAndVariance[sharedMemoryIndex.y][sharedMemoryIndex.x];
     float4 centerSpecularIlluminationAndVariance;
     float4 centerDiffuseIlluminationAndVariance;
     unpackIlluminationAndVariance(centerPackedIlluminationAndVariance, centerSpecularIlluminationAndVariance, centerDiffuseIlluminationAndVariance);
+
 
     // Calculating center luminance
     float centerSpecularLuminance = STL::Color::Luminance(centerSpecularIlluminationAndVariance.rgb);
@@ -321,11 +324,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
             const bool isInside = all(p >= int2(0, 0)) && all(p < gResolution);
             const bool isCenter = ((cx == 0) && (cy == 0));
 
-            int2 sampleSharedMemoryIndex = groupThreadId.xy + int2(1 + cx, 1 + cy);
+            int2 sampleSharedMemoryIndex = groupThreadId.xy + int2(SKIRT + cx, SKIRT + cy);
 
             float3 sampleNormal = sharedNormalRoughness[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].rgb;
             float sampleRoughness = sharedNormalRoughness[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].a;
             float3 sampleWorldPos = sharedWorldPos[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].rgb;
+            float3 sampleV = normalize(sampleWorldPos);
 
             uint4 samplePackedIlluminationAndVariance = sharedPackedIlluminationAndVariance[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x];
             float4 sampleSpecularIlluminationAndVariance;
@@ -339,6 +343,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
             float geometryW = getGeometryWeight(centerWorldPos, centerNormal, sampleWorldPos, phiDepth);
 
             float normalWSpecular = getSpecularNormalWeight(normalWeightParams, centerNormal, sampleNormal);
+            normalWSpecular *= getSpecularVWeight(normalWeightParams, centerV, sampleV);
             float normalWDiffuse = getDiffuseNormalWeight(centerNormal, sampleNormal, gPhiNormal);
 
             // Calculating luminande weigths
@@ -367,7 +372,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
         }
     }
 
-    // renormalization is different for variance, check paper for the formula
     float4 filteredSpecularIlluminationAndVariance = float4(sumSpecularIlluminationAndVariance / float4(sumWSpecular.xxx, sumWSpecular * sumWSpecular));
     float4 filteredDiffuseIlluminationAndVariance = float4(sumDiffuseIlluminationAndVariance / float4(sumWDiffuse.xxx, sumWDiffuse * sumWDiffuse));
 

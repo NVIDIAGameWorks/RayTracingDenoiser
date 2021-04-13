@@ -9,12 +9,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "RELAX_Config.hlsl"
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
-    float4x4 gViewToClip;
+    uint2 gRectOrigin;
 };
 
+#include "NRD_Common.hlsl"
 #include "RELAX_Common.hlsl"
 
 // Inputs
@@ -22,31 +26,19 @@ NRI_RESOURCE(Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0);
 NRI_RESOURCE(Texture2D<float>, gIn_ViewZ, t, 1, 0);
 
 // Outputs
-NRI_RESOURCE(RWTexture2D<uint2>, gOutNormalRoughnessDepth, u, 0, 0);
-
-// Helper functions
-
-// Converts linear view depth to device depth
-float deLinearizeDepth(float linearDepth)
-{
-    float4 viewPos = float4(0, 0, linearDepth, 1);
-    float4 clipPos = mul(gViewToClip, viewPos);
-    return clipPos.z / clipPos.w;
-}
+NRI_RESOURCE(RWTexture2D<uint2>, gOut_Normal_Roughness_ViewZ, u, 0, 0);
 
 [numthreads(16, 16, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+void main(uint2 pixelPos : SV_DispatchThreadID)
 {
-    int2 pixelPos = dispatchThreadId.xy;
+    uint2 pixelPosUser = pixelPos + gRectOrigin;
 
-    // Read normal and roughness
-    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[pixelPos]);
+    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[pixelPosUser] );
     float roughness = normalAndRoughness.w;
     float3 normal = normalAndRoughness.xyz;
 
-    // Read depth
-    float depth = gIn_ViewZ[pixelPos];
+    float viewZ = abs( gIn_ViewZ[pixelPosUser] );
 
-    // Pack and store
-    gOutNormalRoughnessDepth[pixelPos] = PackNormalRoughnessDepth(normal, roughness, depth);
+    // Output
+    gOut_Normal_Roughness_ViewZ[pixelPos] = PackNormalRoughnessDepth(normal, roughness, viewZ);
 }

@@ -10,20 +10,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-#ifndef _MemoryAllocatorInterface
-    #error _MemoryAllocatorInterface must be defined!
-#endif
-
-#if __linux__
-    #include <alloca.h>
-    #define _alloca alloca
-#else
-    #include <malloc.h>
-#endif
-
 #include <vector>
 #include <unordered_map>
 #include <string>
+
+#if _WIN32
+#include <malloc.h>
 
 inline void* AlignedMalloc(void* userArg, size_t size, size_t alignment)
 {
@@ -40,7 +32,65 @@ inline void AlignedFree(void* userArg, void* memory)
     _aligned_free(memory);
 }
 
-inline void CheckAndSetDefaultAllocator(_MemoryAllocatorInterface& memoryAllocatorInterface)
+#elif __linux__
+#include <cstdlib>
+#include <alloca.h>
+#define _alloca alloca
+
+inline uint8_t* AlignMemory(uint8_t* memory, size_t alignment)
+{
+    return (uint8_t*)((size_t(memory) + alignment - 1) & ~(alignment - 1));
+}
+
+inline void* AlignedMalloc(void* userArg, size_t size, size_t alignment)
+{
+    uint8_t* memory = (uint8_t*)malloc(size + sizeof(uint8_t*) + alignment - 1);
+
+    if (memory == nullptr)
+        return nullptr;
+
+    uint8_t* alignedMemory = AlignMemory(memory + sizeof(uint8_t*), alignment);
+    uint8_t** memoryHeader = (uint8_t**)alignedMemory - 1;
+    *memoryHeader = memory;
+
+    return alignedMemory;
+}
+
+inline void* AlignedRealloc(void* userArg, void* memory, size_t size, size_t alignment)
+{
+    if (memory == nullptr)
+        return AlignedMalloc(userArg, size, alignment);
+
+    uint8_t** memoryHeader = (uint8_t**)memory - 1;
+    uint8_t* oldMemory = *memoryHeader;
+    uint8_t* newMemory = (uint8_t*)realloc(oldMemory, size + sizeof(uint8_t*) + alignment - 1);
+
+    if (newMemory == nullptr)
+        return nullptr;
+
+    if (newMemory == oldMemory)
+        return memory;
+
+    uint8_t* alignedMemory = AlignMemory(newMemory + sizeof(uint8_t*), alignment);
+    memoryHeader = (uint8_t**)alignedMemory - 1;
+    *memoryHeader = newMemory;
+
+    return alignedMemory;
+}
+
+inline void AlignedFree(void* userArg, void* memory)
+{
+    if (memory == nullptr)
+        return;
+
+    uint8_t** memoryHeader = (uint8_t**)memory - 1;
+    uint8_t* oldMemory = *memoryHeader;
+    free(oldMemory);
+}
+
+#endif
+
+inline void CheckAndSetDefaultAllocator(MemoryAllocatorInterface& memoryAllocatorInterface)
 {
     if (memoryAllocatorInterface.Allocate != nullptr)
         return;
@@ -59,7 +109,7 @@ struct StdAllocator
     typedef std::true_type propagate_on_container_move_assignment;
     typedef std::false_type is_always_equal;
 
-    StdAllocator(const _MemoryAllocatorInterface& memoryAllocatorInterface) : m_Interface(memoryAllocatorInterface)
+    StdAllocator(const MemoryAllocatorInterface& memoryAllocatorInterface) : m_Interface(memoryAllocatorInterface)
     { CheckAndSetDefaultAllocator(m_Interface); }
 
     template<class U>
@@ -78,14 +128,14 @@ struct StdAllocator
     void deallocate(T* memory, size_t) noexcept
     { m_Interface.Free(m_Interface.userArg, memory); }
 
-    const _MemoryAllocatorInterface& GetInterface() const
+    const MemoryAllocatorInterface& GetInterface() const
     { return m_Interface; }
 
     template<typename U>
     using other = StdAllocator<U>;
 
 private:
-    _MemoryAllocatorInterface m_Interface = {};
+    MemoryAllocatorInterface m_Interface = {};
 };
 
 template<typename T>

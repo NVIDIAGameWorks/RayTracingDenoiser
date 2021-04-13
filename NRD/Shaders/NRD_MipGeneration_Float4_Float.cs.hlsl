@@ -9,24 +9,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "STL.hlsl"
+#include "NRD.hlsl"
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
-    float4x4 gViewToClip;
-    float4 gFrustum;
-    float2 gInvScreenSize;
-    float2 gScreenSize;
-    uint gBools;
-    float gIsOrtho;
-    float gUnproject;
-    float gDebug;
     float gInf;
-    float gPlaneDistSensitivity;
-    uint gFrameIndex;
-    float gFramerateScale;
+    float gDebug;
 };
-
-#include "REBLUR_Common.hlsl"
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_A, t, 0, 0 );
@@ -39,8 +29,6 @@ NRI_RESOURCE( RWTexture2D<float4>, gOut_A_x4, u, 2, 0 );
 NRI_RESOURCE( RWTexture2D<float>, gOut_ScaledViewZ_x4, u, 3, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_A_x8, u, 4, 0 );
 NRI_RESOURCE( RWTexture2D<float>, gOut_ScaledViewZ_x8, u, 5, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_A_x16, u, 6, 0 );
-NRI_RESOURCE( RWTexture2D<float>, gOut_ScaledViewZ_x16, u, 7, 0 );
 
 groupshared float4 s_TempA[ 17 ][ 17 ];
 groupshared float s_TempB[ 17 ][ 17 ];
@@ -49,7 +37,7 @@ groupshared float s_TempB[ 17 ][ 17 ];
 // high roughness ) to highly compressed value ( for low roughness )... which will be later decompressed ( and will get even more energy on top )
 #define DO_REDUCTION \
 { \
-    float4 w = float4( abs( float4( b00, b10, b01, b11 ) / NRD_FP16_VIEWZ_SCALE ) < abs( gInf ) ); \
+    float4 w = float4( abs( float4( b00, b10, b01, b11 ) / NRD_FP16_VIEWZ_SCALE ) < gInf ); \
     a = a00 * w.x + a10 * w.y + a01 * w.z + a11 * w.w; \
     b = b00 * w.x + b10 * w.y + b01 * w.z + b11 * w.w; \
     float sum = dot( w, 1.0 ); \
@@ -144,31 +132,5 @@ void main( uint2 groupID : SV_GroupID, uint threadID : SV_GroupIndex )
         localID <<= 2;
         s_TempA[ localID.y ][ localID.x ] = a;
         s_TempB[ localID.y ][ localID.x ] = b;
-    }
-
-    GroupMemoryBarrier( );
-
-    if( threadID < 4 )
-    {
-        localID = uint2( threadID & 1, threadID >> 1 );
-        globalID = groupID * 2 + localID;
-
-        uint2 id = localID << 3;
-        uint2 id1 = id + 4;
-
-        a00 = s_TempA[ id.y ][ id.x ];
-        a10 = s_TempA[ id.y ][ id1.x ];
-        a01 = s_TempA[ id1.y ][ id.x ];
-        a11 = s_TempA[ id1.y ][ id1.x ];
-
-        b00 = s_TempB[ id.y ][ id.x ];
-        b10 = s_TempB[ id.y ][ id1.x ];
-        b01 = s_TempB[ id1.y ][ id.x ];
-        b11 = s_TempB[ id1.y ][ id1.x ];
-
-        DO_REDUCTION;
-
-        gOut_A_x16[ globalID ] = a;
-        gOut_ScaledViewZ_x16[ globalID ] = b;
     }
 }

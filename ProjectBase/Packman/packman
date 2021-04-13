@@ -20,7 +20,7 @@ else
 	PM_CURL_SILENT="-s -S"
 	PM_WGET_QUIET="--quiet"
 fi
-PM_PACKMAN_VERSION=6.20.1
+PM_PACKMAN_VERSION=6.30
 
 # This is necessary for newer macOS
 if [ `uname` == 'Darwin' ]; then
@@ -29,7 +29,7 @@ if [ `uname` == 'Darwin' ]; then
 fi
 
 # Specify where packman command exists
-export PM_INSTALL_PATH="$(dirname "${BASH_SOURCE}")"
+export PM_INSTALL_PATH="$(realpath "$(dirname "${BASH_SOURCE}")")"
 
 add_packages_root_to_file()
 {
@@ -81,7 +81,7 @@ install_python()
 	elif [ $PLATFORM == 'Linux' ] && [ $PROCESSOR == 'x86_64' ]; then
 		PYTHON_PACKAGE=$PYTHON_VERSION-linux-x86_64
 	elif [ $PLATFORM == 'Linux' ] && [ $PROCESSOR == 'aarch64' ]; then
-		PYTHON_PACKAGE=$PYTHON_VERSION-linux-aarch64
+		PYTHON_PACKAGE=$PYTHON_VERSION-177-linux-aarch64
 	else
 		echo "Operating system not supported"
 		exit 1

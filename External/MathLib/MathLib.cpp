@@ -1,5 +1,5 @@
 #define NDC_DONT_CARE
-#include "mathlib.h"
+#include "MathLib.h"
 
 #ifdef MATH_NAMESPACE
 namespace ml {

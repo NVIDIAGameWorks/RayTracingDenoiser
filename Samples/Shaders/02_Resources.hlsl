@@ -39,7 +39,7 @@ NRI_RESOURCE( SamplerState, AnisotropicSampler, s, 0, 0 );
     float2 packedNormal = NormalMap.Sample( AnisotropicSampler, uv ).xy; \
     float3 N = STL::Geometry::TransformLocalNormal( packedNormal, T, Nvertex ); \
     float3 albedo, Rf0; \
-    STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( diffuse.xyz, materialProps.z, albedo, Rf0 ); \
+    STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( diffuse.xyz, materialProps.z, albedo, Rf0 ); \
     float roughness = materialProps.y; \
     const float3 sunDirection = normalize( float3( -0.8, -0.8, 1.0 ) ); \
     float3 L = STL::ImportanceSampling::CorrectDirectionToInfiniteSource( N, sunDirection, V, tan( SUN_ANGULAR_SIZE ) ); \

@@ -16,7 +16,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 using namespace nrd;
 
-static const std::array<Method, 7> g_NrdSupportedMethods =
+static const std::array<Method, 6> g_NrdSupportedMethods =
 {
     Method::REBLUR_DIFFUSE,
     Method::REBLUR_SPECULAR,
@@ -24,7 +24,6 @@ static const std::array<Method, 7> g_NrdSupportedMethods =
     Method::SIGMA_SHADOW,
     Method::SIGMA_TRANSLUCENT_SHADOW,
     Method::RELAX_DIFFUSE_SPECULAR,
-    Method::SVGF,
 };
 
 static_assert( g_NrdSupportedMethods.size() == (uint32_t)Method::MAX_NUM );

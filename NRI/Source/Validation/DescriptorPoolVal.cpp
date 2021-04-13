@@ -141,18 +141,16 @@ Result DescriptorPoolVal::AllocateDescriptorSets(const PipelineLayout& pipelineL
 
         const DescriptorSetDesc& descriptorSetDesc = pipelineLayoutDesc.descriptorSets[setIndex];
 
-        bool enoughDescriptors;
-
         for (uint32_t i = 0; i < descriptorSetDesc.rangeNum; i++)
         {
             const DescriptorRangeDesc& rangeDesc = descriptorSetDesc.ranges[i];
-            enoughDescriptors = CheckDescriptorRange(rangeDesc, variableDescriptorNum);
+            bool enoughDescriptors = CheckDescriptorRange(rangeDesc, variableDescriptorNum);
 
             RETURN_ON_FAILURE(m_Device.GetLog(), enoughDescriptors, Result::INVALID_ARGUMENT,
                 "Can't allocate DescriptorSet: the maximum number of descriptors exceeded ('%s').", GetDescriptorTypeName(rangeDesc.descriptorType));
         }
 
-        enoughDescriptors = m_DynamicConstantBufferNum + descriptorSetDesc.dynamicConstantBufferNum <= m_Desc.dynamicConstantBufferMaxNum;
+        bool enoughDescriptors = m_DynamicConstantBufferNum + descriptorSetDesc.dynamicConstantBufferNum <= m_Desc.dynamicConstantBufferMaxNum;
 
         RETURN_ON_FAILURE(m_Device.GetLog(), enoughDescriptors, Result::INVALID_ARGUMENT,
             "Can't allocate DescriptorSet: the maximum number of descriptors exceeded ('DYNAMIC_CONSTANT_BUFFER').");

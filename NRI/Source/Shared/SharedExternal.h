@@ -32,7 +32,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "Lock.h"
 
-#define _MemoryAllocatorInterface nri::MemoryAllocatorInterface
+typedef nri::MemoryAllocatorInterface MemoryAllocatorInterface;
 #include "StdAllocator/StdAllocator.h"
 
 #include "HelperWaitIdle.h"

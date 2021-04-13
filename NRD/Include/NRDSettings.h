@@ -45,24 +45,27 @@ namespace nrd
         -usage - vector is a column
         -layout - column-major
         -non jittered!
-        - if IN_VIEWZ has "+" values, "viewToClip" should be left-handed
-        - if IN_VIEWZ has "-" values, "viewToClip" should be right-handed
-        - "worldToView" matrices are expected to be right-handed only!
     Jitter range: [-0.5; 0.5]
     */
     struct CommonSettings
     {
-        float worldToViewMatrix[16] = {};
-        float worldToViewMatrixPrev[16] = {};
         float viewToClipMatrix[16] = {};
         float viewToClipMatrixPrev[16] = {};
-        float motionVectorScale[2] = {1.0f, 1.0f};  // if "worldSpaceMotion = true" will be used as "MV * motionVectorScale.xyy"
-        float cameraJitter[2] = {0.0f, 0.0f};
-        float denoisingRange = 10000.0f;            // (m) (> 0)
+        float worldToViewRotationMatrix[16] = {};       // translation is not used
+        float worldToViewRotationMatrixPrev[16] = {};   // translation is not used
+        float cameraMotion[3] = {};                     // previous - current
+        float motionVectorScale[2] = {1.0f, 1.0f};      // if "worldSpaceMotion = true" will be used as "MV * motionVectorScale.xyy"
+        float cameraJitter[2] = {};
+        uint32_t inputDataOrigin[2] = {};
+        float resolutionScale = 1.0f;                   // scaled resolution will be "rounded" to the nearest integer
+        float timeDeltaBetweenFrames = 0.0f;            // (ms) > 0 - user provided, otherwise - tracked internally
+        float denoisingRange = 10000.0f;                // (m) > 0
+        float disocclusionThreshold = 0.01f;            // normalized %
+        float splitScreen = 0.0f;                       // [0; 1) enables "noisy input / denoised output" comparison
         float debug = 0.0f;
-        uint32_t frameIndex = 0;                    // pass 0 for a single frame to reset history
-        bool worldSpaceMotion = false;              // if "true" IN_MV is 3D motion in world space (0 should be everywhere if the scene is static), otherwise it's 2D screen-space motion (0 should be everywhere if the camera doesn't move)
-        bool forceReferenceAccumulation = false;
+        uint32_t frameIndex = 0;                        // pass 0 for a single frame to reset history
+        bool worldSpaceMotion = false;                  // if "true" IN_MV is 3D motion in world space (0 should be everywhere if the scene is static), otherwise it's 2D screen-space motion (0 should be everywhere if the camera doesn't move)
+        bool forceReferenceAccumulation = false;        // can be used in various ways depending on the denoiser, but implies that spatial filtering will be turned off
     };
 
     // "Normalized hit distance" = saturate( "hit distance" / f ), where:
@@ -71,7 +74,7 @@ namespace nrd
     {
         float A = 3.0f;     // constant value (m)
         float B = 0.1f;     // viewZ based linear scale (m / units) (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
-        float C = 5.0f;    // roughness based scale, "> 1" to get bigger hit distance for low roughness
+        float C = 5.0f;     // roughness based scale, "> 1" to get bigger hit distance for low roughness
         float D = -50.0f;   // roughness based exponential scale, "< 0", absolute value should be big enough to collapse "exp2( D * roughness ^ 2 )" to "~0" for roughness = 1
     };
 
@@ -93,7 +96,7 @@ namespace nrd
     */
     struct AntilagIntensitySettings
     {
-        float thresholdMin = 0.05f;             // normalized %
+        float thresholdMin = 0.02f;             // normalized %
         float thresholdMax = 0.15f;             // max > min, usually 2-4x times greater than min
         float sigmaScale = 2.0f;                // plain "delta" is reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
         float sensitivityToDarkness = 0.75f;    // the only value which is a real intensity!
@@ -102,7 +105,7 @@ namespace nrd
 
     struct AntilagHitDistanceSettings
     {
-        float thresholdMin = 0.02f;             // normalized %, can be slightly increased if noise in AO/SO is high
+        float thresholdMin = 0.01f;             // normalized %, can be slightly increased if noise in AO/SO is high
         float thresholdMax = 0.10f;             // 10% is a good start
         float sigmaScale = 2.0f;                // "delta" will be reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
         float sensitivityToDarkness = 0.5f;     // hit distances are normalized, this value is in range (0; 1]
@@ -118,13 +121,14 @@ namespace nrd
         HitDistanceParameters hitDistanceParameters = {};
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
-        float disocclusionThreshold = 0.005f;                           // normalized %
-        float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
+        uint32_t maxFastAccumulatedFrameNum = 8;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
+        float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
-        float noisinessBlurrinessBalance = 1.0f;
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
+        bool antifirefly = false;                                       // adds a bit of bias, but tries to fight with fireflies
+        bool skipPreBlur = false;                                       // useful if the input signal is relatively clean (can be skipped only if checkerboarding is off)
     };
 
     // REBLUR_SPECULAR
@@ -135,63 +139,48 @@ namespace nrd
         LobeTrimmingParameters lobeTrimmingParameters = {};
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
-        float disocclusionThreshold = 0.005f;                           // normalized %
-        float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         uint32_t maxAccumulatedFrameNum = 31;                           // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
+        uint32_t maxFastAccumulatedFrameNum = 8;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
+        float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
-        float noisinessBlurrinessBalance = 1.0f;
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
+        bool antifirefly = false;                                       // adds a bit of bias, but tries to fight with fireflies
+        bool skipPreBlur = false;                                       // useful if the input signal is relatively clean (can be skipped only if checkerboarding is off)
     };
 
     // REBLUR_DIFFUSE_SPECULAR
 
     struct ReblurDiffuseSpecularSettings
     {
-        HitDistanceParameters diffHitDistanceParameters = {};
-        HitDistanceParameters specHitDistanceParameters = {};
-        LobeTrimmingParameters specLobeTrimmingParameters = {};
-        AntilagIntensitySettings antilagIntensitySettings = {};
-        AntilagHitDistanceSettings antilagHitDistanceSettings = {};
-        float disocclusionThreshold = 0.005f;                            // normalized %
-        float planeDistanceSensitivity = 0.002f;                         // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        uint32_t diffMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
-        uint32_t specMaxAccumulatedFrameNum = 31;                        // 0 - REBLUR_MAX_HISTORY_FRAME_NUM
-        float diffBlurRadius = 30.0f;                                    // base (worst) diffuse denoising radius (pixels)
-        float specBlurRadius = 30.0f;                                    // base (worst) specular denoising radius (pixels)
-        float diffMaxAdaptiveRadiusScale = 5.0f;                         // adaptive radius scale, comes into play if error is high (0-10)
-        float specMaxAdaptiveRadiusScale = 5.0f;                         // adaptive radius scale, comes into play if error is high (0-10)
-        float diffNoisinessBlurrinessBalance = 1.0f;
-        float specNoisinessBlurrinessBalance = 1.0f;
-        CheckerboardMode diffCheckerboardMode = CheckerboardMode::OFF;
-        CheckerboardMode specCheckerboardMode = CheckerboardMode::OFF;
+        ReblurDiffuseSettings diffuseSettings;
+        ReblurSpecularSettings specularSettings;
     };
 
     // SIGMA_SHADOW and SIGMA_TRANSLUCENT_SHADOW
 
     struct SigmaShadowSettings
     {
-        float lightSourceAngularDiameter = 0.533f;  // angular diameter (deg) (0.533 = sun)
-        float planeDistanceSensitivity = 0.002f;    // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        float blurRadiusScale = 1.0f;               // adds bias if > 1, but if shadows are still unstable (have you tried blue noise?)... can be set in range [1; 1.5]
+        float planeDistanceSensitivity = 0.002f;                // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
+        float blurRadiusScale = 2.0f;                           // adds bias and stability if > 1, recommended range is [1; 3]
     };
 
     // RELAX_DIFFUSE_SPECULAR
 
+    const uint32_t RELAX_MAX_HISTORY_FRAME_NUM = 63;
+
     struct RelaxDiffuseSpecularSettings
     {
         bool bicubicFilterForReprojectionEnabled = true;        // slower but sharper filtering of the history during reprojection
-        float specularAlpha = 0.016f;                           // new data blend weight for normal illumination temporal accumulation
-        float specularResponsiveAlpha = 0.1f;                   // new data blend weight for responsive illumination temporal accumulation
-        float diffuseAlpha = 0.016f;                            // new data blend weight for normal illumination temporal accumulation
-        float diffuseResponsiveAlpha = 0.1f;                    // new data blend weight for responsive illumination temporal accumulation
+        uint32_t specularMaxAccumulatedFrameNum = 63;           // 0 - RELAX_MAX_HISTORY_FRAME_NUM
+        uint32_t specularMaxFastAccumulatedFrameNum = 8;        // 0 - RELAX_MAX_HISTORY_FRAME_NUM
+        uint32_t diffuseMaxAccumulatedFrameNum = 63;            // 0 - RELAX_MAX_HISTORY_FRAME_NUM
+        uint32_t diffuseMaxFastAccumulatedFrameNum = 8;         // 0 - RELAX_MAX_HISTORY_FRAME_NUM
         float specularVarianceBoost = 1.0f;                     // how much variance we inject to specular if reprojection confidence is low
-        bool debugOutputReprojectionEnabled = false;            // enable debug output with reprojection results
 
-        float disocclusionFixEdgeStoppingZFraction = 0.01f;     // depth edge stopper for cross-bilateral sparse filter
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;    // normal edge stopper for cross-bilateral sparse filter
         float disocclusionFixMaxRadius = 14.0f;                 // maximum radius for sparse bilateral filter, expressed in pixels
-        int32_t disocclusionFixNumFramesToFix = 3;              // cross-bilateral sparse filter will be applied to frames with history length shorter than this value
+        uint32_t disocclusionFixNumFramesToFix = 3;             // cross-bilateral sparse filter will be applied to frames with history length shorter than this value
 
         float historyClampingColorBoxSigmaScale = 1.0f;         // scale for standard deviation of color box for clamping normal history color to responsive history color
         float specularAntiLagColorBoxSigmaScale = 2.0f;         // scale for standard deviation of color box for lag detection
@@ -199,10 +188,10 @@ namespace nrd
         float diffuseAntiLagColorBoxSigmaScale = 2.0f;          // scale for standard deviation of color box for lag detection
         float diffuseAntiLagPower = 0.0f;                       // amount of history shortening when lag is detected
 
-        bool fireflySuppressionEnabled = false;                 // firefly suppression
+        bool antifirefly = false;                               // firefly suppression
 
-        int32_t spatialVarianceEstimationHistoryThreshold = 3;  // history length threshold below which spatial variance estimation will be executed
-        int32_t atrousIterations = 5;                           // number of iteration for A-Trous wavelet transform
+        uint32_t spatialVarianceEstimationHistoryThreshold = 3; // history length threshold below which spatial variance estimation will be executed
+        uint32_t atrousIterationNum = 5;                        // number of iteration for A-Trous wavelet transform (2-8)
         float specularPhiLuminance = 2.0f;                      // A-trous edge stopping Luminance sensitivity
         float diffusePhiLuminance = 2.0f;                       // A-trous edge stopping Luminance sensitivity
         float phiNormal = 64.0f;                                // A-trous edge stopping Normal sensitivity for diffuse
@@ -212,17 +201,14 @@ namespace nrd
         float luminanceEdgeStoppingRelaxation = 1.0f;           // how much we relax luminance based rejection in areas where specular reprojection is low
     };
 
-    // SVGF
+    // REFERENCE ACCUMULATION MODE RECOMMENDATIONS (CommonSettings::forceReferenceAccumulation = true)
 
-    const uint32_t SVGF_MAX_HISTORY_FRAME_NUM = 255;
+    // REBLUR
 
-    struct SvgfSettings
-    {
-        uint32_t maxAccumulatedFrameNum = 31;           // 0 - SVGF_MAX_HISTORY_FRAME_NUM
-        uint32_t momentsMaxAccumulatedFrameNum = 5;     // 0 - SVGF_MAX_HISTORY_FRAME_NUM
-        float disocclusionThreshold = 0.005f;           // 0.005 - 0.05 (normalized %)
-        float varianceScale = 1.5f;
-        float zDeltaScale = 200.0f;
-        bool isDiffuse = false;
-    };
+    /*
+    maxAccumulatedFrameNum      = REBLUR_MAX_HISTORY_FRAME_NUM
+    blurRadius                  = 0.0f
+    fastHistoryAcceleration     = 1.0f
+    disocclusionThreshold       = 0.005f
+    */
 }

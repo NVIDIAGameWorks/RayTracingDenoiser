@@ -9,81 +9,81 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "SIGMA_Config.hlsl"
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
-    float4x4 gViewToClip;
-    float4 gFrustum;
-    float2 gInvScreenSize;
-    float2 gScreenSize;
-    uint gBools;
-    float gIsOrtho;
-    float gUnproject;
-    float gDebug;
-    float gInf;
-    float gPlaneDistSensitivity;
-    uint gFrameIndex;
-    float gFramerateScale;
+    SIGMA_SHARED_CB_DATA;
 
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
-    float2 gMotionVectorScale;
 };
 
-#include "REBLUR_Common.hlsl"
+#if( SIGMA_5X5_TEMPORAL_KERNEL == 1 )
+    #define NRD_USE_BORDER_2
+#endif
+#include "NRD_Common.hlsl"
+
+#include "SIGMA_Common.hlsl"
 
 // Inputs
-NRI_RESOURCE( Texture2D<float>, gIn_ViewZ, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 1, 0 );
-NRI_RESOURCE( Texture2D<SHADOW_TYPE>, gIn_Shadow_Translucency, t, 2, 0 );
-NRI_RESOURCE( Texture2D<SHADOW_TYPE>, gIn_History, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float3>, gIn_ObjectMotion, t, 0, 0 );
+NRI_RESOURCE( Texture2D<float2>, gIn_Hit_ViewZ, t, 1, 0 );
+NRI_RESOURCE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 2, 0 );
+NRI_RESOURCE( Texture2D<SIGMA_TYPE>, gIn_History, t, 3, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<SHADOW_TYPE>, gOut_Shadow_Translucency, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<SIGMA_TYPE>, gOut_Shadow_Translucency, u, 0, 0 );
 
-groupshared SHADOW_TYPE s_Data[ BUFFER_Y ][ BUFFER_X ];
+groupshared float2 s_Data[ BUFFER_Y ][ BUFFER_X ];
+groupshared SIGMA_TYPE s_Shadow_Translucency[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( int2 sharedId, int2 globalId )
 {
-    float viewZ = gIn_ViewZ[ globalId ];
-    SHADOW_TYPE s = gIn_Shadow_Translucency[ globalId ]; // no unpacking - temporal stabilization is done in perceptual gamma space
+    float2 data = gIn_Hit_ViewZ[ globalId ];
+    data.y = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
 
-    uint p = STL::Packing::Rg16fToUint( float2( s.x, viewZ * NRD_FP16_VIEWZ_SCALE ) );
+    s_Data[ sharedId.y ][ sharedId.x ] = data;
 
-    #ifdef TRANSLUCENT_SHADOW
-        s_Data[ sharedId.y ][ sharedId.x ] = float4( asfloat( p ), s.yzw );
-    #else
-        s_Data[ sharedId.y ][ sharedId.x ] = asfloat( p );
-    #endif
+    SIGMA_TYPE s = gIn_Shadow_Translucency[ globalId ];
+    s = UnpackShadow( s );
+
+    s_Shadow_Translucency[ sharedId.y ][ sharedId.x ] = s;
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvScreenSize;
+    uint2 pixelPosUser = pixelPos + gRectOrigin;
+    float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvRectSize;
 
     PRELOAD_INTO_SMEM;
 
-    // Position
-    float viewZ = gIn_ViewZ[ pixelPos ];
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );
-    float3 X = STL::Geometry::AffineTransform( gViewToWorld, Xv );
+    // Center data
+    int2 smemPos = threadId + BORDER;
+    float2 centerData = s_Data[ smemPos.y ][ smemPos.x ];
+    float centerHitDist = centerData.x;
+    float centerSignNoL = float( centerData.x != 0.0 );
+    float viewZ = centerData.y;
 
     // Early out
     [branch]
-    if( abs( viewZ ) > abs( gInf ) )
+    if( viewZ > gInf || centerHitDist == 0.0 ) // TODO: think about multi-light shadows...
     {
-        #if( SHADOW_BLACK_OUT_INF_PIXELS == 1 )
-            gOut_Shadow_Translucency[ pixelPos ] = 0;
-        #endif
+        gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
         return;
     }
 
     // Local variance
     float sum = 0.0;
-    SHADOW_TYPE m1 = 0;
-    SHADOW_TYPE m2 = 0;
-    SHADOW_TYPE input = 0;
+    SIGMA_TYPE m1 = 0;
+    SIGMA_TYPE m2 = 0;
+    SIGMA_TYPE input = 0;
+
+    float viewZnearest = viewZ;
+    int2 offseti = int2( BORDER, BORDER );
 
     [unroll]
     for( int dy = 0; dy <= BORDER * 2; dy++ )
@@ -92,21 +92,27 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
             int2 pos = threadId + int2( dx, dy );
-            SHADOW_TYPE p = s_Data[ pos.y ][ pos.x ];
+            float2 data = s_Data[ pos.y ][ pos.x ];
 
-            SHADOW_TYPE s;
-            float2 t = STL::Packing::UintToRg16f( asuint( p.x ) );
-            s.x = t.x;
-            #ifdef TRANSLUCENT_SHADOW
-                s.yzw = p.yzw;
-            #endif
-            float z = t.y / NRD_FP16_VIEWZ_SCALE;
+            SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
+            float signNoL = float( data.x != 0.0 );
+            float z = data.y;
 
             float w = 1.0;
             if( dx == BORDER && dy == BORDER )
                 input = s;
             else
+            {
                 w = GetBilateralWeight( z, viewZ );
+                w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
+
+                int2 t1 = int2( dx, dy ) - BORDER;
+                if( ( abs( t1.x ) + abs( t1.y ) == 1 ) && z < viewZnearest && gDebug > 0.0  )
+                {
+                    viewZnearest = z;
+                    offseti = int2( dx, dy );
+                }
+            }
 
             m1 += s * w;
             m2 += s * s * w;
@@ -118,54 +124,69 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     m1 *= invSum;
     m2 *= invSum;
 
-    SHADOW_TYPE sigma = GetVariance( m1, m2 );
+    SIGMA_TYPE sigma = GetStdDev( m1, m2 );
 
     // Compute previous pixel position
-    float3 motionVector = gIn_ObjectMotion[ pixelPos ] * gMotionVectorScale.xyy;
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, IsWorldSpaceMotion() );
-    float isInScreen = IsInScreen( pixelUvPrev );
+    offseti -= BORDER;
+    float2 offset = float2( offseti ) * gInvRectSize;
+    float3 Xvnearest = STL::Geometry::ReconstructViewPosition( pixelUv + offset, gFrustum, viewZnearest, gIsOrtho );
+    float3 Xnearest = STL::Geometry::AffineTransform( gViewToWorld, Xvnearest );
+    float3 motionVector = gIn_ObjectMotion[ pixelPosUser + offseti ] * gMotionVectorScale.xyy;
+    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, motionVector, gWorldSpaceMotion );
+    pixelUvPrev -= offset;
+
+    float isInScreen = IsInScreen( pixelUvPrev * gHistoryCorrection ); // TODO: multiplier is needed to prevent reading history which was not copied in "PreBlur" pass if DRS is shrinking the image significantly
+
+    // Clamp UV to prevent sampling from "invalid" regions
+    pixelUvPrev = clamp( pixelUvPrev, 1.5 / gRectSizePrev, 1.0 - 1.5 / gRectSizePrev );
 
     // Sample history
-    SHADOW_TYPE history = gIn_History.SampleLevel( gLinearClamp, pixelUvPrev, 0.0 );
+    SIGMA_TYPE history = BicubicFilterNoCorners( gIn_History, gLinearClamp, pixelUvPrev * gRectSizePrev, gInvScreenSize );
+    history = UnpackShadow( history );
 
     // Clamp history
     float2 a = m1.xx;
     float2 b = history.xx;
 
-    #ifdef TRANSLUCENT_SHADOW
+    #ifdef SIGMA_TRANSLUCENT
         a.y = STL::Color::Luminance( m1.yzw );
         b.y = STL::Color::Luminance( history.yzw );
     #endif
 
     float2 ratio = abs( a - b ) / ( min( a, b ) + 0.05 );
     float2 ratioNorm = ratio / ( 1.0 + ratio );
-    float2 scale = 1.0 + SHADOW_MAX_SIGMA_SCALE * ( 1.0 - STL::Math::Sqrt01( ratioNorm ) );
+    float2 scale = 1.0 + SIGMA_MAX_SIGMA_SCALE * ( 1.0 - STL::Math::Sqrt01( ratioNorm ) );
 
-    #ifdef TRANSLUCENT_SHADOW
+    #ifdef SIGMA_TRANSLUCENT
         sigma *= scale.xyyy;
     #else
         sigma *= scale.x;
     #endif
 
-    SHADOW_TYPE inputMin = m1 - sigma;
-    SHADOW_TYPE inputMax = m1 + sigma;
-    SHADOW_TYPE historyClamped = clamp( history, inputMin, inputMax );
+    SIGMA_TYPE inputMin = m1 - sigma;
+    SIGMA_TYPE inputMax = m1 + sigma;
+    SIGMA_TYPE historyClamped = clamp( history, inputMin, inputMax );
 
     // History weight
     float motionLength = length( pixelUvPrev - pixelUv );
     float2 historyWeight = 0.95 * lerp( 1.0, 0.7, ratioNorm );
-    historyWeight = lerp( historyWeight, 0.1, saturate( motionLength / TS_MOTION_MAX_REUSE ) );
+    historyWeight = lerp( historyWeight, 0.1, saturate( motionLength / SIGMA_TS_MOTION_MAX_REUSE ) );
     historyWeight *= isInScreen;
     historyWeight *= float( gFrameIndex != 0 );
 
     // Combine with current frame
-    SHADOW_TYPE result;
+    SIGMA_TYPE result;
     result.x = lerp( input.x, historyClamped.x, historyWeight.x );
 
-    #ifdef TRANSLUCENT_SHADOW
+    #ifdef SIGMA_TRANSLUCENT
         result.yzw = lerp( input.yzw, historyClamped.yzw, historyWeight.y );
     #endif
 
+    // Reference
+    #if( SIGMA_REFERENCE == 1 )
+        result = lerp( input, history, 0.95 * isInScreen );
+    #endif
+
     // Output
-    gOut_Shadow_Translucency[ pixelPos ] = result;
+    gOut_Shadow_Translucency[ pixelPos ] = PackShadow( result );
 }

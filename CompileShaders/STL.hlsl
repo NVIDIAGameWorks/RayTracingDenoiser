@@ -12,7 +12,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define STL_H
 
 #define STL_VERSION_MAJOR 1
-#define STL_VERSION_MINOR 2
+#define STL_VERSION_MINOR 3
 
 // Settings
 #define STL_SIGN_DEFAULT                            STL_SIGN_FAST
@@ -20,6 +20,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define STL_RSQRT_DEFAULT                           STL_POSITIVE_RSQRT_ACCURATE_SAFE
 #define STL_POSITIVE_RCP_DEFAULT                    STL_POSITIVE_RCP_ACCURATE_SAFE
 #define STL_LUMINANCE_DEFAULT                       STL_LUMINANCE_BT601
+#define STL_COLOR_CLAMPING_DEFAULT                  STL_COLOR_CLAMPING_AABB
 #define STL_RNG_DEFAULT                             STL_RNG_MANTISSA_BITS
 #define STL_BAYER_DEFAULT                           STL_BAYER_REVERSEBITS
 #define STL_RF0_DIELECTRICS                         0.04
@@ -715,6 +716,97 @@ namespace STL
             return res;
         }
 
+        // Rec.709 to / from CIE XYZ
+        float3 GammaToXyz( float3 color )
+        {
+            static const float3x3 M =
+            {
+                0.4123907992659595, 0.3575843393838780, 0.1804807884018343,
+                0.2126390058715104, 0.7151686787677559, 0.0721923153607337,
+                0.0193308187155918, 0.1191947797946259, 0.9505321522496608
+            };
+
+            return mul( M, color );
+        }
+
+        float3 XyzToGamma( float3 color )
+        {
+            static const float3x3 M =
+            {
+                3.240969941904522, -1.537383177570094, -0.4986107602930032,
+                -0.9692436362808803, 1.875967501507721, 0.04155505740717569,
+                0.05563007969699373, -0.2039769588889765, 1.056971514242878
+            };
+
+            return mul( M, color );
+        }
+
+        // Encode an RGB color into a 32-bit LogLuv HDR format. The supported luminance range is roughly 10^-6..10^6 in 0.17% steps.
+        // The log-luminance is encoded with 14 bits and chroma with 9 bits each. This was empirically more accurate than using 8 bit chroma.
+        // Black (all zeros) is handled exactly
+        uint LinearToLogLuv( float3 color )
+        {
+            // Convert RGB to XYZ
+            float3 XYZ = GammaToXyz( color ); // TODO: Rec709 expected, but color is linear
+
+            // Encode log2( Y ) over the range [ -20, 20 ) in 14 bits ( no sign bit ).
+            // TODO: Fast path that uses the bits from the fp32 representation directly
+            float logY = 409.6 * ( log2( XYZ.y ) + 20.0 ); // -inf if Y == 0
+            uint Le = uint( clamp( logY, 0.0, 16383.0 ) );
+
+            // Early out if zero luminance to avoid NaN in chroma computation.
+            // Note Le == 0 if Y < 9.55e-7. We'll decode that as exactly zero
+            if( Le == 0 )
+                return 0;
+
+            // Compute chroma (u,v) values by:
+            //  x = X / ( X + Y + Z )
+            //  y = Y / ( X + Y + Z )
+            //  u = 4x / ( -2x + 12y + 3 )
+            //  v = 9y / ( -2x + 12y + 3 )
+            // These expressions can be refactored to avoid a division by:
+            //  u = 4X / ( -2X + 12Y + 3(X + Y + Z) )
+            //  v = 9Y / ( -2X + 12Y + 3(X + Y + Z) )
+            float invDenom = 1.0 / ( -2.0 * XYZ.x + 12.0 * XYZ.y + 3.0 * ( XYZ.x + XYZ.y + XYZ.z ) );
+            float2 uv = float2( 4.0, 9.0 ) * XYZ.xy * invDenom;
+
+            // Encode chroma (u,v) in 9 bits each.
+            // The gamut of perceivable uv values is roughly [0,0.62], so scale by 820 to get 9-bit values
+            uint2 uve = uint2( clamp( 820.0 * uv, 0.0, 511.0 ) );
+
+            return ( Le << 18 ) | ( uve.x << 9 ) | uve.y;
+        }
+
+        // Decode an RGB color stored in a 32-bit LogLuv HDR format
+        float3 LogLuvToLinear( uint packedColor )
+        {
+            // Decode luminance Y from encoded log-luminance
+            uint Le = packedColor >> 18;
+            if( Le == 0 )
+                return 0;
+
+            float logY = ( float( Le ) + 0.5 ) / 409.6 - 20.0;
+            float Y = exp2( logY );
+
+            // Decode normalized chromaticity xy from encoded chroma (u,v)
+            //  x = 9u / (6u - 16v + 12)
+            //  y = 4v / (6u - 16v + 12)
+            uint2 uve = uint2( packedColor >> 9, packedColor ) & 0x1ff;
+            float2 uv = ( float2( uve ) + 0.5 ) / 820.0;
+
+            float invDenom = 1.0 / ( 6.0 * uv.x - 16.0 * uv.y + 12.0 );
+            float2 xy = float2( 9.0, 4.0 ) * uv * invDenom;
+
+            // Convert chromaticity to XYZ and back to RGB.
+            //  X = Y / y * x
+            //  Z = Y / y * (1 - x - y)
+            float s = Y / xy.y;
+            float3 XYZ = float3( s * xy.x, Y, s * ( 1.0 - xy.x - xy.y ) );
+
+            // Convert back to RGB and clamp to avoid out-of-gamut colors
+            return max( XyzToGamma( XYZ ), 0.0 );
+        }
+
         // HDR
         float3 Compress( float3 color, float exposure = 1.0 )
         {
@@ -825,6 +917,30 @@ namespace STL
             float4 d = 2.0 * BlendScreen( a, b ) - 1.0;
 
             return lerp( c, d, res );
+        }
+
+        // Color clamping
+        #define STL_COLOR_CLAMPING_SIMPLE 0
+        #define STL_COLOR_CLAMPING_AABB 1
+
+        float4 Clamp( float4 m1, float4 sigma, float4 prevSample, compiletime const uint mode = STL_COLOR_CLAMPING_DEFAULT )
+        {
+            float4 a = m1 - sigma;
+            float4 b = m1 + sigma;
+            float4 clampedSample = clamp( prevSample, a, b );
+
+            if( mode == STL_COLOR_CLAMPING_AABB )
+            {
+                // m1 - aabb center, sigma - aabb extents
+                float3 d = prevSample.xyz - m1.xyz;
+                float3 dn = abs( d * Math::PositiveRcp( sigma.xyz ) );
+                float maxd = max( dn.x, max( dn.y, dn.z ) );
+                float3 t = m1.xyz + d * Math::PositiveRcp( maxd );
+
+                clampedSample.xyz = maxd > 1.0 ? t : prevSample.xyz;
+            }
+
+            return clampedSample;
         }
 
         // Misc
@@ -1074,6 +1190,9 @@ namespace STL
         { return _ApplyBilinearCustomWeights( s00, s10, s01, s11, w, normalize ); }
 
         float2 ApplyBilinearCustomWeights( float2 s00, float2 s10, float2 s01, float2 s11, float4 w, compiletime const bool normalize = true )
+        { return _ApplyBilinearCustomWeights( s00, s10, s01, s11, w, normalize ); }
+
+        float3 ApplyBilinearCustomWeights( float3 s00, float3 s10, float3 s01, float3 s11, float4 w, compiletime const bool normalize = true )
         { return _ApplyBilinearCustomWeights( s00, s10, s01, s11, w, normalize ); }
 
         float4 ApplyBilinearCustomWeights( float4 s00, float4 s10, float4 s01, float4 s11, float4 w, compiletime const bool normalize = true )
@@ -1539,13 +1658,13 @@ namespace STL
         float Pow5( float x )
         { return Math::Pow01( 1.0 - x, 5.0 ); }
 
-        void ConvertDiffuseMetalnessToAlbedoRf0( float3 diffuseColor, float metalness, out float3 albedo, out float3 Rf0 )
+        void ConvertBaseColorMetalnessToAlbedoRf0( float3 baseColor, float metalness, out float3 albedo, out float3 Rf0 )
         {
             // TODO: ideally, STL_RF0_DIELECTRICS needs to be replaced with reflectance "STL_RF0_DIELECTRICS = 0.16 * reflectance * reflectance"
             // see https://google.github.io/filament/Filament.html#toc4.8
             // see https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf (page 13)
-            albedo = diffuseColor * saturate( 1.0 - metalness );
-            Rf0 = lerp( STL_RF0_DIELECTRICS, diffuseColor, metalness );
+            albedo = baseColor * saturate( 1.0 - metalness );
+            Rf0 = lerp( STL_RF0_DIELECTRICS, baseColor, metalness );
         }
 
         float FresnelTerm_Shadowing( float3 Rf0 )

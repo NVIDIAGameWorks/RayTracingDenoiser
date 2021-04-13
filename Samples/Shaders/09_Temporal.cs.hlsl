@@ -26,57 +26,6 @@ NRI_RESOURCE( RWTexture2D<float3>, gOut_History, u, 4, 1 );
 
 groupshared float4 s_Data[ BUFFER_Y ][ BUFFER_X ];
 
-float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const float sharpness )
-{
-    float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
-    float2 f = samplePos - centerPos;
-    float2 f2 = f * f;
-    float2 f3 = f * f2;
-    float2 w0 = -sharpness * f3 + 2.0 * sharpness * f2 - sharpness * f;
-    float2 w1 = ( 2.0 - sharpness ) * f3 - ( 3.0 - sharpness ) * f2 + 1.0;
-    float2 w2 = -( 2.0 - sharpness ) * f3 + ( 3.0 - 2.0 * sharpness ) * f2 + sharpness * f;
-    float2 w3 = sharpness * f3 - sharpness * f2;
-    float2 wl2 = w1 + w2;
-    float2 tc2 = invTextureSize * ( centerPos + w2 * STL::Math::PositiveRcp( wl2 ) );
-    float2 tc0 = invTextureSize * ( centerPos - 1.0 );
-    float2 tc3 = invTextureSize * ( centerPos + 2.0 );
-
-    float w = wl2.x * w0.y;
-    float4 color = tex.SampleLevel( samp, float2( tc2.x, tc0.y ), 0 ) * w;
-    float sum = w;
-
-    w = w0.x  * wl2.y;
-    color += tex.SampleLevel( samp, float2( tc0.x, tc2.y ), 0 ) * w;
-    sum += w;
-
-    w = wl2.x * wl2.y;
-    color += tex.SampleLevel( samp, float2( tc2.x, tc2.y ), 0 ) * w;
-    sum += w;
-
-    w = w3.x  * wl2.y;
-    color += tex.SampleLevel( samp, float2( tc3.x, tc2.y ), 0 ) * w;
-    sum += w;
-
-    w = wl2.x * w3.y;
-    color += tex.SampleLevel( samp, float2( tc2.x, tc3.y ), 0 ) * w;
-    sum += w;
-
-    color *= STL::Math::PositiveRcp( sum );
-
-    return color;
-}
-
-float3 ClipAABB( float3 center, float3 extents, float3 prevSample )
-{
-    // note: only clips towards aabb center (but fast!)
-    float3 d = prevSample - center;
-    float3 dn = abs( d * STL::Math::PositiveRcp( extents ) );
-    float maxd = max( dn.x, max( dn.y, dn.z ) );
-    float3 t = center + d * STL::Math::PositiveRcp( maxd );
-
-    return maxd > 1.0 ? t : prevSample;
-}
-
 void Preload( int2 sharedId, int2 globalId )
 {
     float4 color_viewZ = gIn_ComposedLighting_ViewZ[ globalId ];
@@ -91,8 +40,7 @@ void Preload( int2 sharedId, int2 globalId )
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvScreenSize;
-    float2 sampleUv = pixelUv + gJitter;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
     // Rename the 16x16 group into a 18x14 group + some idle threads in the end
     float linearId = ( threadIndex + 0.5 ) / BUFFER_X;
@@ -146,25 +94,25 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         }
     }
 
-    m1 /= 9.0;
-    m2 /= 9.0;
+    float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
+    m1 *= invSum;
+    m2 *= invSum;
 
-    float3 aabbCenter = m1;
-    float3 aabbExtents = sqrt( abs( m2 - m1 * m1 ) );
+    float3 sigma = sqrt( abs( m2 - m1 * m1 ) );
 
     // Previous pixel position
     offseti -= BORDER;
-    float2 offset = float2( offseti ) * gInvScreenSize;
+    float2 offset = float2( offseti ) * gInvRectSize;
     float3 Xvnearest = STL::Geometry::ReconstructViewPosition( pixelUv + offset, gCameraFrustum, viewZnearest, gIsOrtho );
     float3 Xnearest = STL::Geometry::AffineTransform( gViewToWorld, Xvnearest );
-    float3 mvNearest = gIn_ObjectMotion[ pixelPos + offseti ] * ( gWorldSpaceMotion ? 1.0 : gInvScreenSize.xyy );
+    float3 mvNearest = gIn_ObjectMotion[ pixelPos + offseti ] * ( gWorldSpaceMotion ? 1.0 : gInvRectSize.xyy );
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, mvNearest, gWorldSpaceMotion );
     pixelUvPrev -= offset;
 
     // History clamping
-    float2 pixelPosPrev = saturate( pixelUvPrev ) * gScreenSize;
+    float2 pixelPosPrev = saturate( pixelUvPrev ) * gRectSizePrev;
     float3 history = BicubicFilterNoCorners( gIn_History, gLinearSampler, pixelPosPrev, gInvScreenSize, TAA_HISTORY_SHARPNESS ).xyz;
-    float3 historyClamped = ClipAABB( aabbCenter, aabbExtents, history );
+    float3 historyClamped = STL::Color::Clamp( m1.xyzz, sigma.xyzz, history.xyzz ).xyz;
 
     // History weight
     bool isInScreen = float( all( saturate( pixelUvPrev ) == pixelUvPrev ) );
@@ -176,7 +124,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     // Dithering
     STL::Rng::Initialize( pixelPos, gFrameIndex );
     float2 rnd = STL::Rng::GetFloat2( );
-    float luma = STL::Color::Luminance( aabbCenter, STL_LUMINANCE_BT709 );
+    float luma = STL::Color::Luminance( m1, STL_LUMINANCE_BT709 );
     float amplitude = lerp( 0.1, 0.0025, STL::Math::Sqrt01( luma ) );
     float2 dither = 1.0 + ( rnd - 0.5 ) * amplitude;
     historyClamped *= dither.x;
@@ -188,11 +136,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     result = pixelUv.x < gSeparator ? input : result;
 
     // Split screen - vertical line
-    float verticalLine = saturate( 1.0 - abs( pixelUv.x - gSeparator ) * gScreenSize.x / 3.5 );
+    float verticalLine = saturate( 1.0 - abs( pixelUv.x - gSeparator ) * gRectSize.x / 3.5 );
     verticalLine = saturate( verticalLine / 0.5 );
+    verticalLine *= float( gSeparator != 0.0 );
+    verticalLine *= float( gScreenSize.x == gRectSize.x );
 
     const float3 nvColor = float3( 118.0, 185.0, 0.0 ) / 255.0;
-    result = lerp( result, nvColor * verticalLine, verticalLine * float( gSeparator != 0.0 ) );
+    result = lerp( result, nvColor * verticalLine, verticalLine );
 
     // Output
     gOut_History[ pixelPos ] = result;

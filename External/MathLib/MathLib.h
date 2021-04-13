@@ -69,9 +69,23 @@ namespace ml {
 
 #include <math.h>
 #include <float.h>
-#include <intrin.h>
+#if defined(__GNUC__) || defined (__clang__)
+    #if defined(__i386__) || defined(__x86_64__)
+        #include <x86intrin.h>
+    #endif
+  
+    #if defined(__arm__)
+        #include <armintr.h>
+    #endif
+  
+    #if defined(__aarch64__)
+        #include <arm64intr.h>
+    #endif
+#else
+    #include <intrin.h>
+#endif
 
-#include "platform.h"
+#include "Platform.h"
 #include "NdcConfig.h"
 
 //======================================================================================================================
@@ -347,6 +361,10 @@ class uint2
         }
 
         PLATFORM_INLINE uint2(uint32_t a, uint32_t b) : x(a), y(b)
+        {
+        }
+
+        PLATFORM_INLINE uint2(const float2& v) : x( uint32_t(v.x) ), y( uint32_t(v.y) )
         {
         }
 };
@@ -2382,7 +2400,7 @@ bool IsOverlapBoxTriangle(const float3& center, const float3& extents, const flo
 bool IsIntersectRayTriangle(const float3& origin, const float3& dir, const float3& v1, const float3& v2, const float3& v3, float3& out_tuv);
 bool IsIntersectRayTriangle(const float3& from, const float3& to, const float3& v1, const float3& v2, const float3& v3, float3& out_intersection, float3& out_normal);
 
-#include "packed.h"
+#include "Packed.h"
 
 #pragma warning(default:4201)
 

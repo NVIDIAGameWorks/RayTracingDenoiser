@@ -9,48 +9,70 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "REBLUR_Config.hlsl"
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
-    float4x4 gViewToClip;
-    float4 gFrustum;
-    float2 gInvScreenSize;
-    float2 gScreenSize;
-    uint gBools;
-    float gIsOrtho;
-    float gUnproject;
-    float gDebug;
-    float gInf;
-    float gPlaneDistSensitivity;
-    uint gFrameIndex;
-    float gFramerateScale;
+    REBLUR_DIFF_SPEC_SHARED_CB_DATA;
 
     uint2 gScreenSizei;
+    float gDiffMaxFastAccumulatedFrameNum;
+    float gSpecMaxFastAccumulatedFrameNum;
+    uint gDiffAntiFirefly;
+    uint gSpecAntiFirefly;
 };
+
+#if( REBLUR_5X5_HISTORY_CLAMPING == 1 )
+    #define NRD_USE_BORDER_2
+#endif
+#include "NRD_Common.hlsl"
 
 #include "REBLUR_Common.hlsl"
 
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
-NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 ); // mips 0-4
-NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );  // mips 1-4, mip = 0 actually samples from mip#1!
-NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 4, 0 ); // mips 1-4, mip = 0 actually samples from mip#1!
+NRI_RESOURCE( Texture2D<float4>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 ); // mips 0+
+NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );  // mips 1+, mip = 0 actually samples from mip#1!
+NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 4, 0 ); // mips 1+, mip = 0 actually samples from mip#1!
+NRI_RESOURCE( Texture2D<float4>, gIn_Fast_Diff, t, 5, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Fast_Spec, t, 6, 0 );
 
 // Outputs
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 1, 0 );
 
-[numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( uint2 pixelPos : SV_DispatchThreadId )
+groupshared float4 s_Diff[ BUFFER_Y ][ BUFFER_X ];
+groupshared float4 s_Spec[ BUFFER_Y ][ BUFFER_X ];
+
+void Preload( int2 sharedId, int2 globalId )
 {
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
+    s_Diff[ sharedId.y ][ sharedId.x ] = gIn_Fast_Diff[ globalId ];
+    s_Spec[ sharedId.y ][ sharedId.x ] = gIn_Fast_Spec[ globalId ];
+}
+
+[numthreads( GROUP_X, GROUP_Y, 1 )]
+void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+{
+    uint2 pixelPosUser = gRectOrigin + pixelPos;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
+
+    PRELOAD_INTO_SMEM;
+
+    // Early out
     float scaledViewZ = gIn_ScaledViewZ[ pixelPos ];
+    float viewZ = scaledViewZ / NRD_FP16_VIEWZ_SCALE;
+
+    [branch]
+    if( viewZ > gInf )
+        return;
 
     // Debug
-    #if( NRD_DEBUG == NRD_SHOW_MIPS )
+    #if( REBLUR_DEBUG == REBLUR_SHOW_MIPS )
     {
-        int realMipLevel = int( gDebug * MIP_NUM );
+        int realMipLevel = int( gDebug * REBLUR_MIP_NUM );
         int mipLevel = realMipLevel - 1;
         if( realMipLevel == 0 )
             return;
@@ -58,36 +80,9 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
         float2 mipSize = float2( gScreenSizei >> realMipLevel );
         float2 mipUv = pixelUv * gScreenSize / ( mipSize * float( 1 << realMipLevel ) );
 
-        #if 0
-            float4 diff = gIn_Diff.SampleLevel( gLinearClamp, mipUv, mipLevel );
-            float4 spec = gIn_Spec.SampleLevel( gLinearClamp, mipUv, mipLevel );
-        #else
-            STL::Filtering::Bilinear filter = STL::Filtering::GetBilinearFilter( mipUv, mipSize );
-            float4 bilinearWeights = STL::Filtering::GetBilinearCustomWeights( filter, 1.0 );
-            float2 mipUvFootprint00 = ( filter.origin + 0.5 ) / mipSize;
-
-            float4 z;
-            z.x = gIn_ScaledViewZ.SampleLevel( gNearestClamp, mipUvFootprint00, realMipLevel );
-            z.y = gIn_ScaledViewZ.SampleLevel( gNearestClamp, mipUvFootprint00, realMipLevel, int2( 1, 0 ) );
-            z.z = gIn_ScaledViewZ.SampleLevel( gNearestClamp, mipUvFootprint00, realMipLevel, int2( 0, 1 ) );
-            z.w = gIn_ScaledViewZ.SampleLevel( gNearestClamp, mipUvFootprint00, realMipLevel, int2( 1, 1 ) );
-
-            float4 d00 = gIn_Diff.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel );
-            float4 d10 = gIn_Diff.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel, int2( 1, 0 ) );
-            float4 d01 = gIn_Diff.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel, int2( 0, 1 ) );
-            float4 d11 = gIn_Diff.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel, int2( 1, 1 ) );
-
-            float4 s00 = gIn_Spec.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel );
-            float4 s10 = gIn_Spec.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel, int2( 1, 0 ) );
-            float4 s01 = gIn_Spec.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel, int2( 0, 1 ) );
-            float4 s11 = gIn_Spec.SampleLevel( gNearestClamp, mipUvFootprint00, mipLevel, int2( 1, 1 ) );
-
-            float4 bilateralWeights = GetBilateralWeight( z, scaledViewZ );
-            float4 w = bilinearWeights * bilateralWeights;
-
-            float4 diff = STL::Filtering::ApplyBilinearCustomWeights( d00, d10, d01, d11, w );
-            float4 spec = STL::Filtering::ApplyBilinearCustomWeights( s00, s10, s01, s11, w );
-        #endif
+        float2 mipUvScaled = mipUv * gResolutionScale;
+        float4 diff = gIn_Diff.SampleLevel( gLinearClamp, mipUvScaled, mipLevel );
+        float4 spec = gIn_Spec.SampleLevel( gLinearClamp, mipUvScaled, mipLevel );
 
         gOut_Diff[ pixelPos ] = diff;
         gOut_Spec[ pixelPos ] = spec;
@@ -96,7 +91,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     }
     #endif
 
-    float roughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos ] ).w;
+    float roughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] ).w;
     float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
 
     float2 diffInternalData = internalData.xy;
@@ -107,41 +102,117 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float specRealMipLevelf = GetMipLevel( specInternalData.y, roughness );
     uint specRealMipLevel = uint( specRealMipLevelf );
 
+    // Local variance
+    #if( REBLUR_USE_FAST_HISTORY == 1 )
+        float4 diffM1 = 0;
+        float4 diffM2 = 0;
+
+        float4 specM1 = 0;
+        float4 specM2 = 0;
+
+        float4 diffMaxInput = -INF;
+        float4 diffMinInput = INF;
+
+        float4 specMaxInput = -INF;
+        float4 specMinInput = INF;
+
+        [unroll]
+        for( int dy = 0; dy <= BORDER * 2; dy++ )
+        {
+            [unroll]
+            for( int dx = 0; dx <= BORDER * 2; dx++ )
+            {
+                int2 pos = threadId + int2( dx, dy );
+
+                float4 d = s_Diff[ pos.y ][ pos.x ];
+                diffM1 += d;
+                diffM2 += d * d;
+
+                float4 s = s_Spec[ pos.y ][ pos.x ];
+                specM1 += s;
+                specM2 += s * s;
+
+                if( dx != BORDER || dy != BORDER )
+                {
+                    diffMaxInput = max( diffMaxInput, d );
+                    diffMinInput = min( diffMinInput, d );
+
+                    specMaxInput = max( specMaxInput, s );
+                    specMinInput = min( specMinInput, s );
+                }
+            }
+        }
+
+        float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
+
+        diffM1 *= invSum;
+        diffM2 *= invSum;
+        float4 diffSigma = GetStdDev( diffM1, diffM2 );
+        float4 diff = gOut_Diff[ pixelPos ];
+
+        specM1 *= invSum;
+        specM2 *= invSum;
+        float4 specSigma = GetStdDev( specM1, specM2 );
+        float4 spec = gOut_Spec[ pixelPos ];
+
+        #if( REBLUR_USE_ANTI_FIREFLY == 1 )
+            [flatten]
+            if( gDiffAntiFirefly != 0 )
+                diff = clamp( diff, diffMinInput, diffMaxInput );
+
+            [flatten]
+            if( gSpecAntiFirefly != 0 )
+                spec = clamp( spec, specMinInput, specMaxInput );
+        #endif
+    #endif
+
     // Diffuse
     [branch]
-    if( diffRealMipLevel != 0 && USE_HISTORY_FIX != 0 )
+    if( diffRealMipLevel != 0 && REBLUR_USE_HISTORY_FIX != 0 )
     {
-        float sum;
-        float4 blurry = ReconstructHistory( diffRealMipLevel, gScreenSizei, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Diff, sum );
-
-        #if( USE_MIX_WITH_ORIGINAL == 1 )
-            float4 original = gOut_Diff[ pixelPos ];
-            blurry = lerp( original, blurry, diffInternalData.x );
+        #if( REBLUR_USE_FAST_HISTORY == 0 )
+            float4 diff = gOut_Diff[ pixelPos ];
         #endif
 
-        #if( USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX == 1 )
-            [branch]
-            if( sum != 0 )
+        float4 blurry = ReconstructHistory( diff, diffRealMipLevel, gScreenSizei, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Diff );
+        diff = lerp( diff, blurry, diffInternalData.x );
+
+        #if( REBLUR_USE_FAST_HISTORY == 0 )
+            gOut_Diff[ pixelPos ] = diff;
         #endif
-                gOut_Diff[ pixelPos ] = blurry;
     }
+
+    #if( REBLUR_USE_FAST_HISTORY == 1 )
+        float4 diffClamped = STL::Color::Clamp( diffM1, REBLUR_FAST_HISTORY_SIGMA_AMPLITUDE * diffSigma, diff );
+        float diffFactor = saturate( 1.0 - diffRealMipLevelf / REBLUR_MIP_NUM );
+
+        diff = lerp( diff, diffClamped, diffFactor * float( gDiffMaxFastAccumulatedFrameNum < gDiffMaxAccumulatedFrameNum ) );
+
+        gOut_Diff[ pixelPos ] = diff;
+    #endif
 
     // Specular
     [branch]
-    if( specRealMipLevel != 0 && USE_HISTORY_FIX != 0 )
+    if( specRealMipLevel != 0 && REBLUR_USE_HISTORY_FIX != 0 )
     {
-        float sum;
-        float4 blurry = ReconstructHistory( specRealMipLevel, gScreenSizei, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Spec, sum );
-
-        #if( USE_MIX_WITH_ORIGINAL == 1 )
-            float4 original = gOut_Spec[ pixelPos ];
-            blurry = lerp( original, blurry, specInternalData.x );
+        #if( REBLUR_USE_FAST_HISTORY == 0 )
+            float4 spec = gOut_Spec[ pixelPos ];
         #endif
 
-        #if( USE_WEIGHT_CUTOFF_FOR_HISTORY_FIX == 1 )
-            [branch]
-            if( sum != 0 )
+        float4 blurry = ReconstructHistory( spec, specRealMipLevel, gScreenSizei, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Spec );
+        spec = lerp( spec, blurry, specInternalData.x );
+
+        #if( REBLUR_USE_FAST_HISTORY == 0 )
+            gOut_Spec[ pixelPos ] = spec;
         #endif
-                gOut_Spec[ pixelPos ] = blurry;
     }
+
+    #if( REBLUR_USE_FAST_HISTORY == 1 )
+        float4 specClamped = STL::Color::Clamp( specM1, REBLUR_FAST_HISTORY_SIGMA_AMPLITUDE * specSigma, spec );
+        float specFactor = saturate( 1.0 - specRealMipLevelf / REBLUR_MIP_NUM );
+
+        spec = lerp( spec, specClamped, specFactor * float( gSpecMaxFastAccumulatedFrameNum < gSpecMaxAccumulatedFrameNum ) );
+
+        gOut_Spec[ pixelPos ] = spec;
+    #endif
 }

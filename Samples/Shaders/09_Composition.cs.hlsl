@@ -22,10 +22,9 @@ NRI_RESOURCE( Texture2D<float2>, gIn_IntegratedBRDF, t, 7, 1 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_ComposedImage, u, 8, 1 );
 
 [numthreads( 16, 16, 1)]
-void main( uint2 pixelPos : SV_DISPATCHTHREADID)
+void main( uint2 pixelPos : SV_DispatchThreadId )
 {
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
-    float2 sampleUv = pixelUv + gJitter;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
     // Normal
     float4 normalAndRoughness = gIn_Normal_Roughness[ pixelPos ];
@@ -38,7 +37,7 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     float4 baseColorMetalness = gIn_BaseColor_Metalness[ pixelPos ];
 
     float3 albedo, Rf0;
-    STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( baseColorMetalness.xyz, baseColorMetalness.w, albedo, Rf0 );
+    STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( baseColorMetalness.xyz, baseColorMetalness.w, albedo, Rf0 );
 
     // To be used in indirect (!) lighting math
     albedo *= STL::ImportanceSampling::Cosine::GetInversePDF( ) / STL::Math::Pi( 1.0 );
@@ -46,17 +45,9 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     // Denoised data
     float viewZ = gIn_ViewZ[ pixelPos ];
     float4 indirectDiff = gIn_Diff[ pixelPos ];
-    if( gDenoiserType == REBLUR )
-        indirectDiff = REBLUR_BackEnd_UnpackRadiance( indirectDiff, viewZ, gDiffHitDistParams );
-    else
-        indirectDiff = RELAX_BackEnd_UnpackRadiance( indirectDiff );
     indirectDiff.xyz *= gIndirectDiffuse;
 
     float4 indirectSpec = gIn_Spec[ pixelPos ];
-    if( gDenoiserType == REBLUR )
-        indirectSpec = REBLUR_BackEnd_UnpackRadiance( indirectSpec, viewZ, gSpecHitDistParams, roughness );
-    else
-        indirectSpec = RELAX_BackEnd_UnpackRadiance( indirectSpec, roughness );
     indirectSpec.xyz *= gIndirectSpecular;
 
     float4 shadowData = gIn_Shadow[ pixelPos ];
@@ -79,7 +70,7 @@ void main( uint2 pixelPos : SV_DISPATCHTHREADID)
     float3 F = STL::BRDF::EnvironmentTerm_Ross( Rf0, NoV, roughness );
 
     // We loose G-term if trimming is high, return it back in pre-integrated form
-    float2 GG = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV, roughness ), 0.0 );
+    float2 GG = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV, roughness ), 0 );
     float trimmingFactor = NRD_GetTrimmingFactor( roughness, gTrimmingParams );
     F *= lerp( GG.x, 1.0, trimmingFactor );
 

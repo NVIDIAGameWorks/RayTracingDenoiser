@@ -1590,6 +1590,13 @@ class float4x4
             Swap(col1, col2);
         }
 
+        PLATFORM_INLINE bool IsRightHanded() const
+        {
+            float3 v1 = Cross(col0, col1);
+
+            return Dot33(v1, col2) > 0.0f;
+        }
+
         // NOTE: arithmetic
 
         PLATFORM_INLINE float4x4 operator * (const float4x4& m) const

@@ -42,11 +42,11 @@ namespace nrd
 
         // SIGMA ===========================================================================================================================
 
-        // INPUTS - IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SHADOW, OUT_SHADOW
-        // OUTPUTS - OUT_SHADOW
+        // INPUTS - IN_NORMAL_ROUGHNESS, IN_SHADOWDATA, OUT_SHADOW_TRANSLUCENCY
+        // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
         SIGMA_SHADOW,
 
-        // INPUTS - IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SHADOW, IN_TRANSLUCENCY, OUT_SHADOW_TRANSLUCENCY
+        // INPUTS - IN_NORMAL_ROUGHNESS, IN_SHADOWDATA, OUT_SHADOW_TRANSLUCENCY
         // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
         SIGMA_TRANSLUCENT_SHADOW,
 
@@ -55,12 +55,6 @@ namespace nrd
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF, IN_SPEC
         // OUTPUTS - OUT_DIFF, OUT_SPEC
         RELAX_DIFFUSE_SPECULAR,
-
-        // SVGF ============================================================================================================================
-
-        // INPUTS - IN_SVGF
-        // OUTPUTS - OUT_SVGF
-        SVGF,
 
         MAX_NUM
     };
@@ -75,11 +69,8 @@ namespace nrd
         // See "NRD.hlsl/_NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+ or R10G10B10A2+ depending on encoding)
         IN_NORMAL_ROUGHNESS,
 
-        // Linear view depth for primary rays - "+" for LHS, "-" for RHS (R16f+)
+        // Linear view depth for primary rays (R16f+)
         IN_VIEWZ,
-
-        // Data must be packed using "NRD.hlsl/XXX_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
-        IN_SHADOW,
 
         // Data must be packed using "NRD.hlsl/XXX_PackRadiance" (RGBA16f+)
         IN_DIFF_HIT,
@@ -87,8 +78,13 @@ namespace nrd
         // Data must be packed using "NRD.hlsl/XXX_PackRadiance" (RGBA16f+)
         IN_SPEC_HIT,
 
-        // 3-channel translucency (RGBA8+)
-        IN_TRANSLUCENCY,
+        // Data must be packed using "NRD.hlsl/XXX_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
+        IN_SHADOWDATA,
+
+        // .x - shadow, .yzw - translucency (RGBA8+) / .x - shadow (R8+)
+        // Shadow (for simplicity) should be taken from "NRD.hlsl/XXX_PackShadow"
+        // Translucency can be omitted (by using a 1-channel texture format)
+        IN_SHADOW_TRANSLUCENCY,
 
         // OUTPUTS ==========================================================================================================================
 
@@ -96,20 +92,14 @@ namespace nrd
         // - can potentially be used as history buffers
         // - as intermediate buffers
 
-        // .x - shadow (R8+)
-        // Data must be unpacked using "NRD.hlsl/XXX_UnpackShadow"
-        OUT_SHADOW,
-
-        // .x - shadow, .yzw - translucency (RGBA8+), assuming that it will be used as: translucent shadow = lerp( .yzw, 1, .x )
+        // .x - shadow, .yzw - translucency (RGBA8+) / .x - shadow (R8+)
         // Data must be unpacked using "NRD.hlsl/XXX_UnpackShadow"
         OUT_SHADOW_TRANSLUCENCY,
 
         // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        // Data must be unpacked using "NRD.hlsl/XXX_UnpackRadiance"
         OUT_DIFF_HIT,
 
         // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        // Data must be unpacked using "NRD.hlsl/XXX_UnpackRadiance"
         OUT_SPEC_HIT,
 
         // POOLS ============================================================================================================================
@@ -129,12 +119,6 @@ namespace nrd
         IN_SPEC = IN_SPEC_HIT,
         OUT_DIFF = OUT_DIFF_HIT,
         OUT_SPEC = OUT_SPEC_HIT,
-
-        // .xyz - signal1, .w - signal2
-        IN_SVGF = IN_DIFF_HIT,
-
-        // .xyz - signal1, .w - signal2
-        OUT_SVGF = OUT_DIFF_HIT,
     };
 
     enum class Format : uint32_t
@@ -349,8 +333,8 @@ namespace nrd
         uint32_t resourceNum;
         const uint8_t* constantBufferData;
         uint32_t constantBufferDataSize;
-        uint32_t pipelineIndex;
-        uint32_t gridWidth;
-        uint32_t gridHeight;
+        uint16_t pipelineIndex;
+        uint16_t gridWidth;
+        uint16_t gridHeight;
     };
 }

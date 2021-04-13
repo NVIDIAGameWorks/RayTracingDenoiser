@@ -9,30 +9,22 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "REBLUR_Config.hlsl"
 
 NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
-    float4x4 gViewToClip;
-    float4 gFrustum;
-    float2 gInvScreenSize;
-    float2 gScreenSize;
-    uint gBools;
-    float gIsOrtho;
-    float gUnproject;
-    float gDebug;
-    float gInf;
-    float gPlaneDistSensitivity;
-    uint gFrameIndex;
-    float gFramerateScale;
+    REBLUR_SPEC_SHARED_CB_DATA;
 
     float4x4 gWorldToView;
     float4 gRotator;
     float4 gSpecHitDistParams;
-    float3 gSpecTrimmingParams;
-    float gSpecBlurRadius;
+    float4 gSpecTrimmingParams;
     uint gSpecCheckerboard;
 };
 
+#include "NRD_Common.hlsl"
 #include "REBLUR_Common.hlsl"
 
 // Inputs
@@ -46,14 +38,16 @@ NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 1, 0 );
 
 void Preload( int2 sharedId, int2 globalId )
 {
-    s_Normal_Roughness[ sharedId.y ][ sharedId.x ] = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalId ] );
-    s_ViewZ[ sharedId.y ][ sharedId.x ] = gIn_ViewZ[ globalId ];
+    uint2 globalIdUser = gRectOrigin + globalId;
+
+    s_Normal_Roughness[ sharedId.y ][ sharedId.x ] = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalIdUser ] );
+    s_ViewZ[ sharedId.y ][ sharedId.x ] = abs( gIn_ViewZ[ globalIdUser ] );
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
     PRELOAD_INTO_SMEM;
 
@@ -70,32 +64,28 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Early out
     int2 smemPos = threadId + BORDER;
-    float centerZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
+    float viewZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
-    float scaledViewZ = clamp( centerZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
+    float scaledViewZ = min( viewZ * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX );
     gOut_ScaledViewZ[ pixelPos ] = scaledViewZ;
 
     [branch]
-    if( abs( centerZ ) > abs( gInf ) )
-    {
-        #if( BLACK_OUT_INF_PIXELS == 1 )
-            gOut_Spec[ pixelPos ] = 0;
-        #endif
+    if( viewZ > gInf )
         return;
-    }
 
     // Center data
-    float3 centerPos = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, centerZ, gIsOrtho );
-    float4 spec = gIn_Spec[ uint2( checkerboardPixelPos.y, pixelPos.y ) ];
+    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );
+    float4 spec = gIn_Spec[ gRectOrigin + uint2( checkerboardPixelPos.y, pixelPos.y ) ];
 
     int3 smemCheckerboardPos = smemPos.xyx + int3( -1, 0, 1 );
     float viewZ0 = s_ViewZ[ smemCheckerboardPos.y ][ smemCheckerboardPos.x ];
     float viewZ1 = s_ViewZ[ smemCheckerboardPos.y ][ smemCheckerboardPos.z ];
-    float2 w = GetBilateralWeight( float2( viewZ0, viewZ1 ), centerZ );
+    float2 w = GetBilateralWeight( float2( viewZ0, viewZ1 ), viewZ );
     w *= STL::Math::PositiveRcp( w.x + w.y );
 
     int3 checkerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
     checkerboardPos.xz >>= 1;
+    checkerboardPos += gRectOrigin.xyx;
 
     float4 s0 = gIn_Spec[ checkerboardPos.xy ];
     float4 s1 = gIn_Spec[ checkerboardPos.zy ];
@@ -113,43 +103,46 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float roughness = normalAndRoughness.w;
 
     // Blur radius
-    float specHitDist = GetHitDist( specCenterNormHitDist, centerZ, gSpecHitDistParams, roughness );
-    float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, centerPos, PRE_BLUR_NON_LINEAR_ACCUM_SPEED, PRE_BLUR_RADIUS_SCALE( roughness ) );
-    specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams );
-    float specWorldBlurRadius = PixelRadiusToWorld( specBlurRadius, centerZ );
+    float specHitDist = GetHitDist( specCenterNormHitDist, viewZ, gSpecHitDistParams, roughness );
+    float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, Xv, REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED, REBLUR_PRE_BLUR_RADIUS_SCALE( roughness ) );
+    specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams.xyz );
+    float specWorldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, specBlurRadius, viewZ );
 
     // Random rotation
-    float4 rotator = GetBlurKernelRotation( PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator );
+    float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     // Edge detection
     float edge = DetectEdge( N, smemPos );
 
     // Denoising
     float2 specSum = 1.0;
-    float specNormalWeightParams = GetNormalWeightParams( roughness, edge, PRE_BLUR_NON_LINEAR_ACCUM_SPEED );
-    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( specCenterNormHitDist, PRE_BLUR_NON_LINEAR_ACCUM_SPEED, specHitDist, centerPos, roughness );
+    float specNormalWeightParams = GetNormalWeightParams( viewZ, roughness, edge, REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED );
+    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( specCenterNormHitDist, REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED, specHitDist, Xv, roughness );
     float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
-    float2x3 specTvBv = GetKernelBasis( centerPos, Nv, specWorldBlurRadius, PRE_BLUR_NON_LINEAR_ACCUM_SPEED, roughness );
+    float2x3 specTvBv = GetKernelBasis( Xv, Nv, specWorldBlurRadius, edge, roughness );
 
-    float2 geometryWeightParams = GetGeometryWeightParams( centerPos, Nv, centerZ );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, viewZ );
 
-    UNROLL
-    for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
+    [unroll]
+    for( uint i = 0; i < REBLUR_POISSON_SAMPLE_NUM; i++ )
     {
-        float3 offset = POISSON_SAMPLES[ i ];
+        float3 offset = REBLUR_POISSON_SAMPLES[ i ];
 
         // Sample coordinates
-        float2 uv = GetKernelSampleCoordinates( offset, centerPos, specTvBv[ 0 ], specTvBv[ 1 ], rotator );
+        float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, specTvBv[ 0 ], specTvBv[ 1 ], rotator );
 
         // Handle half res input in the checkerboard mode
-        float3 checkerboardUv = float3( uv, 1.0 );
+        float2 checkerboardUv = uv;
         if( gSpecCheckerboard != 2 )
-            checkerboardUv = ApplyCheckerboard( uv, gSpecCheckerboard, i );
+            checkerboardUv = ApplyCheckerboard( uv, gSpecCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex );
 
         // Fetch data
-        float4 s = gIn_Spec.SampleLevel( gNearestMirror, checkerboardUv.xy, 0 );
-        float z = gIn_ViewZ.SampleLevel( gNearestMirror, uv, 0 );
-        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uv, 0 );
+        float2 uvScaled = uv * gResolutionScale + gRectOffset;
+        float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
+
+        float4 s = gIn_Spec.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
+        float z = abs( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) );
+        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uvScaled, 0 );
 
         float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
         normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
@@ -158,19 +151,19 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
         w *= GetNormalWeight( specNormalWeightParams, N, normal.xyz );
         w *= GetRoughnessWeight( specRoughnessWeightParams, normal.w );
-        w *= checkerboardUv.z;
+        w *= IsInScreen( uv );
 
         float wh = GetHitDistanceWeight( specHitDistanceWeightParams, s.w );
-        float2 ww = w * lerp( float2( 0.0, HIT_DIST_MIN_WEIGHT * 2.0 ), 1.0, wh );
+        float2 ww = w * lerp( float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 2.0 ), 1.0, wh );
 
         spec += s * ww.xxxy;
         specSum += ww;
     }
 
-    spec *= STL::Math::PositiveRcp( specSum ).xxxy;
+    spec /= specSum.xxxy;
 
     // Special case for hit distance
-    spec.w = lerp( spec.w, specCenterNormHitDist, HIT_DIST_INPUT_MIX );
+    spec.w = lerp( spec.w, specCenterNormHitDist, REBLUR_HIT_DIST_INPUT_MIX );
 
     // Output
     gOut_Spec[ pixelPos ] = spec;

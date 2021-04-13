@@ -9,128 +9,172 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "RELAX_Config.hlsl"
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
     float4x4 gPrevWorldToClip;
-
+    float4x4 gWorldToClip;
     float4   gFrustumRight;
     float4   gFrustumUp;
     float4   gFrustumForward;
-
     float4   gPrevFrustumRight;
     float4   gPrevFrustumUp;
     float4   gPrevFrustumForward;
-
     float3   gPrevCameraPosition;
     float    gJitterDelta;
-
     float2   gMotionVectorScale;
+    uint2    gRectOrigin;
     uint2    gResolution;
     float2   gInvViewSize;
-
+    float2   gInvRectSize;
+    float2   gRectSizePrev;
     float    gUseBicubic;
-    float    gSpecularAlpha;
-    float    gSpecularResponsiveAlpha;
+    float    gSpecularMaxAccumulatedFrameNum;
+    float    gSpecularMaxFastAccumulatedFrameNum;
     float    gSpecularVarianceBoost;
-
-    float    gDiffuseAlpha;
-    float    gDiffuseResponsiveAlpha;
+    float    gDiffuseMaxAccumulatedFrameNum;
+    float    gDiffuseMaxFastAccumulatedFrameNum;
     float    gWorldSpaceMotion;
     float    gIsOrtho;
-
     float    gUnproject;
     float    gNeedHistoryReset;
+    float    gDenoisingRange;
+    float    gDisocclusionThreshold;
 };
 
+#include "NRD_Common.hlsl"
 #include "RELAX_Common.hlsl"
 
 // Inputs
 NRI_RESOURCE(Texture2D<float4>, gSpecularIllumination, t, 0, 0);
 NRI_RESOURCE(Texture2D<float4>, gDiffuseIllumination, t, 1, 0);
 NRI_RESOURCE(Texture2D<float4>, gMotion, t, 2, 0);
-NRI_RESOURCE(Texture2D<uint2>,  gNormalRoughnessDepth, t, 3, 0);
-NRI_RESOURCE(Texture2D<uint2>,  gPrevSpecularAndDiffuseIlluminationLogLuv, t, 4, 0);
-NRI_RESOURCE(Texture2D<uint2>,  gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, t, 5, 0);
-NRI_RESOURCE(Texture2D<float4>, gPrevSpecularIlluminationUnpacked, t, 6, 0);
-NRI_RESOURCE(Texture2D<float4>, gPrevDiffuseIlluminationUnpacked, t, 7, 0);
-NRI_RESOURCE(Texture2D<float2>, gPrevSpecularAndDiffuse2ndMoments, t, 8, 0);
-NRI_RESOURCE(Texture2D<uint2>,  gPrevNormalRoughnessDepth, t, 9, 0);
-NRI_RESOURCE(Texture2D<float>,  gPrevReflectionHitT, t, 10, 0);
-NRI_RESOURCE(Texture2D<float2>, gPrevSpecularAndDiffuseHistoryLength, t, 11, 0);
+NRI_RESOURCE(Texture2D<uint2>, gNormalRoughnessDepth, t, 3, 0);
+NRI_RESOURCE(Texture2D<uint2>, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, t, 4, 0);
+NRI_RESOURCE(Texture2D<float4>, gPrevSpecularIlluminationUnpacked, t, 5, 0);
+NRI_RESOURCE(Texture2D<float4>, gPrevDiffuseIlluminationUnpacked, t, 6, 0);
+NRI_RESOURCE(Texture2D<float2>, gPrevSpecularAndDiffuse2ndMoments, t, 7, 0);
+NRI_RESOURCE(Texture2D<uint2>, gPrevNormalRoughnessDepth, t, 8, 0);
+NRI_RESOURCE(Texture2D<float>, gPrevReflectionHitT, t, 9, 0);
+NRI_RESOURCE(Texture2D<float2>, gPrevSpecularAndDiffuseHistoryLength, t, 10, 0);
 
 // Outputs
-NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationLogLuv, u, 0, 0);
-NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationResponsiveLogLuv, u, 1, 0);
+NRI_RESOURCE(RWTexture2D<uint2>, gOutSpecularAndDiffuseIlluminationLogLuv, u, 0, 0);
+NRI_RESOURCE(RWTexture2D<uint2>, gOutSpecularAndDiffuseIlluminationResponsiveLogLuv, u, 1, 0);
 NRI_RESOURCE(RWTexture2D<float2>, gOutSpecularAndDiffuse2ndMoments, u, 2, 0);
-NRI_RESOURCE(RWTexture2D<float>,  gOutReflectionHitT, u, 3, 0);
+NRI_RESOURCE(RWTexture2D<float>, gOutReflectionHitT, u, 3, 0);
 NRI_RESOURCE(RWTexture2D<float2>, gOutSpecularAndDiffuseHistoryLength, u, 4, 0);
-NRI_RESOURCE(RWTexture2D<float>,  gOutSpecularReprojectionConfidence, u, 5, 0);
+NRI_RESOURCE(RWTexture2D<float>, gOutSpecularReprojectionConfidence, u, 5, 0);
 
 // Helper functions
+
+float GetSpecAccumulatedFrameNum(float roughness, float powerScale)
+{
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIzMSooeF4wLjY2KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIzMSooMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiNGQTBEMEQifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIzMSJdfV0-
+    float f = 1.0 - exp2(-200.0 * roughness * roughness);
+    f *= STL::Math::Pow01(roughness, RELAX_SPEC_ACCUM_BASE_POWER * powerScale);
+    return RELAX_MAX_ACCUM_FRAME_NUM * f;
+}
+
+
+float GetSpecAccumSpeed(float maxAccumSpeed, float roughness, float NoV, float parallax)
+{
+    float acos01sq = saturate(1.0 - NoV); // see AcosApprox()
+
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS4wNSsoeCp4KV4xLjApLygxLjA1LSh4KngpXjEuMCkiLCJjb2xvciI6IiM1MkExMDgifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC42NikvKDEuMDUtKHgqeCleMC42NikiLCJjb2xvciI6IiNFM0Q4MDkifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC41KS8oMS4wNS0oeCp4KV4wLjUpIiwiY29sb3IiOiIjRjUwQTMxIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNDIiXSwic2l6ZSI6WzE5MDAsNzAwXX1d
+    float a = STL::Math::Pow01(acos01sq, RELAX_SPEC_ACCUM_CURVE);
+    float b = 1.1 + roughness * roughness;
+    float parallaxSensitivity = (b + a) / (b - a);
+    float powerScale = 1.0 + parallax * parallaxSensitivity;
+    float accumSpeed = GetSpecAccumulatedFrameNum(roughness, powerScale);
+    accumSpeed = min(accumSpeed, maxAccumSpeed);
+    return accumSpeed;
+}
+
+float GetNormalWeightParams(float viewZ, float roughness, float edge, float nonLinearAccumSpeed)
+{
+    float r = PixelRadiusToWorld(gUnproject, gIsOrtho, 1.0 / gInvViewSize.y, viewZ);
+    float a = 1.0 / (r + 1.0); // estimate normalized angular size
+    float b = lerp(0.15, 0.02, a); // % of lobe angle
+    float f = max(nonLinearAccumSpeed, 0.5 * edge); // less strict on edges
+    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);
+    angle *= lerp(b, 1.0, f);
+    angle += RELAX_NORMAL_BANDING_FIX;
+    return rcp(angle);
+}
+
+float GetNormalWeight(float params0, float3 n0, float3 n)
+{
+    float cosa = saturate(dot(n0, n));
+    float angle = STL::Math::AcosApprox(cosa);
+    return _ComputeWeight(float2(params0, -0.001), angle);
+}
+
+float2 GetRoughnessWeightParams(float roughness0)
+{
+    float a = rcp(roughness0 * 0.2 * 0.99 + 0.01);
+    float b = roughness0 * a;
+    return float2(a, -b);
+}
+
+#define GetRoughnessWeight _ComputeWeight
+
+float ComputeParallax(float3 X, float3 Xprev, float3 cameraDelta)
+{
+    float3 Xt = Xprev - cameraDelta;
+    float cosa = dot(X, Xt);
+    cosa *= STL::Math::Rsqrt(STL::Math::LengthSquared(Xt) * STL::Math::LengthSquared(X));
+    cosa = saturate(cosa);
+    float parallax = STL::Math::Sqrt01(1.0 - cosa * cosa) * STL::Math::PositiveRcp(cosa);
+    parallax *= RELAX_PARALLAX_NORMALIZATION;
+    parallax /= 1.0 + RELAX_PARALLAX_COMPRESSION_STRENGTH * parallax;
+    return parallax;
+}
+
+float GetParallaxInPixels(float parallax)
+{
+    parallax /= 1.0 - RELAX_PARALLAX_COMPRESSION_STRENGTH * parallax;
+
+    // TODO: add ortho projection support (see ComputeParallax)
+    float parallaxInPixels = parallax / (RELAX_PARALLAX_NORMALIZATION * gUnproject);
+
+    return parallaxInPixels;
+}
+
+float InterpolateAccumSpeeds(float a, float b, float f)
+{
+#if( RELAX_USE_ACCUM_SPEED_NONLINEAR_INTERPOLATION == 0 )
+    return lerp(a, b, f);
+#endif
+
+    a = 1.0 / (1.0 + a);
+    b = 1.0 / (1.0 + b);
+    f = lerp(a, b, f);
+
+    return 1.0 / f - 1.0;
+}
+
 float getJitterRadius(float jitterDelta, float linearZ)
 {
     return jitterDelta * gUnproject * (gIsOrtho > 0 ? 1.0 : linearZ);
 }
 
+
 float3 getCurrentWorldPos(int2 pixelPos, float depth)
 {
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize * 2.0 - 1.0;
+    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
     return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
 float3 getPreviousWorldPos(int2 pixelPos, float depth)
 {
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize * 2.0 - 1.0;
+    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * (1.0 / gRectSizePrev) * 2.0 - 1.0;
     return depth * (gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * uv.x - gPrevFrustumUp.xyz * uv.y);
 }
 
-
-float2 getRoughnessWeightParams(float roughness0)
-{
-    float a = 1.0 / (roughness0 * 0.5 * 0.999 + 0.001);
-    float b = roughness0 * a;
-    return float2(a, b);
-}
-
-float getRoughnessWeight(float2 params0, float roughness)
-{
-    return saturate(1.0 - abs(params0.y - roughness * params0.x));
-}
-
-float getSpecularLobeHalfAngle(float roughness)
-{
-    // Defines a cone angle, where micro-normals are distributed
-    float r2 = roughness * roughness;
-    float r3 = roughness * r2;
-
-    // Approximation of https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf (page 72)
-    // for [0..1] domain:
-
-    // float k = 0.75; // % of NDF volume. Is it the trimming factor from VNDF sampling?
-    // return atan(m * k / (1.0 - k));
-
-    return 3.141592 * r2 / (1.0 + 0.5*r2 + r3);
-}
-
-float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
-{
-    // Assuming that "n0" is normalized and "n" is not!
-    float cosa = saturate(dot(n0, n));
-    float a = acos(cosa);
-    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
-
-    return saturate(1.0 + (a - 1.0) * params0.y);
-}
-
-float getModifiedRoughnessFromNormalVariance(float roughness, float3 nonNormalizedAverageNormal)
-{
-    // https://blog.selfshadow.com/publications/s2013-shading-course/rad/s2013_pbs_rad_notes.pdf (page 20)
-    float l = length(nonNormalizedAverageNormal);
-    float kappa = saturate(1.0 - l * l) / (l * (3.0 - l * l));
-
-    return sqrt(roughness * roughness + kappa);
-}
 
 float isReprojectionTapValid(int2 pixelCoord, float currentLinearZ, float3 currentWorldPos, float3 previousWorldPos, float3 currentNormal, float3 previousNormal, float jitterRadius)
 {
@@ -144,18 +188,7 @@ float isReprojectionTapValid(int2 pixelCoord, float currentLinearZ, float3 curre
     // Reject backfacing history: if angle between current normal and previous normal is larger than 90 deg
     if (dot(currentNormal, previousNormal) < 0.0) return 0;
 
-    return ((maxDot / currentLinearZ) > 0.01 + jitterRadius * 2.0) ? 0.0 : 1.0;
-}
-
-
-float getSpecularAlphaAdjustment(float roughness, float cosa)
-{
-    // This is the main parameter - cone angle
-    float angle = getSpecularLobeHalfAngle(roughness);
-
-    float a = acos(cosa);
-    a = STL::Math::SmoothStep(0.0, angle, a);
-    return saturate(a);
+    return ((maxDot / currentLinearZ) > gDisocclusionThreshold + jitterRadius * 2.0) ? 0.0 : 1.0;
 }
 
 
@@ -165,12 +198,13 @@ float getSpecularAlphaAdjustment(float roughness, float cosa)
 //
 // Also returns reprojected data from previous frame calculated using filtering based on filters above.
 // For better performance, some data is filtered using weighed bilinear instead of bicubic even if all bicubic taps are valid.
-int loadSurfaceMotionBasedPrevData(
+float loadSurfaceMotionBasedPrevData(
     int2 pixelPosOnScreen,
     float3 currentWorldPos,
     float3 currentNormal,
     float currentLinearZ,
     float currentReflectionHitT,
+    float3 motionVector,
     out float3 prevSpecularIllum,
     out float3 prevDiffuseIllum,
     out float3 prevSpecularResponsiveIllum,
@@ -178,8 +212,7 @@ int loadSurfaceMotionBasedPrevData(
     out float2 prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments,
     out float3 prevWorldPos,
     out float  prevReflectionHitT,
-    out float2 historyLength,
-    out float3 debugOut)
+    out float2 historyLength)
 {
     // Setting default values for output
     prevSpecularIllum = 0;
@@ -190,18 +223,14 @@ int loadSurfaceMotionBasedPrevData(
     prevWorldPos = currentWorldPos;
     prevReflectionHitT = currentReflectionHitT;
     historyLength = 0;
-    debugOut = 0;
-
-    // Reading motion vector
-    float3 motionVector = gMotion[pixelPosOnScreen].xyz * gMotionVectorScale.xyy;
 
     // Calculating jitter margin radius in world space
     float jitterRadius = getJitterRadius(gJitterDelta, currentLinearZ);
 
     // Calculating previous pixel position and UV
-    float2 pixelUV = (pixelPosOnScreen + 0.5) * gInvViewSize;
+    float2 pixelUV = (pixelPosOnScreen + 0.5) * gInvRectSize;
     float2 prevPixelUV = STL::Geometry::GetPrevUvFromMotion(pixelUV, currentWorldPos, gPrevWorldToClip, motionVector, gWorldSpaceMotion);
-    float2 prevPixelPosOnScreen = prevPixelUV * gResolution;
+    float2 prevPixelPosOnScreen = prevPixelUV * gRectSizePrev;
 
     // Calculating footprint origin and weights
     int2 bilinearOrigin = int2(floor(prevPixelPosOnScreen - 0.5) + 0.5);
@@ -324,10 +353,10 @@ int loadSurfaceMotionBasedPrevData(
     STL::Filtering::Bilinear bilinear;
     bilinear.weights = bilinearWeights;
     float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
-    interpolatedBinaryWeight = max(1e-2, interpolatedBinaryWeight);
+    interpolatedBinaryWeight = max(1e-6, interpolatedBinaryWeight);
 
     // Applying reprojection filters
-    int reprojectionFound = 0;
+    float reprojectionFound = 0;
 
     if (any(bilinearTapsValid))
     {
@@ -336,44 +365,44 @@ int loadSurfaceMotionBasedPrevData(
         {
             // Bicubic for illumination and 2nd moments
             prevSpecularIllum =
-                max(0, BicubicSampleCatmullRomFloat4UsingBilinear(gPrevSpecularIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
+                max(0, BicubicFloat4(gPrevSpecularIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
             prevDiffuseIllum =
-                max(0, BicubicSampleCatmullRomFloat4UsingBilinear(gPrevDiffuseIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
+                max(0, BicubicFloat4(gPrevDiffuseIlluminationUnpacked, gLinearClamp, prevPixelPosOnScreen, gInvViewSize).rgb);
             prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments =
-                max(0, BicubicSampleCatmullRomFloat2UsingBilinear(gPrevSpecularAndDiffuse2ndMoments, gLinearClamp, prevPixelPosOnScreen, gInvViewSize));
+                max(0, BicubicFloat2(gPrevSpecularAndDiffuse2ndMoments, gLinearClamp, prevPixelPosOnScreen, gInvViewSize));
         }
         else
         {
             // If no success with the bicubic, then do weighted bilinear
-            prevSpecularIllum = 
-                LinearInterpolationWithBinaryWeightsFloat4(gPrevSpecularIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-            prevDiffuseIllum = 
-                LinearInterpolationWithBinaryWeightsFloat4(gPrevDiffuseIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-            prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments = 
-                max(0, LinearInterpolationWithBinaryWeightsFloat2(gPrevSpecularAndDiffuse2ndMoments, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight));
+            prevSpecularIllum =
+                BilinearWithBinaryWeightsFloat4(gPrevSpecularIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
+            prevDiffuseIllum =
+                BilinearWithBinaryWeightsFloat4(gPrevDiffuseIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
+            prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments =
+                max(0, BilinearWithBinaryWeightsFloat2(gPrevSpecularAndDiffuse2ndMoments, gLinearClamp, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight));
         }
 
         // Always weighted Bilinear for responsive illumination
-        LinearInterpolationWithBinaryWeightsFromPackedLogLuvX2(prevSpecularResponsiveIllum, prevDiffuseResponsiveIllum, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+        BilinearWithBinaryWeightsLogLuvX2(prevSpecularResponsiveIllum, prevDiffuseResponsiveIllum, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
         // Calculating previousd worldspace position
         // by applying weighted bilinear to worldspace positions in taps.
         // Also calculating history length by using weighted bilinear
-            prevWorldPos = 
-                LinearInterpolationWithBinaryWeightsImmediateFloat3(
+        prevWorldPos =
+            BilinearWithBinaryWeightsImmediateFloat3(
                 prevWorldPos00, prevWorldPos10, prevWorldPos01, prevWorldPos11,
                 bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
-            historyLength = 255.0 * LinearInterpolationWithBinaryWeightsFloat2(gPrevSpecularAndDiffuseHistoryLength, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-            prevReflectionHitT = LinearInterpolationWithBinaryWeightsFloat(gPrevReflectionHitT, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-
-            reprojectionFound = 1;
+        historyLength = 255.0 * BilinearWithBinaryWeightsFloat2(gPrevSpecularAndDiffuseHistoryLength, gLinearClamp, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+        prevReflectionHitT = BilinearWithBinaryWeightsFloat(gPrevReflectionHitT, gLinearClamp, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+        prevReflectionHitT = max(0.001, prevReflectionHitT);
+        reprojectionFound = 1.0;
     }
     return reprojectionFound;
 }
 
 // Returns specular reprojection search result based on virtual motion
-int loadVirtualMotionBasedPrevData(
+float loadVirtualMotionBasedPrevData(
     int2 pixelPosOnScreen,
     float3 currentWorldPos,
     float3 currentNormal,
@@ -386,8 +415,7 @@ int loadVirtualMotionBasedPrevData(
     out float  prevSpecular2ndMoment,
     out float3 prevNormal,
     out float prevRoughness,
-    out float prevReflectionHitT,
-    out float3 debugOut)
+    out float prevReflectionHitT)
 {
     // Setting default values for output
     prevSpecularIllum = 0;
@@ -396,11 +424,11 @@ int loadVirtualMotionBasedPrevData(
     prevNormal = currentNormal;
     prevRoughness = 0;
     prevReflectionHitT = currentReflectionHitT;
-    debugOut = 0;
 
     // Taking care of camera motion, because world space is always centered at camera position in NRD
     prevWorldPos += gPrevCameraPosition;
     currentWorldPos -= gPrevCameraPosition;
+
 
     // Calculating previous worldspace virtual position based on reflection hitT
     float3 virtualViewVector = normalize(currentViewVector) * currentReflectionHitT;
@@ -412,9 +440,8 @@ int loadVirtualMotionBasedPrevData(
     float4 prevVirtualClipPos = mul(gPrevWorldToClip, float4(prevVirtualWorldPos, 1.0));
     prevVirtualClipPos.xy /= prevVirtualClipPos.w;
     float2 prevVirtualUV = prevVirtualClipPos.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
-    float2 prevVirtualPixelPosOnScreen = prevVirtualUV * gResolution;
+    float2 prevVirtualPixelPosOnScreen = prevVirtualUV * gRectSizePrev;
 
-    // Calculating jitter margin radius in world space
     float jitterRadius = getJitterRadius(gJitterDelta, currentVirtualZ);
 
     // Calculating footprint origin and weights
@@ -422,81 +449,61 @@ int loadVirtualMotionBasedPrevData(
     float2 bilinearWeights = frac(prevVirtualPixelPosOnScreen - 0.5);
 
     // Checking bilinear footprint
-    float4 bilinearTapsValid = 0;
-
-
-    float3 prevNormalInTap;
-    float prevRoughnessInTap;
-    float prevDepthInTap;
-    float3 prevWorldPosInTap;
-    int2 tapPos;
     float3 prevNormal00, prevNormal10, prevNormal01, prevNormal11;
     float prevRoughness00, prevRoughness10, prevRoughness01, prevRoughness11;
-    bool reprojectionTapValid;
+    uint2 tapPos;
+    float prevLinearZInTap;
+    float3 prevWorldPosInTap;
+    float4 bilinearTapsValid;
 
     tapPos = bilinearOrigin + int2(0, 0);
-    UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessInTap, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
-    bilinearTapsValid.x = reprojectionTapValid;
-    prevNormal00 = prevNormalInTap;
-    prevRoughness00 = prevRoughnessInTap;
+    UnpackNormalRoughnessDepth(prevNormal00, prevRoughness00, prevLinearZInTap, gPrevNormalRoughnessDepth[tapPos]);
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevLinearZInTap);
+    bilinearTapsValid.x = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormal00, jitterRadius);
 
     tapPos = bilinearOrigin + int2(1, 0);
-    UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessInTap, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
-    bilinearTapsValid.y = reprojectionTapValid;
-    prevNormal10 = prevNormalInTap;
-    prevRoughness10 = prevRoughnessInTap;
+    UnpackNormalRoughnessDepth(prevNormal10, prevRoughness10, prevLinearZInTap, gPrevNormalRoughnessDepth[tapPos]);
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevLinearZInTap);
+    bilinearTapsValid.y = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormal10, jitterRadius);
 
     tapPos = bilinearOrigin + int2(0, 1);
-    UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessInTap, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
-    bilinearTapsValid.z = reprojectionTapValid;
-    prevNormal01 = prevNormalInTap;
-    prevRoughness01 = prevRoughnessInTap;
+    UnpackNormalRoughnessDepth(prevNormal01, prevRoughness01, prevLinearZInTap, gPrevNormalRoughnessDepth[tapPos]);
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevLinearZInTap);
+    bilinearTapsValid.z = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormal01, jitterRadius);
 
     tapPos = bilinearOrigin + int2(1, 1);
-    UnpackNormalRoughnessDepth(prevNormalInTap, prevRoughnessInTap, prevDepthInTap, gPrevNormalRoughnessDepth[tapPos]);
-    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevDepthInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalInTap, jitterRadius);
-    bilinearTapsValid.w = reprojectionTapValid;
-    prevNormal11 = prevNormalInTap;
-    prevRoughness11 = prevRoughnessInTap;
-
+    UnpackNormalRoughnessDepth(prevNormal11, prevRoughness11, prevLinearZInTap, gPrevNormalRoughnessDepth[tapPos]);
+    prevWorldPosInTap = getPreviousWorldPos(tapPos, prevLinearZInTap);
+    bilinearTapsValid.w = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormal11, jitterRadius);
 
     // Calculating interpolated binary weight for bilinear taps in advance
     STL::Filtering::Bilinear bilinear;
     bilinear.weights = bilinearWeights;
     float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
-    interpolatedBinaryWeight = max(1e-2, interpolatedBinaryWeight);
+    interpolatedBinaryWeight = max(1e-6, interpolatedBinaryWeight);
 
     //Applying reprojection
-    int reprojectionFound = 0;
+    float reprojectionFound = 0;
 
     // Weighted bilinear for prev specular data based on virtual motion
     if (any(bilinearTapsValid))
     {
-        prevSpecularIllum = LinearInterpolationWithBinaryWeightsFloat4(gPrevSpecularIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
+        prevSpecularIllum = BilinearWithBinaryWeightsFloat4(gPrevSpecularIlluminationUnpacked, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
         float3 diffuseIllumDontCare = 0;
-        LinearInterpolationWithBinaryWeightsFromPackedLogLuvX2(prevSpecularResponsiveIllum, diffuseIllumDontCare, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+        BilinearWithBinaryWeightsLogLuvX2(prevSpecularResponsiveIllum, diffuseIllumDontCare, gPrevSpecularAndDiffuseIlluminationResponsiveLogLuv, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
-        prevSpecular2ndMoment = max(0, LinearInterpolationWithBinaryWeightsFloat2(gPrevSpecularAndDiffuse2ndMoments, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight)).r;
-        prevNormal = LinearInterpolationWithBinaryWeightsImmediateFloat3(
-                                    prevNormal00, prevNormal10, prevNormal01, prevNormal11,
-                                    bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-        prevRoughness = LinearInterpolationWithBinaryWeightsImmediateFloat(
-                                    prevRoughness00, prevRoughness10, prevRoughness01, prevRoughness11,
-                                    bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+        prevSpecular2ndMoment = max(0, BilinearWithBinaryWeightsFloat2(gPrevSpecularAndDiffuse2ndMoments, gLinearClamp, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight)).r;
+        prevNormal = BilinearWithBinaryWeightsImmediateFloat3(
+            prevNormal00, prevNormal10, prevNormal01, prevNormal11,
+            bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+        prevRoughness = BilinearWithBinaryWeightsImmediateFloat(
+            prevRoughness00, prevRoughness10, prevRoughness01, prevRoughness11,
+            bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
-        prevReflectionHitT = LinearInterpolationWithBinaryWeightsFloat(gPrevReflectionHitT, bilinearOrigin, bilinearWeights, float4(1.0, 1.0, 1.0, 1.0), 1.0);
-
-        reprojectionFound = 1;
+        prevReflectionHitT = BilinearWithBinaryWeightsFloat(gPrevReflectionHitT, gLinearClamp, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+        prevReflectionHitT = max(0.001, prevReflectionHitT);
+        reprojectionFound = 1.0;
     }
-
-    debugOut = frac(prevVirtualWorldPos);
     return reprojectionFound;
 }
 
@@ -505,32 +512,35 @@ int loadVirtualMotionBasedPrevData(
 //
 
 [numthreads(8, 8, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
-    if (any(dispatchThreadId.xy >= gResolution)) return;
-
-    int2 ipos = int2(dispatchThreadId.xy);
-
     // Reading raw noisy specular and diffuse.
     // Specular has noisy HitT in its alpha channel
-    float4 specularIllumination = gSpecularIllumination[ipos].rgba;
-    float3 diffuseIllumination = gDiffuseIllumination[ipos].rgb;
-    specularIllumination.a = max(0.01, min(50.0, specularIllumination.a));
-
-    specularIllumination.rgb = specularIllumination.rgb;
-    diffuseIllumination.rgb = diffuseIllumination.rgb;
+    float4 specularIllumination = gSpecularIllumination[gRectOrigin + ipos].rgba;
+    float3 diffuseIllumination = gDiffuseIllumination[gRectOrigin + ipos].rgb;
+    specularIllumination.a = max(0.001, min(gDenoisingRange, specularIllumination.a));
 
     // Reading current GBuffer data
     float3 currentNormal;
     float currentRoughness;
-    float currentDepth;
-    UnpackNormalRoughnessDepth(currentNormal, currentRoughness, currentDepth, gNormalRoughnessDepth[ipos]);
-    float currentLinearZ = currentDepth;
+    float currentLinearZ;
+    UnpackNormalRoughnessDepth(currentNormal, currentRoughness, currentLinearZ, gNormalRoughnessDepth[ipos]);
 
-    // Calculating average normal in 3x3 area around current pixel
-    // TODO: move this to shmem?
+    // Early out if linearZ is beyond denoising range
+    [branch]
+    if (currentLinearZ > gDenoisingRange)
+    {
+        return;
+    }
+
+    // Reading motion vector
+    float3 motionVector = gMotion[gRectOrigin + ipos].xyz * gMotionVectorScale.xyy;
+
+    // Calculating average normal and specular moments in 3x3 area around current pixel
     float3 averageNormal = currentNormal;
     float sumW = 1.0;
+    float4 specM1 = specularIllumination;
+    float4 specM2 = specM1 * specM1;
     for (int i = -1; i <= 1; i++)
     {
         for (int j = -1; j <= 1; j++)
@@ -546,15 +556,21 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
 
             float w = abs(pZ - currentLinearZ) / (min(abs(currentLinearZ), abs(pZ)) + 0.001) < 0.05 ? 1.0 : 0.0;
 
+            float4 spec = gSpecularIllumination[p];
+            specM1 += spec * w;
+            specM2 += spec * spec * w;
             averageNormal += pNormal * w;
             sumW += w;
         }
     }
     float invSumW = 1.0 / sumW;
     averageNormal *= invSumW;
+    specM1 *= invSumW;
+    specM2 *= invSumW;
+    float4 specSigma = sqrt(max(0, specM2 - specM1 * specM1));
 
     // Calculating modified roughness that takes normal variation in account
-    float currentRoughnessModified = getModifiedRoughnessFromNormalVariance(currentRoughness, averageNormal);
+    float currentRoughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance(currentRoughness, averageNormal);
 
     // Computing 2nd moments of luminance
     float specular1stMoment = STL::Color::Luminance(specularIllumination.rgb);
@@ -564,7 +580,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float diffuse2ndMoment = diffuse1stMoment * diffuse1stMoment;
 
     // Getting current frame worldspace position and view vector for current pixel
-    float3 currentWorldPos = getCurrentWorldPos(ipos, currentDepth);
+    float3 currentWorldPos = getCurrentWorldPos(ipos, currentLinearZ);
     float3 currentViewVector = currentWorldPos;
 
     // Loading previous data based on surface motion vectors
@@ -578,45 +594,31 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float2 historyLength;
     float3 debugOut1;
 
-    int surfaceMotionBasedReprojectionFound = loadSurfaceMotionBasedPrevData(ipos.xy,
-                                                            currentWorldPos,
-                                                            currentNormal,
-                                                            currentLinearZ,
-                                                            specularIllumination.a,
-                                                            prevSurfaceMotionBasedSpecularIllumination,
-                                                            prevDiffuseIllumination,
-                                                            prevSurfaceMotionBasedSpecularResponsiveIllumination,
-                                                            prevDiffuseResponsiveIllumination,
-                                                            prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments,
-                                                            prevSurfaceMotionBasedWorldPos,
-                                                            prevSurfaceMotionBasedReflectionHitT,
-                                                            historyLength,
-                                                            debugOut1
-                                                            );
+    float surfaceMotionBasedReprojectionFound = loadSurfaceMotionBasedPrevData(ipos,
+        currentWorldPos,
+        currentNormal,
+        currentLinearZ,
+        specularIllumination.a,
+        motionVector,
+        prevSurfaceMotionBasedSpecularIllumination,
+        prevDiffuseIllumination,
+        prevSurfaceMotionBasedSpecularResponsiveIllumination,
+        prevDiffuseResponsiveIllumination,
+        prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments,
+        prevSurfaceMotionBasedWorldPos,
+        prevSurfaceMotionBasedReflectionHitT,
+        historyLength
+    );
 
     // History length is based on surface motion based disocclusion
-    historyLength = max(0, floor(historyLength)) + 1.0;
+    historyLength = ceil(historyLength) + 1.0;
     historyLength = min(100.0, historyLength);
 
     // Handling history reset if needed
     if (gNeedHistoryReset != 0) historyLength = 1.0;
 
-    // This adjusts the alpha for the case where insufficient history is available.
-    // It boosts the temporal accumulation to give the samples equal weights in
-    // the beginning.
-    float specularAlpha = surfaceMotionBasedReprojectionFound ? max(gSpecularAlpha, 1.0 / historyLength.x) : 1.0;
-    float specularAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(gSpecularResponsiveAlpha, 1.0 / historyLength.x) : 1.0;
-
-    float diffuseAlpha = surfaceMotionBasedReprojectionFound ? max(gDiffuseAlpha, 1.0 / historyLength.y) : 1.0;
-    float diffuseAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(gDiffuseResponsiveAlpha, 1.0 / historyLength.y) : 1.0;
-
     // Temporal accumulation of reflection HitT will happen later in the shader
     float accumulatedReflectionHitT = prevSurfaceMotionBasedReflectionHitT;
-
-    // Calculating surface motion based previous view vector
-    float3 prevSurfaceMotionBasedV = normalize(prevSurfaceMotionBasedWorldPos - gPrevCameraPosition);
-    float3 currentV = normalize(currentViewVector);
-    float prevSurfaceMotionVDotCurrentV = saturate(dot(prevSurfaceMotionBasedV, currentV));
 
     // Loading specular data based on virtual motion
     float3 prevVirtualMotionBasedSpecularIllumination;
@@ -625,129 +627,135 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     float3 prevVirtualMotionBasedNormal;
     float  prevVirtualMotionBasedRoughness;
     float  prevVirtualMotionBasedReflectionHitT;
-    float3 debugOut2;
 
-    int virtualMotionBasedReprojectionFound = loadVirtualMotionBasedPrevData(ipos.xy,
-                                                            currentWorldPos,
-                                                            currentNormal,
-                                                            currentLinearZ,
-                                                            accumulatedReflectionHitT,
-                                                            currentViewVector,
-                                                            prevSurfaceMotionBasedWorldPos,
-                                                            prevVirtualMotionBasedSpecularIllumination,
-                                                            prevVirtualMotionBasedSpecularResponsiveIllumination,
-                                                            prevVirtualMotionBasedSpecular2ndMoment,
-                                                            prevVirtualMotionBasedNormal,
-                                                            prevVirtualMotionBasedRoughness,
-                                                            prevVirtualMotionBasedReflectionHitT,
-                                                            debugOut2);
+    float virtualHistoryConfidence = loadVirtualMotionBasedPrevData(ipos,
+        currentWorldPos,
+        currentNormal,
+        currentLinearZ,
+        accumulatedReflectionHitT,
+        currentViewVector,
+        prevSurfaceMotionBasedWorldPos,
+        prevVirtualMotionBasedSpecularIllumination,
+        prevVirtualMotionBasedSpecularResponsiveIllumination,
+        prevVirtualMotionBasedSpecular2ndMoment,
+        prevVirtualMotionBasedNormal,
+        prevVirtualMotionBasedRoughness,
+        prevVirtualMotionBasedReflectionHitT);
 
-    // Estimating confidence of virtual motion based specular reprojection,
-    // starting with the fact of finding the valid reprojection
-    float virtualMotionBasedReprojectionConfidence = virtualMotionBasedReprojectionFound ? 1.0 : 0.0;
+    float specHistoryFrames = min(gSpecularMaxAccumulatedFrameNum, historyLength.x);
+    float specHistoryResponsiveFrames = min(gSpecularMaxFastAccumulatedFrameNum, historyLength.x);
+    float2 roughnessParams = GetRoughnessWeightParams(currentRoughness);
 
-    // Adjusting confidence of virtual motion based specular reprojection
-    // based on current reflection HitT vs previous reflection HitT:
-    // since the HitT is quite noisy, we'll decrease confidence to 0 if difference is quite large: 3x of current hitT value.
-    virtualMotionBasedReprojectionConfidence *= 1.0 - saturate(3.0*abs(prevVirtualMotionBasedReflectionHitT - accumulatedReflectionHitT) / (min(accumulatedReflectionHitT, prevVirtualMotionBasedReflectionHitT) + 0.01));
+    float4 specHistoryVirtual = float4(prevVirtualMotionBasedSpecularIllumination, prevVirtualMotionBasedReflectionHitT);
+    float4 specHistorySurface = float4(prevSurfaceMotionBasedSpecularIllumination, prevSurfaceMotionBasedReflectionHitT);
 
-    // Adjusting confidence of virtual motion based specular reprojection
-    // based on current unmodified roughness vs previous roughness: if roughness changes, we decrease confidence
-    float2 roughnessWeightParams = getRoughnessWeightParams(currentRoughness);
-    virtualMotionBasedReprojectionConfidence *= getRoughnessWeight(roughnessWeightParams, prevVirtualMotionBasedRoughness);
+    float3 V = normalize(-currentViewVector);
+    float NoV = saturate(dot(currentNormal, V));
+    float specNormalParams = GetNormalWeightParams(currentLinearZ, currentRoughnessModified, 0.0, 1.0);
+    float virtualNormalWeight = GetNormalWeight(specNormalParams, currentNormal, prevVirtualMotionBasedNormal);
 
-    // Adjusting confidence of virtual motion based specular reprojection
-    // based on current normal vs previous normal, and current roughness:
-    // we decrease confidence if reprojected normal falls outside cone defined by current surface roughness.
-    // TODO: increase current roughness based on current normal variance
-    float2 normalParams;
-    normalParams.x = getSpecularLobeHalfAngle(currentRoughnessModified);
-    normalParams.x += 2.5 * 3.141592 / 180.0; // adding 2.5 deg of slack to increase reprojection confidence
-    normalParams.y = 1.0;
-    virtualMotionBasedReprojectionConfidence *= getSpecularNormalWeight(normalParams, currentNormal, prevVirtualMotionBasedNormal);
+    float parallax = ComputeParallax(currentWorldPos, currentWorldPos + motionVector * (gWorldSpaceMotion != 0 ? 1.0 : 0.0), gPrevCameraPosition.xyz);
 
+    // Current specular signal ( surface motion )
+    float specSurfaceFrames = GetSpecAccumSpeed(specHistoryFrames, currentRoughnessModified, NoV, parallax);
+    float specSurfaceAlpha = 1.0 / (specSurfaceFrames + 1.0);
 
+    float specSurfaceResponsiveFrames = GetSpecAccumSpeed(specHistoryResponsiveFrames, currentRoughnessModified, NoV, parallax);
+    float specSurfaceResponsiveAlpha = 1.0 / (specSurfaceResponsiveFrames + 1.0);
 
-    // Adjusting accumulation factors for virtual motion based specular
-    float specularAlphaVirtualMotionBased = lerp(1.0, specularAlpha, virtualMotionBasedReprojectionConfidence);
-    float specularAlphaResponsiveVirtualMotionBased = lerp(1.0, specularAlphaResponsive, virtualMotionBasedReprojectionConfidence);
+    float surfaceHistoryConfidence = specSurfaceFrames / (specHistoryFrames + 1.0);
 
-    // Accumulating using virtual motion based specular reprojection
-    float3 virtualMotionBasedSpecularIllumination = lerp(prevVirtualMotionBasedSpecularIllumination.rgb, specularIllumination.rgb, specularAlphaVirtualMotionBased);
-    float3 virtualMotionBasedSpecularResponsiveIllumination = lerp(prevVirtualMotionBasedSpecularResponsiveIllumination.rgb, specularIllumination.rgb, specularAlphaResponsiveVirtualMotionBased);
-    float  virtualMotionBasedSpecular2ndMoment = lerp(prevVirtualMotionBasedSpecular2ndMoment, specular2ndMoment, specularAlphaVirtualMotionBased);
+    float hitDist = specHistorySurface.w;
+    float parallaxOrig = parallax;
+    float hitDistToSurfaceRatio = saturate(hitDist / currentLinearZ);
+    parallax *= hitDistToSurfaceRatio;
 
-    // Estimating confidence of surface motion based specular reprojection,
-    // starting with the fact of finding the valid reprojection
-    float surfaceMotionBasedReprojectionConfidence = surfaceMotionBasedReprojectionFound ? 1.0 : 0.0;
+    float4 currentSurface;
+    currentSurface.rgb = lerp(specHistorySurface.rgb, specularIllumination.rgb, specSurfaceAlpha);
+    currentSurface.w = lerp(specHistorySurface.w, specularIllumination.w, max(specSurfaceAlpha, RELAX_HIT_DIST_MIN_ACCUM_SPEED(currentRoughnessModified)));
 
-    // Adjusting confidence of surface motion based specular reprojection
-    // based on current roughness vs previous roughness for virtual motion: if roughness changes, we decrease confidence,
-    // but not much, by 75% only
-    surfaceMotionBasedReprojectionConfidence *= 0.25 + 0.75*getRoughnessWeight(roughnessWeightParams, prevVirtualMotionBasedRoughness);
+    float3 currentSurfaceResponsive = lerp(prevSurfaceMotionBasedSpecularResponsiveIllumination, specularIllumination.xyz, specSurfaceResponsiveAlpha);
+    float currentSpecM2 = lerp(prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments.x, specular2ndMoment, specSurfaceAlpha);
 
-    // Adjusting confidence of surface motion based specular reprojection
-    // based on current view vector vs previous view vector and current roughness
-    surfaceMotionBasedReprojectionConfidence *= 1.0 - getSpecularAlphaAdjustment(currentRoughness, prevSurfaceMotionVDotCurrentV);
+    float fresnelFactor = STL::BRDF::Pow5(NoV);
+    virtualHistoryConfidence *= lerp(virtualNormalWeight, 1.0, saturate(fresnelFactor * parallax));
 
-    // Adjusting accumulation factors for surface motion based specular
-    float specularAlphaSurfaceMotionBased = lerp(1.0, specularAlpha, surfaceMotionBasedReprojectionConfidence);
-    float specularAlphaResponsiveSurfaceMotionBased = lerp(1.0, specularAlphaResponsive, surfaceMotionBasedReprojectionConfidence);
+    // Amount of virtual motion - dominant factor
+    float4 D = STL::ImportanceSampling::GetSpecularDominantDirection(currentNormal, V, currentRoughness, RELAX_SPEC_DOMINANT_DIRECTION);
+    float virtualHistoryAmount = virtualHistoryConfidence * D.w;
 
-    // Accumulating using surface motion based specular reprojection
-    float3 surfaceMotionBasedSpecularIllumination = lerp(prevSurfaceMotionBasedSpecularIllumination.rgb, specularIllumination.rgb, specularAlphaSurfaceMotionBased);
-    float3 surfaceMotionBasedSpecularResponsiveIllumination = lerp(prevSurfaceMotionBasedSpecularResponsiveIllumination.rgb, specularIllumination.rgb, specularAlphaResponsiveSurfaceMotionBased);
-    float  surfaceMotionBasedSpecular2ndMoment = lerp(prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments.r, specular2ndMoment, specularAlphaSurfaceMotionBased);
+    // Amount of virtual motion - virtual motion correctness
+    float3 R = reflect(-D.xyz, currentNormal);
+    float3 Xvirtual = currentWorldPos - R * hitDist * D.w;
+    float2 uvVirtualExpected = STL::Geometry::GetScreenUv(gWorldToClip, Xvirtual);
 
-    // Now weighing between virtual and surface motion based specular reprojection
-    float virtualVsSurfaceWeight = virtualMotionBasedReprojectionConfidence;
+    float4 Dvirtual = STL::ImportanceSampling::GetSpecularDominantDirection(prevVirtualMotionBasedNormal, V, prevVirtualMotionBasedRoughness, RELAX_SPEC_DOMINANT_DIRECTION);
+    float3 Rvirtual = reflect(-Dvirtual.xyz, prevVirtualMotionBasedNormal);
+    float hitDistVirtual = specHistoryVirtual.w;
+    Xvirtual = currentWorldPos - Rvirtual * hitDistVirtual * Dvirtual.w;
+    float2 uvVirtualAtSample = STL::Geometry::GetScreenUv(gWorldToClip, Xvirtual);
 
-    // Adjusting weighing between virtual motion based and surface motion based reprojection for specular,
-    // based on current roughness: virtual motion is perfectly valid for perfect mirrors only
-    virtualVsSurfaceWeight *= 1.0 - STL::Math::SmoothStep(0.1, 0.4, currentRoughnessModified);
+    float thresholdMax = GetParallaxInPixels(max(0.01, parallaxOrig));
+    float thresholdMin = thresholdMax * 0.05;
+    float parallaxVirtual = length((uvVirtualAtSample - uvVirtualExpected) * gResolution);
+    virtualHistoryAmount *= STL::Math::LinearStep(thresholdMax + 0.00001, thresholdMin, parallaxVirtual);
 
-    // Calculating overall specular reprojection confidence
-    float specularConfidence = lerp(surfaceMotionBasedReprojectionConfidence,
-                                    virtualMotionBasedReprojectionConfidence,
-                                    virtualVsSurfaceWeight);
+    // Virtual history confidence - roughness
+    float virtualRoughnessWeight = GetRoughnessWeight(roughnessParams, prevVirtualMotionBasedRoughness);
+    virtualHistoryConfidence *= virtualRoughnessWeight;
 
-    // Calculating alphas for reflection hitT accumulation, fastest is 1.0 if reprojection confidence is 0,
-    // slowest is 0.1
-    float specularHitTAlphaVirtualMotionBased = lerp(1.0, 0.1, virtualMotionBasedReprojectionConfidence);
-    float specularHitTAlphaSurfaceMotionBased = lerp(1.0, 0.1, surfaceMotionBasedReprojectionConfidence);
+    // Virtual history confidence - hit distance
+    float maxDist = max(prevVirtualMotionBasedReflectionHitT, accumulatedReflectionHitT);
+    float hitTDisocclusionAdjustment = saturate(2.0*abs(prevVirtualMotionBasedReflectionHitT - accumulatedReflectionHitT) / (maxDist + currentLinearZ));
+    virtualHistoryConfidence *= 1.0 - (0.75 + 0.25*saturate(parallax)) * hitTDisocclusionAdjustment;
+    
+    // Clamp virtual history
+    float sigmaScale = 3.0;
+    float4 specHistoryVirtualClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, specHistoryVirtual);
+    float3 specHistoryVirtualResponsiveClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, prevVirtualMotionBasedSpecularResponsiveIllumination.rgbb).rgb;
 
-    // Temporal accumulation of specular hitT
-    float surfaceMotionBasedAccumulatedReflectionHitT = lerp(prevSurfaceMotionBasedReflectionHitT, specularIllumination.a, specularHitTAlphaSurfaceMotionBased);
-    float virtualMotionBasedAccumulatedReflectionHitT = lerp(prevVirtualMotionBasedReflectionHitT, specularIllumination.a, specularHitTAlphaVirtualMotionBased);
+    float virtualForcedConfidence = lerp(0.75, 0.95, STL::Math::LinearStep(0.04, 0.25, currentRoughness));
+    float virtualUnclampedAmount = lerp(virtualHistoryConfidence * virtualForcedConfidence, 1.0, currentRoughness * currentRoughness);
+    specHistoryVirtual = lerp(specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount);
+    prevVirtualMotionBasedSpecularResponsiveIllumination = lerp(specHistoryVirtualResponsiveClamped, prevVirtualMotionBasedSpecularResponsiveIllumination, virtualUnclampedAmount);
 
-    accumulatedReflectionHitT = virtualMotionBasedAccumulatedReflectionHitT;
+    // Current specular signal ( virtual motion )
+    float specVirtualFrames = GetSpecAccumSpeed(specHistoryFrames, currentRoughnessModified, NoV, 0.0); // parallax = 0 cancels NoV too
+    float minSpecVirtualFrames = min(specVirtualFrames, specVirtualFrames * (0.1 + 0.1 * STL::Math::Sqrt01(currentRoughnessModified)));
+    specVirtualFrames = InterpolateAccumSpeeds(minSpecVirtualFrames, specVirtualFrames, STL::Math::Sqrt01(virtualHistoryConfidence));
 
-    accumulatedReflectionHitT = min(1000.0, max(0.01, accumulatedReflectionHitT));
+    float specVirtualResponsiveFrames = GetSpecAccumSpeed(specHistoryResponsiveFrames, currentRoughnessModified, NoV, 0.0); // parallax = 0 cancels NoV too
+    float minSpecVirtualResponsiveFrames = min(specVirtualResponsiveFrames, specVirtualResponsiveFrames * (0.1 + 0.1 * STL::Math::Sqrt01(currentRoughnessModified)));
+    specVirtualResponsiveFrames = InterpolateAccumSpeeds(minSpecVirtualResponsiveFrames, specVirtualResponsiveFrames, STL::Math::Sqrt01(virtualHistoryConfidence));
+
+    float specVirtualAlpha = 1.0 / (specVirtualFrames + 1.0);
+    float specVirtualResponsiveAlpha = 1.0 / (specVirtualResponsiveFrames + 1.0);
+
+    float4 currentVirtual;
+    currentVirtual.xyz = lerp(specHistoryVirtual.xyz, specularIllumination.xyz, specVirtualAlpha);
+    currentVirtual.w = lerp(specHistoryVirtual.w, specularIllumination.w, max(specVirtualAlpha, RELAX_HIT_DIST_MIN_ACCUM_SPEED(currentRoughnessModified)));
+    float3 currentVirtualResponsive = lerp(prevVirtualMotionBasedSpecularResponsiveIllumination, specularIllumination.xyz, specVirtualResponsiveAlpha);
+    float virtualSpecM2 = lerp(prevVirtualMotionBasedSpecular2ndMoment, specular2ndMoment, specVirtualAlpha);
+
+    // Temporal accumulation of reflection HitT
+    accumulatedReflectionHitT = lerp(currentSurface.w, currentVirtual.w, virtualHistoryAmount * hitDistToSurfaceRatio);
 
     // Temporal accumulation of specular illumination
-    float3 accumulatedSpecularIllumination = lerp(surfaceMotionBasedSpecularIllumination,
-                                                    virtualMotionBasedSpecularIllumination,
-                                                    virtualVsSurfaceWeight);
+    float3 accumulatedSpecularIllumination = lerp(currentSurface.xyz, currentVirtual.xyz, virtualHistoryAmount);
+    float3 accumulatedSpecularIlluminationResponsive = lerp(currentSurfaceResponsive.xyz, currentVirtualResponsive.xyz, virtualHistoryAmount);
+    float accumulatedSpecular2ndMoment = lerp(currentSpecM2, virtualSpecM2, virtualHistoryAmount);
 
-    float3 accumulatedSpecularIlluminationResponsive = lerp(surfaceMotionBasedSpecularResponsiveIllumination,
-                                                            virtualMotionBasedSpecularResponsiveIllumination,
-                                                            virtualVsSurfaceWeight);
-    // Temporal accumulation of specular moments
-    float accumulatedSpecular2ndMoment =     lerp(surfaceMotionBasedSpecular2ndMoment,
-                                             virtualMotionBasedSpecular2ndMoment,
-                                             virtualVsSurfaceWeight);
-
-    // Artificially increasing specular variance for pixels with low reprojection confidence
-    accumulatedSpecular2ndMoment *= 1.0 + gSpecularVarianceBoost * (1.0 - specularConfidence);
     // If zero specular sample (color = 0), artificially adding variance for pixels with low reprojection confidence
-    if(accumulatedSpecular2ndMoment == 0) accumulatedSpecular2ndMoment = gSpecularVarianceBoost * (1.0 - specularConfidence);
-
-    // Temporal accumulation of diffuse 2nd moment
-    float accumulatedDiffuse2ndMoment = lerp(prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments.g, diffuse2ndMoment, diffuseAlpha);
-
+    float specularHistoryConfidence = saturate(virtualHistoryConfidence + surfaceHistoryConfidence);
+    if (accumulatedSpecular2ndMoment == 0) accumulatedSpecular2ndMoment = gSpecularVarianceBoost * (1.0 - specularHistoryConfidence);
+    
     // Temporal accumulation of diffuse illumination
+    float diffuseAlpha = surfaceMotionBasedReprojectionFound ? max(1.0 / (gDiffuseMaxAccumulatedFrameNum + 1), 1.0 / historyLength.y) : 1.0;
+    float diffuseAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(1.0 / (gDiffuseMaxFastAccumulatedFrameNum + 1), 1.0 / historyLength.y) : 1.0;
+
     float3 accumulatedDiffuseIllumination = lerp(prevDiffuseIllumination.rgb, diffuseIllumination.rgb, diffuseAlpha);
     float3 accumulatedDiffuseIlluminationResponsive = lerp(prevDiffuseResponsiveIllumination.rgb, diffuseIllumination.rgb, diffuseAlphaResponsive);
+    float accumulatedDiffuse2ndMoment = lerp(prevSurfaceMotionBasedSpecularAndDiffuse2ndMoments.g, diffuse2ndMoment, diffuseAlpha);
 
     // Write out the results
     gOutSpecularAndDiffuseIlluminationLogLuv[ipos] = PackSpecularAndDiffuseToLogLuvUint2(accumulatedSpecularIllumination, accumulatedDiffuseIllumination);
@@ -758,6 +766,5 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     gOutReflectionHitT[ipos] = accumulatedReflectionHitT;
 
     gOutSpecularAndDiffuseHistoryLength[ipos] = historyLength / 255.0;
-
-    gOutSpecularReprojectionConfidence[ipos] = specularConfidence;
+    gOutSpecularReprojectionConfidence[ipos] = specularHistoryConfidence;
 }

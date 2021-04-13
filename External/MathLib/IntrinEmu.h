@@ -128,7 +128,7 @@ template<> PLATFORM_INLINE __m128 emu_mm_dp_ps<255>(const __m128& x, const __m12
 
 #if( PLATFORM_INTRINSIC < PLATFORM_INTRINSIC_AVX1 )
 
-#define M256_ALIGN( a ) __declspec(align(a))
+#define M256_ALIGN( a ) alignas(a)
 
 union M256_ALIGN(32) emu__m256
 {

@@ -8,6 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define TRANSLUCENT_SHADOW
+#define SIGMA_TRANSLUCENT
+#define SIGMA_FIRST_PASS
 
-#include "SIGMA_Shadow_PreBlur.cs.hlsl"
+#include "SIGMA_Shadow_Blur.cs.hlsl"

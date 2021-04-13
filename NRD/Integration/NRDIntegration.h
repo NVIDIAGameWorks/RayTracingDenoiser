@@ -12,6 +12,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "../Include/NRD.h"
 
+#include <assert.h>
 #include <array>
 #include <vector>
 #include <map>
@@ -45,7 +46,7 @@ public:
     void Destroy();
 
     void SetMethodSettings(nrd::Method method, const void* methodSettings);
-    void Denoise(nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool);
+    void Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool);
 
     // Should not be called explicitly, unless you want to reload pipelines
     void CreatePipelines();

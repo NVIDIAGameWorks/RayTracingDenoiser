@@ -74,8 +74,8 @@ namespace utils
     {
         detexTexture **texture = nullptr;
         std::string name;
+        float4 avgColor = float4(0.0f);
         uint64_t hash = 0;
-        uint32_t averageColor = 0;
         AlphaMode alphaMode = AlphaMode::OPAQUE;
         nri::Format format = nri::Format::UNKNOWN;
         uint16_t width = 0;
@@ -137,14 +137,16 @@ namespace utils
 
     struct Material
     {
+        float4 avgBaseColor;
+        float4 avgSpecularColor;
         uint32_t instanceOffset;
         uint32_t instanceNum;
         uint32_t diffuseMapIndex;
         uint32_t specularMapIndex;
         uint32_t normalMapIndex;
         uint32_t emissiveMapIndex;
-        uint32_t averageBaseColor;
         AlphaMode alphaMode;
+        bool isEmissive;
 
         inline bool IsOpaque() const
         { return alphaMode == AlphaMode::OPAQUE; }
@@ -159,7 +161,7 @@ namespace utils
         { return alphaMode == AlphaMode::OFF; }
 
         inline bool IsEmissive() const
-        { return (averageBaseColor >> 24) != 0; }
+        { return isEmissive; }
     };
 
     struct Instance

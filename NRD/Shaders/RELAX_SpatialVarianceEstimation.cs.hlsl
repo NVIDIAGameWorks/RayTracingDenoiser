@@ -9,16 +9,23 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "RELAX_Config.hlsl"
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
-    int2       gResolution;
-
-    float      gPhiNormal;
-    uint       gHistoryThreshold;
+    int2  gResolution;
+    float gPhiNormal;
+    uint  gHistoryThreshold;
+    float gDenoisingRange;
 };
 
+#include "NRD_Common.hlsl"
 #include "RELAX_Common.hlsl"
+
+#define THREAD_GROUP_SIZE 16
+#define SKIRT 2
 
 // Inputs
 NRI_RESOURCE(Texture2D<uint2>, gSpecularAndDiffuseIlluminationLogLuv, t, 0, 0);
@@ -30,8 +37,8 @@ NRI_RESOURCE(Texture2D<uint2>, gNormalRoughnessDepth, t, 3, 0);
 NRI_RESOURCE(RWTexture2D<float4>, gOutSpecularIlluminationAndVariance, u, 0, 0);
 NRI_RESOURCE(RWTexture2D<float4>, gOutDiffuseIlluminationAndVariance, u, 1, 0);
 
-groupshared uint4 sharedPackedIllumination1stMoments        [16 + 2 + 2][16 + 2 + 2];
-groupshared uint4 sharedPackedNormalRoughnessDepth2ndMoments[16 + 2 + 2][16 + 2 + 2];
+groupshared uint4 sharedPackedIllumination1stMoments        [THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
+groupshared uint4 sharedPackedNormalRoughnessDepth2ndMoments[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 
 // Unpacking from LogLuv to RGB is expensive, so let's do it once,
 // at the stage of populating the shared memory
@@ -75,6 +82,12 @@ void unpackNormalRoughnessDepth2ndMoments(uint4 packed, out float3 normal, out f
     diffuse2ndMoment = f16tof32(packed.b >> 16);
 }
 
+void unpack2ndMoments(uint4 packed, out float specular2ndMoment, out float diffuse2ndMoment)
+{
+    specular2ndMoment = f16tof32(packed.b);
+    diffuse2ndMoment = f16tof32(packed.b >> 16);
+}
+
 float computeDepthWeight(float depthCenter, float depthP, float phiDepth)
 {
     return 1;
@@ -85,32 +98,24 @@ float computeNormalWeight(float3 normalCenter, float3 normalP, float phiNormal)
     return pow(saturate(dot(normalCenter, normalP)), phiNormal);
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     const int2 ipos = dispatchThreadId.xy;
 
     // Populating shared memory
-    //
-	// Renumerating threads to load 20x20 (16+2+2 x 16+2+2) block of data to shared memory
-	//
-	// The preloading will be done in two stages:
-	// at the first stage the group will load 16x16 / 10 = 12.8 rows of the shared memory,
-	// and all threads in the group will be following the same path.
-	// At the second stage, the rest 20x20 - 16x16 = 144 threads = 4.5 warps will load the rest of data
+	uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
+    uint newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+    uint newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
-	uint linearThreadIndex = groupThreadId.y * 16 + groupThreadId.x;
-    uint newIdxX = linearThreadIndex % 20;
-    uint newIdxY = linearThreadIndex / 20;
-
-    uint blockXStart = groupId.x * 16;
-    uint blockYStart = groupId.y * 16;
+    uint blockXStart = groupId.x * THREAD_GROUP_SIZE;
+    uint blockYStart = groupId.y * THREAD_GROUP_SIZE;
 
 	// First stage
 	int ox = newIdxX;
 	int oy = newIdxY;
-	int xx = blockXStart + newIdxX - 2;
-	int yy = blockYStart + newIdxY - 2;
+	int xx = blockXStart + newIdxX - SKIRT;
+	int yy = blockYStart + newIdxY - SKIRT;
 
     uint4 packedIllumination1stMoments = 0;
     float2 specularAndDiffuse2ndMoments = 0;
@@ -126,20 +131,20 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     sharedPackedNormalRoughnessDepth2ndMoments[oy][ox] = packNormalRoughnessDepth2ndMoments(packedNormalRoughnessDepth, specularAndDiffuse2ndMoments);
 
 	// Second stage
-	linearThreadIndex += 16 * 16;
-	newIdxX = linearThreadIndex % 20;
-	newIdxY = linearThreadIndex / 20;
+	linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
+	newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+	newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
 	ox = newIdxX;
 	oy = newIdxY;
-	xx = blockXStart + newIdxX - 2;
-	yy = blockYStart + newIdxY - 2;
+    xx = blockXStart + newIdxX - SKIRT;
+	yy = blockYStart + newIdxY - SKIRT;
 
     packedIllumination1stMoments = 0;
     specularAndDiffuse2ndMoments = 0;
     packedNormalRoughnessDepth = 0;
 
-  	if (linearThreadIndex < 20 * 20)
+  	if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
 	{
         if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
         {
@@ -158,7 +163,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     // Shared memory is populated now and can be used for filtering
     //
 
-    int2 sharedMemoryCenterIndex = groupThreadId.xy + int2(2,2);
+    int2 sharedMemoryCenterIndex = groupThreadId.xy + int2(SKIRT, SKIRT);
 
     // Using diffuse history length for spatial variance estimation
     float historyLength = 255.0*gHistoryLength[ipos].y;
@@ -178,10 +183,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
         // If we have enough temporal history available,
         // we pass illumination data unmodified
         // and calculate variance based on temporally accumulated moments
-        float2 specularAndDiffuse2ndMoments = gSpecularAndDiffuse2ndMoments[ipos];
+        float specular2ndMoment;
+        float diffuse2ndMoment;
+        unpack2ndMoments(sharedPackedNormalRoughnessDepth2ndMoments[sharedMemoryCenterIndex.y][sharedMemoryCenterIndex.x], specular2ndMoment, diffuse2ndMoment);
 
-        float specularVariance = specularAndDiffuse2ndMoments.r - centerSpecular1stMoment * centerSpecular1stMoment;
-        float diffuseVariance = specularAndDiffuse2ndMoments.g - centerDiffuse1stMoment * centerDiffuse1stMoment;
+        float specularVariance = specular2ndMoment - centerSpecular1stMoment * centerSpecular1stMoment;
+        float diffuseVariance = diffuse2ndMoment - centerDiffuse1stMoment * centerDiffuse1stMoment;
 
         gOutSpecularIlluminationAndVariance[ipos] = float4(centerSpecularIllumination, specularVariance);
         gOutDiffuseIlluminationAndVariance[ipos] = float4(centerDiffuseIllumination, diffuseVariance);
@@ -201,11 +208,10 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
                                             centerSpecular2ndMoment,
                                             centerDiffuse2ndMoment);
 
-        if (centerDepth <= 0)
+        // Early out if linearZ is beyond denoising range
+        [branch]
+        if (centerDepth > gDenoisingRange)
         {
-            // current pixel does not have valid depth => must be envmap => do nothing
-            gOutSpecularIlluminationAndVariance[ipos] = float4(centerSpecularIllumination, 0);
-            gOutDiffuseIlluminationAndVariance[ipos] = float4(centerDiffuseIllumination, 0);
             return;
         }
 
@@ -226,7 +232,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
         {
             for (int xx = -2; xx <= 2; xx++)
             {
-                int2 sharedMemoryIndex = groupThreadId.xy + int2(2 + xx, 2 + yy);
+                int2 sharedMemoryIndex = groupThreadId.xy + int2(SKIRT + xx, SKIRT + yy);
 
                 // Fetching sample data
                 float3 sampleNormal;

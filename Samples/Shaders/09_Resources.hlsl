@@ -34,6 +34,9 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float2 gScreenSize;
     float2 gInvScreenSize;
     float2 gJitter;
+    float2 gRectSize;
+    float2 gInvRectSize;
+    float2 gRectSizePrev;
     float gNearZ;
     float gAmbient;
     float gAmbientInComposition;
@@ -60,17 +63,15 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     uint gIndirectFullBrdf;
     uint gUseNormalMap;
     uint gWorldSpaceMotion;
-    uint gUseBlueNoise;
-    uint gCheckerboard;
 };
 
 NRI_RESOURCE( SamplerState, gLinearMipmapLinearSampler, s, 1, 0 );
 NRI_RESOURCE( SamplerState, gNearestMipmapNearestSampler, s, 2, 0 );
 NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 
-//===============================================================
+//=============================================================================================
 // DENOISER PART
-//===============================================================
+//=============================================================================================
 
 #include "..\..\NRD\Shaders\NRD.hlsl"
 
@@ -81,7 +82,6 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 // Constants
 #define REBLUR                              0
 #define RELAX                               1
-#define SVGF                                2
 
 #define SHOW_FINAL                          0
 #define SHOW_AMBIENT_OCCLUSION              1
@@ -113,7 +113,7 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 #define USE_SIMPLE_MIP_SELECTION            1
 #define USE_SIMPLIFIED_BRDF_MODEL           0
 #define USE_IMPORTANCE_SAMPLING             2 // 0 - off, 1 - ignore rays with 0 throughput, 2 - plus local lights importance sampling
-#define USE_BIG_VALUE_CHECK                 0
+#define USE_BLUE_NOISE                      1
 
 #define TAA_HISTORY_SHARPNESS               0.5 // [0; 1], 0.5 matches Catmull-Rom
 #define TAA_MAX_HISTORY_WEIGHT              0.95
@@ -126,27 +126,8 @@ NRI_RESOURCE( SamplerState, gLinearSampler, s, 3, 0 );
 #define GLASS_TINT                          float3( 0.9, 0.9, 1.0 )
 
 //=============================================================================================
-// SHARED
+// MISC
 //=============================================================================================
-
-void ModifyMaterial( inout float3 baseColor, inout float metalness, inout float roughness )
-{
-    if( gForcedMaterial == MAT_GYPSUM )
-    {
-        roughness = 1.0;
-        baseColor = 0.5;
-        metalness = 0.0;
-    }
-    else if( gForcedMaterial == MAT_COBALT )
-    {
-        roughness = pow( saturate( baseColor.x * baseColor.y * baseColor.z ), 0.33333 );
-        baseColor = float3( 0.672411, 0.637331, 0.585456 );
-        metalness = 1.0;
-    }
-
-    metalness = gMetalnessOverride == 0.0 ? metalness : gMetalnessOverride;
-    roughness = gRoughnessOverride == 0.0 ? roughness : gRoughnessOverride;
-}
 
 float4 PackNormalAndRoughness( float3 N, float linearRoughness )
 {
@@ -213,6 +194,46 @@ float3 ApplyPostLightingComposition( uint2 pixelPos, float3 Lsum, Texture2D<floa
     return Lsum;
 }
 
+float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const float sharpness )
+{
+    float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
+    float2 f = samplePos - centerPos;
+    float2 f2 = f * f;
+    float2 f3 = f * f2;
+    float2 w0 = -sharpness * f3 + 2.0 * sharpness * f2 - sharpness * f;
+    float2 w1 = ( 2.0 - sharpness ) * f3 - ( 3.0 - sharpness ) * f2 + 1.0;
+    float2 w2 = -( 2.0 - sharpness ) * f3 + ( 3.0 - 2.0 * sharpness ) * f2 + sharpness * f;
+    float2 w3 = sharpness * f3 - sharpness * f2;
+    float2 wl2 = w1 + w2;
+    float2 tc2 = invTextureSize * ( centerPos + w2 * STL::Math::PositiveRcp( wl2 ) );
+    float2 tc0 = invTextureSize * ( centerPos - 1.0 );
+    float2 tc3 = invTextureSize * ( centerPos + 2.0 );
+
+    float w = wl2.x * w0.y;
+    float4 color = tex.SampleLevel( samp, float2( tc2.x, tc0.y ), 0 ) * w;
+    float sum = w;
+
+    w = w0.x  * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc0.x, tc2.y ), 0 ) * w;
+    sum += w;
+
+    w = wl2.x * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc2.x, tc2.y ), 0 ) * w;
+    sum += w;
+
+    w = w3.x  * wl2.y;
+    color += tex.SampleLevel( samp, float2( tc3.x, tc2.y ), 0 ) * w;
+    sum += w;
+
+    w = wl2.x * w3.y;
+    color += tex.SampleLevel( samp, float2( tc2.x, tc3.y ), 0 ) * w;
+    sum += w;
+
+    color *= STL::Math::PositiveRcp( sum );
+
+    return color;
+}
+
 //=============================================================================================
 // VERY SIMPLE SKY MODEL
 //=============================================================================================
@@ -264,4 +285,3 @@ float3 GetSkyIntensity( float3 v, float3 vSun, float angularDiameter = 0.5 )
 
     return sunIntensity * GetSunColor( v, vSun, angularDiameter ) + skyIntensity * GetSkyColor( v, vSun );
 }
-

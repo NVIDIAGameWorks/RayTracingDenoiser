@@ -1369,6 +1369,13 @@ class double4x4
             Swap(col1, col2);
         }
 
+        PLATFORM_INLINE bool IsRightHanded() const
+        {
+            double3 v1 = Cross(col0, col1);
+
+            return Dot33(v1, col2) > 0.0f;
+        }
+
         // NOTE: arithmetic
 
         PLATFORM_INLINE double4x4 operator * (const double4x4& m) const

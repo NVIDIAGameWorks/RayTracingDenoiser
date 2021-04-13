@@ -30,7 +30,7 @@
 
     #include <unistd.h>
 
-    #define PLATFORM_INLINE                             __attribute__((always_inline))
+    #define PLATFORM_INLINE                             __attribute__((always_inline)) inline
     #define PLATFORM_ALIGN(alignment, x)                x __attribute__((aligned(alignment)))
 
 #endif
@@ -74,7 +74,7 @@
 #define PLATFORM_INTRINSIC_AVX1                         2       // NOTE: +FP16C
 #define PLATFORM_INTRINSIC_AVX2                         3       // NOTE: +FMA3
 
-#if( _MSC_VER >= 1920 )
+#if (defined(_MSC_VER) && (_MSC_VER >= 1920)) || defined(__clang__) || defined(__GNUC__)
     // TODO: disable __m256d emulation if VS2019 is used
     #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_AVX2
 #else

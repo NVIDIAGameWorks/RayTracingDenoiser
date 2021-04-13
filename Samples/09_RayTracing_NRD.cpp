@@ -26,6 +26,8 @@ constexpr bool CAMERA_RELATIVE = true;
 constexpr bool CAMERA_LEFT_HANDED = true;
 constexpr uint32_t ANIMATED_INSTANCE_MAX_NUM = 512;
 
+#define UI_YELLOW ImVec4(1.0f, 0.9f, 0.0f, 1.0f)
+
 // if( USE_OCT_PACKED_NORMALS == 1 && NRD_USE_OCT_PACKED_NORMALS == 1 )
 // #define NORMAL_FORMAT nri::Format::R10_G10_B10_A2_UNORM
 // else
@@ -43,7 +45,6 @@ enum Denoiser : int32_t
 {
     REBLUR,
     RELAX,
-    SVGF,
 
     DENOISER_MAX_NUM
 };
@@ -86,10 +87,10 @@ enum class Texture : uint32_t
     Shadow,
     Diff,
     Spec,
-    Unfiltered_Shadow,
+    Unfiltered_ShadowData,
     Unfiltered_Diff,
     Unfiltered_Spec,
-    Unfiltered_Translucency,
+    Unfiltered_Shadow_Translucency,
     ComposedLighting_ViewZ,
     TaaHistory,
     TaaHistoryPrev,
@@ -101,9 +102,9 @@ enum class Pipeline : uint32_t
 {
     IntegrateBRDF,
     Raytracing,
-    SplitScreen,
     Composition,
     Temporal,
+    Upsample
 };
 
 enum class Descriptor : uint32_t
@@ -134,14 +135,14 @@ enum class Descriptor : uint32_t
     Diff_StorageTexture,
     Spec_Texture,
     Spec_StorageTexture,
-    Unfiltered_Shadow_Texture,
-    Unfiltered_Shadow_StorageTexture,
+    Unfiltered_ShadowData_Texture,
+    Unfiltered_ShadowData_StorageTexture,
     Unfiltered_Diff_Texture,
     Unfiltered_Diff_StorageTexture,
     Unfiltered_Spec_Texture,
     Unfiltered_Spec_StorageTexture,
-    Unfiltered_Translucency_Texture,
-    Unfiltered_Translucency_StorageTexture,
+    Unfiltered_Shadow_Translucency_Texture,
+    Unfiltered_Shadow_Translucency_StorageTexture,
     ComposedLighting_ViewZ_Texture,
     ComposedLighting_ViewZ_StorageTexture,
     TaaHistory_Texture,
@@ -150,7 +151,7 @@ enum class Descriptor : uint32_t
     TaaHistoryPrev_StorageTexture,
     Final_Texture,
     Final_StorageTexture,
-    MaterialTextures,
+    MaterialTextures
 };
 
 enum class DescriptorSet : uint32_t
@@ -158,10 +159,11 @@ enum class DescriptorSet : uint32_t
     IntegrateBRDF0,
     Raytracing2,
     Raytracing1,
-    SplitScreen1,
     Composition1,
     Temporal1a,
     Temporal1b,
+    Upsample1a,
+    Upsample1b
 };
 
 struct NRIInterface
@@ -197,6 +199,9 @@ struct GlobalConstantBufferData
     float2 gScreenSize;
     float2 gInvScreenSize;
     float2 gJitter;
+    float2 gRectSize;
+    float2 gInvRectSize;
+    float2 gRectSizePrev;
     float gNearZ;
     float gAmbient;
     float gAmbientInComposition;
@@ -223,7 +228,6 @@ struct GlobalConstantBufferData
     uint32_t gIndirectFullBrdf;
     uint32_t gUseNormalMap;
     uint32_t gWorldSpaceMotion;
-    uint32_t gUseBlueNoise;
     uint32_t gCheckerboard;
 };
 
@@ -235,37 +239,25 @@ struct NrdSettings
     float specAdaptiveRadiusScale = 5.0f;
     float antilagIntensitySigmaScale = 2.0f;
     float antilagHitDistanceSigmaScale = 2.0f;
-    float antilagIntensityThresholdMin = 5.0f;
-    float antilagHitDistanceThresholdMin = 2.0f;
+    float antilagIntensityThresholdMin = 2.0f;
+    float antilagHitDistanceThresholdMin = 1.0f;
     float antilagIntensityThresholdMax = 15.0f;
     float antilagHitDistanceThresholdMax = 10.0f;
-    float disocclusionThreshold = 0.5f;
-    float noisinessBlurrinessBalance = 1.0f;
+    float disocclusionThreshold = 1.0f;
 
     int32_t maxAccumulatedFrameNum = 31;
+    int32_t maxFastAccumulatedFrameNum = 7;
 
     bool referenceAccumulation = false;
     bool checkerboard = true;
     bool antilagIntensity = true;
     bool antilagHitDistance = true;
-};
-
-struct SvgfSettings
-{
-    float disocclusionThreshold = 0.5f;
-    float varianceScale = 1.5f;
-    float zDeltaScale = 200.0f;
-
-    int32_t diffMaxAccumulatedFrameNum = 31;
-    int32_t diffMomentsMaxAccumulatedFrameNum = 5;
-    int32_t specMaxAccumulatedFrameNum = 31;
-    int32_t specMomentsMaxAccumulatedFrameNum = 5;
+    bool antifirefly = true;
 };
 
 struct Settings
 {
     NrdSettings nrdSettings = {};
-    SvgfSettings svgfSettings = {};
 
     double motionStartTime = 0.0;
 
@@ -304,7 +296,6 @@ struct Settings
     bool indirectSpecular = true;
     bool normalMap = true;
     bool mip = true;
-    bool blueNoise = true;
     bool metalAmbient = true;
     bool TAA = true;
     bool specSecondBounce = false;
@@ -422,9 +413,7 @@ class Sample : public SampleBase
 public:
     Sample() :
         m_NRD(BUFFERED_FRAME_MAX_NUM),
-        m_RELAX(BUFFERED_FRAME_MAX_NUM),
-        m_SVGF_Diff(BUFFERED_FRAME_MAX_NUM),
-        m_SVGF_Spec(BUFFERED_FRAME_MAX_NUM)
+        m_RELAX(BUFFERED_FRAME_MAX_NUM)
     {}
 
     ~Sample();
@@ -498,8 +487,6 @@ private:
 private:
     Nrd m_NRD;
     Nrd m_RELAX;
-    Nrd m_SVGF_Diff;
-    Nrd m_SVGF_Spec;
 
     NRIInterface NRI = {};
     nri::Device* m_Device = nullptr;
@@ -528,6 +515,7 @@ private:
     std::array<float, 256> m_FrameTimes = {};
     Timer m_Timer;
     float3 m_PrevLocalPos = {};
+    float2 m_RectSizePrev = {};
     uint2 m_OutputResolution = {};
     uint2 m_RenderResolution = {};
     utils::Scene m_Scene;
@@ -539,10 +527,14 @@ private:
     uint64_t m_ConstantBufferSize = 0;
     uint32_t m_DefaultInstancesOffset = 0;
     int32_t m_TestingLocation = 0;
+    float m_ResolutionScale = 1.0f;
+    float m_MinFps = 0.0f;
     bool m_PrevIsActive = true;
     bool m_HasTransparentObjects = false;
     bool m_ShowUi = true;
     bool m_AmbientInComposition = true; // TODO: only to WAR unsupported AO / SO in non-REBLUR
+    bool m_ForceHistoryReset = false;
+    bool m_ResponsiveAntilag = false;
 };
 
 Sample::~Sample()
@@ -551,8 +543,6 @@ Sample::~Sample()
 
     m_NRD.Destroy();
     m_RELAX.Destroy();
-    m_SVGF_Diff.Destroy();
-    m_SVGF_Spec.Destroy();
 
     for (Frame& frame : m_Frames)
     {
@@ -679,32 +669,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         NRI_ABORT_ON_FALSE(m_RELAX.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc));
     }
 
-    // SVGF
-    // TODO: SVGF doesn't support shadows denoising
-    {
-        const nrd::MethodDesc methodDescs1[] =
-        {
-            { nrd::Method::SVGF, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-            { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-        };
-
-        nrd::DenoiserCreationDesc denoiserCreationDesc = {};
-        denoiserCreationDesc.requestedMethods = methodDescs1;
-        denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs1);
-
-        NRI_ABORT_ON_FALSE( m_SVGF_Diff.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc) );
-
-        const nrd::MethodDesc methodDescs2[] =
-        {
-            { nrd::Method::SVGF, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-        };
-
-        denoiserCreationDesc.requestedMethods = methodDescs2;
-        denoiserCreationDesc.requestedMethodNum = helper::GetCountOf(methodDescs2);
-
-        NRI_ABORT_ON_FALSE( m_SVGF_Spec.Initialize(*m_Device, NRI, NRI, denoiserCreationDesc) );
-    }
-
     m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, CAMERA_RELATIVE);
     m_Scene.UnloadResources();
 
@@ -757,13 +721,27 @@ void Sample::PrepareFrame(uint32_t frameIndex)
     if(m_Input.IsKeyToggled(Key::F2) )
         m_Settings.denoiser = (m_Settings.denoiser + 1) % DENOISER_MAX_NUM;
 
+    float avgFrameTime = m_Timer.GetVerySmoothedElapsedTime();
+
+    if (m_Settings.limitFps && m_MinFps > 0.0f && m_SwapInterval == 0) // TODO: GPU time is needed to get it working with VSYNC
+    {
+        float msLimit = 1000.0f / m_MinFps;
+        float frameTime = m_Timer.GetElapsedTime();
+        float ratio = Sqrt(msLimit / frameTime);
+        float scale = m_ResolutionScale * ratio;
+        float f = 1000.0f / avgFrameTime;
+        m_ResolutionScale = Lerp(m_ResolutionScale, scale, 1.0f / (1.0f + f));
+        m_ResolutionScale = Clamp(m_ResolutionScale, 0.5f, 1.0f);
+    }
+
+    m_ResolutionScale *= 100.0f;
+
     if (!m_Input.IsKeyPressed(Key::LAlt) && m_ShowUi)
     {
         ImGui::SetNextWindowPos(ImVec2(5.0f, 5.0f), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(0.0f, 0.0f));
         ImGui::Begin("Settings (F1 to hide)", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize);
         {
-            float avgFrameTime = m_Timer.GetVerySmoothedElapsedTime();
             char avg[64];
             sprintf_s(avg, "%.1f FPS (%.2f ms)", 1000.0f / avgFrameTime, avgFrameTime);
 
@@ -773,8 +751,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
             if (avgFrameTime > 1000.0f / 30.0f)
                 colorFps = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
 
-            float lo = m_Timer.GetVerySmoothedElapsedTime() * 0.5f;
-            float hi = m_Timer.GetVerySmoothedElapsedTime() * 1.5f;
+            float lo = avgFrameTime * 0.5f;
+            float hi = avgFrameTime * 1.5f;
 
             const uint32_t N = helper::GetCountOf(m_FrameTimes);
             uint32_t head = frameIndex % N;
@@ -820,20 +798,21 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                     ImGui::Text("CAMERA (press RIGHT MOUSE BOTTON for free-fly mode)");
                     ImGui::Separator();
                     ImGui::SliderFloat("Field of view (deg)", &m_Settings.camFov, 10.0f, 150.0f);
-                    ImGui::SliderFloat("Exposure", &m_Settings.exposure, 0.0001f, 1.0f, "%.7f", 5.0f);
+                    ImGui::SliderFloat("Exposure", &m_Settings.exposure, 0.0001f, 1.0f, "%.7f", ImGuiSliderFlags_Logarithmic);
+                    ImGui::SliderFloat("Resolution scale (%)", &m_ResolutionScale, 50.0f, 100.0f, "%.1f");
                     ImGui::Combo("On screen", &m_Settings.onScreen, onScreenModes, helper::GetCountOf(onScreenModes));
-                    bool cmp = m_Settings.denoiser == REBLUR && m_Settings.nrdSettings.referenceAccumulation;
-                    if (cmp)
-                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
-                    ImGui::Checkbox("TAA", &m_Settings.TAA);
-                    if (cmp)
-                        ImGui::PopStyleColor();
+                    ImGui::PushStyleColor(ImGuiCol_Text, (m_Settings.nrdSettings.referenceAccumulation && m_Settings.TAA) ? UI_YELLOW : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+                        ImGui::Checkbox("TAA", &m_Settings.TAA);
+                    ImGui::PopStyleColor();
                     ImGui::SameLine();
                     ImGui::Checkbox("3D MVs", &m_Settings.worldSpaceMotion);
                     ImGui::SameLine();
-                    ImGui::Checkbox("Limit FPS", &m_Settings.limitFps);
+                    ImGui::Checkbox("FPS limit", &m_Settings.limitFps);
                     ImGui::SameLine();
-                    if (ImGui::Button("Emulate motion"))
+                    ImGui::PushStyleColor(ImGuiCol_Text, m_Settings.motionStartTime > 0.0 ? UI_YELLOW : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+                    bool isPressed = ImGui::Button("Emulate motion");
+                    ImGui::PopStyleColor();
+                    if (isPressed)
                         m_Settings.motionStartTime = m_Settings.motionStartTime > 0.0 ? 0.0 : -1.0;
                     if (m_Settings.motionStartTime > 0.0)
                     {
@@ -844,7 +823,12 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                         ImGui::Checkbox("Linear", &m_Settings.linearMotion);
                     }
                     if (m_Settings.limitFps)
-                        ImGui::SliderFloat("Max FPS", &m_Settings.maxFps, 24.0f, 120.0f, "%.0f");
+                    {
+                        float v[2] = {m_MinFps, m_Settings.maxFps};
+                        ImGui::SliderFloat2("Min / Max FPS", v, 24.0f, 150.0f, "%.0f");
+                        m_MinFps = v[0];
+                        m_Settings.maxFps = v[0] > v[1] ? v[0] * 1.2f : v[1];
+                    }
                 }
                 ImGui::PopID();
                 ImGui::NewLine();
@@ -859,7 +843,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
 
                     ImGui::Text("MATERIALS");
                     ImGui::Separator();
-                    ImGui::SliderFloat2("Roughness / Metalness", &m_Settings.roughnessOverride, 0.0f, 1.0f, "%.3f", 2.0f);
+                    ImGui::SliderFloat2("Roughness / Metalness", &m_Settings.roughnessOverride, 0.0f, 1.0f, "%.3f");
                     ImGui::SetNextItemWidth(80.0f);
                     ImGui::Combo("Material", &m_Settings.forcedMaterial, forcedMaterial, helper::GetCountOf(forcedMaterial));
                     ImGui::SameLine();
@@ -867,12 +851,12 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                     ImGui::SameLine();
                     ImGui::Checkbox("Emission", &m_Settings.emission);
                     if (m_Settings.emission)
-                        ImGui::SliderFloat("Emission intensity", &m_Settings.emissionIntensity, 1.0f, 100000.0f, "%.3f", 4.0f);
+                        ImGui::SliderFloat("Emission intensity", &m_Settings.emissionIntensity, 1.0f, 100000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
                 }
                 ImGui::PopID();
 
                 if (m_Settings.onScreen == 8)
-                    ImGui::SliderFloat("World units to meters", &m_Settings.unitsToMetersMultiplier, 0.0001f, 100.0f, "%.4f", 6.0f);
+                    ImGui::SliderFloat("World units to meters", &m_Settings.unitsToMetersMultiplier, 0.0001f, 100.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
                 else
                 {
                     ImGui::NewLine();
@@ -942,11 +926,13 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                     {
                         ImGui::Text("INDIRECT RAYS");
                         ImGui::Separator();
-                        ImGui::SliderFloat("Sky ambient (%)", &m_Settings.skyAmbient, 0.0f, 20.0f, "%.3f", 2.0f);
+                        ImGui::SliderFloat("Sky ambient (%)", &m_Settings.skyAmbient, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
                         ImGui::SliderFloat2("AO / SO range (m)", &m_Settings.diffHitDistScale, 0.0f, sceneRadius);
                         ImGui::Checkbox("Full BRDF", &m_Settings.indirectFullBrdf);
                         ImGui::SameLine();
-                        ImGui::Checkbox("0.5 rpp", &m_Settings.nrdSettings.checkerboard);
+                        ImGui::PushStyleColor(ImGuiCol_Text, (m_Settings.denoiser == REBLUR && m_Settings.nrdSettings.referenceAccumulation && m_Settings.nrdSettings.checkerboard) ? UI_YELLOW : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+                            ImGui::Checkbox("0.5 rpp", &m_Settings.nrdSettings.checkerboard);
+                        ImGui::PopStyleColor();
                         ImGui::SameLine();
                         ImGui::Checkbox("Spec 2nd", &m_Settings.specSecondBounce);
                         ImGui::SameLine();
@@ -962,7 +948,9 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                         ImGui::SameLine();
                         ImGui::Checkbox("Normal map", &m_Settings.normalMap);
                         ImGui::SameLine();
-                        ImGui::Checkbox("Trimming", &m_Settings.specularLobeTrimming);
+                        ImGui::PushStyleColor(ImGuiCol_Text, (m_Settings.nrdSettings.referenceAccumulation && m_Settings.specularLobeTrimming) ? UI_YELLOW : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+                            ImGui::Checkbox("Trimming", &m_Settings.specularLobeTrimming);
+                        ImGui::PopStyleColor();
                         ImGui::SameLine();
                         ImGui::Checkbox("Mip", &m_Settings.mip);
                         ImGui::Checkbox("Diffuse", &m_Settings.indirectDiffuse);
@@ -976,9 +964,6 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                         if (cmp)
                             ImGui::PopStyleColor();
 
-                        ImGui::SameLine();
-                        ImGui::Checkbox("Blue noise", &m_Settings.blueNoise);
-
                         if( m_Settings.metalnessOverride != 0.0f )
                         {
                             ImGui::SameLine();
@@ -990,24 +975,45 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                     ImGui::PushID("DENOISER");
                     {
                         const nrd::LibraryDesc& nrdLibraryDesc = nrd::GetLibraryDesc();
+
+                        char s[256];
+                        sprintf_s(s, "NRD v%u.%u.%u - %s / SIGMA (F2 - next)", nrdLibraryDesc.versionMajor, nrdLibraryDesc.versionMinor, nrdLibraryDesc.versionBuild, m_Settings.denoiser == REBLUR ? "REBLUR" : "RELAX");
+                        ImGui::Text(s);
+                        ImGui::Separator();
+
+                        ImGui::SliderFloat("Disocclusion (%)", &m_Settings.nrdSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+                        ImGui::SliderInt("Fast history frames", &m_Settings.nrdSettings.maxFastAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
+
                         if (m_Settings.denoiser == REBLUR)
                         {
-                            char name[256];
-                            sprintf_s(name, "DENOISER - REBLUR / SIGMA v%u.%u.%u (F2 - next)", nrdLibraryDesc.versionMajor, nrdLibraryDesc.versionMinor, nrdLibraryDesc.versionBuild);
-                            ImGui::Text(name);
-                            ImGui::Separator();
-                            ImGui::SliderFloat("Disocclusion (%)", &m_Settings.nrdSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", 2.0f);
-                            ImGui::SliderFloat("Noisiness / Blurriness", &m_Settings.nrdSettings.noisinessBlurrinessBalance, 0.0f, 1.0f, "%.3f");
                             ImGui::SliderInt("History frames", &m_Settings.nrdSettings.maxAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
-                            ImGui::Text("ANTILAG (INTENSITY / HIT DISTANCE):");
-                            ImGui::PushID("ANTILAG (INTENSITY / HIT DISTANCE)");
+
+                            ImGui::PushStyleColor(ImGuiCol_Text, (m_Settings.nrdSettings.referenceAccumulation && (m_Settings.nrdSettings.antilagIntensity || m_Settings.nrdSettings.antilagHitDistance)) ? UI_YELLOW : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+                                ImGui::Text("ANTI-LAG (INTENSITY / HIT DISTANCE):");
+                            ImGui::PopStyleColor();
+
+                            ImGui::PushID("ANTI-LAG (INTENSITY / HIT DISTANCE)");
                             {
-                                ImGui::SliderFloat2("Min threshold (%)", &m_Settings.nrdSettings.antilagIntensityThresholdMin, 0.0f, 100.0f, "%.1f", 2.0f);
-                                ImGui::SliderFloat2("Max threshold (%)", &m_Settings.nrdSettings.antilagIntensityThresholdMax, 0.0f, 100.0f, "%.1f", 2.0f);
+                                ImGui::SliderFloat2("Min threshold (%)", &m_Settings.nrdSettings.antilagIntensityThresholdMin, 0.0f, 100.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+                                ImGui::SliderFloat2("Max threshold (%)", &m_Settings.nrdSettings.antilagIntensityThresholdMax, 0.0f, 100.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
                                 ImGui::SliderFloat2("Sigma scale", &m_Settings.nrdSettings.antilagIntensitySigmaScale, 0.0f, 4.0f, "%.3f");
-                                ImGui::Checkbox("Intensity antilag    ", &m_Settings.nrdSettings.antilagIntensity); // TODO: spaces at the end to align better the following checkbox
+                                ImGui::Checkbox("Intensity", &m_Settings.nrdSettings.antilagIntensity);
                                 ImGui::SameLine();
-                                ImGui::Checkbox("Hit distance antilag", &m_Settings.nrdSettings.antilagHitDistance);
+                                ImGui::Checkbox("Hit distance", &m_Settings.nrdSettings.antilagHitDistance);
+                                ImGui::SameLine();
+                                
+                                if (ImGui::Button( m_ResponsiveAntilag ? "Default" : "Responsive" ))
+                                {
+                                    m_ResponsiveAntilag = !m_ResponsiveAntilag;
+                                    m_Settings.nrdSettings.antilagIntensity = true;
+                                    m_Settings.nrdSettings.antilagIntensitySigmaScale = m_ResponsiveAntilag ? 1.5f : 2.0f;
+                                    m_Settings.nrdSettings.antilagIntensityThresholdMin = m_ResponsiveAntilag ? 1.0f : 2.0f;
+                                    m_Settings.nrdSettings.antilagIntensityThresholdMax = m_ResponsiveAntilag ? 9.0f : 15.0f;
+                                    m_Settings.nrdSettings.antilagHitDistance = true;
+                                    m_Settings.nrdSettings.antilagHitDistanceSigmaScale = m_ResponsiveAntilag ? 1.5f : 2.0f;
+                                    m_Settings.nrdSettings.antilagHitDistanceThresholdMin = m_ResponsiveAntilag ? 1.0f : 1.0f;
+                                    m_Settings.nrdSettings.antilagHitDistanceThresholdMax = m_ResponsiveAntilag ? 5.0f : 10.0f;
+                                }
 
                                 m_Settings.nrdSettings.antilagIntensityThresholdMin = Max( m_Settings.nrdSettings.antilagIntensityThresholdMin, 0.0f );
                                 m_Settings.nrdSettings.antilagHitDistanceThresholdMin = Max( m_Settings.nrdSettings.antilagHitDistanceThresholdMin, 0.0f );
@@ -1016,70 +1022,65 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                                 m_Settings.nrdSettings.antilagHitDistanceThresholdMax = Max( m_Settings.nrdSettings.antilagHitDistanceThresholdMax, m_Settings.nrdSettings.antilagHitDistanceThresholdMin + 1.0f );
                             }
                             ImGui::PopID();
-                            ImGui::Text("DIFFUSE:");
-                            ImGui::PushID("DIFFUSE");
+                            ImGui::Text("SPATIAL FILTERING (DIFFUSE / SPECULAR):");
+                            ImGui::PushID("SPATIAL FILTERING (DIFFUSE / SPECULAR)");
                             {
-                                ImGui::SliderFloat("Blur radius (px)", &m_Settings.nrdSettings.diffBlurRadius, 0.0f, 150.0f, "%.1f", 2.0f);
-                                ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.diffAdaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
-                            }
-                            ImGui::PopID();
-                            ImGui::Text("SPECULAR:");
-                            ImGui::PushID("SPECULAR");
-                            {
-                                ImGui::SliderFloat("Blur radius (px)", &m_Settings.nrdSettings.specBlurRadius, 0.0f, 150.0f, "%.1f", 2.0f);
-                                ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.specAdaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
-                                ImGui::Checkbox("Reference accumulation", &m_Settings.nrdSettings.referenceAccumulation);
+                                float2 t = float2(m_Settings.nrdSettings.diffBlurRadius, m_Settings.nrdSettings.specBlurRadius);
+                                ImGui::SliderFloat2("Blur radius (px)", &t.x, 0.0f, 60.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+                                m_Settings.nrdSettings.diffBlurRadius = t.x;
+                                m_Settings.nrdSettings.specBlurRadius = t.y;
+
+                                t = float2(m_Settings.nrdSettings.diffAdaptiveRadiusScale, m_Settings.nrdSettings.specAdaptiveRadiusScale);
+                                ImGui::SliderFloat2("Adaptive radius scale", &t.x, 0.0f, 10.0f, "%.2f");
+                                m_Settings.nrdSettings.diffAdaptiveRadiusScale = t.x;
+                                m_Settings.nrdSettings.specAdaptiveRadiusScale = t.y;
+
+                                ImGui::Checkbox("Reference", &m_Settings.nrdSettings.referenceAccumulation);
                                 ImGui::SameLine();
+                                ImGui::Checkbox("Anti-firefly", &m_Settings.nrdSettings.antifirefly);
                             }
                             ImGui::PopID();
                         }
                         else if (m_Settings.denoiser == RELAX)
                         {
-                            ImGui::Text("DENOISER - RELAX / SIGMA (F2 - next)");
-                            ImGui::Separator();
+                            ImGui::SliderInt("History frames", (int32_t*)&m_RelaxSettings.diffuseMaxAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
+                            m_RelaxSettings.specularMaxAccumulatedFrameNum = m_RelaxSettings.diffuseMaxAccumulatedFrameNum;
+
                             ImGui::Text("REPROJECTION:");
-                            ImGui::SliderFloat("Spec alpha", &m_RelaxSettings.specularAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
-                            ImGui::SliderFloat("Spec responsive alpha", &m_RelaxSettings.specularResponsiveAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
-                            ImGui::SliderFloat("Spec variance boost", &m_RelaxSettings.specularVarianceBoost, 0.000f, 8.0f, "%.2f", 1.0f);
-                            ImGui::SliderFloat("Diff alpha", &m_RelaxSettings.diffuseAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
-                            ImGui::SliderFloat("Diff responsive alpha", &m_RelaxSettings.diffuseResponsiveAlpha, 0.001f, 1.0f, "%.3f", 1.0f);
+                            ImGui::SliderFloat("Spec variance boost", &m_RelaxSettings.specularVarianceBoost, 0.000f, 8.0f, "%.2f");
+                            ImGui::SliderFloat("Color clamping sigma scale", &m_RelaxSettings.historyClampingColorBoxSigmaScale, 0.000f, 10.0f, "%.1f");
+
                             ImGui::Text("DISOCCLUSION FIX:");
-                            ImGui::SliderFloat("Edge-stop Z fraction", &m_RelaxSettings.disocclusionFixEdgeStoppingZFraction, 0.0f, 0.1f, "%.2f", 1.0f);
-                            ImGui::SliderFloat("Edge-stop normal power", &m_RelaxSettings.disocclusionFixEdgeStoppingNormalPower, 0.0f, 128.0f, "%.1f", 1.0f);
-                            ImGui::SliderFloat("Max kernel radius", &m_RelaxSettings.disocclusionFixMaxRadius, 0.000f, 100.0f, "%.1f", 1.0f);
-                            ImGui::SliderInt("Frames to fix", &m_RelaxSettings.disocclusionFixNumFramesToFix, 0, 10);
-                            ImGui::Text("HISTORY CLAMPING & ANTILAG:");
-                            ImGui::SliderFloat("Color clamping sigma", &m_RelaxSettings.historyClampingColorBoxSigmaScale, 0.000f, 10.0f, "%.1f", 1.0f);
-                            ImGui::SliderFloat("Spec antilag sigma", &m_RelaxSettings.specularAntiLagColorBoxSigmaScale, 1.000f, 10.0f, "%.1f", 1.0f);
-                            ImGui::SliderFloat("Spec antilag power", &m_RelaxSettings.specularAntiLagPower, 0.000f, 100.0f, "%.1f", 1.0f);
-                            ImGui::SliderFloat("Diff antilag sigma", &m_RelaxSettings.diffuseAntiLagColorBoxSigmaScale, 1.000f, 10.0f, "%.1f", 1.0f);
-                            ImGui::SliderFloat("Diff antilag power", &m_RelaxSettings.diffuseAntiLagPower, 0.000f, 100.0f, "%.1f", 1.0f);
+                            ImGui::SliderFloat("Edge-stop normal power", &m_RelaxSettings.disocclusionFixEdgeStoppingNormalPower, 0.0f, 128.0f, "%.1f");
+                            ImGui::SliderFloat("Max kernel radius", &m_RelaxSettings.disocclusionFixMaxRadius, 0.000f, 100.0f, "%.1f");
+                            ImGui::SliderInt("Frames to fix", (int32_t*)&m_RelaxSettings.disocclusionFixNumFramesToFix, 0, 10);
+
+                            ImGui::Text("ANTI-LAG:");
+                            ImGui::SliderFloat("Spec sigma", &m_RelaxSettings.specularAntiLagColorBoxSigmaScale, 1.000f, 10.0f, "%.1f");
+                            ImGui::SliderFloat("Spec power", &m_RelaxSettings.specularAntiLagPower, 0.000f, 100.0f, "%.1f");
+                            ImGui::SliderFloat("Diff sigma", &m_RelaxSettings.diffuseAntiLagColorBoxSigmaScale, 1.000f, 10.0f, "%.1f");
+                            ImGui::SliderFloat("Diff power", &m_RelaxSettings.diffuseAntiLagPower, 0.000f, 100.0f, "%.1f");
+
                             ImGui::Text("SPATIAL VARIANCE ESTIMATION:");
-                            ImGui::SliderInt("History threshold", &m_RelaxSettings.spatialVarianceEstimationHistoryThreshold, 0, 10);
-                            ImGui::Text("SPATIAL FILTER (EDGE STOPPING):");
-                            ImGui::SliderFloat("Depth", &m_RelaxSettings.phiDepth, 0.0f, 1.0f, "%.3f", 1.0f);
-                            ImGui::SliderFloat("Normal", &m_RelaxSettings.phiNormal, 1.0f, 256.0f, "%.0f", 1.0f);
-                            ImGui::SliderFloat("Diff luminance", &m_RelaxSettings.diffusePhiLuminance, 0.0f, 10.0f, "%.1f", 1.0f);
-                            ImGui::SliderFloat("Spec luminance", &m_RelaxSettings.specularPhiLuminance, 0.0f, 10.0f, "%.1f", 1.0f);
-                            ImGui::SliderFloat("Roughness relaxation", &m_RelaxSettings.roughnessEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
-                            ImGui::SliderFloat("Normal relaxation", &m_RelaxSettings.normalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
-                            ImGui::SliderFloat("Luminance relaxation", &m_RelaxSettings.luminanceEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f", 1.0f);
+                            ImGui::SliderInt("History threshold", (int32_t*)&m_RelaxSettings.spatialVarianceEstimationHistoryThreshold, 0, 10);
+
+                            ImGui::Text("SPATIAL FILTERING:");
+                            ImGui::SliderInt("A-trous iterations", (int32_t*)&m_RelaxSettings.atrousIterationNum, 2, 8);
+                            ImGui::SliderFloat("Depth weight", &m_RelaxSettings.phiDepth, 0.0f, 1.0f, "%.3f");
+                            ImGui::SliderFloat("Normal weight", &m_RelaxSettings.phiNormal, 1.0f, 256.0f, "%.0f");
+                            ImGui::SliderFloat("Luminance weight (diff)", &m_RelaxSettings.diffusePhiLuminance, 0.0f, 10.0f, "%.1f");
+                            ImGui::SliderFloat("Luminance weight (spec)", &m_RelaxSettings.specularPhiLuminance, 0.0f, 10.0f, "%.1f");
+                            ImGui::SliderFloat("Roughness relaxation", &m_RelaxSettings.roughnessEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
+                            ImGui::SliderFloat("Normal relaxation", &m_RelaxSettings.normalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
+                            ImGui::SliderFloat("Luminance relaxation", &m_RelaxSettings.luminanceEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
                             ImGui::Checkbox("Bicubic", &m_RelaxSettings.bicubicFilterForReprojectionEnabled);
                             ImGui::SameLine();
-                            ImGui::Checkbox("Firefly suppression", &m_RelaxSettings.fireflySuppressionEnabled);
-                            ImGui::SameLine();
+                            ImGui::Checkbox("Anti-firefly", &m_RelaxSettings.antifirefly);
                         }
-                        else if(m_Settings.denoiser == SVGF)
-                        {
-                            ImGui::Text("DENOISER - SVGF / SIGMA (F2 - next)");
-                            ImGui::Separator();
-                            ImGui::SliderFloat("Disocclusion (%)", &m_Settings.svgfSettings.disocclusionThreshold, 0.25f, 5.0f, "%.3f", 2.0f);
-                            ImGui::SliderFloat("Variance scale", &m_Settings.svgfSettings.varianceScale, 0.5f, 100.0f, "%.3f", 3.0f);
-                            ImGui::SliderFloat("Z-delta scale", &m_Settings.svgfSettings.zDeltaScale, 0.0f, 1000.0f, "%.3f", 3.0f);
-                            ImGui::Text("Color / Moments history length:");
-                            ImGui::SliderInt2("Diffuse", &m_Settings.svgfSettings.diffMaxAccumulatedFrameNum, 0, 31);
-                            ImGui::SliderInt2("Specular", &m_Settings.svgfSettings.specMaxAccumulatedFrameNum, 0, 31);
-                        }
+
+                        ImGui::SameLine();
+                        m_ForceHistoryReset = ImGui::Button("Reset history");
+                        ImGui::SameLine();
 
                         if (ImGui::Button("=>"))
                             m_Settings.denoiser = (m_Settings.denoiser + 1) % DENOISER_MAX_NUM;
@@ -1087,8 +1088,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                     ImGui::PopID();
                     ImGui::NewLine();
                     ImGui::Separator();
-                    ImGui::SliderFloat("Input / Denoised", &m_Settings.separator, 0.0f, 1.0f, "%.2f");
                     ImGui::SliderFloat("Debug", &m_Settings.debug, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Input / Denoised", &m_Settings.separator, 0.0f, 1.0f, "%.2f");
 
                     if (ImGui::Button("Reload shaders"))
                         CreatePipelines();
@@ -1183,7 +1184,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                         {
                             char button[8];
                             sprintf_s(button, "%u", i + 1);
-                            if( i % 14 != 0 )
+                            if (i % 14 != 0)
                                 ImGui::SameLine();
                             if (ImGui::Button(button, ImVec2(25.0f, 0.0f)))
                             {
@@ -1354,11 +1355,14 @@ void Sample::PrepareFrame(uint32_t frameIndex)
         }
     }
 
+    m_ResolutionScale *= 0.01f;
+
     // TODO: modify some settings to WAR unsupported and not working stuff in non-REBLUR
-    if (m_Settings.denoiser != REBLUR)
-        m_Settings.nrdSettings.checkerboard = false;
     if (m_Settings.denoiser == RELAX)
+    {
+        m_Settings.nrdSettings.checkerboard = false;
         m_AmbientInComposition = false;
+    }
 }
 
 void Sample::CreateSwapChain(nri::Format& swapChainFormat)
@@ -1547,13 +1551,13 @@ void Sample::CreateResources(nri::Format swapChainFormat)
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Spec", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::Unfiltered_Shadow", nri::Format::RG16_SFLOAT, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::Unfiltered_ShadowData", nri::Format::RG16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Unfiltered_Diff", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::Unfiltered_Spec", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
-    CreateTexture(descriptorDescs, "Texture::Unfiltered_Translucency", nri::Format::R10_G10_B10_A2_UNORM, w, h, 1, 1,
+    CreateTexture(descriptorDescs, "Texture::Unfiltered_Shadow_Translucency", nri::Format::RGBA8_UNORM, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE);
     CreateTexture(descriptorDescs, "Texture::ComposedLighting_ViewZ", nri::Format::RGBA16_SFLOAT, w, h, 1, 1,
         nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, nri::AccessBits::SHADER_RESOURCE_STORAGE);
@@ -1604,8 +1608,6 @@ void Sample::CreatePipelines()
 
         m_NRD.CreatePipelines();
         m_RELAX.CreatePipelines();
-        m_SVGF_Diff.CreatePipelines();
-        m_SVGF_Spec.CreatePipelines();
     }
 
     utils::ShaderCodeStorage shaderCodeStorage;
@@ -1738,35 +1740,6 @@ void Sample::CreatePipelines()
         m_Pipelines.push_back(pipeline);
     }
 
-    { // Pipeline::SplitScreen
-        const nri::DescriptorRangeDesc descriptorRanges[] =
-        {
-            { 0, 5, nri::DescriptorType::TEXTURE, nri::ShaderStage::ALL },
-            { 5, 3, nri::DescriptorType::STORAGE_TEXTURE, nri::ShaderStage::ALL }
-        };
-
-        const nri::DescriptorSetDesc descriptorSetDesc[] =
-        {
-            { globalDescriptorRanges, helper::GetCountOf(globalDescriptorRanges), staticSamplersDesc, helper::GetCountOf(staticSamplersDesc) },
-            { descriptorRanges, helper::GetCountOf(descriptorRanges) },
-        };
-
-        nri::PipelineLayoutDesc pipelineLayoutDesc = {};
-        pipelineLayoutDesc.descriptorSets = descriptorSetDesc;
-        pipelineLayoutDesc.descriptorSetNum = helper::GetCountOf(descriptorSetDesc);
-        pipelineLayoutDesc.stageMask = nri::PipelineLayoutShaderStageBits::COMPUTE;
-
-        NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, pipelineLayout));
-        m_PipelineLayouts.push_back(pipelineLayout);
-
-        nri::ComputePipelineDesc pipelineDesc = {};
-        pipelineDesc.pipelineLayout = pipelineLayout;
-        pipelineDesc.computeShader = utils::LoadShader(m_DeviceDesc->graphicsAPI, "09_SplitScreen.cs", shaderCodeStorage);
-
-        NRI_ABORT_ON_FAILURE(NRI.CreateComputePipeline(*m_Device, pipelineDesc, pipeline));
-        m_Pipelines.push_back(pipeline);
-    }
-
     { // Pipeline::Composition
         const nri::DescriptorRangeDesc descriptorRanges[] =
         {
@@ -1820,6 +1793,35 @@ void Sample::CreatePipelines()
         nri::ComputePipelineDesc pipelineDesc = {};
         pipelineDesc.pipelineLayout = pipelineLayout;
         pipelineDesc.computeShader = utils::LoadShader(m_DeviceDesc->graphicsAPI, "09_Temporal.cs", shaderCodeStorage);
+
+        NRI_ABORT_ON_FAILURE(NRI.CreateComputePipeline(*m_Device, pipelineDesc, pipeline));
+        m_Pipelines.push_back(pipeline);
+    }
+
+    { // Pipeline::Upsample
+        const nri::DescriptorRangeDesc descriptorRanges[] =
+        {
+            { 0, 1, nri::DescriptorType::TEXTURE, nri::ShaderStage::ALL },
+            { 1, 1, nri::DescriptorType::STORAGE_TEXTURE, nri::ShaderStage::ALL }
+        };
+
+        const nri::DescriptorSetDesc descriptorSetDesc[] =
+        {
+            { globalDescriptorRanges, helper::GetCountOf(globalDescriptorRanges), staticSamplersDesc, helper::GetCountOf(staticSamplersDesc) },
+            { descriptorRanges, helper::GetCountOf(descriptorRanges) },
+        };
+
+        nri::PipelineLayoutDesc pipelineLayoutDesc = {};
+        pipelineLayoutDesc.descriptorSets = descriptorSetDesc;
+        pipelineLayoutDesc.descriptorSetNum = helper::GetCountOf(descriptorSetDesc);
+        pipelineLayoutDesc.stageMask = nri::PipelineLayoutShaderStageBits::COMPUTE;
+
+        NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, pipelineLayout));
+        m_PipelineLayouts.push_back(pipelineLayout);
+
+        nri::ComputePipelineDesc pipelineDesc = {};
+        pipelineDesc.pipelineLayout = pipelineLayout;
+        pipelineDesc.computeShader = utils::LoadShader(m_DeviceDesc->graphicsAPI, "09_Upsample.cs", shaderCodeStorage);
 
         NRI_ABORT_ON_FAILURE(NRI.CreateComputePipeline(*m_Device, pipelineDesc, pipeline));
         m_Pipelines.push_back(pipeline);
@@ -1952,39 +1954,10 @@ void Sample::CreateDescriptorSets()
             Get(Descriptor::ViewZ_StorageTexture),
             Get(Descriptor::Normal_Roughness_StorageTexture),
             Get(Descriptor::BaseColor_Metalness_StorageTexture),
-            Get(Descriptor::Unfiltered_Shadow_StorageTexture),
+            Get(Descriptor::Unfiltered_ShadowData_StorageTexture),
             Get(Descriptor::Unfiltered_Diff_StorageTexture),
             Get(Descriptor::Unfiltered_Spec_StorageTexture),
-            Get(Descriptor::Unfiltered_Translucency_StorageTexture),
-        };
-
-        const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc[] =
-        {
-            { textures, helper::GetCountOf(textures) },
-            { storageTextures, helper::GetCountOf(storageTextures) },
-        };
-
-        NRI.UpdateDescriptorRanges(*descriptorSet, nri::WHOLE_DEVICE_GROUP, 0, helper::GetCountOf(descriptorRangeUpdateDesc), descriptorRangeUpdateDesc);
-    }
-
-    { // DescriptorSet::SplitScreen1
-        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *GetPipelineLayout(Pipeline::SplitScreen), 1, &descriptorSet, 1, nri::WHOLE_DEVICE_GROUP, 0));
-        m_DescriptorSets.push_back(descriptorSet);
-
-        const nri::Descriptor* textures[] =
-        {
-            Get(Descriptor::Normal_Roughness_Texture),
-            Get(Descriptor::Unfiltered_Shadow_Texture),
-            Get(Descriptor::Unfiltered_Diff_Texture),
-            Get(Descriptor::Unfiltered_Spec_Texture),
-            Get(Descriptor::Unfiltered_Translucency_Texture),
-        };
-
-        const nri::Descriptor* storageTextures[] =
-        {
-            Get(Descriptor::Shadow_StorageTexture),
-            Get(Descriptor::Diff_StorageTexture),
-            Get(Descriptor::Spec_StorageTexture),
+            Get(Descriptor::Unfiltered_Shadow_Translucency_StorageTexture),
         };
 
         const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc[] =
@@ -2067,6 +2040,52 @@ void Sample::CreateDescriptorSets()
         const nri::Descriptor* storageTextures[] =
         {
             Get(Descriptor::TaaHistoryPrev_StorageTexture),
+        };
+
+        const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc[] =
+        {
+            { textures, helper::GetCountOf(textures) },
+            { storageTextures, helper::GetCountOf(storageTextures) },
+        };
+
+        NRI.UpdateDescriptorRanges(*descriptorSet, nri::WHOLE_DEVICE_GROUP, 0, helper::GetCountOf(descriptorRangeUpdateDesc), descriptorRangeUpdateDesc);
+    }
+
+    { // DescriptorSet::Upsample1a
+        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *GetPipelineLayout(Pipeline::Upsample), 1, &descriptorSet, 1, nri::WHOLE_DEVICE_GROUP, 0));
+        m_DescriptorSets.push_back(descriptorSet);
+
+        const nri::Descriptor* textures[] =
+        {
+            Get(Descriptor::TaaHistory_Texture),
+        };
+
+        const nri::Descriptor* storageTextures[] =
+        {
+            Get(Descriptor::Final_StorageTexture),
+        };
+
+        const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc[] =
+        {
+            { textures, helper::GetCountOf(textures) },
+            { storageTextures, helper::GetCountOf(storageTextures) },
+        };
+
+        NRI.UpdateDescriptorRanges(*descriptorSet, nri::WHOLE_DEVICE_GROUP, 0, helper::GetCountOf(descriptorRangeUpdateDesc), descriptorRangeUpdateDesc);
+    }
+
+    { // DescriptorSet::Upsample1b
+        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *GetPipelineLayout(Pipeline::Upsample), 1, &descriptorSet, 1, nri::WHOLE_DEVICE_GROUP, 0));
+        m_DescriptorSets.push_back(descriptorSet);
+
+        const nri::Descriptor* textures[] =
+        {
+            Get(Descriptor::TaaHistoryPrev_Texture),
+        };
+
+        const nri::Descriptor* storageTextures[] =
+        {
+            Get(Descriptor::Final_StorageTexture),
         };
 
         const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc[] =
@@ -2418,14 +2437,16 @@ void Sample::BuildTopLevelAccelerationStructure(nri::CommandBuffer& commandBuffe
 
         uint32_t basePrimitiveId = mesh.indexOffset / 3;
         uint32_t instanceIdAndFlags = worldInstanceNum | (flags << FLAG_FIRST_BIT);
-        uint32_t averageBaseColor = material.averageBaseColor & 0x00FFFFFF;
+        
+        uint32_t packedMaterial = Packed::uf4_to_uint<7, 7, 7, 0>(material.avgBaseColor);
+        packedMaterial |= Packed::uf4_to_uint<11, 10, 6, 5>( float4(0.0f, 0.0f, material.avgSpecularColor.y, material.avgSpecularColor.z) );
 
         instanceData->mObjectToWorld0_basePrimitiveId = mObjectToWorld.col0;
         instanceData->mObjectToWorld0_basePrimitiveId.w = AsFloat(basePrimitiveId);
         instanceData->mObjectToWorld1_baseTextureIndex = mObjectToWorld.col1;
         instanceData->mObjectToWorld1_baseTextureIndex.w = AsFloat(instance.materialIndex);
         instanceData->mObjectToWorld2_averageBaseColor = mObjectToWorld.col2;
-        instanceData->mObjectToWorld2_averageBaseColor.w = AsFloat(averageBaseColor);
+        instanceData->mObjectToWorld2_averageBaseColor.w = AsFloat(packedMaterial);
         instanceData->mWorldToWorldPrev0 = mWorldToWorldPrev.col0;
         instanceData->mWorldToWorldPrev1 = mWorldToWorldPrev.col1;
         instanceData->mWorldToWorldPrev2 = mWorldToWorldPrev.col2;
@@ -2522,8 +2543,15 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
     float f = Smoothstep(-0.9f, 0.05f, sunDirection.z);
     float ambient = Lerp(1000.0f, 10000.0f, Sqrt( Saturate(sunDirection.z) )) * f * ambientAmount;
 
-    float2 screenSize = float2( (float)m_RenderResolution.x, (float)m_RenderResolution.y);
-    float2 jitter = m_Settings.TAA ? m_Camera.state.viewportJitter : 0.0f;
+    uint32_t screenW = m_RenderResolution.x;
+    uint32_t screenH = m_RenderResolution.y;
+    uint32_t rectW = uint32_t(m_RenderResolution.x * m_ResolutionScale + 0.5f);
+    uint32_t rectH = uint32_t(m_RenderResolution.y * m_ResolutionScale + 0.5f);
+
+    float2 screenSize = float2( float(screenW), float(screenH) );
+    float2 rectSize = float2( float(rectW), float(rectH) );
+    float2 jitter = (m_Settings.TAA ? m_Camera.state.viewportJitter : 0.0f) / rectSize;
+    float baseMipBias = MIP_BIAS + log2f(m_ResolutionScale);
 
     nrd::HitDistanceParameters diffHitDistanceParameters = {};
     diffHitDistanceParameters.A = m_Settings.diffHitDistScale;
@@ -2547,12 +2575,15 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gSunDirection_gExposure = sunDirection;
         data->gSunDirection_gExposure.w = m_Settings.exposure;
         data->gWorldOrigin_gMipBias = ToFloat( m_Camera.state.globalPosition );
-        data->gWorldOrigin_gMipBias.w = m_Settings.TAA ? MIP_BIAS : 0.0f;
+        data->gWorldOrigin_gMipBias.w = m_Settings.TAA ? baseMipBias : 0.0f;
         data->gTrimmingParams_gEmissionIntensity = GetTrimmingParams();
         data->gTrimmingParams_gEmissionIntensity.w = emissionIntensity;
         data->gScreenSize = screenSize;
         data->gInvScreenSize = float2(1.0f, 1.0f) / screenSize;
-        data->gJitter = jitter / screenSize;
+        data->gJitter = jitter;
+        data->gRectSize = rectSize;
+        data->gInvRectSize = float2(1.0f, 1.0f) / rectSize;
+        data->gRectSizePrev = m_RectSizePrev;
         data->gNearZ = (CAMERA_LEFT_HANDED ? 1.0f : -1.0f) * NEAR_Z / m_Settings.unitsToMetersMultiplier;
         data->gAmbient = ambient * m_Settings.exposure;
         data->gAmbientInComposition = m_AmbientInComposition;
@@ -2579,10 +2610,10 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gIndirectFullBrdf = m_Settings.indirectFullBrdf;
         data->gUseNormalMap = m_Settings.normalMap ? 1 : 0;
         data->gWorldSpaceMotion = m_Settings.worldSpaceMotion ? 1 : 0;
-        data->gUseBlueNoise = (!m_Settings.blueNoise || m_Settings.nrdSettings.referenceAccumulation) ? 0 : 1;
-        data->gCheckerboard = m_Settings.nrdSettings.checkerboard ? 1 : 0;
     }
     NRI.UnmapBuffer(*globalConstants);
+
+    m_RectSizePrev = rectSize;
 }
 
 void Sample::LoadScene()
@@ -2712,6 +2743,17 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
     UpdateConstantBuffer(frameIndex);
 
+    // Sizes
+    uint32_t screenW = m_RenderResolution.x;
+    uint32_t screenH = m_RenderResolution.y;
+    uint32_t screenGridW = (screenW + 15) / 16;
+    uint32_t screenGridH = (screenH + 15) / 16;
+
+    uint32_t rectW = uint32_t(m_RenderResolution.x * m_ResolutionScale + 0.5f);
+    uint32_t rectH = uint32_t(m_RenderResolution.y * m_ResolutionScale + 0.5f);
+    uint32_t rectGridW = (rectW + 15) / 16;
+    uint32_t rectGridH = (rectH + 15) / 16;
+
     // MAIN
     NRI.BeginCommandBuffer(*frame.commandBuffers[0], m_DescriptorPool, 0);
     {
@@ -2762,10 +2804,10 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 {Texture::ViewZ, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
                 {Texture::Normal_Roughness, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
                 {Texture::BaseColor_Metalness, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::Unfiltered_Shadow, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
+                {Texture::Unfiltered_ShadowData, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
                 {Texture::Unfiltered_Diff, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
                 {Texture::Unfiltered_Spec, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::Unfiltered_Translucency, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
+                {Texture::Unfiltered_Shadow_Translucency, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
             };
             transitionBarriers.textures = optimizedTransitions.data();
             transitionBarriers.textureNum = BuildOptimizedTransitions(transitions, helper::GetCountOf(transitions), optimizedTransitions.data(), helper::GetCountOf(optimizedTransitions));
@@ -2787,8 +2829,8 @@ void Sample::RenderFrame(uint32_t frameIndex)
             dispatchRaysDesc.raygenShader = { Get(Buffer::ShaderTable), m_ShaderEntries[ShaderGroup::Raytracing00_rgen + raygenIndex], m_DeviceDesc->rayTracingShaderGroupIdentifierSize, m_DeviceDesc->rayTracingShaderGroupIdentifierSize };
             dispatchRaysDesc.missShaders = { Get(Buffer::ShaderTable), m_ShaderEntries[ShaderGroup::Main_rmiss], m_DeviceDesc->rayTracingShaderGroupIdentifierSize, m_DeviceDesc->rayTracingShaderGroupIdentifierSize };
             dispatchRaysDesc.hitShaderGroups = { Get(Buffer::ShaderTable), m_ShaderEntries[ShaderGroup::Main_rhit], m_DeviceDesc->rayTracingShaderGroupIdentifierSize, m_DeviceDesc->rayTracingShaderGroupIdentifierSize };
-            dispatchRaysDesc.width = GetWindowWidth();
-            dispatchRaysDesc.height = GetWindowHeight();
+            dispatchRaysDesc.width = rectW;
+            dispatchRaysDesc.height = rectH;
             dispatchRaysDesc.depth = 1;
             NRI.CmdDispatchRays(commandBuffer1, dispatchRaysDesc);
         }
@@ -2806,32 +2848,44 @@ void Sample::RenderFrame(uint32_t frameIndex)
         resetHistoryFactor = 0.0f;
     if ( (m_PrevSettings.onScreen >= 11 && m_Settings.onScreen <= 4) || (m_PrevSettings.onScreen <= 4 && m_Settings.onScreen >= 11) ) // FIXME: for mip visualization
         resetHistoryFactor = 0.0f;
-    if ( m_IsActive != m_PrevIsActive )
+    if (m_IsActive != m_PrevIsActive)
+        resetHistoryFactor = 0.0f;
+    if (m_ForceHistoryReset)
         resetHistoryFactor = 0.0f;
     m_PrevIsActive = m_IsActive;
+
+    uint32_t maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
+    uint32_t maxFastAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxFastAccumulatedFrameNum * resetHistoryFactor + 0.5f);
 
     NRI.BeginCommandBuffer(*frame.commandBuffers[1], nullptr, 0);
     {
         nri::CommandBuffer& commandBuffer2 = *frame.commandBuffers[1];
+
         float2 jitter = m_Settings.TAA ? m_Camera.state.viewportJitter : 0.0f;
+        float3 cameraMotion = ToFloat(m_Camera.statePrev.globalPosition - m_Camera.state.globalPosition);
 
         nrd::CommonSettings commonSettings = {};
-        memcpy(commonSettings.worldToViewMatrix, &m_Camera.state.mWorldToView, sizeof(m_Camera.state.mWorldToView));
-        memcpy(commonSettings.worldToViewMatrixPrev, &m_Camera.statePrev.mWorldToView, sizeof(m_Camera.statePrev.mWorldToView));
         memcpy(commonSettings.viewToClipMatrix, &m_Camera.state.mViewToClip, sizeof(m_Camera.state.mViewToClip));
         memcpy(commonSettings.viewToClipMatrixPrev, &m_Camera.statePrev.mViewToClip, sizeof(m_Camera.statePrev.mViewToClip));
-        commonSettings.motionVectorScale[0] = m_Settings.worldSpaceMotion ? 1.0f : 1.0f / GetWindowWidth();
-        commonSettings.motionVectorScale[1] = m_Settings.worldSpaceMotion ? 1.0f : 1.0f / GetWindowHeight();
+        memcpy(commonSettings.worldToViewRotationMatrix, &m_Camera.state.mWorldToView, sizeof(m_Camera.state.mWorldToView));
+        memcpy(commonSettings.worldToViewRotationMatrixPrev, &m_Camera.statePrev.mWorldToView, sizeof(m_Camera.statePrev.mWorldToView));
+        commonSettings.cameraMotion[0] = cameraMotion.x;
+        commonSettings.cameraMotion[1] = cameraMotion.y;
+        commonSettings.cameraMotion[2] = cameraMotion.z;
+        commonSettings.motionVectorScale[0] = m_Settings.worldSpaceMotion ? 1.0f : 1.0f / float(rectW);
+        commonSettings.motionVectorScale[1] = m_Settings.worldSpaceMotion ? 1.0f : 1.0f / float(rectH);
         commonSettings.cameraJitter[0] = jitter.x;
         commonSettings.cameraJitter[1] = jitter.y;
+        commonSettings.resolutionScale = m_ResolutionScale;
         commonSettings.denoisingRange = 4.0f * m_Scene.aabb.GetRadius() * m_Settings.unitsToMetersMultiplier;
+        commonSettings.disocclusionThreshold = m_Settings.nrdSettings.referenceAccumulation ? 0.005f : m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
         commonSettings.debug = m_Settings.debug;
         commonSettings.frameIndex = resetHistoryFactor == 0.0f ? 0 : frameIndex;
         commonSettings.worldSpaceMotion = m_Settings.worldSpaceMotion;
         commonSettings.forceReferenceAccumulation = m_Settings.nrdSettings.referenceAccumulation;
+        commonSettings.splitScreen = m_Settings.separator;
 
         nrd::SigmaShadowSettings shadowSettings = {};
-        shadowSettings.lightSourceAngularDiameter = m_Settings.sunAngularDiameter;
 
         NrdUserPool userPool =
         {{
@@ -2844,20 +2898,17 @@ void Sample::RenderFrame(uint32_t frameIndex)
             // IN_VIEWZ
             {Get(Texture::ViewZ), &GetState(Texture::ViewZ), GetFormat(Texture::ViewZ)},
 
-            // IN_SHADOW
-            {Get(Texture::Unfiltered_Shadow), &GetState(Texture::Unfiltered_Shadow), GetFormat(Texture::Unfiltered_Shadow)},
-
             // IN_DIFF_HIT
             {Get(Texture::Unfiltered_Diff), &GetState(Texture::Unfiltered_Diff), GetFormat(Texture::Unfiltered_Diff)},
 
             // IN_SPEC_HIT
             {Get(Texture::Unfiltered_Spec), &GetState(Texture::Unfiltered_Spec), GetFormat(Texture::Unfiltered_Spec)},
 
-            // IN_TRANSLUCENCY
-            {Get(Texture::Unfiltered_Translucency), &GetState(Texture::Unfiltered_Translucency), GetFormat(Texture::Unfiltered_Translucency)},
+            // IN_SHADOWDATA
+            {Get(Texture::Unfiltered_ShadowData), &GetState(Texture::Unfiltered_ShadowData), GetFormat(Texture::Unfiltered_ShadowData)},
 
-            // OUT_SHADOW
-            {nullptr, nullptr, nri::Format::UNKNOWN},
+            // IN_SHADOW_TRANSLUCENCY
+            {Get(Texture::Unfiltered_Shadow_Translucency), &GetState(Texture::Unfiltered_Shadow_Translucency), GetFormat(Texture::Unfiltered_Shadow_Translucency)},
 
             // OUT_SHADOW_TRANSLUCENCY
             {Get(Texture::Shadow), &GetState(Texture::Shadow), GetFormat(Texture::Shadow)},
@@ -2874,17 +2925,18 @@ void Sample::RenderFrame(uint32_t frameIndex)
             helper::Annotation annotation(NRI, commandBuffer2, "REBLUR / SIGMA denoising");
 
             const float3 trimmingParams = GetTrimmingParams();
+            const float antilagResolutionScale = 1440.0f / screenH; // it's not related to DRS, just the simplest approximation of the fact that at lower resolution signal is worse
 
             nrd::AntilagIntensitySettings antilagIntensitySettings = {};
-            antilagIntensitySettings.thresholdMin = m_Settings.nrdSettings.antilagIntensityThresholdMin * 0.01f;
+            antilagIntensitySettings.thresholdMin = m_Settings.nrdSettings.antilagIntensityThresholdMin * 0.01f * antilagResolutionScale;
             antilagIntensitySettings.thresholdMax = m_Settings.nrdSettings.antilagIntensityThresholdMax * 0.01f;
-            antilagIntensitySettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagIntensitySigmaScale;
+            antilagIntensitySettings.sigmaScale = m_Settings.nrdSettings.antilagIntensitySigmaScale * antilagResolutionScale;
             antilagIntensitySettings.enable = m_Settings.nrdSettings.antilagIntensity;
 
             nrd::AntilagHitDistanceSettings antilagHitDistanceSettings = {};
-            antilagHitDistanceSettings.thresholdMin = m_Settings.nrdSettings.antilagHitDistanceThresholdMin * 0.01f;
+            antilagHitDistanceSettings.thresholdMin = m_Settings.nrdSettings.antilagHitDistanceThresholdMin * 0.01f * antilagResolutionScale;
             antilagHitDistanceSettings.thresholdMax = m_Settings.nrdSettings.antilagHitDistanceThresholdMax * 0.01f;
-            antilagHitDistanceSettings.sigmaScale = m_Settings.nrdSettings.referenceAccumulation ? 2.0f : m_Settings.nrdSettings.antilagHitDistanceSigmaScale;
+            antilagHitDistanceSettings.sigmaScale = m_Settings.nrdSettings.antilagHitDistanceSigmaScale * antilagResolutionScale;
             antilagHitDistanceSettings.enable = m_Settings.nrdSettings.antilagHitDistance;
 
             nrd::HitDistanceParameters diffHitDistanceParameters = {};
@@ -2893,89 +2945,49 @@ void Sample::RenderFrame(uint32_t frameIndex)
             nrd::HitDistanceParameters specHitDistanceParameters = {};
             specHitDistanceParameters.A = m_Settings.specHitDistScale;
 
-            #if( NRD_COMBINED == 1 )
-                nrd::ReblurDiffuseSpecularSettings diffuseSpecularSettings = {};
-                diffuseSpecularSettings.antilagIntensitySettings = antilagIntensitySettings;
-                diffuseSpecularSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
-                diffuseSpecularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
-                diffuseSpecularSettings.diffHitDistanceParameters = diffHitDistanceParameters;
-                diffuseSpecularSettings.diffMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-                diffuseSpecularSettings.diffNoisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
-                diffuseSpecularSettings.diffBlurRadius = m_Settings.nrdSettings.diffBlurRadius;
-                diffuseSpecularSettings.diffMaxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
-                diffuseSpecularSettings.diffCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
-                diffuseSpecularSettings.specHitDistanceParameters = specHitDistanceParameters;
-                diffuseSpecularSettings.specLobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
-                diffuseSpecularSettings.specMaxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-                diffuseSpecularSettings.specNoisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
-                diffuseSpecularSettings.specBlurRadius = m_Settings.nrdSettings.specBlurRadius;
-                diffuseSpecularSettings.specMaxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
-                diffuseSpecularSettings.specCheckerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
-                m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE_SPECULAR, &diffuseSpecularSettings);
-            #else
-                nrd::ReblurDiffuseSettings diffuseSettings = {};
-                diffuseSettings.hitDistanceParameters = diffHitDistanceParameters;
-                diffuseSettings.antilagIntensitySettings = antilagIntensitySettings;
-                diffuseSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
-                diffuseSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-                diffuseSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
-                diffuseSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
-                diffuseSettings.blurRadius = m_Settings.nrdSettings.diffBlurRadius;
-                diffuseSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
-                diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
-                m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE, &diffuseSettings);
+            nrd::ReblurDiffuseSpecularSettings reblurSettings = {};
+            reblurSettings.diffuseSettings.hitDistanceParameters = diffHitDistanceParameters;
+            reblurSettings.diffuseSettings.antilagIntensitySettings = antilagIntensitySettings;
+            reblurSettings.diffuseSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
+            reblurSettings.diffuseSettings.maxAccumulatedFrameNum = m_Settings.nrdSettings.referenceAccumulation ? nrd::REBLUR_MAX_HISTORY_FRAME_NUM : maxAccumulatedFrameNum;
+            reblurSettings.diffuseSettings.maxFastAccumulatedFrameNum = m_Settings.nrdSettings.referenceAccumulation ? nrd::REBLUR_MAX_HISTORY_FRAME_NUM : maxFastAccumulatedFrameNum;
+            reblurSettings.diffuseSettings.blurRadius = m_Settings.nrdSettings.referenceAccumulation ? 0.0f : m_Settings.nrdSettings.diffBlurRadius;
+            reblurSettings.diffuseSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
+            reblurSettings.diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
+            reblurSettings.diffuseSettings.antifirefly = m_Settings.nrdSettings.antifirefly;
 
-                nrd::ReblurSpecularSettings specularSettings = {};
-                specularSettings.hitDistanceParameters = specHitDistanceParameters;
-                specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
-                specularSettings.antilagIntensitySettings = antilagIntensitySettings;
-                specularSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
-                specularSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.nrdSettings.maxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-                specularSettings.noisinessBlurrinessBalance = m_Settings.nrdSettings.noisinessBlurrinessBalance;
-                specularSettings.disocclusionThreshold = m_Settings.nrdSettings.disocclusionThreshold * 0.01f;
-                specularSettings.blurRadius = m_Settings.nrdSettings.specBlurRadius;
-                specularSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
-                specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
-                m_NRD.SetMethodSettings(nrd::Method::REBLUR_SPECULAR, &specularSettings);
+            reblurSettings.specularSettings.hitDistanceParameters = specHitDistanceParameters;
+            reblurSettings.specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
+            reblurSettings.specularSettings.antilagIntensitySettings = antilagIntensitySettings;
+            reblurSettings.specularSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
+            reblurSettings.specularSettings.maxAccumulatedFrameNum = reblurSettings.diffuseSettings.maxAccumulatedFrameNum;
+            reblurSettings.specularSettings.maxFastAccumulatedFrameNum = reblurSettings.diffuseSettings.maxFastAccumulatedFrameNum;
+            reblurSettings.specularSettings.blurRadius = m_Settings.nrdSettings.referenceAccumulation ? 0.0f : m_Settings.nrdSettings.specBlurRadius;
+            reblurSettings.specularSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
+            reblurSettings.specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
+            reblurSettings.specularSettings.antifirefly = m_Settings.nrdSettings.antifirefly;
+
+            #if( NRD_COMBINED == 1 )
+                m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE_SPECULAR, &reblurSettings);
+            #else
+                m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE, &reblurSettings.diffuseSettings);
+                m_NRD.SetMethodSettings(nrd::Method::REBLUR_SPECULAR, &reblurSettings.specularSettings);
             #endif
             m_NRD.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
 
-            m_NRD.Denoise(commandBuffer2, commonSettings, userPool);
+            m_NRD.Denoise(frameIndex, commandBuffer2, commonSettings, userPool);
         }
         else if (m_Settings.denoiser == RELAX)
         {
             helper::Annotation annotation(NRI, commandBuffer2, "RELAX / SIGMA denoising");
 
+            m_RelaxSettings.specularMaxFastAccumulatedFrameNum = maxFastAccumulatedFrameNum;
+            m_RelaxSettings.diffuseMaxFastAccumulatedFrameNum = maxFastAccumulatedFrameNum;
+
             m_RELAX.SetMethodSettings(nrd::Method::RELAX_DIFFUSE_SPECULAR, &m_RelaxSettings);
             m_RELAX.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
 
-            m_RELAX.Denoise(commandBuffer2, commonSettings, userPool);
-        }
-        else
-        {
-            helper::Annotation annotation(NRI, commandBuffer2, "SVGF / SIGMA denoising");
-
-            nrd::SvgfSettings svgfSettings = {};
-            svgfSettings.disocclusionThreshold = m_Settings.svgfSettings.disocclusionThreshold * 0.01f;
-            svgfSettings.varianceScale = m_Settings.svgfSettings.varianceScale;
-            svgfSettings.zDeltaScale = m_Settings.svgfSettings.zDeltaScale;
-
-            svgfSettings.isDiffuse = true;
-            svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.diffMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            svgfSettings.momentsMaxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.diffMomentsMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            m_SVGF_Diff.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
-            m_SVGF_Diff.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
-
-            m_SVGF_Diff.Denoise(commandBuffer2, commonSettings, userPool);
-
-            svgfSettings.isDiffuse = false;
-            svgfSettings.maxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.specMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            svgfSettings.momentsMaxAccumulatedFrameNum = uint32_t(m_Settings.svgfSettings.specMomentsMaxAccumulatedFrameNum * resetHistoryFactor + 0.5f);
-            userPool[(uint32_t)nrd::ResourceType::IN_SVGF] = {Get(Texture::Unfiltered_Spec), &GetState(Texture::Unfiltered_Spec), GetFormat(Texture::Unfiltered_Spec)};
-            userPool[(uint32_t)nrd::ResourceType::OUT_SVGF] = {Get(Texture::Spec), &GetState(Texture::Spec), GetFormat(Texture::Spec)};
-            m_SVGF_Spec.SetMethodSettings(nrd::Method::SVGF, &svgfSettings);
-
-            m_SVGF_Spec.Denoise(commandBuffer2, commonSettings, userPool);
+            m_RELAX.Denoise(frameIndex, commandBuffer2, commonSettings, userPool);
         }
     }
     NRI.EndCommandBuffer(*frame.commandBuffers[1]);
@@ -2984,39 +2996,6 @@ void Sample::RenderFrame(uint32_t frameIndex)
     NRI.BeginCommandBuffer(*frame.commandBuffers[2], m_DescriptorPool, 0);
     {
         nri::CommandBuffer& commandBuffer3 = *frame.commandBuffers[2];
-
-        // Split screen
-        if( m_Settings.separator != 0.0f )
-        {
-            helper::Annotation annotation(NRI, commandBuffer3, "Split screen");
-
-            const TextureState transitions[] =
-            {
-                // Input
-                {Texture::Normal_Roughness, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::Unfiltered_Shadow, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::Unfiltered_Diff, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::Unfiltered_Spec, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                {Texture::Unfiltered_Translucency, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
-                // Output
-                {Texture::Shadow, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::Diff, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-                {Texture::Spec, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
-            };
-            transitionBarriers.textures = optimizedTransitions.data();
-            transitionBarriers.textureNum = BuildOptimizedTransitions(transitions, helper::GetCountOf(transitions), optimizedTransitions.data(), helper::GetCountOf(optimizedTransitions));
-            NRI.CmdPipelineBarrier(commandBuffer3, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
-
-            NRI.CmdSetPipelineLayout(commandBuffer3, *GetPipelineLayout(Pipeline::SplitScreen));
-            NRI.CmdSetPipeline(commandBuffer3, *Get(Pipeline::SplitScreen));
-
-            const nri::DescriptorSet* descriptorSets[] = { frame.globalConstantBufferDescriptorSet, Get(DescriptorSet::SplitScreen1) };
-            NRI.CmdSetDescriptorSets(commandBuffer3, 0, helper::GetCountOf(descriptorSets), descriptorSets, nullptr);
-
-            const uint32_t gridWidth = (m_RenderResolution.x + 15) / 16;
-            const uint32_t gridHeight = (m_RenderResolution.y + 15) / 16;
-            NRI.CmdDispatch(commandBuffer3, gridWidth, gridHeight, 1);
-        }
 
         { // Composition
             helper::Annotation annotation(NRI, commandBuffer3, "Composition");
@@ -3044,16 +3023,15 @@ void Sample::RenderFrame(uint32_t frameIndex)
             const nri::DescriptorSet* descriptorSets[] = { frame.globalConstantBufferDescriptorSet, Get(DescriptorSet::Composition1) };
             NRI.CmdSetDescriptorSets(commandBuffer3, 0, helper::GetCountOf(descriptorSets), descriptorSets, nullptr);
 
-            const uint32_t gridWidth = (m_RenderResolution.x + 15) / 16;
-            const uint32_t gridHeight = (m_RenderResolution.y + 15) / 16;
-            NRI.CmdDispatch(commandBuffer3, gridWidth, gridHeight, 1);
+            NRI.CmdDispatch(commandBuffer3, rectGridW, rectGridH, 1);
         }
+
+        Texture finalResult = Texture::Final;
+        const Texture taaSrc = isEven ? Texture::TaaHistoryPrev : Texture::TaaHistory;
+        const Texture taaDst = isEven ? Texture::TaaHistory : Texture::TaaHistoryPrev;
 
         { // Temporal
             helper::Annotation annotation(NRI, commandBuffer3, "Temporal");
-
-            const Texture taaSrc = isEven ? Texture::TaaHistoryPrev : Texture::TaaHistory;
-            const Texture taaDst = isEven ? Texture::TaaHistory : Texture::TaaHistoryPrev;
 
             const TextureState transitions[] =
             {
@@ -3072,27 +3050,50 @@ void Sample::RenderFrame(uint32_t frameIndex)
             NRI.CmdSetPipelineLayout(commandBuffer3, *GetPipelineLayout(Pipeline::Temporal));
             NRI.CmdSetPipeline(commandBuffer3, *Get(Pipeline::Temporal));
 
-            const nri::DescriptorSet* descriptorSets[] =
-            {
-                frame.globalConstantBufferDescriptorSet,
-                Get(isEven ? DescriptorSet::Temporal1a : DescriptorSet::Temporal1b)
-            };
+            const nri::DescriptorSet* descriptorSets[] = { frame.globalConstantBufferDescriptorSet, Get(isEven ? DescriptorSet::Temporal1a : DescriptorSet::Temporal1b) };
             NRI.CmdSetDescriptorSets(commandBuffer3, 0, helper::GetCountOf(descriptorSets), descriptorSets, nullptr);
 
-            const uint32_t gridWidth = (m_RenderResolution.x + 15) / 16;
-            const uint32_t gridHeight = (m_RenderResolution.y + 15) / 16;
-            NRI.CmdDispatch(commandBuffer3, gridWidth, gridHeight, 1);
+            NRI.CmdDispatch(commandBuffer3, rectGridW, rectGridH, 1);
+        }
 
+        // Upsample
+        if (m_ResolutionScale < 1.0f)
+        {
+            helper::Annotation annotation(NRI, commandBuffer3, "Upsample");
+
+            const TextureState transitions[] =
+            {
+                // Input
+                {taaDst, nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE},
+                // Output
+                {Texture::Final, nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL},
+            };
+            transitionBarriers.textures = optimizedTransitions.data();
+            transitionBarriers.textureNum = BuildOptimizedTransitions(transitions, helper::GetCountOf(transitions), optimizedTransitions.data(), helper::GetCountOf(optimizedTransitions));
+            NRI.CmdPipelineBarrier(commandBuffer3, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
+
+            NRI.CmdSetPipelineLayout(commandBuffer3, *GetPipelineLayout(Pipeline::Upsample));
+            NRI.CmdSetPipeline(commandBuffer3, *Get(Pipeline::Upsample));
+
+            const nri::DescriptorSet* descriptorSets[] = { frame.globalConstantBufferDescriptorSet, Get(isEven ? DescriptorSet::Upsample1a : DescriptorSet::Upsample1b) };
+            NRI.CmdSetDescriptorSets(commandBuffer3, 0, helper::GetCountOf(descriptorSets), descriptorSets, nullptr);
+
+            NRI.CmdDispatch(commandBuffer3, screenGridW, screenGridH, 1);
+        }
+        else
+            finalResult = taaDst;
+
+        { // Copy to back-buffer
             const nri::TextureTransitionBarrierDesc copyTransitions[] =
             {
-                nri::TextureTransition(GetState(taaDst), nri::AccessBits::COPY_SOURCE, nri::TextureLayout::GENERAL),
+                nri::TextureTransition(GetState(finalResult), nri::AccessBits::COPY_SOURCE, nri::TextureLayout::GENERAL),
                 nri::TextureTransition(backBuffer->texture, nri::AccessBits::UNKNOWN, nri::AccessBits::COPY_DESTINATION, nri::TextureLayout::UNKNOWN, nri::TextureLayout::GENERAL),
             };
             transitionBarriers.textures = copyTransitions;
             transitionBarriers.textureNum = helper::GetCountOf(copyTransitions);
             NRI.CmdPipelineBarrier(commandBuffer3, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
 
-            NRI.CmdCopyTexture(commandBuffer3, *backBuffer->texture, 0, nullptr, *Get(taaDst), 0, nullptr);
+            NRI.CmdCopyTexture(commandBuffer3, *backBuffer->texture, 0, nullptr, *Get(finalResult), 0, nullptr);
         }
 
         { // UI
@@ -3127,7 +3128,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
     m_Timer.UpdateElapsedTimeSinceLastSave();
 
     float msLimit = 1000.0f / m_Settings.maxFps;
-    while( m_Timer.GetElapsedTime() < msLimit &&  m_Settings.limitFps)
+    while( m_Timer.GetElapsedTime() < msLimit && m_Settings.limitFps)
         m_Timer.UpdateElapsedTimeSinceLastSave();
 
     m_Timer.SaveCurrentTime();

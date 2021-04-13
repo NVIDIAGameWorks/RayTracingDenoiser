@@ -9,14 +9,22 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "RELAX_Config.hlsl"
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
-    int2 gResolution;
-    uint gFireflyEnabled;
+    int2  gResolution;
+    uint  gFireflyEnabled;
+    float gDenoisingRange;
 }
 
+#include "NRD_Common.hlsl"
 #include "RELAX_Common.hlsl"
+
+#define THREAD_GROUP_SIZE 16
+#define SKIRT 1
 
 // Inputs
 NRI_RESOURCE(Texture2D<uint2>, gSpecularAndDiffuseIlluminationLogLuv, t, 0, 0);
@@ -27,17 +35,10 @@ NRI_RESOURCE(RWTexture2D<uint2>, gOutSpecularAndDiffuseIlluminationLogLuv, u, 0,
 NRI_RESOURCE(RWTexture2D<float4>, gOutSpecularIllumination, u, 1, 0);
 NRI_RESOURCE(RWTexture2D<float4>, gOutDiffuseIllumination, u, 2, 0);
 
-groupshared uint4 sharedPackedIllumination[16 + 2][16 + 2];
-groupshared float4 sharedPackedZAndNormal[16 + 2][16 + 2];
+groupshared uint4 sharedPackedIllumination[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
+groupshared float4 sharedPackedZAndNormal[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 
-//---------------------
 // Helper functions
-//---------------------
-
-static const float c_floatMax = 3.402823466e+38f;
-
-// Unpacking from LogLuv to RGB is expensive, so let's do it
-// at the stage of populating the shared memory
 uint4 repackIllumination(uint2 specularAndDiffuseIlluminationLogLuv)
 {
     float3 specularIllum;
@@ -81,31 +82,20 @@ float edgeStoppingDepth(float centerDepth, float sampleDepth)
     return (abs(centerDepth - sampleDepth) / (centerDepth + 1e-6)) < 0.1 ? 1.0 : 0.0;
 }
 
-//---------------------
-// Firefly filters
-//---------------------
-
 void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId, uint2 groupId)
 {
-    // Renumerating threads to load 18x18 (16+2 x 16+2) block of data to shared memory
-	//
-	// The preloading will be done in two stages:
-	// at the first stage the group will load 16x16 / 18 = 14.2 rows of the shared memory,
-	// and all threads in the group will be following the same path.
-	// At the second stage, the rest 18x18 - 16x16 = 68 threads = 2.125 warps will load the rest of data
+	uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
+	uint newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+	uint newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
-	uint linearThreadIndex = groupThreadId.y * 16 + groupThreadId.x;
-	uint newIdxX = linearThreadIndex % 18;
-	uint newIdxY = linearThreadIndex / 18;
-
-    uint blockXStart = groupId.x * 16;
-    uint blockYStart = groupId.y * 16;
+    uint blockXStart = groupId.x * THREAD_GROUP_SIZE;
+    uint blockYStart = groupId.y * THREAD_GROUP_SIZE;
 
 	// First stage
 	uint ox = newIdxX;
 	uint oy = newIdxY;
-	int xx = blockXStart + newIdxX - 1;
-	int yy = blockYStart + newIdxY - 1;
+	int xx = blockXStart + newIdxX - SKIRT;
+	int yy = blockYStart + newIdxY - SKIRT;
 
     uint4 packedIllumination = 0;
     float4 packedNormalAndDepth = 0;
@@ -119,19 +109,19 @@ void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId,
     sharedPackedZAndNormal[oy][ox] = packedNormalAndDepth;
 
 	// Second stage
-	linearThreadIndex += 16 * 16;
-	newIdxX = linearThreadIndex % 18;
-	newIdxY = linearThreadIndex / 18;
+	linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
+	newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+	newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
 	ox = newIdxX;
 	oy = newIdxY;
-	xx = blockXStart + newIdxX - 1;
-	yy = blockYStart + newIdxY - 1;
+	xx = blockXStart + newIdxX - SKIRT;
+	yy = blockYStart + newIdxY - SKIRT;
 
     packedIllumination = 0;
     packedNormalAndDepth = 0;
 
-  	if (linearThreadIndex < 18 * 18)
+  	if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
 	{
 	    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
 	    {
@@ -144,14 +134,10 @@ void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId,
 }
 
 // Cross bilateral Rank-Conditioned Rank-Selection (RCRS) filter
-void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, out float3 outDiffuse)
+void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, float centerDepth, out float3 outSpecular, out float3 outDiffuse)
 {
     // Fetching center data
-    uint2 sharedMemoryIndex = groupThreadId.xy + int2(1,1);
-
-    float3 normalCenter;
-    float depthCenter;
-    unpackNormalAndDepth(sharedPackedZAndNormal[sharedMemoryIndex.y][sharedMemoryIndex.x], normalCenter, depthCenter);
+    uint2 sharedMemoryIndex = groupThreadId.xy + int2(SKIRT, SKIRT);
 
     float3 specularIlluminationCenter;
     float3 diffuseIlluminationCenter;
@@ -176,16 +162,16 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
         for (int xx = -1; xx <= 1; xx++)
         {
             int2 p = dispatchThreadId.xy + int2(xx, yy);
-            int2 sharedMemoryIndexSample = groupThreadId.xy + int2(1,1) + int2(xx,yy);
+            int2 sharedMemoryIndexSample = groupThreadId.xy + int2(SKIRT, SKIRT) + int2(xx,yy);
 
             if ((xx == 0) && (yy == 0)) continue;
             if ((p.x < 0) || (p.x >= gResolution.x)) continue;
             if ((p.y < 0) || (p.y >= gResolution.y)) continue;
 
             // Fetching sample data
-            float3 normalSample;
-            float depthSample;
-            unpackNormalAndDepth(sharedPackedZAndNormal[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x], normalSample, depthSample);
+            float3 sampleNormal;
+            float sampleDepth;
+            unpackNormalAndDepth(sharedPackedZAndNormal[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x], sampleNormal, sampleDepth);
 
             float3 specularIlluminationSample;
             float3 diffuseIlluminationSample;
@@ -196,10 +182,10 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
 
             // Applying weights
             // ..normal weight
-            float weight = dot(normalCenter, normalSample) > 0.99 ? 1.0 : 0.0;
+            float weight = dot(centerNormal, sampleNormal) > 0.99 ? 1.0 : 0.0;
 
             // ..depth weight
-            weight *= edgeStoppingDepth(depthCenter, depthSample);
+            weight *= edgeStoppingDepth(centerDepth, sampleDepth);
 
             if(weight > 0)
             {
@@ -257,7 +243,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, out float3 outSpecular, 
     unpackIllumination(sharedPackedIllumination[diffuseCoords.y][diffuseCoords.x], dontcare, outDiffuse);
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     // Populating shared memory for firefly filter
@@ -267,7 +253,16 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
     GroupMemoryBarrierWithGroupSync();
 
     // Shared memory is populated now and can be used for filtering
-    if (any(int2(dispatchThreadId.xy) >= gResolution)) return;
+    float3 centerNormal;
+    float centerDepth;
+    unpackNormalAndDepth(sharedPackedZAndNormal[groupThreadId.y + SKIRT][groupThreadId.x + SKIRT], centerNormal, centerDepth);
+
+    // Early out if linearZ is beyond denoising range
+    [branch]
+    if (centerDepth > gDenoisingRange)
+    {
+        return;
+    }
 
     // Running firefly filter
     float3 outSpecularIllumination;
@@ -275,13 +270,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV
 
     if (gFireflyEnabled > 0)
     {
-        runRCRS(dispatchThreadId.xy, groupThreadId.xy, outSpecularIllumination, outDiffuseIllumination);
+        runRCRS(dispatchThreadId.xy, groupThreadId.xy, centerNormal, centerDepth, outSpecularIllumination, outDiffuseIllumination);
     }
     else
     {
         // No firefly filter, passing data from shared memory without modification
-        uint2 sharedMemoryIndex = groupThreadId.xy + int2(1,1);
-        unpackIllumination(sharedPackedIllumination[sharedMemoryIndex.y][sharedMemoryIndex.x], outSpecularIllumination, outDiffuseIllumination);
+        unpackIllumination(sharedPackedIllumination[groupThreadId.y + SKIRT][groupThreadId.x + SKIRT], outSpecularIllumination, outDiffuseIllumination);
     }
 
     gOutSpecularAndDiffuseIlluminationLogLuv[dispatchThreadId.xy] = PackSpecularAndDiffuseToLogLuvUint2(outSpecularIllumination, outDiffuseIllumination);

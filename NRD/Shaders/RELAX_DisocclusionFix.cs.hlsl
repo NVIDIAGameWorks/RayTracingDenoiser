@@ -9,22 +9,25 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "BindingBridge.hlsl"
+#include "NRD.hlsl"
+#include "STL.hlsl"
+#include "RELAX_Config.hlsl"
 
 NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
 {
-    float4              gFrustumRight;
-    float4              gFrustumUp;
-    float4              gFrustumForward;
-
-    int2                gResolution;
-    float2              gInvViewSize;
-
-    float               gDisocclusionFixEdgeStoppingZFraction;
-    float               gDisocclusionFixEdgeStoppingNormalPower;
-    float               gMaxRadius;
-    int                 gFramesToFix;
+    float4 gFrustumRight;
+    float4 gFrustumUp;
+    float4 gFrustumForward;
+    int2   gResolution;
+    float2 gInvRectSize;
+    float  gDisocclusionThreshold;
+    float  gDisocclusionFixEdgeStoppingNormalPower;
+    float  gMaxRadius;
+    int    gFramesToFix;
+    float  gDenoisingRange;
 };
 
+#include "NRD_Common.hlsl"
 #include "RELAX_Common.hlsl"
 
 // Inputs
@@ -39,26 +42,17 @@ NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationLogLuv, u, 0
 NRI_RESOURCE(RWTexture2D<uint2>,  gOutSpecularAndDiffuseIlluminationResponsiveLogLuv, u, 1, 0);
 NRI_RESOURCE(RWTexture2D<float2>, gOutSpecularAndDiffuse2ndMoments, u, 2, 0);
 
-// Helper macros
-#define PI 3.141593
-#define linearStep(a, b, x) saturate((x - a)/(b - a))
-#define smoothStep01(x) (x*x*(3.0 - 2.0*x))
-
 // Helper functions
-float smoothStep(float a, float b, float x)
-{
-    x = linearStep(a, b, x); return smoothStep01(x);
-}
-
 float3 getCurrentWorldPos(int2 pixelPos, float depth)
 {
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvViewSize * 2.0 - 1.0;
+    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
     return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
-float edgeStoppingDepth(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float centerLinearZ)
+float getGeometryWeight(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float centerLinearZ)
 {
-    return (abs(dot(centerWorldPos - sampleWorldPos, centerNormal) / centerLinearZ) > gDisocclusionFixEdgeStoppingZFraction) ? 0.0 : 1.0;
+    float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
+    return (distanceToCenterPointPlane / (centerLinearZ + 1e-6) > gDisocclusionThreshold) ? 0.0 : 1.0;
 }
 
 float getDiffuseNormalWeight(float3 centerNormal, float3 pointNormal)
@@ -76,38 +70,23 @@ float getSpecularLobeHalfAngle(float roughness)
     // Defines a cone angle, where micro-normals are distributed
     float r2 = roughness * roughness;
     float r3 = roughness * r2;
-
-    // Approximation of https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf (page 72)
-    // for [0..1] domain:
-
-    // float k = 0.75; // % of NDF volume. Is it the trimming factor from VNDF sampling?
-    // return atan(m * k / (1.0 - k));
-
     return 3.141592 * r2 / (1.0 + 0.5*r2 + r3);
 }
 
 float2 getNormalWeightParams(float roughness, float numFramesInHistory)
 {
     // This is the main parameter - cone angle
-    float angle = getSpecularLobeHalfAngle(roughness);
-
-    // Increasing angle ~10x to relax rejection of the neighbors if not enough frames in history
-    angle *= 3.0 - 2.666 * saturate(numFramesInHistory / (gFramesToFix + 1.0));
-    angle = min(0.5 * PI, angle);
-
+    float angle = 0.33*getSpecularLobeHalfAngle(roughness);
     return float2(angle, 1.0);
 }
 
-float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
+float getSpecularRWeight(float2 params0, float3 v0, float3 v)
 {
-    float cosa = saturate(dot(n0, n));
-    float a = acos(cosa);
-
-    a = 1.0 - smoothStep(0.0, params0.x, a);
-
+    float cosa = saturate(dot(v0, v));
+    float a = STL::Math::AcosApprox(cosa);
+    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
     return saturate(1.0 + (a - 1.0) * params0.y);
 }
-
 
 //
 // Main
@@ -119,12 +98,25 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     const int2 ipos = int2(dispatchThreadId.xy);
 
 	// Getting data at the center
+    float3 centerNormal;
+    float centerRoughness;
+    float centerLinearZ;
+    UnpackNormalRoughnessDepth(centerNormal, centerRoughness, centerLinearZ, gNormalRoughnessDepth[ipos]);
+
+    // Early out if linearZ is beyond denoising range
+    [branch]
+    if (centerLinearZ > gDenoisingRange)
+    {
+        return;
+    }
+
     float historyLength = 255.0 * gSpecularAndDiffuseHistoryLength[ipos].g; // Using diffuse history length to control disocclusion fix
     uint2 illuminationPacked = gSpecularAndDiffuseIlluminationLogLuv[ipos];
     uint2 illuminationResponsivePacked = gSpecularAndDiffuseIlluminationResponsiveLogLuv[ipos];
     float2 centerSpecularAndDiffuse2ndMoments = gSpecularAndDiffuse2ndMoments[ipos];
 
-    // Early out if no disocclusion detected
+    // Pass through the input data if no disocclusion detected
+    [branch]
     if (historyLength > gFramesToFix)
     {
         gOutSpecularAndDiffuseIlluminationLogLuv[ipos] = illuminationPacked;
@@ -138,12 +130,9 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 centerDiffuseIlluminationResponsive;
     UnpackSpecularAndDiffuseFromLogLuvUint2(centerSpecularIlluminationResponsive, centerDiffuseIlluminationResponsive, illuminationResponsivePacked);
 
-    float3 centerNormal;
-    float centerRoughness;
-    float centerDepth;
-    UnpackNormalRoughnessDepth(centerNormal, centerRoughness, centerDepth, gNormalRoughnessDepth[ipos]);
-
-    float3 centerWorldPos = getCurrentWorldPos(ipos, centerDepth);
+    float3 centerWorldPos = getCurrentWorldPos(ipos, centerLinearZ);
+    float3 centerV = normalize(centerWorldPos);
+    float3 centerR = reflect(centerV, centerNormal);
     float2 normalWeightParams = getNormalWeightParams(centerRoughness, historyLength);
 
     // Running sparse cross-bilateral filter
@@ -181,19 +170,23 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         float3 sampleNormal;
         float sampleRoughnessDontCare;
-        float sampleDepth;
-        UnpackNormalRoughnessDepth(sampleNormal, sampleRoughnessDontCare, sampleDepth, gNormalRoughnessDepth[samplePosInt]);
+        float sampleLinearZ;
+        UnpackNormalRoughnessDepth(sampleNormal, sampleRoughnessDontCare, sampleLinearZ, gNormalRoughnessDepth[samplePosInt]);
 
         // Edge stopping functions:
         // ..normal
-        float specularW = getSpecularNormalWeight(normalWeightParams, centerNormal, sampleNormal);
         float diffuseW = getDiffuseNormalWeight(centerNormal, sampleNormal);
 
-        // ..depth
-        float3 sampleWorldPos = getCurrentWorldPos(samplePosInt, sampleDepth);
-        float depthWeight = edgeStoppingDepth(centerWorldPos, centerNormal, sampleWorldPos, centerDepth);
-        specularW *= depthWeight;
-        diffuseW *= depthWeight;
+        // ..geometry
+        float3 sampleWorldPos = getCurrentWorldPos(samplePosInt, sampleLinearZ);
+        float geometryWeight = getGeometryWeight(centerWorldPos, centerNormal, sampleWorldPos, centerLinearZ);
+        float specularW = geometryWeight;
+        diffuseW *= geometryWeight;
+
+        // ..specular lobe
+        float3 sampleV = normalize(sampleWorldPos);
+        float3 sampleR = reflect(sampleV, sampleNormal);
+        specularW *= getSpecularRWeight(normalWeightParams, sampleR, centerR);
 
         // Summing up the result
         specularIlluminationSum += sampleSpecularIllumination * specularW;

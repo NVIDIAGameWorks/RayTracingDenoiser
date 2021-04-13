@@ -141,7 +141,8 @@ struct GeometryProps
     float mip;
     float viewZ;
     float tmin;
-    uint textureOffsetAndFlags;
+    uint textureOffset;
+    uint flags;
 
     float3 GetXWithOffset()
     {
@@ -154,25 +155,22 @@ struct GeometryProps
     }
 
     bool IsTransparent()
-    { return ( textureOffsetAndFlags & ( FLAG_TRANSPARENT << 24 ) ) != 0; }
+    { return ( flags & ( FLAG_TRANSPARENT << 24 ) ) != 0; }
 
     bool IsEmissive()
-    { return ( textureOffsetAndFlags & ( ( FLAG_EMISSION | FLAG_FORCED_EMISSION ) << 24 ) ) != 0; }
+    { return ( flags & ( ( FLAG_EMISSION | FLAG_FORCED_EMISSION ) << 24 ) ) != 0; }
 
     bool IsForcedEmission()
-    { return ( textureOffsetAndFlags & ( FLAG_FORCED_EMISSION << 24 ) ) != 0; }
+    { return ( flags & ( FLAG_FORCED_EMISSION << 24 ) ) != 0; }
 
     bool IsBackFace()
-    { return ( textureOffsetAndFlags & ( FLAG_BACKFACE << 24 ) ) != 0; }
-
-    uint GetFlags()
-    { return textureOffsetAndFlags & 0xFF000000; }
+    { return ( flags & ( FLAG_BACKFACE << 24 ) ) != 0; }
 
     uint GetBaseTexture()
-    { return ( textureOffsetAndFlags & 0x00FFFFFF ) << 2; } // 4 textures per object
+    { return textureOffset << 2; } // 4 textures per object
 
     float3 GetForcedEmissionColor()
-    { return ( textureOffsetAndFlags & 0x1 ) ? float3( 1, 0, 0 ) : float3( 0, 1, 0 ); }
+    { return ( textureOffset & 0x1 ) ? float3( 1, 0, 0 ) : float3( 0, 1, 0 ); }
 
     bool IsSky()
     { return viewZ == INF; }
@@ -246,8 +244,8 @@ GeometryProps GetGeometryProps( UnpackedPayload unpackedPayload, float3 rayOrigi
         if( useSimplifiedModel || USE_SIMPLIFIED_BRDF_MODEL )
         {
             // Material & flags
-            props.textureOffsetAndFlags = asuint( instanceData2.w );
-            props.textureOffsetAndFlags |= unpackedPayload.GetFlags();
+            props.textureOffset = asuint( instanceData2.w );
+            props.flags = unpackedPayload.GetFlags();
 
             // Normal
             float3 N = float3( nfx_nfy, nfz_worldToUvUnits.x );
@@ -288,8 +286,8 @@ GeometryProps GetGeometryProps( UnpackedPayload unpackedPayload, float3 rayOrigi
             props.T = T;
 
             // Texture offset & flags
-            props.textureOffsetAndFlags = asuint( instanceData1.w );
-            props.textureOffsetAndFlags |= unpackedPayload.GetFlags();
+            props.textureOffset = asuint( instanceData1.w );
+            props.flags = unpackedPayload.GetFlags();
 
             // Handling object scale embedded into the transformation matrix (assuming uniform scale)
             float invObjectScale = STL::Math::Rsqrt( STL::Math::LengthSquared( instanceData0.xyz ) );
@@ -355,7 +353,7 @@ GeometryProps GetGeometryProps( UnpackedPayload unpackedPayload, float3 rayOrigi
     float4 clipPrev = STL::Geometry::ProjectiveTransform( gWorldToClipPrev, Xprev );
     float2 sampleUv = ( clip.xy / clip.w ) * float2( 0.5, -0.5 ) + 0.5;
     float2 sampleUvPrev = ( clipPrev.xy / clipPrev.w ) * float2( 0.5, -0.5 ) + 0.5;
-    float2 surfaceMotion = ( sampleUvPrev - sampleUv ) * gScreenSize;
+    float2 surfaceMotion = ( sampleUvPrev - sampleUv ) * gRectSize;
     float3 worldMotion = Xprev - props.X;
     props.motion = gWorldSpaceMotion ? worldMotion : surfaceMotion.xyy;
 
@@ -402,111 +400,130 @@ float3 GetRealMip( uint textureIndex, float mip )
 
 MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection, bool useSimplifiedModel = false  )
 {
-    MaterialProps props = ( MaterialProps )0;
-
     float3 Csky = GetSkyIntensity( rayDirection, gSunDirection, gSunAngularDiameter );
     float3 Csun = GetSkyIntensity( gSunDirection, gSunDirection );
 
     [branch]
     if( geometryProps.IsSky() )
     {
+        MaterialProps props = ( MaterialProps )0;
         props.Lsum = Csky * gExposure;
         props.isEmissive = true;
 
         return props;
     }
 
-    // Shadow fix
-    float NoL = dot( geometryProps.N, gSunDirection );
-    float shadow = STL::Math::SmoothStep( 0.0, 0.05, NoL );
+    float3 emissive;
+    float3 N;
+    float3 baseColor;
+    float roughness;
+    float metalness;
 
     if( useSimplifiedModel || USE_SIMPLIFIED_BRDF_MODEL )
     {
-        // Material data
-        float3 baseColor = STL::Packing::UintToRgba( geometryProps.textureOffsetAndFlags, 8, 8, 8, 0 ).xyz;
+        // Base color
+        baseColor = STL::Packing::UintToRgba( geometryProps.textureOffset, 7, 7, 7, 0 ).xyz;
         baseColor = STL::Color::GammaToLinear( baseColor );
 
-        float metalness = 0.0;
-        float roughness = 0.0;
-
-        ModifyMaterial( baseColor, metalness, roughness );
-
-        float3 albedo, Rf0;
-        STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( baseColor, metalness, albedo, Rf0 );
+        // Roughness and metalness
+        float2 materialProps = STL::Packing::UintToRgba( geometryProps.textureOffset, 11, 10, 6, 5 ).zw;
+        materialProps = STL::Color::GammaToLinear( materialProps.xyy ).xy;
+        roughness = materialProps.x;
+        metalness = materialProps.y;
 
         // Emission
-        float3 emissive = geometryProps.IsForcedEmission() ? geometryProps.GetForcedEmissionColor() : baseColor;
-        emissive *= gEmissionIntensity * float( geometryProps.IsEmissive() );
+        emissive = geometryProps.IsForcedEmission() ? geometryProps.GetForcedEmissionColor() : baseColor;
 
-        // Direct lighting (no shadow)
-        float3 Cimp = lerp( Csky, Csun, STL::Math::SmoothStep( 0.0, 0.2, roughness ) ); // sky importance sampling
-
-        float m = roughness * roughness;
-        float3 C = albedo * Csun + Rf0 * m * Cimp;
-        float NoL = dot( geometryProps.N, gSunDirection );
-        float Kdiff = saturate( NoL ) / STL::Math::Pi( 1.0 );
-        float3 Lsum = Kdiff * C;
-        Lsum *= shadow;
-
-        props.isEmissive = STL::Color::Luminance( emissive ) != 0.0;
-        props.N = geometryProps.N;
-        props.baseColor = baseColor;
-        props.metalness = metalness;
-        props.roughness = roughness;
-        props.Lsum = props.isEmissive ? emissive : Lsum;
-        props.Lsum *= gExposure;
+        // Normal
+        N = geometryProps.N;
     }
     else
     {
         uint baseTexture = geometryProps.GetBaseTexture();
         float3 mips = GetRealMip( baseTexture, geometryProps.mip );
 
-        // Material data
-        float4 baseColor = gIn_Textures[ baseTexture ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.z );
-        baseColor.xyz *= geometryProps.IsTransparent() ? 1.0 : STL::Math::PositiveRcp( baseColor.w ); // Correctly handle BC1 with pre-multiplied alpha
-        baseColor.xyz = saturate( baseColor.xyz );
+        // Base color
+        float4 color = gIn_Textures[ baseTexture ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.z );
+        color.xyz *= geometryProps.IsTransparent() ? 1.0 : STL::Math::PositiveRcp( color.w ); // Correct handling of BC1 with pre-multiplied alpha
+        baseColor = saturate( color.xyz );
 
+        // Roughness and metalness
         float3 materialProps = gIn_Textures[ baseTexture + 1 ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.z ).xyz;
-        float roughness = materialProps.y;
-        float metalness = materialProps.z;
-
-        ModifyMaterial( baseColor.xyz, metalness, roughness );
+        roughness = materialProps.y;
+        metalness = materialProps.z;
 
         // Emission
-        float3 emissive = gIn_Textures[ baseTexture + 3 ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.x ).xyz;
-        emissive *= ( baseColor.xyz + 0.01 ) / ( max( baseColor.x, max( baseColor.y, baseColor.z ) ) + 0.01 );
+        emissive = gIn_Textures[ baseTexture + 3 ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.x ).xyz;
+        emissive *= ( baseColor + 0.01 ) / ( max( baseColor, max( baseColor, baseColor ) ) + 0.01 );
         emissive = geometryProps.IsForcedEmission() ? geometryProps.GetForcedEmissionColor() : emissive;
-        emissive *= gEmissionIntensity * float( geometryProps.IsEmissive() );
 
         // Normal
         float2 packedNormal = gIn_Textures[ baseTexture + 2 ].SampleLevel( gLinearMipmapLinearSampler, geometryProps.uv, mips.y ).xy;
         packedNormal = gUseNormalMap ? packedNormal : ( 127.0 / 255.0 );
-        float3 N = STL::Geometry::TransformLocalNormal( packedNormal, geometryProps.T, geometryProps.N );
+        N = STL::Geometry::TransformLocalNormal( packedNormal, geometryProps.T, geometryProps.N );
+    }
 
-        // Direct lighting (no shadow)
-        float3 Lsum = 0;
-        if( shadow != 0.0 )
-        {
-            float3 albedo, Rf0;
-            STL::BRDF::ConvertDiffuseMetalnessToAlbedoRf0( baseColor.xyz, metalness, albedo, Rf0 );
+    // Override material
+    if( gForcedMaterial == MAT_GYPSUM )
+    {
+        roughness = 1.0;
+        baseColor = 0.5;
+        metalness = 0.0;
+    }
+    else if( gForcedMaterial == MAT_COBALT )
+    {
+        roughness = pow( saturate( baseColor.x * baseColor.y * baseColor.z ), 0.33333 );
+        baseColor = float3( 0.672411, 0.637331, 0.585456 );
+        metalness = 1.0;
+    }
 
+    metalness = gMetalnessOverride == 0.0 ? metalness : gMetalnessOverride;
+    roughness = gRoughnessOverride == 0.0 ? roughness : gRoughnessOverride;
+
+    // Direct lighting (no shadow)
+    float3 Lsum = 0;
+
+    float NoL = dot( geometryProps.N, gSunDirection );
+    float shadow = STL::Math::SmoothStep( 0.0, 0.05, NoL );
+
+    [branch]
+    if( shadow != 0.0 )
+    {
+        // Pseudo sky importance sampling
+        float3 Cimp = lerp( Csky, Csun, STL::Math::SmoothStep( 0.0, 0.2, roughness ) );
+
+        float3 albedo, Rf0;
+        STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( baseColor.xyz, metalness, albedo, Rf0 );
+
+        #if 0
+            // Very simple "diffuse-like" model
+            float m = roughness * roughness;
+            float3 C = albedo * Csun + Rf0 * m * Cimp;
+            float NoL = dot( geometryProps.N, gSunDirection );
+            float Kdiff = saturate( NoL ) / STL::Math::Pi( 1.0 );
+
+            Lsum = Kdiff * C;
+        #else
             float3 Cdiff, Cspec;
             STL::BRDF::DirectLighting( N, gSunDirection, -rayDirection, Rf0, roughness, Cdiff, Cspec );
 
-            float3 Cimp = lerp( Csky, Csun, STL::Math::SmoothStep( 0.0, 0.2, roughness ) ); // sky importance sampling
-
             Lsum = Cdiff * albedo * Csun + Cspec * Cimp;
-            Lsum *= shadow;
-        }
+        #endif
 
-        props.isEmissive = STL::Color::Luminance( emissive ) != 0.0;
-        props.N = N;
-        props.baseColor = baseColor.xyz;
-        props.metalness = metalness;
-        props.roughness = roughness;
-        props.Lsum = props.isEmissive ? emissive : Lsum;
-        props.Lsum *= gExposure;
+        Lsum *= shadow;
     }
+
+    // Output
+    emissive *= gEmissionIntensity * float( geometryProps.IsEmissive() );
+
+    MaterialProps props = ( MaterialProps )0;
+    props.N = N;
+    props.baseColor = baseColor;
+    props.roughness = roughness;
+    props.metalness = metalness;
+    props.isEmissive = STL::Color::Luminance( emissive ) != 0.0;
+    props.Lsum = props.isEmissive ? emissive : Lsum;
+    props.Lsum *= gExposure;
 
     return props;
 }

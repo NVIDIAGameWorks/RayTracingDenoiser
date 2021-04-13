@@ -13,7 +13,7 @@ if "%1" neq "lib" (
 
 :: DXIL (D3D12)
 if "%1" neq "lib" set entryPoint=-E main
-    "%WINSDK_PATH%\DXC.exe" -T %1_6_3 -WX -nologo -O3 %entryPoint% "%~2" -DCOMPILER_DXC=1 -Vn g_%HEADER%_dxil -Fo "%~3.dxil" -Fh "%~4.dxil.h" -I "%cd%"
+    "..\_Build\HostDeps\DXC\bin\x64\dxc.exe" -T %1_6_3 -WX -nologo -O3 %entryPoint% "%~2" -DCOMPILER_DXC=1 -Vn g_%HEADER%_dxil -Fo "%~3.dxil" -Fh "%~4.dxil.h" -I "%cd%"
 
 :: SPIRV (VULKAN)
 set "S_OFFSET=100"
@@ -26,4 +26,4 @@ set "T_SHIFT=-fvk-t-shift %T_OFFSET% 0 -fvk-t-shift %T_OFFSET% 1 -fvk-t-shift %T
 set "B_SHIFT=-fvk-b-shift %B_OFFSET% 0 -fvk-b-shift %B_OFFSET% 1 -fvk-b-shift %B_OFFSET% 2 "
 set "U_SHIFT=-fvk-u-shift %U_OFFSET% 0 -fvk-u-shift %U_OFFSET% 1 -fvk-u-shift %U_OFFSET% 2 "
 
-"..\_Build\HostDeps\DXC\windows-x86_64\release\x64\dxc.exe" -T %1_6_3 -O3 -WX %S_SHIFT% %T_SHIFT% %B_SHIFT% %U_SHIFT% -D VULKAN -spirv -fspv-target-env=vulkan1.2 -Vn g_%HEADER%_spirv -Fo "%~3.spirv" "%~2" -Fh "%~4.spirv.h" -I "%cd%"
+"..\_Build\HostDeps\DXC\bin\x64\dxc.exe" -T %1_6_3 -O3 -WX %S_SHIFT% %T_SHIFT% %B_SHIFT% %U_SHIFT% -D VULKAN -spirv -fspv-target-env=vulkan1.2 -Vn g_%HEADER%_spirv -Fo "%~3.spirv" "%~2" -Fh "%~4.spirv.h" -I "%cd%" 
