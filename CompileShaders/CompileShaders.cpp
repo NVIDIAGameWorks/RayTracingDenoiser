@@ -19,6 +19,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define FOLDER_DATA L"_Data"
 #define FOLDER_BUILD L"_Build"
+#define FOLDER_NRD L"_NRD_SDK"
 #define FOLDER_COMPILE_SHADERS L"CompileShaders"
 
 std::wstring g_OutputDir;
@@ -101,7 +102,11 @@ void EnumerateFiles(const std::wstring& path, std::vector<Shader>& shaders)
         {
             const std::wstring& file = entry.path();
 
-            if (file.find(FOLDER_BUILD) == std::wstring::npos && file.find(FOLDER_DATA) == std::wstring::npos)
+            bool validPath = file.find(FOLDER_BUILD) == std::wstring::npos
+                && file.find(FOLDER_DATA) == std::wstring::npos
+                && file.find(FOLDER_NRD) == std::wstring::npos;
+
+            if (validPath)
             {
                 for (size_t k = 1; k < (size_t)ShaderStage::MAX_NUM; k++)
                 {

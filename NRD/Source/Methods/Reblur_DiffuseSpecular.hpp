@@ -43,6 +43,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         SCALED_VIEWZ,
         DIFF_ACCUMULATED,
         SPEC_ACCUMULATED,
+        ERROR,
     };
 
     #define MIP_NUM 4
@@ -51,8 +52,9 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, MIP_NUM} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, MIP_NUM} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, MIP_NUM} );
+    m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
 
-   SetSharedConstants(1, 1, 8, 12);
+    SetSharedConstants(1, 1, 8, 12);
 
     // Tricks to save memory
     #define DIFF_TEMP AsUint(Permanent::DIFF_STABILIZED_HISTORY_1), 0, 1, AsUint(Permanent::DIFF_STABILIZED_HISTORY_2)
@@ -167,6 +169,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
 
         PushOutput( DIFF_TEMP );
         PushOutput( SPEC_TEMP );
+        PushOutput( AsUint(Transient::ERROR) );
 
         AddDispatch( REBLUR_DiffuseSpecular_Blur, SumConstants(1, 4, 0, 1), 16, 1 );
     }
@@ -177,9 +180,8 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
         PushInput( DIFF_TEMP );
-        PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushInput( SPEC_TEMP );
-        PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
+        PushInput( AsUint(Transient::ERROR) );
 
         PushOutput( AsUint(Permanent::DIFF_HISTORY) );
         PushOutput( AsUint(Permanent::SPEC_HISTORY) );

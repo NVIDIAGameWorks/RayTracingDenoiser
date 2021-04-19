@@ -21,10 +21,10 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 #include "Timer/Timer.h"
 
 #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-    AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, "main\0" #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+    AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", "main", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
 
 #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-    AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, "main\0" #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+    AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", "main", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
 
 inline uint16_t DivideUp(uint16_t x, uint16_t y)
 { return (x + y - 1) / y; }
@@ -158,7 +158,7 @@ namespace nrd
     private:
         void Optimize();
         void PrepareDesc();
-        void AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv);
+        void AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv);
         void UpdatePingPong(const MethodData& methodData);
         void UpdateCommonSettings(const CommonSettings& commonSettings);
         void PushTexture(DescriptorType descriptorType, uint16_t index, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith = uint16_t(-1));

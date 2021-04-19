@@ -292,6 +292,7 @@ namespace nrd
         ComputeShader computeShaderDXBC;
         ComputeShader computeShaderDXIL;
         ComputeShader computeShaderSPIRV;
+        const char* shaderFileName;
         const char* shaderEntryPointName;
         const DescriptorRangeDesc* descriptorRanges;
         uint32_t descriptorRangeNum;

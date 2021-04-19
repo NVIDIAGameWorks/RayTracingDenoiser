@@ -32,6 +32,7 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         INTERNAL_DATA = TRANSIENT_POOL_START,
         SCALED_VIEWZ,
         ACCUMULATED,
+        ERROR,
     };
 
     #define MIP_NUM 4
@@ -39,6 +40,7 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, MIP_NUM} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, MIP_NUM} );
+    m_TransientPool.push_back( {Format::R8_UNORM, w, h, 1} );
 
     SetSharedConstants(1, 1, 8, 12);
 
@@ -135,6 +137,7 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Transient::ACCUMULATED) );
 
         PushOutput( TEMP );
+        PushOutput( AsUint(Transient::ERROR) );
 
         AddDispatch( REBLUR_Specular_Blur, SumConstants(1, 3, 0, 0), 16, 1 );
     }
@@ -145,7 +148,7 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
         PushInput( TEMP );
-        PushInput( AsUint(Transient::ACCUMULATED) );
+        PushInput( AsUint(Transient::ERROR) );
 
         PushOutput( AsUint(Permanent::HISTORY) );
 

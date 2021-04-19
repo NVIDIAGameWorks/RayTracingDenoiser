@@ -60,12 +60,6 @@ float3 getCurrentWorldPos(int2 pixelPos, float depth)
     return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
-float getGeometryWeight(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float phiDepth)
-{
-    float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
-    return (isnan(distanceToCenterPointPlane) ? 1.0 : distanceToCenterPointPlane) / (phiDepth + 1e-6);
-}
-
 float getDiffuseNormalWeight(float3 centerNormal, float3 sampleNormal, float phiNormal)
 {
     return pow(saturate(dot(centerNormal, sampleNormal)), phiNormal);
@@ -340,7 +334,7 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
             float sampleDiffuseLuminance = STL::Color::Luminance(sampleDiffuseIlluminationAndVariance.rgb);
 
             // Calculating geometry and normal weights
-            float geometryW = getGeometryWeight(centerWorldPos, centerNormal, sampleWorldPos, phiDepth);
+            float geometryW = GetGeometryWeight(centerWorldPos, centerNormal, centerLinearZ, sampleWorldPos, phiDepth);
 
             float normalWSpecular = getSpecularNormalWeight(normalWeightParams, centerNormal, sampleNormal);
             normalWSpecular *= getSpecularVWeight(normalWeightParams, centerV, sampleV);

@@ -63,6 +63,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     uint gIndirectFullBrdf;
     uint gUseNormalMap;
     uint gWorldSpaceMotion;
+    uint gBlueNoise;
 };
 
 NRI_RESOURCE( SamplerState, gLinearMipmapLinearSampler, s, 1, 0 );

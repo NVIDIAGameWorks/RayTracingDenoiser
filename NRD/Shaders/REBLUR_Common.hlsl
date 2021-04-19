@@ -18,6 +18,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SHOW_EDGE                                6
 #define REBLUR_DEBUG                                    0 // 0-6
 
+// Spatial filtering
+
+#define REBLUR_PRE_BLUR                                 0
+#define REBLUR_BLUR                                     1
+#define REBLUR_POST_BLUR                                2
+
+// Storage
+
 #define REBLUR_VIEWZ_ACCUMSPEED_BITS                    26, 6, 0, 0
 #define REBLUR_NORMAL_ROUGHNESS_ACCUMSPEED_BITS         9, 9, 8, 6
 #define REBLUR_MAX_ACCUM_FRAME_NUM                      63 // 6 bits
@@ -196,15 +204,16 @@ float4 MixLinearAndCatmullRom( float4 linearX, float4 catromX, float4 occlusion0
     return ( avg < 1.0 || REBLUR_USE_CATROM_RESAMPLING_IN_TA == 0 || gReference != 0.0 ) ? linearX : catromX;
 }
 
-float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float nonLinearAccumSpeed, float roughness = 1.0 )
+float GetColorErrorForAdaptiveRadiusScale( float4 curr, float2 prev, float nonLinearAccumSpeed, float roughness = 1.0 )
 {
-    float2 currLuma = float2( _NRD_Luminance( curr.xyz ), curr.w );
-    float2 prevLuma = float2( _NRD_Luminance( prev.xyz ), prev.w );
-    float2 f = abs( currLuma - prevLuma ) * STL::Math::PositiveRcp( max( currLuma, prevLuma ) );
+    float2 c = float2( _NRD_Luminance( curr.xyz ), curr.w );
+    float2 f = abs( c - prev ) * STL::Math::PositiveRcp( max( c, prev ) );
+
     float error = max( f.x, f.y );
     error = STL::Math::SmoothStep( 0.0, 0.1, error );
     error *= STL::Math::LinearStep( 0.04, 0.15, roughness );
     error *= 1.0 - nonLinearAccumSpeed;
+    error *= 1.0 - gReference;
 
     return error;
 }
@@ -418,7 +427,7 @@ float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float 
 
 // Kernel
 
-float GetBlurRadius( float radius, float roughness, float hitDist, float3 Xv, float nonLinearAccumSpeed, float scale = 1.0 )
+float GetBlurRadius( float radius, float roughness, float hitDist, float3 Xv, float nonLinearAccumSpeed )
 {
     // Base radius
     // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLjAtMl4oLTE1LjAqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiKDEtMl4oLTIwMCp4KngpKSooeF4wLjI1KSIsImNvbG9yIjoiIzIyRUQxNyJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIxIiwiMCIsIjEuMSJdLCJzaXplIjpbMTAwMCw1MDBdfV0-
@@ -441,7 +450,7 @@ float GetBlurRadius( float radius, float roughness, float hitDist, float3 Xv, fl
     addon *= lerp( 0.5, 1.0, hitDistFactor );
     addon *= float( radius != 0.0 );
 
-    return s * radius * scale + addon;
+    return s * radius + addon;
 }
 
 float GetBlurRadiusScaleBasingOnTrimming( float roughness, float3 trimmingParams )
@@ -572,6 +581,12 @@ float GetNormalWeight( float params0, float3 n0, float3 n )
     float angle = STL::Math::AcosApprox( cosa );
 
     return _ComputeWeight( float2( params0, -0.001 ), angle );
+}
+
+float GetGaussianWeight( float r )
+{
+    // radius is normalized to 1
+    return exp( -0.66 * r * r );
 }
 
 #define GetRoughnessWeight _ComputeWeight

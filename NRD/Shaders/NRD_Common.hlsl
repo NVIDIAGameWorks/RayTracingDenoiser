@@ -85,7 +85,7 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 // Misc
 
 // sigma = standard deviation, variance = sigma ^ 2
-#define GetStdDev( m1, m2 ) sqrt( abs( m2 - m1 * m1 ) ) // sqrt( max( m2 - m1 * m1, 0.0 )
+#define GetStdDev( m1, m2 ) sqrt( abs( m2 - m1 * m1 ) ) // sqrt( max( m2 - m1 * m1, 0.0 ) )
 
 float PixelRadiusToWorld( float unproject, float isOrtho, float pixelRadius, float viewZ )
 {

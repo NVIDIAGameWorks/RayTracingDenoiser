@@ -181,14 +181,13 @@ float isReprojectionTapValid(int2 pixelCoord, float currentLinearZ, float3 curre
     // Check whether reprojected pixel is inside of the screen
     if (any(pixelCoord < int2(0, 0)) || any(pixelCoord >= int2(gResolution))) return 0;
 
-    // Check if plane distance is acceptable
-    float3 posDiff = currentWorldPos - previousWorldPos;
-    float maxDot = max(abs(dot(posDiff, previousNormal)), abs(dot(posDiff, currentNormal)));
-
     // Reject backfacing history: if angle between current normal and previous normal is larger than 90 deg
     if (dot(currentNormal, previousNormal) < 0.0) return 0;
 
-    return ((maxDot / currentLinearZ) > gDisocclusionThreshold + jitterRadius * 2.0) ? 0.0 : 1.0;
+    // Check if plane distance is acceptable
+    float3 posDiff = currentWorldPos - previousWorldPos;
+    float maxPlaneDistance = max(abs(dot(posDiff, previousNormal)), abs(dot(posDiff, currentNormal)));
+    return GetPlaneDistanceWeight(maxPlaneDistance, currentLinearZ, gDisocclusionThreshold + jitterRadius * 2.0) > 1.0 ? 0.0 : 1.0;
 }
 
 

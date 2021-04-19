@@ -228,7 +228,7 @@ struct GlobalConstantBufferData
     uint32_t gIndirectFullBrdf;
     uint32_t gUseNormalMap;
     uint32_t gWorldSpaceMotion;
-    uint32_t gCheckerboard;
+    uint32_t gBlueNoise;
 };
 
 struct NrdSettings
@@ -535,6 +535,7 @@ private:
     bool m_AmbientInComposition = true; // TODO: only to WAR unsupported AO / SO in non-REBLUR
     bool m_ForceHistoryReset = false;
     bool m_ResponsiveAntilag = false;
+    bool m_BlueNoise = true;
 };
 
 Sample::~Sample()
@@ -953,6 +954,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                         ImGui::PopStyleColor();
                         ImGui::SameLine();
                         ImGui::Checkbox("Mip", &m_Settings.mip);
+                        ImGui::SameLine();
+                        ImGui::Checkbox("Blue noise", &m_BlueNoise);
                         ImGui::Checkbox("Diffuse", &m_Settings.indirectDiffuse);
                         ImGui::SameLine();
 
@@ -1202,6 +1205,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                                     m_Settings.debug = 0.0f;
                                     m_Settings.denoiser = REBLUR;
                                     m_AmbientInComposition = true;
+                                    m_BlueNoise = true;
                                 }
 
                                 if (fp)
@@ -1363,6 +1367,12 @@ void Sample::PrepareFrame(uint32_t frameIndex)
         m_Settings.nrdSettings.checkerboard = false;
         m_AmbientInComposition = false;
     }
+
+    if (m_Settings.denoiser == RELAX && m_PrevSettings.denoiser != RELAX)
+        m_BlueNoise = false;
+
+    if (m_Settings.denoiser != RELAX && m_PrevSettings.denoiser == RELAX)
+        m_BlueNoise = true;
 }
 
 void Sample::CreateSwapChain(nri::Format& swapChainFormat)
@@ -2610,6 +2620,7 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gIndirectFullBrdf = m_Settings.indirectFullBrdf;
         data->gUseNormalMap = m_Settings.normalMap ? 1 : 0;
         data->gWorldSpaceMotion = m_Settings.worldSpaceMotion ? 1 : 0;
+        data->gBlueNoise = m_Settings.nrdSettings.referenceAccumulation ? 0 : m_BlueNoise;
     }
     NRI.UnmapBuffer(*globalConstants);
 

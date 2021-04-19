@@ -190,7 +190,7 @@ void DenoiserImpl::PrepareDesc()
     // Since now all std::vectors become "locked" (no reallocations)
 }
 
-void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv)
+void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv)
 {
     // Resource binding
     DescriptorRangeDesc descriptorRanges[2] =
@@ -216,6 +216,7 @@ void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsa
     PipelineDesc pipelineDesc = {};
     pipelineDesc.descriptorRangeNum = GetCountOf(descriptorRanges);
     pipelineDesc.descriptorRanges = (DescriptorRangeDesc*)rangeOffset;
+    pipelineDesc.shaderFileName = shaderFileName;
     pipelineDesc.shaderEntryPointName = entryPointName;
     pipelineDesc.computeShaderDXBC = dxbc;
     pipelineDesc.computeShaderDXIL = dxil;

@@ -747,7 +747,7 @@ namespace STL
         uint LinearToLogLuv( float3 color )
         {
             // Convert RGB to XYZ
-            float3 XYZ = GammaToXyz( color ); // TODO: Rec709 expected, but color is linear
+            float3 XYZ = GammaToXyz( Math::Sqrt( color ) ); // with simple de-linearization
 
             // Encode log2( Y ) over the range [ -20, 20 ) in 14 bits ( no sign bit ).
             // TODO: Fast path that uses the bits from the fp32 representation directly
@@ -804,7 +804,9 @@ namespace STL
             float3 XYZ = float3( s * xy.x, Y, s * ( 1.0 - xy.x - xy.y ) );
 
             // Convert back to RGB and clamp to avoid out-of-gamut colors
-            return max( XyzToGamma( XYZ ), 0.0 );
+            float3 color = max( XyzToGamma( XYZ ), 0.0 );
+
+            return color * color; // linearize back
         }
 
         // HDR
@@ -2013,7 +2015,7 @@ namespace STL
         {
             float Y = sh.c0 / 0.282095;
 
-            return Color::YCoCgToLinear( float3( Y, sh.chroma ) );
+            return Color::YCoCgToLinear( float3( Y, sh.chroma.x, sh.chroma.y ) );
         }
 
         float3 ExtractDirection( SH1 sh )
@@ -2037,7 +2039,7 @@ namespace STL
             float modifier = 0.282095 * Y * Math::PositiveRcp( sh.c0 );
             float2 CoCg = sh.chroma * saturate( modifier );
 
-            return Color::YCoCgToLinear( float3( Y, CoCg ) );
+            return Color::YCoCgToLinear( float3( Y, CoCg.x, CoCg.y ) );
         }
     };
 }

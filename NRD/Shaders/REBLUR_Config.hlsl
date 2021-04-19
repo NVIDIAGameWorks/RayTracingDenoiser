@@ -24,9 +24,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED                  ( 1.0 / 8.0 )
 #define REBLUR_PRE_BLUR_RADIUS_SCALE( r )                       ( lerp( 1.0, 0.5, r ) / REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED )
 
-#define REBLUR_BLUR_ROTATOR_MODE                                PIXEL
+#define REBLUR_BLUR_ROTATOR_MODE                                FRAME
 
-#define REBLUR_POST_BLUR_ROTATOR_MODE                           FRAME // TODO: PIXEL improves IQ if FPS is low
+#define REBLUR_POST_BLUR_ROTATOR_MODE                           PIXEL
 #define REBLUR_POST_BLUR_RADIUS_SCALE                           2.0
 
 #define REBLUR_SPEC_ACCUM_BASE_POWER                            0.5 // previously was 0.66 (less agressive accumulation, but virtual reprojection works well on flat surfaces and fixes the issue)

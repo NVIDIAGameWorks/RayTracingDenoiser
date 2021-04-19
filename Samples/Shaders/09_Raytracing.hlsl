@@ -191,8 +191,8 @@ float4 GetRadianceFromPreviousFrame( GeometryProps geometryProps, MaterialProps 
     // Fade-out on screen edges
     float2 f = STL::Math::LinearStep( 0.0, 0.1, uvPrev ) * STL::Math::LinearStep( 1.0, 0.9, uvPrev );
     float fade = f.x * f.y;
-    fade *= float( pixelUv.x < gSeparator );
-    fade *= float( uvPrev.x < gSeparator );
+    fade *= float( pixelUv.x > gSeparator );
+    fade *= float( uvPrev.x > gSeparator );
 
     // Confidence - viewZ
     // No "abs" for clipPrev.w, because if it's negative we have a back-projection!
@@ -411,11 +411,12 @@ void ENTRYPOINT( )
         while( sampleNum < ZERO_TROUGHPUT_SAMPLE_NUM && throughput1 == 0.0 )
     #endif
         {
+            float2 rnd = STL::Rng::GetFloat2( );
             #if( USE_BLUE_NOISE == 1 )
                 // Low descrepancy sampling is your friend in the "Low Rpp World"
-                float2 rnd = GetBlueNoise( isCheckerboard, sampleNum, gIn_Scrambling_Ranking_32spp, 0, 32, 1 );
-            #else
-                float2 rnd = STL::Rng::GetFloat2( );
+                [flatten]
+                if( gBlueNoise )
+                    rnd = GetBlueNoise( isCheckerboard, sampleNum, gIn_Scrambling_Ranking_32spp, 0, 32, 1 );
             #endif
 
             if( isDiffuse )

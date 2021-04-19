@@ -53,12 +53,6 @@ float3 getCurrentWorldPos(int2 pixelPos, float depth)
     return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
-float getGeometryWeight(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float phiDepth)
-{
-	float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
-	return distanceToCenterPointPlane / (phiDepth + 1e-6);
-}
-
 float getDiffuseNormalWeight(float3 centerNormal, float3 sampleNormal, float phiNormal)
 {
     return pow(saturate(dot(centerNormal, sampleNormal)), phiNormal);
@@ -123,12 +117,12 @@ void main(int2 ipos : SV_DispatchThreadID)
 {
     float3 centerNormal;
     float centerRoughness;
-    float centerDepth;
-    UnpackNormalRoughnessDepth(centerNormal, centerRoughness, centerDepth, gNormalRoughnessDepth[ipos]);
+    float centerLinearZ;
+    UnpackNormalRoughnessDepth(centerNormal, centerRoughness, centerLinearZ, gNormalRoughnessDepth[ipos]);
 
     // Early out if linearZ is beyond denoising range
     [branch]
-    if (centerDepth > gDenoisingRange)
+    if (centerLinearZ > gDenoisingRange)
     {
         #if( RELAX_BLACK_OUT_INF_PIXELS == 1 )
             gOutSpecularIlluminationAndVariance[ipos] = 0;
@@ -157,7 +151,7 @@ void main(int2 ipos : SV_DispatchThreadID)
     float2 roughnessWeightParams = getRoughnessWeightParams(centerRoughness, specularReprojectionConfidence);
     float2 normalWeightParams = getNormalWeightParams(centerRoughness, 255.0*gHistoryLength[ipos].y, specularReprojectionConfidence);
 
-    float3 centerWorldPos = getCurrentWorldPos(ipos, centerDepth);
+    float3 centerWorldPos = getCurrentWorldPos(ipos, centerLinearZ);
     float3 centerV = normalize(centerWorldPos);
 
     float specularPhiLIllumination = 1.0e-4 + gSpecularPhiLuminance * sqrt(max(0.0, centerSpecularVar));
@@ -201,7 +195,7 @@ void main(int2 ipos : SV_DispatchThreadID)
             float3 sampleV = normalize(sampleWorldPos);
 
             // Calculating geometry and normal weights
-            float geometryW = getGeometryWeight(centerWorldPos, centerNormal, sampleWorldPos, phiDepth);
+            float geometryW = GetGeometryWeight(centerWorldPos, centerNormal, centerLinearZ, sampleWorldPos, phiDepth);
 
             float normalWSpecular = getSpecularNormalWeight(normalWeightParams, centerNormal, sampleNormal);
             normalWSpecular *= getSpecularVWeight(normalWeightParams, centerV, sampleV);

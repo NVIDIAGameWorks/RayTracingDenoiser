@@ -211,10 +211,7 @@ void Nrd::CreatePipelines()
     #ifdef PROJECT_NAME
         }
         else
-        {
-            const char* shaderName = nrdPipelineDesc.shaderEntryPointName + strlen(nrdPipelineDesc.shaderEntryPointName) + 1;
-            computeShader = utils::LoadShader(deviceDesc.graphicsAPI, shaderName, shaderCodeStorage, nrdPipelineDesc.shaderEntryPointName);
-        }
+            computeShader = utils::LoadShader(deviceDesc.graphicsAPI, nrdPipelineDesc.shaderFileName, shaderCodeStorage, nrdPipelineDesc.shaderEntryPointName);
     #endif
 
         nri::ComputePipelineDesc pipelineDesc = {};

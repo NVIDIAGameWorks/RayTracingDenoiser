@@ -240,3 +240,14 @@ float3 GetVirtualWorldPos(float3 worldPos, float3 V, float NoV, float roughness,
     return virtualWorldPos;
 }
 
+float GetPlaneDistanceWeight(float planeDistance, float linearZ, float relativeThreshold)
+{
+    float relativeDistance = planeDistance / linearZ;
+    return relativeDistance / relativeThreshold;
+}
+
+float GetGeometryWeight(float3 centerWorldPos, float3 centerNormal, float centerLinearZ, float3 sampleWorldPos, float phiDepth)
+{
+    float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
+    return GetPlaneDistanceWeight(distanceToCenterPointPlane, centerLinearZ, phiDepth);
+}

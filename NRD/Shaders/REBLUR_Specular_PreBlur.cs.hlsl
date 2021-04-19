@@ -73,8 +73,21 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     if( viewZ > gInf )
         return;
 
-    // Center data
+    // Normal and roughness
+    float4 normalAndRoughness = s_Normal_Roughness[ smemPos.y ][ smemPos.x ];
+    float3 N = normalAndRoughness.xyz;
+    float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
+    float roughness = normalAndRoughness.w;
+
+    // Shared data
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, viewZ );
+    float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
+
+    // Edge detection
+    float edge = DetectEdge( N, smemPos );
+
+    // Center data
     float4 spec = gIn_Spec[ gRectOrigin + uint2( checkerboardPixelPos.y, pixelPos.y ) ];
 
     int3 smemCheckerboardPos = smemPos.xyx + int3( -1, 0, 1 );
@@ -94,77 +107,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         spec *= saturate( 1.0 - w.x - w.y );
         spec += s0 * w.x + s1 * w.y;
     }
-    float specCenterNormHitDist = spec.w;
 
-    // Normal and roughness
-    float4 normalAndRoughness = s_Normal_Roughness[ smemPos.y ][ smemPos.x ];
-    float3 N = normalAndRoughness.xyz;
-    float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
-    float roughness = normalAndRoughness.w;
+    float2 error = 0;
 
-    // Blur radius
-    float specHitDist = GetHitDist( specCenterNormHitDist, viewZ, gSpecHitDistParams, roughness );
-    float specBlurRadius = GetBlurRadius( gSpecBlurRadius, roughness, specHitDist, Xv, REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED, REBLUR_PRE_BLUR_RADIUS_SCALE( roughness ) );
-    specBlurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams.xyz );
-    float specWorldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, specBlurRadius, viewZ );
+    // Spatial filtering
+    #define REBLUR_SPATIAL_MODE REBLUR_PRE_BLUR
 
-    // Random rotation
-    float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
-
-    // Edge detection
-    float edge = DetectEdge( N, smemPos );
-
-    // Denoising
-    float2 specSum = 1.0;
-    float specNormalWeightParams = GetNormalWeightParams( viewZ, roughness, edge, REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED );
-    float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( specCenterNormHitDist, REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED, specHitDist, Xv, roughness );
-    float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness );
-    float2x3 specTvBv = GetKernelBasis( Xv, Nv, specWorldBlurRadius, edge, roughness );
-
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, viewZ );
-
-    [unroll]
-    for( uint i = 0; i < REBLUR_POISSON_SAMPLE_NUM; i++ )
-    {
-        float3 offset = REBLUR_POISSON_SAMPLES[ i ];
-
-        // Sample coordinates
-        float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, specTvBv[ 0 ], specTvBv[ 1 ], rotator );
-
-        // Handle half res input in the checkerboard mode
-        float2 checkerboardUv = uv;
-        if( gSpecCheckerboard != 2 )
-            checkerboardUv = ApplyCheckerboard( uv, gSpecCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex );
-
-        // Fetch data
-        float2 uvScaled = uv * gResolutionScale + gRectOffset;
-        float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
-
-        float4 s = gIn_Spec.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
-        float z = abs( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) );
-        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uvScaled, 0 );
-
-        float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
-        normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
-
-        // Sample weight
-        float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
-        w *= GetNormalWeight( specNormalWeightParams, N, normal.xyz );
-        w *= GetRoughnessWeight( specRoughnessWeightParams, normal.w );
-        w *= IsInScreen( uv );
-
-        float wh = GetHitDistanceWeight( specHitDistanceWeightParams, s.w );
-        float2 ww = w * lerp( float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 2.0 ), 1.0, wh );
-
-        spec += s * ww.xxxy;
-        specSum += ww;
-    }
-
-    spec /= specSum.xxxy;
-
-    // Special case for hit distance
-    spec.w = lerp( spec.w, specCenterNormHitDist, REBLUR_HIT_DIST_INPUT_MIX );
-
-    // Output
-    gOut_Spec[ pixelPos ] = spec;
+    #include "REBLUR_Common_SpecularSpatialFilter.hlsl"
 }

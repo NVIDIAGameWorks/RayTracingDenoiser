@@ -107,7 +107,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
                 w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
 
                 int2 t1 = int2( dx, dy ) - BORDER;
-                if( ( abs( t1.x ) + abs( t1.y ) == 1 ) && z < viewZnearest && gDebug > 0.0  )
+                if( ( abs( t1.x ) + abs( t1.y ) == 1 ) && z < viewZnearest )
                 {
                     viewZnearest = z;
                     offseti = int2( dx, dy );

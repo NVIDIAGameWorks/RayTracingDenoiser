@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v2.0.0
+// NRD v2.0.1
 
 //=================================================================================================================================
 // INPUT PARAMETERS
