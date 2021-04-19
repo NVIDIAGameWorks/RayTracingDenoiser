@@ -34,7 +34,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float hitDist = GetHitDist( center.y, viewZ, gSpecHitDistParams, roughness );
     float blurRadius = GetBlurRadius( radius, roughness, hitDist, Xv, specInternalData.x );
     blurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams.xyz );
-    blurRadius = blurRadius * radiusScale + radiusBias;
+    blurRadius = blurRadius * ( radiusScale + radiusBias ) + radiusBias;
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
