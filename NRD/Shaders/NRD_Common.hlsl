@@ -17,27 +17,32 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 
 // Constants
 
-#define NONE                                                    0
-#define FRAME                                                   1
-#define PIXEL                                                   2
-#define RANDOM                                                  3
+#define NRD_RADIANCE_COMPRESSION_MODE_NONE                      0
+#define NRD_RADIANCE_COMPRESSION_MODE_MODERATE                  1
+#define NRD_RADIANCE_COMPRESSION_MODE_LESS_MID_ROUGHNESS        2
+#define NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS      3
+#define NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS     4
 
-#define INF                                                     1e6
+#define NRD_FRAME                                               0
+#define NRD_PIXEL                                               1
+#define NRD_RANDOM                                              2 // for experiments only
+
+#define NRD_INF                                                 1e6
 
 //==================================================================================================================
 // DEFAULT SETTINGS (can be modified)
 //==================================================================================================================
 
 #ifndef NRD_USE_QUADRATIC_DISTRIBUTION
-    #define NRD_USE_QUADRATIC_DISTRIBUTION                      0
+    #define NRD_USE_QUADRATIC_DISTRIBUTION                      0 // bool
 #endif
 
 #ifndef NRD_USE_CATROM_RESAMPLING
-    #define NRD_USE_CATROM_RESAMPLING                           1
+    #define NRD_USE_CATROM_RESAMPLING                           1 // bool
 #endif
 
 #ifndef NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY
-    #define NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY              500.0
+    #define NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY              500.0 // w = 1 / (1 + this * z)
 #endif
 
 #ifndef NRD_BILATERAL_WEIGHT_CUTOFF
@@ -46,6 +51,10 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 
 #ifndef NRD_CATROM_SHARPNESS
     #define NRD_CATROM_SHARPNESS                                0.5 // [0; 1], 0.5 matches Catmull-Rom
+#endif
+
+#ifndef NRD_RADIANCE_COMPRESSION_MODE
+    #define NRD_RADIANCE_COMPRESSION_MODE                       NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS
 #endif
 
 //==================================================================================================================
@@ -87,6 +96,29 @@ NRI_RESOURCE( SamplerState, gLinearMirror, s, 3, 0 );
 // sigma = standard deviation, variance = sigma ^ 2
 #define GetStdDev( m1, m2 ) sqrt( abs( m2 - m1 * m1 ) ) // sqrt( max( m2 - m1 * m1, 0.0 ) )
 
+// To avoid biasing compression for high roughness should be avoided. The compression function must be monotonic for full roughness range
+float GetColorCompressionExposure( float linearRoughness )
+{
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
+
+    // Moderate compression
+    #if( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_MODERATE )
+        return 0.5 / ( 1.0 + 50.0 * linearRoughness );
+    // Less compression for mid-high roughness
+    #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_LESS_MID_ROUGHNESS )
+        return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
+    // Close to the previous one, but offers more compression for low roughness
+    #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS )
+        return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 1000.0 * linearRoughness * linearRoughness ) + ( 1.0 - sqrt( saturate( linearRoughness ) ) ) * 0.03;
+    // A modification of the preious one ( simpler )
+    #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS )
+        return 0.6 * ( 1.0 - linearRoughness * linearRoughness ) / ( 1.0 + 400.0 * linearRoughness * linearRoughness );
+    // No compression
+    #else
+        return 0;
+    #endif
+}
+
 float PixelRadiusToWorld( float unproject, float isOrtho, float pixelRadius, float viewZ )
 {
      return pixelRadius * unproject * lerp( viewZ, 1.0, abs( isOrtho ) );
@@ -96,12 +128,12 @@ float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float
 {
     float4 rotator = float4( 1, 0, 0, 1 );
 
-    if( mode == PIXEL )
+    if( mode == NRD_PIXEL )
     {
         float angle = STL::Sequence::Bayer4x4( pixelPos, frameIndex );
         rotator = STL::Geometry::GetRotator( angle * STL::Math::Pi( 2.0 ) );
     }
-    else if( mode == RANDOM )
+    else if( mode == NRD_RANDOM )
     {
         STL::Rng::Initialize( pixelPos, frameIndex );
         float4 rnd = STL::Rng::GetFloat4( );
@@ -159,10 +191,10 @@ float2 GetKernelSampleCoordinates( float4x4 mViewToClip, float3 offset, float3 X
 
 // Weight parameters
 
-float2 GetGeometryWeightParams( float planeDistSensitivity, float3 p0, float3 n0, float viewZ, float scale = 1.0 )
+float2 GetGeometryWeightParams( float planeDistSensitivity, float3 Xv, float3 Nv, float scale = 1.0 )
 {
-    float a = scale * planeDistSensitivity / ( 1.0 + viewZ );
-    float b = -dot( n0, p0 ) * a;
+    float a = scale * planeDistSensitivity / ( 1.0 + Xv.z );
+    float b = -dot( Nv, Xv ) * a;
 
     return float2( a, b );
 }

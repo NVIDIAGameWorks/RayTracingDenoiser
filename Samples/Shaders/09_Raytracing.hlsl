@@ -67,7 +67,7 @@ float2 GetConeAngle( float mip, float roughness )
 
     float coneAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
     coneAngle *= 0.33333; // Average distance between two random values in range [0; 1] is 1/3!
-    coneAngle = max( gPixelAngularDiameter, coneAngle ); // In any case, we are limited by the output resolution
+    coneAngle = max( gPixelAngularRadius, coneAngle ); // In any case, we are limited by the output resolution
 
     return float2( mip, tan( coneAngle ) );
 }
@@ -97,7 +97,7 @@ float CastShadowRay( GeometryProps geometryProps, MaterialProps materialProps )
     rayDesc.TMin = 0.0;
     rayDesc.TMax = INF * float( isOpaqueRayNeeded );
 
-    float2 mipAndCone = float2( geometryProps.mip, gSunAngularDiameter );
+    float2 mipAndCone = float2( geometryProps.mip, gTanSunAngularRadius );
     Payload payload = InitPayload( mipAndCone );
     {
         const uint rayFlags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
@@ -131,7 +131,7 @@ float4 CastSoftShadowRay( GeometryProps geometryProps, MaterialProps materialPro
     rayDesc.TMin = 0.0;
     rayDesc.TMax = INF * float( isOpaqueRayNeeded );
 
-    float2 mipAndCone = float2( geometryProps.mip, gSunAngularDiameter );
+    float2 mipAndCone = float2( geometryProps.mip, gTanSunAngularRadius );
     Payload payload = InitPayload( mipAndCone );
     {
         const uint rayFlags = 0;
@@ -659,7 +659,7 @@ void ENTRYPOINT( )
         if( isDiffuse )
         {
             float normDist = REBLUR_FrontEnd_GetNormHitDist( pathLength, viewZ, gDiffHitDistParams );
-            diffIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, viewZ, gDiffHitDistParams );
+            diffIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist );
 
             if( gDenoiserType != REBLUR )
                 diffIndirect = RELAX_FrontEnd_PackRadiance( Clight1, pathLength );
@@ -675,10 +675,10 @@ void ENTRYPOINT( )
             }
 
             float normDist = REBLUR_FrontEnd_GetNormHitDist( pathLength, viewZ, gSpecHitDistParams, materialProps0.roughness );
-            specIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist, viewZ, gSpecHitDistParams, materialProps0.roughness );
+            specIndirect = REBLUR_FrontEnd_PackRadiance( Clight1, normDist );
 
             if( gDenoiserType != REBLUR )
-                specIndirect = RELAX_FrontEnd_PackRadiance( Clight1, pathLength, materialProps0.roughness );
+                specIndirect = RELAX_FrontEnd_PackRadiance( Clight1, pathLength );
         }
 
 #if( CHECKERBOARD == 0 )

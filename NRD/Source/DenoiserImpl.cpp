@@ -309,8 +309,11 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     float whiteNoise = Rand::uf1() * DegToRad(360.0f);
     float ca = Cos( whiteNoise );
     float sa = Sin( whiteNoise );
-
     m_Rotator[0] = float4( ca, sa, -sa, ca );
+
+    whiteNoise = Rand::uf1() * DegToRad(360.0f);
+    ca = Cos( whiteNoise );
+    sa = Sin( whiteNoise );
     m_Rotator[1] = float4( -sa, ca, -ca, -sa );
     m_Rotator[2] = float4( ca, sa, -sa, ca );
 
@@ -440,16 +443,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 #endif
 
 // METHODS =================================================================================
-
-// NRD
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxbc.h"
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxil.h"
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.spirv.h"
-
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.dxbc.h"
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.dxil.h"
-#include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.spirv.h"
-
 
 // REBLUR_DIFFUSE
 #include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.dxbc.h"

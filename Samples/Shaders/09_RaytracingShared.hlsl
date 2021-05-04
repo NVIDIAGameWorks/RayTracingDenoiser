@@ -400,7 +400,7 @@ float3 GetRealMip( uint textureIndex, float mip )
 
 MaterialProps GetMaterialProps( GeometryProps geometryProps, float3 rayDirection, bool useSimplifiedModel = false  )
 {
-    float3 Csky = GetSkyIntensity( rayDirection, gSunDirection, gSunAngularDiameter );
+    float3 Csky = GetSkyIntensity( rayDirection, gSunDirection, gSunAngularRadius );
     float3 Csun = GetSkyIntensity( gSunDirection, gSunDirection );
 
     [branch]

@@ -211,9 +211,9 @@ struct GlobalConstantBufferData
     float gUnitsToMetersMultiplier;
     float gIndirectDiffuse;
     float gIndirectSpecular;
+    float gSunAngularRadius;
     float gTanSunAngularRadius;
-    float gPixelAngularDiameter;
-    float gSunAngularDiameter;
+    float gPixelAngularRadius;
     float gUseMipmapping;
     float gIsOrtho;
     float gDebug;
@@ -253,6 +253,7 @@ struct NrdSettings
     bool antilagIntensity = true;
     bool antilagHitDistance = true;
     bool antifirefly = true;
+    bool usePrePass = true;
 };
 
 struct Settings
@@ -1041,6 +1042,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                                 ImGui::Checkbox("Reference", &m_Settings.nrdSettings.referenceAccumulation);
                                 ImGui::SameLine();
                                 ImGui::Checkbox("Anti-firefly", &m_Settings.nrdSettings.antifirefly);
+                                ImGui::SameLine();
+                                ImGui::Checkbox("Pre-pass", &m_Settings.nrdSettings.usePrePass);
                             }
                             ImGui::PopID();
                         }
@@ -1071,8 +1074,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::SliderInt("A-trous iterations", (int32_t*)&m_RelaxSettings.atrousIterationNum, 2, 8);
                             ImGui::SliderFloat("Depth weight", &m_RelaxSettings.phiDepth, 0.0f, 1.0f, "%.3f");
                             ImGui::SliderFloat("Normal weight", &m_RelaxSettings.phiNormal, 1.0f, 256.0f, "%.0f");
-                            ImGui::SliderFloat("Luminance weight (diff)", &m_RelaxSettings.diffusePhiLuminance, 0.0f, 10.0f, "%.1f");
-                            ImGui::SliderFloat("Luminance weight (spec)", &m_RelaxSettings.specularPhiLuminance, 0.0f, 10.0f, "%.1f");
+                            ImGui::SliderFloat("Luminance sigma scale (diff)", &m_RelaxSettings.diffusePhiLuminance, 0.0f, 10.0f, "%.1f");
+                            ImGui::SliderFloat("Luminance sigma scale (spec)", &m_RelaxSettings.specularPhiLuminance, 0.0f, 10.0f, "%.1f");
                             ImGui::SliderFloat("Roughness relaxation", &m_RelaxSettings.roughnessEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
                             ImGui::SliderFloat("Normal relaxation", &m_RelaxSettings.normalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
                             ImGui::SliderFloat("Luminance relaxation", &m_RelaxSettings.luminanceEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
@@ -1081,7 +1084,6 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Checkbox("Anti-firefly", &m_RelaxSettings.antifirefly);
                         }
 
-                        ImGui::SameLine();
                         m_ForceHistoryReset = ImGui::Button("Reset history");
                         ImGui::SameLine();
 
@@ -1274,7 +1276,7 @@ void Sample::PrepareFrame(uint32_t frameIndex)
     CameraDesc desc = {};
     desc.limits = cameraLimits;
     desc.aspectRatio = float( GetWindowWidth() ) / float( GetWindowHeight() );
-    desc.horizontalFov = m_Settings.camFov;
+    desc.horizontalFov = RadToDeg( Atan( Tan( DegToRad( m_Settings.camFov ) * 0.5f ) *  desc.aspectRatio * 9.0f / 16.0f ) * 2.0f ); // recalculate to ultra-wide if needed
     desc.nearZ = NEAR_Z / m_Settings.unitsToMetersMultiplier;
     desc.farZ = 1000.0f / m_Settings.unitsToMetersMultiplier;
     desc.isCustomMatrixSet = m_Settings.animateCamera;
@@ -2603,9 +2605,9 @@ void Sample::UpdateConstantBuffer(uint32_t frameIndex)
         data->gUnitsToMetersMultiplier = m_Settings.unitsToMetersMultiplier;
         data->gIndirectDiffuse = m_Settings.indirectDiffuse ? 1.0f : 0.0f;
         data->gIndirectSpecular = m_Settings.indirectSpecular ? 1.0f : 0.0f;
+        data->gSunAngularRadius = DegToRad( m_Settings.sunAngularDiameter * 0.5f );
         data->gTanSunAngularRadius = Tan( DegToRad( m_Settings.sunAngularDiameter * 0.5f ) );
-        data->gPixelAngularDiameter = DegToRad(m_Settings.camFov) / m_OutputResolution.x;
-        data->gSunAngularDiameter = DegToRad(m_Settings.sunAngularDiameter);
+        data->gPixelAngularRadius = 0.5f * DegToRad(m_Settings.camFov) / m_OutputResolution.x;
         data->gUseMipmapping = m_Settings.mip ? 1.0f : 0.0f;
         data->gIsOrtho = m_Camera.m_IsOrtho;
         data->gDebug = m_Settings.debug;
@@ -2966,6 +2968,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
             reblurSettings.diffuseSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
             reblurSettings.diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
             reblurSettings.diffuseSettings.antifirefly = m_Settings.nrdSettings.antifirefly;
+            reblurSettings.diffuseSettings.usePrePass = m_Settings.nrdSettings.usePrePass;
 
             reblurSettings.specularSettings.hitDistanceParameters = specHitDistanceParameters;
             reblurSettings.specularSettings.lobeTrimmingParameters = { trimmingParams.x, trimmingParams.y, trimmingParams.z };
@@ -2977,6 +2980,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
             reblurSettings.specularSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
             reblurSettings.specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
             reblurSettings.specularSettings.antifirefly = m_Settings.nrdSettings.antifirefly;
+            reblurSettings.specularSettings.usePrePass = m_Settings.nrdSettings.usePrePass;
 
             #if( NRD_COMBINED == 1 )
                 m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE_SPECULAR, &reblurSettings);
@@ -2994,6 +2998,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
 
             m_RelaxSettings.specularMaxFastAccumulatedFrameNum = maxFastAccumulatedFrameNum;
             m_RelaxSettings.diffuseMaxFastAccumulatedFrameNum = maxFastAccumulatedFrameNum;
+            m_RelaxSettings.minLuminanceWeight = m_BlueNoise ? 0.15f : 0.0f;
 
             m_RELAX.SetMethodSettings(nrd::Method::RELAX_DIFFUSE_SPECULAR, &m_RelaxSettings);
             m_RELAX.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);

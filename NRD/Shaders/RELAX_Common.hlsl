@@ -8,14 +8,6 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-float3 RELAX_BackEnd_UnpackRadiance( float3 compressedRadiance, float linearRoughness = 1.0 )
-{
-    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
-    float lum = _NRD_Luminance( compressedRadiance );
-    float3 radiance = compressedRadiance / max( 1.0 - lum * exposure, NRD_EPS );
-    return radiance;
-}
-
 // Unpack normal, roughness and depth from uint32x2 with the following layout:
 // - x: [RELAX_NORMAL_ROUGHNESS_BITS#1 + RELAX_NORMAL_ROUGHNESS_BITS#2 normal] | [RELAX_NORMAL_ROUGHNESS_BITS#3 roughness]
 // - y: 32 bit depth
@@ -250,4 +242,52 @@ float GetGeometryWeight(float3 centerWorldPos, float3 centerNormal, float center
 {
     float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
     return GetPlaneDistanceWeight(distanceToCenterPointPlane, centerLinearZ, phiDepth);
+}
+
+float GetDiffuseNormalWeight_ATrous(float3 centerNormal, float3 sampleNormal, float phiNormal)
+{
+    return pow(saturate(dot(centerNormal, sampleNormal)), phiNormal);
+}
+
+float GetSpecularLobeHalfAngle_ATrous(float roughness)
+{
+    // Defines a cone angle, where micro-normals are distributed
+    float r2 = roughness * roughness;
+    float r3 = roughness * r2;
+    return 3.141592 * r2 / (1.0 + 0.5*r2 + r3);
+}
+
+float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, float specularReprojectionConfidence, float normalEdgeStoppingRelaxation, float specularLobeAngleFraction)
+{
+    // Relaxing normal weights if not enough frames in history
+    // and if specular reprojection confidence is low
+    float relaxation = saturate(numFramesInHistory / 5.0);
+    relaxation *= lerp(1.0, specularReprojectionConfidence, normalEdgeStoppingRelaxation);
+    float f = 0.9 + 0.1 * relaxation;
+
+    // This is the main parameter - cone angle
+    float angle = specularLobeAngleFraction * GetSpecularLobeHalfAngle_ATrous(roughness);
+
+    // Increasing angle ~10x to relax rejection of the neighbors if specular reprojection confidence is low
+    angle *= 10.0 - 9.0 * relaxation;
+    angle = min(0.5 * 3.141592, angle);
+
+    return float2(angle, f);
+}
+
+float GetSpecularVWeight_ATrous(float2 params0, float3 v0, float3 v)
+{
+    float cosa = saturate(dot(v0, v));
+    float a = STL::Math::AcosApprox(cosa) * 0.5;
+    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
+    return saturate(1.0 + (a - 1.0) * params0.y);
+}
+
+float GetSpecularNormalWeight_ATrous(float2 params0, float specularLobeAngleSlack, float3 n0, float3 n)
+{
+    float cosa = saturate(dot(n0, n));
+    float a = STL::Math::AcosApprox(cosa);
+    params0.x += specularLobeAngleSlack;
+    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
+    return saturate(1.0 + (a - 1.0) * params0.y);
 }

@@ -19,7 +19,6 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
     float4x4 gWorldToView;
     float4 gRotator;
-    float4 gSpecHitDistParams;
     float4 gSpecTrimmingParams;
     float gSpecBlurRadiusScale;
 };
@@ -32,22 +31,16 @@ NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
 NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 3, 0 );
-NRI_RESOURCE( Texture2D<float2>, gIn_Error, t, 4, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<unorm float2>, gInOut_Error, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 1, 0 );
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
-
-    // Debug
-    #if( REBLUR_DEBUG == REBLUR_SHOW_MIPS )
-        gOut_Spec[ pixelPos ] = gIn_Spec[ pixelPos ];
-        return;
-    #endif
 
     // Early out
     float viewZ = gIn_ScaledViewZ[ pixelPos ] / NRD_FP16_VIEWZ_SCALE;
@@ -64,7 +57,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Shared data
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, viewZ );
     float4 rotator = GetBlurKernelRotation( REBLUR_POST_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     // Internal data
@@ -73,7 +65,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Center data
     float4 spec = gIn_Spec[ pixelPos ];
-    float2 error = gIn_Error[ pixelPos ].xx;
+    float3 error = float3( 0.0, gInOut_Error[ pixelPos ].xy );
 
     // Spatial filtering
     #define REBLUR_SPATIAL_MODE REBLUR_POST_BLUR

@@ -42,8 +42,9 @@ NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 6, 0 );
 
 // Outputs
 NRI_RESOURCE( RWTexture2D<unorm float2>, gOut_InternalData, u, 0, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 1, 0 );
-NRI_RESOURCE( RWTexture2D<float4>, gOut_Fast_Diff, u, 2, 0 );
+NRI_RESOURCE( RWTexture2D<unorm float>, gOut_Error, u, 1, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 2, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Fast_Diff, u, 3, 0 );
 
 void Preload( int2 sharedId, int2 globalId )
 {
@@ -230,6 +231,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     gOut_InternalData[ pixelPos ] = PackDiffInternalData( diffAccumSpeed, edge );
     gOut_Diff[ pixelPos ] = diffResult;
 
+    // Error
+    float diffError = GetColorErrorForAdaptiveRadiusScale( diffResult, diffHistory, diffAccumSpeedNonLinear, 1.0 );
+    gOut_Error[ pixelPos ] = diffError;
+
     // Fast history
     #if( REBLUR_USE_FAST_HISTORY == 1 )
         float4 d11f = gIn_HistoryFast_Diff.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 1, 1 ) );
@@ -239,7 +244,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         float4 diffHistoryFast = STL::Filtering::ApplyBilinearCustomWeights( d11f, d21f, d12f, d22f, diffWeights );
 
         // History fix (previous state)
-        float diffMinAccumSpeedFast = REBLUR_MIP_NUM - 1;
+        float diffMinAccumSpeedFast = REBLUR_FRAME_NUM_WITH_HISTORY_FIX - 1;
         diffHistoryFast = lerp( diffHistory, diffHistoryFast, diffAccumSpeed > diffMinAccumSpeedFast );
 
         float diffAccumSpeedNonLinearFast = 1.0 / ( min( diffAccumSpeed, gDiffMaxFastAccumulatedFrameNum ) + 1.0 );

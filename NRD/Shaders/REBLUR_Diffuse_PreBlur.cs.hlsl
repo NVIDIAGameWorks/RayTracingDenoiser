@@ -19,8 +19,8 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 
     float4x4 gWorldToView;
     float4 gRotator;
-    float4 gDiffHitDistParams;
     uint gDiffCheckerboard;
+    uint gSpatialFiltering;
 };
 
 #include "NRD_Common.hlsl"
@@ -80,7 +80,6 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Shared data
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, viewZ );
     float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     // Edge detection
@@ -107,9 +106,16 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         diff += d0 * w.x + d1 * w.y;
     }
 
-    float2 error = 0;
+    float3 error = 0;
 
     // Spatial filtering
+    [branch]
+    if( gSpatialFiltering == 0 )
+    {
+        gOut_Diff[ pixelPos ] = diff;
+        return;
+    }
+
     #define REBLUR_SPATIAL_MODE REBLUR_PRE_BLUR
 
     #include "REBLUR_Common_DiffuseSpatialFilter.hlsl"

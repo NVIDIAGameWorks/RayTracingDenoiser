@@ -20,7 +20,6 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
     float4 gCameraDelta;
-    float4 gSpecHitDistParams;
     float4 gAntilag1;
     float4 gAntilag2;
     float2 gMotionVectorScale;
@@ -68,7 +67,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     [branch]
     if( viewZ > gInf )
     {
-        gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( INF, 0.0, float3( 0, 0, 1 ), 1.0, 0.0 );
+        gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( NRD_INF, 0.0, float3( 0, 0, 1 ), 1.0, 0.0 );
         return;
     }
 
@@ -176,8 +175,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float sigmaScale = 1.0 + 0.125 * gFramerateScale;
     float4 specHistoryVirtualClamped = STL::Color::Clamp( specM1, specSigma * sigmaScale, specHistoryVirtual );
 
-    float virtualForcedConfidence = lerp( 0.75, 0.95, STL::Math::LinearStep( 0.04, 0.25, roughness ) );
-    float virtualUnclampedAmount = lerp( virtualHistoryConfidence * virtualForcedConfidence, 1.0, roughness * roughness );
+    float virtualUnclampedAmount = lerp( virtualHistoryConfidence, 1.0, roughness * roughness );
     specHistoryVirtual = lerp( specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount );
 
     // Internal data
@@ -190,11 +188,15 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     accumSpeedScale = lerp( accumSpeedScale, 1.0, roughness );
     accumSpeedScale = lerp( accumSpeedScale, 1.0, 1.0 / ( 1.0 + specInternalData.y ) );
 
-    float specMinAccumSpeed = min( specInternalData.y, ( REBLUR_MIP_NUM - 1 ) * STL::Math::Sqrt01( roughness ) );
+    float specMinAccumSpeed = min( specInternalData.y, ( REBLUR_FRAME_NUM_WITH_HISTORY_FIX - 1 ) * STL::Math::Sqrt01( roughness ) );
     specInternalData.y = specMinAccumSpeed + ( specInternalData.y - specMinAccumSpeed ) * accumSpeedScale;
 
     // Specular history
-    float4 specHistory = lerp( specHistorySurface, specHistoryVirtual, virtualHistoryAmount );
+    float hitDistToSurfaceRatio = saturate( hitDist * invDistToPoint );
+
+    float4 specHistory;
+    specHistory.xyz = lerp( specHistorySurface.xyz, specHistoryVirtual.xyz, virtualHistoryAmount );
+    specHistory.w = lerp( specHistorySurface.w, specHistoryVirtual.w, virtualHistoryAmount * hitDistToSurfaceRatio );
 
     // History weight
     float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specInternalData.y, parallax, roughness, virtualHistoryAmount );
@@ -214,18 +216,14 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( viewZ, 0.0, N, roughness, specInternalData.y );
     gOut_Spec[ pixelPos ] = specResult;
 
-    specResult = REBLUR_BackEnd_UnpackRadiance( specResult, viewZ, gSpecHitDistParams, roughness );
-
     #if( REBLUR_DEBUG == REBLUR_SHOW_ACCUM_SPEED  )
         specResult.w = saturate( specInternalData.y / ( gSpecMaxAccumulatedFrameNum + 1.0 ) );
-    #elif( REBLUR_DEBUG == REBLUR_SHOW_VIRTUAL_HISTORY_AMOUNT )
+    #elif( REBLUR_DEBUG == REBLUR_SHOW_VIRTUAL_HISTORY_AMOUNT || REBLUR_DEBUG == REBLUR_SHOW_VIRTUAL_HISTORY_CONFIDENCE )
         specResult.w = virtualHistoryAmount;
-    #elif( REBLUR_DEBUG == REBLUR_SHOW_VIRTUAL_HISTORY_CONFIDENCE )
-        specResult.w = virtualHistoryConfidence;
     #elif( REBLUR_DEBUG == REBLUR_SHOW_PARALLAX )
-        diffResult.w = parallax;
+        specResult.w = parallax;
     #elif( REBLUR_DEBUG == REBLUR_SHOW_EDGE )
-        diffResult.w = edge;
+        specResult.w = edge;
     #endif
 
     gOut_Spec_Copy[ pixelPos ] = specResult;

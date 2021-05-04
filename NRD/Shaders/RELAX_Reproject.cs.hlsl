@@ -39,6 +39,7 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
     float    gDiffuseMaxFastAccumulatedFrameNum;
     float    gWorldSpaceMotion;
     float    gIsOrtho;
+    uint     gVirtualHistoryClampingEnabled;
     float    gUnproject;
     float    gNeedHistoryReset;
     float    gDenoisingRange;
@@ -707,16 +708,19 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
     float maxDist = max(prevVirtualMotionBasedReflectionHitT, accumulatedReflectionHitT);
     float hitTDisocclusionAdjustment = saturate(2.0*abs(prevVirtualMotionBasedReflectionHitT - accumulatedReflectionHitT) / (maxDist + currentLinearZ));
     virtualHistoryConfidence *= 1.0 - (0.75 + 0.25*saturate(parallax)) * hitTDisocclusionAdjustment;
-    
-    // Clamp virtual history
-    float sigmaScale = 3.0;
-    float4 specHistoryVirtualClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, specHistoryVirtual);
-    float3 specHistoryVirtualResponsiveClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, prevVirtualMotionBasedSpecularResponsiveIllumination.rgbb).rgb;
 
-    float virtualForcedConfidence = lerp(0.75, 0.95, STL::Math::LinearStep(0.04, 0.25, currentRoughness));
-    float virtualUnclampedAmount = lerp(virtualHistoryConfidence * virtualForcedConfidence, 1.0, currentRoughness * currentRoughness);
-    specHistoryVirtual = lerp(specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount);
-    prevVirtualMotionBasedSpecularResponsiveIllumination = lerp(specHistoryVirtualResponsiveClamped, prevVirtualMotionBasedSpecularResponsiveIllumination, virtualUnclampedAmount);
+    // Clamp virtual history
+    if (gVirtualHistoryClampingEnabled != 0)
+    {
+        float sigmaScale = 3.0;
+        float4 specHistoryVirtualClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, specHistoryVirtual);
+        float3 specHistoryVirtualResponsiveClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, prevVirtualMotionBasedSpecularResponsiveIllumination.rgbb).rgb;
+
+        float virtualForcedConfidence = lerp(0.75, 0.95, STL::Math::LinearStep(0.04, 0.25, currentRoughness));
+        float virtualUnclampedAmount = lerp(virtualHistoryConfidence * virtualForcedConfidence, 1.0, currentRoughness * currentRoughness);
+        specHistoryVirtual = lerp(specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount);
+        prevVirtualMotionBasedSpecularResponsiveIllumination = lerp(specHistoryVirtualResponsiveClamped, prevVirtualMotionBasedSpecularResponsiveIllumination, virtualUnclampedAmount);
+    }
 
     // Current specular signal ( virtual motion )
     float specVirtualFrames = GetSpecAccumSpeed(specHistoryFrames, currentRoughnessModified, NoV, 0.0); // parallax = 0 cancels NoV too
@@ -747,7 +751,7 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
     // If zero specular sample (color = 0), artificially adding variance for pixels with low reprojection confidence
     float specularHistoryConfidence = saturate(virtualHistoryConfidence + surfaceHistoryConfidence);
     if (accumulatedSpecular2ndMoment == 0) accumulatedSpecular2ndMoment = gSpecularVarianceBoost * (1.0 - specularHistoryConfidence);
-    
+
     // Temporal accumulation of diffuse illumination
     float diffuseAlpha = surfaceMotionBasedReprojectionFound ? max(1.0 / (gDiffuseMaxAccumulatedFrameNum + 1), 1.0 / historyLength.y) : 1.0;
     float diffuseAlphaResponsive = surfaceMotionBasedReprojectionFound ? max(1.0 / (gDiffuseMaxFastAccumulatedFrameNum + 1), 1.0 / historyLength.y) : 1.0;

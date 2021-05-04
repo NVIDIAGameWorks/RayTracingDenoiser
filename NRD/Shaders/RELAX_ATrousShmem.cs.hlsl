@@ -22,10 +22,12 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
     float2 gInvRectSize;
     float  gSpecularPhiLuminance;
     float  gDiffusePhiLuminance;
+    float  gMaxLuminanceRelativeDifference;
     float  gPhiDepth;
     float  gPhiNormal;
+    float  gSpecularLobeAngleFraction;
+    float  gSpecularLobeAngleSlack;
     uint   gStepSize;
-    uint   gIsLastPass;
     float  gRoughnessEdgeStoppingRelaxation;
     float  gNormalEdgeStoppingRelaxation;
     float  gLuminanceEdgeStoppingRelaxation;
@@ -60,19 +62,6 @@ float3 getCurrentWorldPos(int2 pixelPos, float depth)
     return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
 }
 
-float getDiffuseNormalWeight(float3 centerNormal, float3 sampleNormal, float phiNormal)
-{
-    return pow(saturate(dot(centerNormal, sampleNormal)), phiNormal);
-}
-
-float getSpecularLobeHalfAngle(float roughness)
-{
-    // Defines a cone angle, where micro-normals are distributed
-    float r2 = roughness * roughness;
-    float r3 = roughness * r2;
-    return 3.141592 * r2 / (1.0 + 0.5*r2 + r3);
-}
-
 float2 getRoughnessWeightParams(float roughness0, float specularReprojectionConfidence)
 {
     float a = 1.0 / (0.001 + 0.999 * roughness0 * (0.333 + gRoughnessEdgeStoppingRelaxation * (1.0 - specularReprojectionConfidence)));
@@ -83,39 +72,6 @@ float2 getRoughnessWeightParams(float roughness0, float specularReprojectionConf
 float getRoughnessWeight(float2 params0, float roughness)
 {
     return saturate(1.0 - abs(params0.y - roughness * params0.x));
-}
-
-float2 getNormalWeightParams(float roughness, float numFramesInHistory, float specularReprojectionConfidence)
-{
-    // Relaxing normal weights
-    // and if specular reprojection confidence is low
-    float relaxation = lerp(1.0, specularReprojectionConfidence, gNormalEdgeStoppingRelaxation);
-    float f = 0.9 + 0.1 * saturate(numFramesInHistory / 5.0) * relaxation;
-
-    // This is the main parameter - cone angle
-    float angle = getSpecularLobeHalfAngle(roughness);
-
-    // Increasing angle ~10x to relax rejection of the neighbors if specular reprojection confidence is low
-    angle *= 3.0 - 2.666 * relaxation * saturate(numFramesInHistory / 5.0);
-    angle = min(0.5 * 3.141592, angle);
-
-    return float2(angle, f);
-}
-
-float getSpecularNormalWeight(float2 params0, float3 n0, float3 n)
-{
-    float cosa = saturate(dot(n0, n));
-    float a = STL::Math::AcosApprox(cosa);
-    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
-    return saturate(1.0 + (a - 1.0) * params0.y);
-}
-
-float getSpecularVWeight(float2 params0, float3 v0, float3 v)
-{
-    float cosa = saturate(dot(v0, v));
-    float a = STL::Math::AcosApprox(cosa) * 0.5;
-    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
-    return saturate(1.0 + (a - 1.0) * params0.y);
 }
 
 // Unpacking from LogLuv to RGB is expensive, so let's do it once,
@@ -210,7 +166,7 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
     float4 worldPos = 0;
     float depth = 0.0;
 
-	if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
     {
         packedIlluminationAndVariance = packIlluminationAndVariance(gSpecularIlluminationAndVariance[int2(xx,yy)], gDiffuseIlluminationAndVariance[int2(xx,yy)]);
         UnpackNormalRoughnessDepth(normal, roughness, depth, gNormalRoughnessDepth[int2(xx, yy)]);
@@ -262,7 +218,7 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
     float3 centerWorldPos = centerWorldPosAndLinearZ.xyz;
     float centerLinearZ = centerWorldPosAndLinearZ.w;
     float3 centerV = normalize(centerWorldPos);
-    
+
     // Early out if linearZ is beyond denoising range
     [branch]
     if (centerLinearZ > gDenoisingRange)
@@ -287,8 +243,7 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
     float centerRoughness = sharedNormalRoughness[sharedMemoryIndex.y][sharedMemoryIndex.x].a;
     float2 roughnessWeightParams = getRoughnessWeightParams(centerRoughness, specularReprojectionConfidence);
 
-    float2 normalWeightParams = getNormalWeightParams(centerRoughness, 255.0*gHistoryLength[ipos].y, specularReprojectionConfidence);
-
+    float2 normalWeightParams = GetNormalWeightParams_ATrous(centerRoughness, 255.0*gHistoryLength[ipos].y, specularReprojectionConfidence, gNormalEdgeStoppingRelaxation, gSpecularLobeAngleFraction);
 
     // Calculating variance, filtered using 3x3 gaussin blur
     float centerSpecularVar;
@@ -336,16 +291,18 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
             // Calculating geometry and normal weights
             float geometryW = GetGeometryWeight(centerWorldPos, centerNormal, centerLinearZ, sampleWorldPos, phiDepth);
 
-            float normalWSpecular = getSpecularNormalWeight(normalWeightParams, centerNormal, sampleNormal);
-            normalWSpecular *= getSpecularVWeight(normalWeightParams, centerV, sampleV);
-            float normalWDiffuse = getDiffuseNormalWeight(centerNormal, sampleNormal, gPhiNormal);
+            float normalWSpecular = GetSpecularNormalWeight_ATrous(normalWeightParams, gSpecularLobeAngleSlack, centerNormal, sampleNormal);
+            normalWSpecular *= GetSpecularVWeight_ATrous(normalWeightParams, centerV, sampleV);
+            float normalWDiffuse = GetDiffuseNormalWeight_ATrous(centerNormal, sampleNormal, gPhiNormal);
 
             // Calculating luminande weigths
             float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) / specularPhiLIllumination;
             float relaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
             specularLuminanceW *= relaxation;
+            specularLuminanceW = min(gMaxLuminanceRelativeDifference, specularLuminanceW);
 
             float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) / diffusePhiLIllumination;
+            diffuseLuminanceW = min(gMaxLuminanceRelativeDifference, diffuseLuminanceW);
 
             // Calculating bilateral weight for specular
             float wSpecular =  isCenter ? kernel : kernel * max(1e-6, normalWSpecular * exp(-geometryW - specularLuminanceW)) * getRoughnessWeight(roughnessWeightParams, sampleRoughness);

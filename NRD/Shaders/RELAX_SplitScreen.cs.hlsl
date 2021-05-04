@@ -49,10 +49,8 @@ void main( uint2 pixelPos : SV_DispatchThreadId)
     float roughness = normalAndRoughness.w;
 
     float3 specResult = gIn_Spec[ pixelPosUser ];
-    specResult = RELAX_BackEnd_UnpackRadiance( specResult, roughness );
     gOut_Spec[ pixelPos ] = specResult * float( viewZ < gInf );
 
     float3 diffResult = gIn_Diff[ pixelPosUser ];
-    diffResult = RELAX_BackEnd_UnpackRadiance( diffResult );
     gOut_Diff[ pixelPos ] = diffResult * float( viewZ < gInf );
 }

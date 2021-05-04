@@ -20,7 +20,6 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToClipPrev;
     float4x4 gViewToWorld;
     float4 gCameraDelta;
-    float4 gDiffHitDistParams;
     float4 gAntilag1;
     float4 gAntilag2;
     float2 gMotionVectorScale;
@@ -68,7 +67,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     [branch]
     if( viewZ > gInf )
     {
-        gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( INF, 0.0, float3( 0, 0, 1 ), 1.0, 0.0 );
+        gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( NRD_INF, 0.0, float3( 0, 0, 1 ), 1.0, 0.0 );
         return;
     }
 
@@ -169,12 +168,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     gOut_ViewZ_Normal_Roughness_AccumSpeeds[ pixelPos ] = PackViewZNormalRoughnessAccumSpeeds( viewZ, diffInternalData.y, N, 1.0, 0.0 );
     gOut_Diff[ pixelPos ] = diffResult;
 
-    diffResult = REBLUR_BackEnd_UnpackRadiance( diffResult, viewZ, gDiffHitDistParams );
-
     #if( REBLUR_DEBUG == REBLUR_SHOW_ACCUM_SPEED  )
         diffResult.w = saturate( diffInternalData.y / ( gDiffMaxAccumulatedFrameNum + 1.0 ) );
-    #elif( REBLUR_DEBUG == REBLUR_SHOW_PARALLAX )
-        diffResult.w = parallax;
     #elif( REBLUR_DEBUG == REBLUR_SHOW_EDGE )
         diffResult.w = edge;
     #endif

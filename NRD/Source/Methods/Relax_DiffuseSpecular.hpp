@@ -10,6 +10,32 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
 
+inline float3 GetFrustumForwardNonSymmetricProjection(const float4x4& worldToView, const float4x4& clipToWorld, const float3& cameraPos)
+{
+    float3 frustumForwardSymmetricProjection = worldToView.GetRow2().To3d();
+
+    float4 leftTopNDC = float4(-1.f, 1.f, 0.f, 1.f);
+    float4 leftBottomNDC = float4(-1.f, -1.f, 0.f, 1.f);
+    float4 rightBottomNDC = float4(1.f, -1.f, 0.f, 1.f);
+    float4 rightTopNDC = float4(1.f, 1.f, 0.f, 1.f);
+
+    float4 leftTopWorld = clipToWorld * leftTopNDC;
+    leftTopWorld /= leftTopWorld.w;
+    float4 leftBottomWorld = clipToWorld * leftBottomNDC;
+    leftBottomWorld /= leftBottomWorld.w;
+    float4 rightBottomWorld = clipToWorld * rightBottomNDC;
+    rightBottomWorld /= rightBottomWorld.w;
+    float4 rightTopWorld = clipToWorld * rightTopNDC;
+    rightTopWorld /= rightTopWorld.w;
+
+    float3 frustumForwardNonSymmetricProjection = float4((leftTopWorld + leftBottomWorld + rightBottomWorld + rightTopWorld) / 4.f).To3d() - cameraPos;
+    frustumForwardNonSymmetricProjection = Normalize(frustumForwardNonSymmetricProjection);
+    float dot = Dot33(frustumForwardSymmetricProjection, frustumForwardNonSymmetricProjection);
+    frustumForwardNonSymmetricProjection /= dot;
+
+    return frustumForwardNonSymmetricProjection;
+}
+
 size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
 {
     enum class Permanent
@@ -95,7 +121,7 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushOutput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
 
-        AddDispatch( RELAX_Reproject, SumConstants(2, 7, 6, 12), 8, 1 );
+        AddDispatch( RELAX_Reproject, SumConstants(2, 7, 6, 13), 8, 1 );
     }
 
     PushPass("RELAX::DiffuseSpecular - Disocclusion fix");
@@ -162,7 +188,7 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG) );
 
-        AddDispatch( RELAX_ATrousShmem, SumConstants(0, 3, 2, 10), 8, 1 );
+        AddDispatch( RELAX_ATrousShmem, SumConstants(0, 3, 2, 12), 8, 1 );
     }
 
     // A-trous (odd)
@@ -177,7 +203,7 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PING) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PING) );
 
-        AddDispatchRepeated( RELAX_ATrousStandard, SumConstants(0, 3, 2, 10), 8, 1, halfMaxPassNum );
+        AddDispatchRepeated( RELAX_ATrousStandard, SumConstants(0, 3, 2, 12), 8, 1, halfMaxPassNum );
     }
 
     // A-trous (even)
@@ -192,7 +218,7 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::SPEC_ILLUM_VARIANCE_PONG) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_VARIANCE_PONG) );
 
-        AddDispatchRepeated( RELAX_ATrousStandard, SumConstants(0, 3, 2, 10), 8, 1, halfMaxPassNum );
+        AddDispatchRepeated( RELAX_ATrousStandard, SumConstants(0, 3, 2, 12), 8, 1, halfMaxPassNum );
     }
 
     // A-trous (odd, last)
@@ -207,7 +233,7 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint( ResourceType::OUT_SPEC ) );
         PushOutput( AsUint( ResourceType::OUT_DIFF ) );
 
-        AddDispatch( RELAX_ATrousStandard, SumConstants(0, 3, 2, 10), 8, 1 );
+        AddDispatch( RELAX_ATrousStandard, SumConstants(0, 3, 2, 12), 8, 1 );
     }
 
     // A-trous (even, last)
@@ -222,7 +248,7 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint( ResourceType::OUT_SPEC ) );
         PushOutput( AsUint( ResourceType::OUT_DIFF ) );
 
-        AddDispatch( RELAX_ATrousStandard, SumConstants(0, 3, 2, 10), 8, 1 );
+        AddDispatch( RELAX_ATrousStandard, SumConstants(0, 3, 2, 12), 8, 1 );
     }
     
     PushPass("RELAX::DiffuseSpecular - split screen");
@@ -274,13 +300,15 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     float aspect = m_ViewToClip.a00 / m_ViewToClip.a11;
     float3 frustumRight = m_WorldToView.GetRow0().To3d() * tanHalfFov;
     float3 frustumUp = m_WorldToView.GetRow1().To3d() * tanHalfFov * aspect;
-    float3 frustumForward = m_WorldToView.GetRow2().To3d();
+    float3 frustumForward = GetFrustumForwardNonSymmetricProjection(m_WorldToView, m_ClipToWorld, 0.f);
 
     float prevTanHalfFov = 1.0f / m_ViewToClipPrev.a00;
     float prevAspect = m_ViewToClipPrev.a00 / m_ViewToClipPrev.a11;
     float3 prevFrustumRight = m_WorldToViewPrev.GetRow0().To3d() * prevTanHalfFov;
     float3 prevFrustumUp = m_WorldToViewPrev.GetRow1().To3d() * prevTanHalfFov * prevAspect;
-    float3 prevFrustumForward = m_WorldToViewPrev.GetRow2().To3d();
+    float3 prevFrustumForward = GetFrustumForwardNonSymmetricProjection(m_WorldToViewPrev, m_ClipToWorldPrev, m_CameraDelta);
+
+    float maxLuminanceRelativeDifference = -Log( Saturate(settings.minLuminanceWeight) );
 
     // PACK INPUT DATA
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::PACK_INPUT_DATA));
@@ -312,6 +340,7 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     AddFloat(data, (float)settings.diffuseMaxFastAccumulatedFrameNum);
     AddFloat(data, m_CommonSettings.worldSpaceMotion ? 1.0f : 0.0f);
     AddFloat(data, m_IsOrtho);
+    AddUint(data, settings.specularVirtualHistoryClamping ? 1 : 0);
     AddFloat(data, 1.0f / (0.5f * rectH * m_ProjectY));
     AddFloat(data, m_CommonSettings.frameIndex == 0 ? 1.0f : 0.0f);
     AddFloat(data, m_CommonSettings.denoisingRange);
@@ -382,10 +411,12 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
         AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
         AddFloat(data, settings.specularPhiLuminance);
         AddFloat(data, settings.diffusePhiLuminance);
+        AddFloat(data, maxLuminanceRelativeDifference);
         AddFloat(data, settings.phiDepth);
         AddFloat(data, settings.phiNormal);
+        AddFloat(data, settings.specularLobeAngleFraction);
+        AddFloat(data, DegToRad(settings.specularLobeAngleSlack));
         AddUint(data, 1 << i);
-        AddUint(data, i == iterationNum - 1 ? 1 : 0);
         AddFloat(data, settings.roughnessEdgeStoppingRelaxation);
         AddFloat(data, settings.normalEdgeStoppingRelaxation);
         AddFloat(data, settings.luminanceEdgeStoppingRelaxation);

@@ -17,12 +17,14 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
     REBLUR_SPEC_SHARED_CB_DATA;
 
-    uint2 gScreenSizei;
+    float4x4 gWorldToView;
+    float4 gRotator;
     float gSpecMaxFastAccumulatedFrameNum;
+    float gSpecFastHistoryClampingColorBoxSigmaScale;
     uint gSpecAntiFirefly;
 };
 
-#if( REBLUR_5X5_HISTORY_CLAMPING == 1 )
+#if( REBLUR_USE_5X5_HISTORY_CLAMPING == 1 )
     #define NRD_USE_BORDER_2
 #endif
 #include "NRD_Common.hlsl"
@@ -49,9 +51,6 @@ void Preload( int2 sharedId, int2 globalId )
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    uint2 pixelPosUser = gRectOrigin + pixelPos;
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
-
     PRELOAD_INTO_SMEM;
 
     // Early out
@@ -62,39 +61,20 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     if( viewZ > gInf )
         return;
 
-    // Debug
-    #if( REBLUR_DEBUG == REBLUR_SHOW_MIPS )
-    {
-        int realMipLevel = int( gDebug * REBLUR_MIP_NUM );
-        int mipLevel = realMipLevel - 1;
-        if( realMipLevel == 0 )
-            return;
-
-        float2 mipSize = float2( gScreenSizei >> realMipLevel );
-        float2 mipUv = pixelUv * gScreenSize / ( mipSize * float( 1 << realMipLevel ) );
-
-        float2 mipUvScaled = mipUv * gResolutionScale;
-        float4 spec = gIn_Spec.SampleLevel( gLinearClamp, mipUvScaled, mipLevel );
-
-        gOut_Spec[ pixelPos ] = spec;
-
-        return;
-    }
-    #endif
-
-    float roughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] ).w;
+    uint2 pixelPosUser = gRectOrigin + pixelPos;
+    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] );
+    float3 N = normalAndRoughness.xyz;
+    float roughness = normalAndRoughness.w;
 
     float2 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
-    float specRealMipLevelf = GetMipLevel( specInternalData.y, roughness );
-    uint specRealMipLevel = uint( specRealMipLevelf );
+    float4 spec = ReconstructHistorySpec( specInternalData, pixelPos, scaledViewZ, N, gRotator, gWorldToView, gIn_ScaledViewZ, gIn_Spec, roughness, gIn_Normal_Roughness );
 
-    // Local variance
+    // History clamping
     #if( REBLUR_USE_FAST_HISTORY == 1 )
         float4 specM1 = 0;
         float4 specM2 = 0;
-
-        float4 specMaxInput = -INF;
-        float4 specMinInput = INF;
+        float4 specMaxInput = -NRD_INF;
+        float4 specMinInput = NRD_INF;
 
         [unroll]
         for( int dy = 0; dy <= BORDER * 2; dy++ )
@@ -118,40 +98,26 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
         float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
 
-        specM1 *= invSum;
-        specM2 *= invSum;
-        float4 specSigma = GetStdDev( specM1, specM2 );
-        float4 spec = gOut_Spec[ pixelPos ];
-
         #if( REBLUR_USE_ANTI_FIREFLY == 1 )
             [flatten]
             if( gSpecAntiFirefly != 0 )
                 spec = clamp( spec, specMinInput, specMaxInput );
         #endif
+
+        specM1 *= invSum;
+        specM2 *= invSum;
+        float4 specSigma = GetStdDev( specM1, specM2 );
+        float4 specMin = specM1 - gSpecFastHistoryClampingColorBoxSigmaScale * specSigma;
+        float4 specMax = specM1 + gSpecFastHistoryClampingColorBoxSigmaScale * specSigma;
+        float4 specCenter = s_Spec[ threadId.y + BORDER ][ threadId.x + BORDER ];
+        specMin = min( specMin, specCenter );
+        specMax = max( specMax, specCenter );
+        float4 specClamped = clamp( spec, specMin, specMax );
+
+        [flatten]
+        if( gSpecMaxFastAccumulatedFrameNum < gSpecMaxAccumulatedFrameNum )
+            spec = lerp( specClamped, spec, specInternalData.x );
     #endif
 
-    // Specular
-    [branch]
-    if( specRealMipLevel != 0 && REBLUR_USE_HISTORY_FIX != 0 )
-    {
-        #if( REBLUR_USE_FAST_HISTORY == 0 )
-            float4 spec = gOut_Spec[ pixelPos ];
-        #endif
-
-        float4 blurry = ReconstructHistory( spec, specRealMipLevel, gScreenSizei, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Spec );
-        spec = lerp( spec, blurry, specInternalData.x );
-
-        #if( REBLUR_USE_FAST_HISTORY == 0 )
-            gOut_Spec[ pixelPos ] = spec;
-        #endif
-    }
-
-    #if( REBLUR_USE_FAST_HISTORY == 1 )
-        float4 specClamped = STL::Color::Clamp( specM1, REBLUR_FAST_HISTORY_SIGMA_AMPLITUDE * specSigma, spec );
-        float specFactor = saturate( 1.0 - specRealMipLevelf / REBLUR_MIP_NUM );
-
-        spec = lerp( spec, specClamped, specFactor * float( gSpecMaxFastAccumulatedFrameNum < gSpecMaxAccumulatedFrameNum ) );
-
-        gOut_Spec[ pixelPos ] = spec;
-    #endif
+    gOut_Spec[ pixelPos ] = CompressRadianceAndNormHitDist( spec.xyz, spec.w, viewZ, gSpecHitDistParams, roughness );
 }

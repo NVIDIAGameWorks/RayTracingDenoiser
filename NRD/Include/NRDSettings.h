@@ -40,12 +40,10 @@ namespace nrd
 
     /*
     Common / shared settings for all methods
-    Requirements:
-    Matrix:
+      Matrix requirements:
         -usage - vector is a column
         -layout - column-major
         -non jittered!
-    Jitter range: [-0.5; 0.5]
     */
     struct CommonSettings
     {
@@ -55,7 +53,7 @@ namespace nrd
         float worldToViewRotationMatrixPrev[16] = {};   // translation is not used
         float cameraMotion[3] = {};                     // previous - current
         float motionVectorScale[2] = {1.0f, 1.0f};      // if "worldSpaceMotion = true" will be used as "MV * motionVectorScale.xyy"
-        float cameraJitter[2] = {};
+        float cameraJitter[2] = {};                     // [-0.5; 0.5] sampleUv = pixelUv + cameraJitter
         uint32_t inputDataOrigin[2] = {};
         float resolutionScale = 1.0f;                   // scaled resolution will be "rounded" to the nearest integer
         float timeDeltaBetweenFrames = 0.0f;            // (ms) > 0 - user provided, otherwise - tracked internally
@@ -74,8 +72,8 @@ namespace nrd
     {
         float A = 3.0f;     // constant value (m)
         float B = 0.1f;     // viewZ based linear scale (m / units) (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
-        float C = 5.0f;     // roughness based scale, "> 1" to get bigger hit distance for low roughness
-        float D = -50.0f;   // roughness based exponential scale, "< 0", absolute value should be big enough to collapse "exp2( D * roughness ^ 2 )" to "~0" for roughness = 1
+        float C = 10.0f;    // roughness based scale, "> 1" to get bigger hit distance for low roughness
+        float D = -25.0f;   // roughness based exponential scale, "< 0", absolute value should be big enough to collapse "exp2( D * roughness ^ 2 )" to "~0" for roughness = 1
     };
 
     // Optional specular lobe trimming = A * smoothstep( B, C, roughness )
@@ -126,9 +124,11 @@ namespace nrd
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
+        float historyClampingColorBoxSigmaScale = 1.5f;                 // scale for standard deviation of color box for clamping normal history color to responsive history color
+        float temporalStabilizationAmount = 1.0f;                       // more stabilization == better antilag
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         bool antifirefly = false;                                       // adds a bit of bias, but tries to fight with fireflies
-        bool skipPreBlur = false;                                       // useful if the input signal is relatively clean (can be skipped only if checkerboarding is off)
+        bool usePrePass = true;                                         // pre-pass can be skipped if signal is relatively clean
     };
 
     // REBLUR_SPECULAR
@@ -144,9 +144,11 @@ namespace nrd
         float planeDistanceSensitivity = 0.002f;                        // > 0 (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
         float blurRadius = 30.0f;                                       // base (worst) denoising radius (pixels)
         float maxAdaptiveRadiusScale = 5.0f;                            // adaptive radius scale, comes into play if error is high (0-10)
+        float historyClampingColorBoxSigmaScale = 1.5f;                 // scale for standard deviation of color box for clamping normal history color to responsive history color
+        float temporalStabilizationAmount = 1.0f;                       // more stabilization == better antilag
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         bool antifirefly = false;                                       // adds a bit of bias, but tries to fight with fireflies
-        bool skipPreBlur = false;                                       // useful if the input signal is relatively clean (can be skipped only if checkerboarding is off)
+        bool usePrePass = true;                                         // pre-pass can be skipped if signal is relatively clean
     };
 
     // REBLUR_DIFFUSE_SPECULAR
@@ -172,33 +174,37 @@ namespace nrd
     struct RelaxDiffuseSpecularSettings
     {
         bool bicubicFilterForReprojectionEnabled = true;        // slower but sharper filtering of the history during reprojection
-        uint32_t specularMaxAccumulatedFrameNum = 63;           // 0 - RELAX_MAX_HISTORY_FRAME_NUM
+        uint32_t specularMaxAccumulatedFrameNum = 31;           // 0 - RELAX_MAX_HISTORY_FRAME_NUM
         uint32_t specularMaxFastAccumulatedFrameNum = 8;        // 0 - RELAX_MAX_HISTORY_FRAME_NUM
-        uint32_t diffuseMaxAccumulatedFrameNum = 63;            // 0 - RELAX_MAX_HISTORY_FRAME_NUM
+        uint32_t diffuseMaxAccumulatedFrameNum = 31;            // 0 - RELAX_MAX_HISTORY_FRAME_NUM
         uint32_t diffuseMaxFastAccumulatedFrameNum = 8;         // 0 - RELAX_MAX_HISTORY_FRAME_NUM
         float specularVarianceBoost = 1.0f;                     // how much variance we inject to specular if reprojection confidence is low
+        bool specularVirtualHistoryClamping = true;             // clamp specular virtual history to the current frame neighborhood
 
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;    // normal edge stopper for cross-bilateral sparse filter
         float disocclusionFixMaxRadius = 14.0f;                 // maximum radius for sparse bilateral filter, expressed in pixels
         uint32_t disocclusionFixNumFramesToFix = 3;             // cross-bilateral sparse filter will be applied to frames with history length shorter than this value
 
-        float historyClampingColorBoxSigmaScale = 1.0f;         // scale for standard deviation of color box for clamping normal history color to responsive history color
+        float historyClampingColorBoxSigmaScale = 1.5f;         // scale for standard deviation of color box for clamping normal history color to responsive history color
         float specularAntiLagColorBoxSigmaScale = 2.0f;         // scale for standard deviation of color box for lag detection
         float specularAntiLagPower = 0.0f;                      // amount of history shortening when lag is detected
         float diffuseAntiLagColorBoxSigmaScale = 2.0f;          // scale for standard deviation of color box for lag detection
         float diffuseAntiLagPower = 0.0f;                       // amount of history shortening when lag is detected
 
-        bool antifirefly = false;                               // firefly suppression
-
         uint32_t spatialVarianceEstimationHistoryThreshold = 3; // history length threshold below which spatial variance estimation will be executed
         uint32_t atrousIterationNum = 5;                        // number of iteration for A-Trous wavelet transform (2-8)
         float specularPhiLuminance = 2.0f;                      // A-trous edge stopping Luminance sensitivity
         float diffusePhiLuminance = 2.0f;                       // A-trous edge stopping Luminance sensitivity
+        float minLuminanceWeight = 0.0f;                        // A-trous edge stopping Luminance weight minimum [0; 1]
         float phiNormal = 64.0f;                                // A-trous edge stopping Normal sensitivity for diffuse
         float phiDepth = 0.05f;                                 // A-trous edge stopping Depth sensitivity
+        float specularLobeAngleFraction = 0.333f;               // base fraction of the specular lobe angle used in normal based rejection of specular during A-Trous passes; 0.333 works well perceptually
+        float specularLobeAngleSlack = 1.0f;                    // slack (in degrees) for the specular lobe angle used in normal based rejection of specular during A-Trous passes
         float roughnessEdgeStoppingRelaxation = 0.3f;           // how much we relax roughness based rejection in areas where specular reprojection is low
         float normalEdgeStoppingRelaxation = 0.3f;              // how much we relax normal based rejection in areas where specular reprojection is low
         float luminanceEdgeStoppingRelaxation = 1.0f;           // how much we relax luminance based rejection in areas where specular reprojection is low
+
+        bool antifirefly = false;                               // firefly suppression
     };
 
     // REFERENCE ACCUMULATION MODE RECOMMENDATIONS (CommonSettings::forceReferenceAccumulation = true)

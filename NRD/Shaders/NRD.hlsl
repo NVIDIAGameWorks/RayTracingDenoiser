@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v2.0.1
+// NRD v2.1.0
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -32,9 +32,6 @@ float linearRoughness:
 float normal:
     - world space normal
 
-float3 direction:
-    - direction radiance is coming from
-
 float viewZ:
     - linear view space Z for primary rays ( linearized camera depth )
 
@@ -47,23 +44,12 @@ float distanceToOccluder:
 float normHitDist:
     - normalized hit distance
     - REBLUR must be aware of the normalization function via "nrd::HitDistanceParameters"
-    - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse. SO ( specular occlusion ) for specular
+    - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse and SO ( specular occlusion ) for specular
     - AO can be used to emulate 2nd+ diffuse bounces
     - SO can be used to adjust IBL lighting
     - ".w" channel of diffuse / specular output is AO / SO
-    - if you don't know which normalization function to choose for diffuse, try "saturate( hitT / C )", where C = 1-3 m
-    - if you don't know which normalization function to choose for specular, try "saturate( hitT / C )", where C = 10-40 m
+    - if you don't know which normalization function to choose use default values of "nrd::HitDistanceParameters"
 */
-
-//=================================================================================================================================
-// CONSTANTS
-//=================================================================================================================================
-
-#define NRD_RADIANCE_COMPRESSION_MODE_NONE                      0
-#define NRD_RADIANCE_COMPRESSION_MODE_MODERATE                  1
-#define NRD_RADIANCE_COMPRESSION_MODE_LESS_MID_ROUGHNESS        2
-#define NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS      3
-#define NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS     4
 
 //=================================================================================================================================
 // SETTINGS ( DO NOT MODIFY WITHOUT FULL RECOMPILATION OF NRD LIBRARY! )
@@ -75,10 +61,6 @@ float normHitDist:
 
 #ifndef NRD_USE_OCT_PACKED_NORMALS
     #define NRD_USE_OCT_PACKED_NORMALS                          0
-#endif
-
-#ifndef NRD_RADIANCE_COMPRESSION_MODE
-    #define NRD_RADIANCE_COMPRESSION_MODE                       NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS
 #endif
 
 //=================================================================================================================================
@@ -130,43 +112,9 @@ float4 _NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
     return r;
 }
 
-// To avoid biasing compression for high roughness should be avoided if possible
-// A compression function must be monotonic for full roughness range
-float _NRD_GetColorCompressionExposure( float linearRoughness )
-{
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
-
-    // Moderate compression
-    #if( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_MODERATE )
-        return 0.5 / ( 1.0 + 50.0 * linearRoughness );
-    // Less compression for mid-high roughness
-    #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_LESS_MID_ROUGHNESS )
-        return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
-    // Close to the previous one, but offers more compression for low roughness
-    #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS )
-        return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 1000.0 * linearRoughness * linearRoughness ) + ( 1.0 - sqrt( saturate( linearRoughness ) ) ) * 0.03;
-    // A modification of the preious one ( simpler )
-    #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS )
-        return 0.6 * ( 1.0 - linearRoughness * linearRoughness ) / ( 1.0 + 400.0 * linearRoughness * linearRoughness );
-    // No compression
-    #else
-        return 0;
-    #endif
-}
-
 float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
 {
     return ( hitDistParams.x + abs( viewZ ) * hitDistParams.y ) * lerp( 1.0, hitDistParams.z, saturate( exp2( hitDistParams.w * linearRoughness * linearRoughness ) ) );
-}
-
-float _REBLUR_DecompressNormHitDistance( float compressedNormHitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
-{
-    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
-    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
-    float decompressedNormHitDist = compressedNormHitDist / max( 1.0 - compressedNormHitDist * exposure, NRD_EPS );
-    float normHitDist = saturate( decompressedNormHitDist / f );
-
-    return normHitDist;
 }
 
 //=================================================================================================================================
@@ -197,10 +145,6 @@ float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
 // REBLUR
 //========
 
-// Recommended to be used to "clear" INF pixels
-#define REBLUR_INF_DIFF     0
-#define REBLUR_INF_SPEC     0
-
 // This function returns AO / SO which REBLUR can decode back to "hit distance" internally
 float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
 {
@@ -209,17 +153,18 @@ float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDist
     return saturate( hitDist / f );
 }
 
-float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
+float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist )
 {
-    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
-    float lum = _NRD_Luminance( radiance );
-    float3 compressedRadiance = radiance / ( 1.0 + lum * exposure );
+    return float4( radiance, normHitDist );
+}
 
-    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
-    float d = normHitDist * f;
-    float compressedHitDist = d / ( 1.0 + d * exposure );
+//========
+// RELAX
+//========
 
-    return float4( compressedRadiance, compressedHitDist );
+float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist )
+{
+    return float4( radiance, hitDist );
 }
 
 //========
@@ -230,7 +175,7 @@ float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist, float v
 #define SIGMA_INF_SHADOW        float2( NRD_FP16_MAX, NRD_FP16_MAX )
 #define SIGMA_MIN_DISTANCE      0.0001 // not 0, because it means "NoL < 0, stop processing"
 
-// SIGMA (single light)
+// SIGMA ( single light )
 
 float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius, out float shadow )
 {
@@ -254,14 +199,16 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
     return r;
 }
 
-// SIGMA (multi light)
+// SIGMA ( multi light )
 
-float2x3 SIGMA_FrontEnd_MultiLightStart()
+#define SIGMA_MULTILIGHT_DATATYPE float2x3
+
+SIGMA_MULTILIGHT_DATATYPE SIGMA_FrontEnd_MultiLightStart()
 {
-    return float2x3( float3( 0, 0, 0 ), float3( 0, 0, 0 ) );
+    return ( SIGMA_MULTILIGHT_DATATYPE )0;
 }
 
-void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float tanOfLightAngularRadius, inout float2x3 multiLightShadowData )
+void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float tanOfLightAngularRadius, float weight, inout SIGMA_MULTILIGHT_DATATYPE multiLightShadowData )
 {
     float shadow;
     float distanceToOccluderProj = SIGMA_FrontEnd_PackShadow( 0, distanceToOccluder, tanOfLightAngularRadius, shadow ).x;
@@ -270,14 +217,12 @@ void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float 
     multiLightShadowData[ 0 ] += L * shadow;
 
     // Weighted sum for distance to occluder (denoising will be driven by most important light)
-    float w = _NRD_Luminance( L );
-    w *= float( distanceToOccluderProj != 0 ); // ignore NoL < 0 (L is already 0)
-    w *= float( distanceToOccluderProj != NRD_FP16_MAX ); // ignore "not in shadow" case
+    weight *= _NRD_Luminance( L );
 
-    multiLightShadowData[ 1 ] += float3( distanceToOccluderProj * w, w, 0 );
+    multiLightShadowData[ 1 ] += float3( distanceToOccluderProj * weight, weight, 0 );
 }
 
-float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, float2x3 multiLightShadowData, float3 Lsum, out float4 shadowTranslucency )
+float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE multiLightShadowData, float3 Lsum, out float4 shadowTranslucency )
 {
     shadowTranslucency.yzw = multiLightShadowData[ 0 ] / max( Lsum, 1e-6 );
     shadowTranslucency.x = _NRD_Luminance( shadowTranslucency.yzw );
@@ -287,19 +232,6 @@ float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, float2x3 multiLightShadowData,
     r.y = clamp( viewZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
 
     return r;
-}
-
-//========
-// RELAX
-//========
-
-float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist, float linearRoughness = 1.0 )
-{
-    float exposure = _NRD_GetColorCompressionExposure( linearRoughness );
-    float lum = _NRD_Luminance( radiance );
-    float3 compressedRadiance = radiance / ( 1.0 + lum * exposure );
-
-    return float4( compressedRadiance, hitDist ); // TODO: RELAX - .w channel in the diffuse input will be ignored
 }
 
 //=================================================================================================================================

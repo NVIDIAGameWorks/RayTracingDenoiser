@@ -13,33 +13,44 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 {
-    float2 center = float2( STL::Color::Luminance( diff.xyz ), diff.w );
+    float4 center = diff;
 
     float radius = gDiffBlurRadius;
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        float diffInternalData = REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED;
+        float2 diffInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
         radius *= REBLUR_PRE_BLUR_RADIUS_SCALE( 1.0 );
+    #else
+        float minAccumSpeed = ( REBLUR_FRAME_NUM_WITH_HISTORY_FIX - 1 ) * STL::Math::Sqrt01( 1.0 ) + 0.001;
+        float boost = saturate( 1.0 - diffInternalData.y / minAccumSpeed );
+        radius *= ( 1.0 + 2.0 * boost ) / 3.0;
     #endif
 
     // Blur radius scale
     #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
         float radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
-        float radiusBias = error.x * gDiffBlurRadiusScale;
     #else
         float radiusScale = 1.0;
+    #endif
+
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float radiusBias = 0.0;
+        error.x = 1.0;
+    #else
+        float radiusBias = error.x * gDiffBlurRadiusScale;
     #endif
 
     // Blur radius
-    float hitDist = GetHitDist( center.y, viewZ, gDiffHitDistParams );
-    float blurRadius = GetBlurRadius( radius, 1.0, hitDist, Xv, diffInternalData.x );
+    float hitDist = GetHitDist( center.w, viewZ, gDiffHitDistParams, 1.0 );
+    float blurRadius = GetBlurRadius( radius, 1.0, hitDist, viewZ, diffInternalData.x, diffInternalData.y, 1.0, error.x );
     blurRadius = blurRadius * ( radiusScale + radiusBias ) + radiusBias;
+
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
     float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, edge );
-    float normalWeightParams = GetNormalWeightParams( viewZ, 1.0, edge, diffInternalData.x );
-    float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.y, diffInternalData.x, hitDist, Xv );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, lerp( 1.0, 0.05, diffInternalData.x ) );
+    float normalWeightParams = GetNormalWeightParams2( diffInternalData.x, edge, error.x, Xv, Nv );
+    float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, diffInternalData.x );
     float2 sum = 1.0;
 
     [unroll]
@@ -59,46 +70,48 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Fetch data
         float2 uvScaled = uv * gResolutionScale;
-        float4 normal = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 );
+        float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 );
 
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
-            float4 signal = gIn_Diff.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
-            float z = abs( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 ) );
+            float4 s = gIn_Diff.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
+            float zs = abs( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 ) );
         #else
-            float4 signal = gIn_Diff.SampleLevel( gNearestMirror, uvScaled, 0 );
-            float z = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) / NRD_FP16_VIEWZ_SCALE;
+            float4 s = gIn_Diff.SampleLevel( gNearestMirror, uvScaled, 0 );
+            float zs = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) / NRD_FP16_VIEWZ_SCALE;
         #endif
 
-        float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gIsOrtho );
-        normal = _NRD_FrontEnd_UnpackNormalAndRoughness( normal );
+        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gIsOrtho );
+        Ns = _NRD_FrontEnd_UnpackNormalAndRoughness( Ns );
 
         // Sample weight
         float w = GetGaussianWeight( offset.z );
         w *= IsInScreen( uv );
-        w *= GetGeometryWeight( geometryWeightParams, Nv, samplePos );
-        w *= GetNormalWeight( normalWeightParams, N, normal.xyz );
+        w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
+        w *= GetNormalWeight( normalWeightParams, N, Ns.xyz );
 
-        float wh = GetHitDistanceWeight( hitDistanceWeightParams, signal.w );
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 ww = w * lerp( REBLUR_HIT_DIST_MIN_WEIGHT * 2.0, 1.0, wh );
+            float2 minwh = REBLUR_HIT_DIST_MIN_WEIGHT * 2.0;
         #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-            float2 ww = w * lerp( float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT ), 1.0, wh );
+            float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
         #else
-            float2 ww = w * lerp( float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 ), 1.0, wh );
+            float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
         #endif
 
-        diff += signal * ww.xxxy;
+        float wh = GetHitDistanceWeight( hitDistanceWeightParams, s.w );
+        float2 ww = w * lerp( minwh, 1.0, wh );
+
+        diff += s * ww.xxxy;
         sum += ww;
     }
 
     diff /= sum.xxxy;
 
-    // Special case for hit distance
-    diff.w = lerp( diff.w, center.y, REBLUR_HIT_DIST_INPUT_MIX );
-
     // Estimate error
-    error.x = GetColorErrorForAdaptiveRadiusScale( diff, center, diffInternalData.x );
+    error.x = GetColorErrorForAdaptiveRadiusScale( diff, center, diffInternalData.x, 1.0 );
+
+    // Input mix
+    diff = lerp( diff, center, REBLUR_INPUT_MIX.xxxy );
 
     // Output
     gOut_Diff[ pixelPos ] = diff;

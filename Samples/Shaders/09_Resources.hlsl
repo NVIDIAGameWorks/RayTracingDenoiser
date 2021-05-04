@@ -46,9 +46,9 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float gUnitsToMetersMultiplier;
     float gIndirectDiffuse;
     float gIndirectSpecular;
+    float gSunAngularRadius;
     float gTanSunAngularRadius;
-    float gPixelAngularDiameter;
-    float gSunAngularDiameter;
+    float gPixelAngularRadius;
     float gUseMipmapping;
     float gIsOrtho;
     float gDebug;
@@ -254,7 +254,7 @@ float3 GetSkyColor( float3 v, float3 vSun )
 
 }
 
-float3 GetSunColor( float3 v, float3 vSun, float angularDiameter )
+float3 GetSunColor( float3 v, float3 vSun, float angularRadius )
 {
     float b = dot( v, vSun );
     float d = length( v - vSun * b );
@@ -263,7 +263,6 @@ float3 GetSunColor( float3 v, float3 vSun, float angularDiameter )
     glow *= b * 0.5 + 0.5;
     glow *= 0.6;
 
-    float angularRadius = angularDiameter * 0.5;
     float a = sqrt( 2.0 ) * sqrt( saturate( 1.0 - b ) ); // acos approx
     float sun = 1.0 - smoothstep( angularRadius * 0.9, angularRadius * 1.66, a );
     sun *= 1.0 - pow( saturate( 1.0 - v.z ), 4.85 );
@@ -279,10 +278,10 @@ float3 GetSunColor( float3 v, float3 vSun, float angularDiameter )
     return STL::Color::GammaToLinear( sunColor );
 }
 
-float3 GetSkyIntensity( float3 v, float3 vSun, float angularDiameter = 0.5 )
+float3 GetSkyIntensity( float3 v, float3 vSun, float angularRadius = 0.25 )
 {
     float sunIntensity = 80000.0;
     float skyIntensity = 10000.0;
 
-    return sunIntensity * GetSunColor( v, vSun, angularDiameter ) + skyIntensity * GetSkyColor( v, vSun );
+    return sunIntensity * GetSunColor( v, vSun, angularRadius ) + skyIntensity * GetSkyColor( v, vSun );
 }

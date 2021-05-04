@@ -17,8 +17,6 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
     REBLUR_DIFF_SPEC_SHARED_CB_DATA;
 
-    float4 gDiffHitDistParams;
-    float4 gSpecHitDistParams;
     uint gSpecCheckerboard;
     uint gDiffCheckerboard;
     float gSplitScreen;
@@ -54,11 +52,9 @@ void main( uint2 pixelPos : SV_DispatchThreadId)
     uint2 checkerboardPos = pixelPos;
     checkerboardPos.x = pixelPos.x >> ( gDiffCheckerboard != 2 ? 1 : 0 );
     float4 diffResult = gIn_Diff[ gRectOrigin + checkerboardPos ];
-    diffResult = REBLUR_BackEnd_UnpackRadiance( diffResult, viewZ, gDiffHitDistParams );
     gOut_Diff[ pixelPos ] = diffResult * float( viewZ < gInf );
 
     checkerboardPos.x = pixelPos.x >> ( gSpecCheckerboard != 2 ? 1 : 0 );
     float4 specResult = gIn_Spec[ gRectOrigin + checkerboardPos ];
-    specResult = REBLUR_BackEnd_UnpackRadiance( specResult, viewZ, gSpecHitDistParams, roughness );
     gOut_Spec[ pixelPos ] = specResult * float( viewZ < gInf );
 }

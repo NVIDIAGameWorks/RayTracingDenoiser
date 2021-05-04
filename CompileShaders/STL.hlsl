@@ -747,7 +747,7 @@ namespace STL
         uint LinearToLogLuv( float3 color )
         {
             // Convert RGB to XYZ
-            float3 XYZ = GammaToXyz( Math::Sqrt( color ) ); // with simple de-linearization
+            float3 XYZ = GammaToXyz( color );
 
             // Encode log2( Y ) over the range [ -20, 20 ) in 14 bits ( no sign bit ).
             // TODO: Fast path that uses the bits from the fp32 representation directly
@@ -806,7 +806,7 @@ namespace STL
             // Convert back to RGB and clamp to avoid out-of-gamut colors
             float3 color = max( XyzToGamma( XYZ ), 0.0 );
 
-            return color * color; // linearize back
+            return color;
         }
 
         // HDR

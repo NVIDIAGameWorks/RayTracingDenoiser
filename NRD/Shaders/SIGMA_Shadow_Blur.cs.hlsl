@@ -163,12 +163,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float3 Bv = mWorldToLocal[ 1 ] * worldRadius;
 
     // Random rotation
-    float4 rotator = GetBlurKernelRotation( PIXEL, pixelPos, gRotator, gFrameIndex );
+    float4 rotator = GetBlurKernelRotation( NRD_PIXEL, pixelPos, gRotator, gFrameIndex );
 
     // Denoising
     sum = 1.0;
 
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, viewZ, SIGMA_PLANE_DISTANCE_SCALE );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, SIGMA_PLANE_DISTANCE_SCALE );
 
     [unroll]
     for( uint i = 0; i < SIGMA_POISSON_SAMPLE_NUM; i++ )

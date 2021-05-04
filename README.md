@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoisers v2.0.1
+# NVIDIA Real-time (Ray tracing) Denoisers v2.1.0
 
 ## QUICK START GUIDE
 
@@ -244,38 +244,44 @@ lighting environments. Consider using:
    - VNDF sampling for specular
    - Custom importance sampling for local light sources (*RTXDI*)
 
-6. **[NRD]** Hit distances should come from an importance sampling method. But if in case of
+6. **[NRD]** It's a good idea to run a *spatial reuse* pass on noisy inputs before passing
+them to a denoiser.
+
+7. **[NRD]** Hit distances should come from an importance sampling method. But if in case of
 *REBLUR*, for example, denoising of AO and a custom direct / indirect lighting is needed, AO
 can come from cos-weighted sampling and radiance can be computed by a different method
 in a tradeoff of IQ.
 
-7. **[NRD]** Low discrepancy sampling helps to have a more stable output. The sample has a macro
+8. **[NRD]** Low discrepancy sampling helps to have a more stable output. The sample has a macro
 switch declared in ``09_Resources.hlsl`` named ``USE_BLUE_NOISE``. You can experiment with it.
 
-8. **[NRD]** If history reset is needed set ``CommonSettings::frameIndex`` to 0 for a single frame
+9. **[NRD]** If history reset is needed set ``CommonSettings::frameIndex`` to 0 for a single frame
 
-9. **[NRD]** Functions ``XXX_FrontEnd_PackRadiance`` apply Reinhard-like color compression
+10. **[NRD]** Functions ``XXX_FrontEnd_PackRadiance`` apply Reinhard-like color compression
 to the provided radiance. It assumes that the input is in HDR range (less than 1 = LDR,
 greater than 1 = HDR). The efficiency of compression is reduced if the input is in [0; 1] range.
 But if the latter is true, for *NRD* needs the input radiance can be pre-multiplied with a known
 constant and divided back after denoising.
 
-10. **[REBLUR]** In case of *REBLUR* ensure that ``CommonSettings::forceReferenceAccumulation = true`` works properly
+11. **[REBLUR]** In case of *REBLUR* ensure that ``CommonSettings::forceReferenceAccumulation = true`` works properly
 
-11. **[REBLUR]** For diffuse and specular *REBLUR* expects hit distance input in a normalized form.
+12. **[REBLUR]** For diffuse and specular *REBLUR* expects hit distance input in a normalized form.
 To avoid mismatching ``REBLUR_FrontEnd_GetNormHitDist`` should be used for normalization. Some
 tweaking can be needed here, but in most cases normalization to the default ``HitDistanceParameters``
 works well. *REBLUR* outputs denoised normalized hit distance, which can be used by the application
 as ambient or specular occlusion (AO & SO) (see unpacking functions from ``NRD.hlsl``)
 
-12. **[REBLUR]** *REBLUR* handles specular lobe trimming, trying to reconstruct trimmed signal.
+13. **[REBLUR]** *REBLUR* handles specular lobe trimming, trying to reconstruct trimmed signal.
 Similarly to hit distance normalization, *REBLUR* needs to be aware about trimming parameters.
 If this feature is used in a ray tracer, ``LobeTrimmingParameters`` must be passed into *REBLUR*.
 To avoid code duplication ``NRD_GetTrimmingFactor`` can be used in a shader code on the application side.
 
-13. **[SIGMA]** To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
+14. **[RELAX]** Works incredibly well with signals produced by RTXDI or very clean high RPP signals.
+The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 
-14. **[SIGMA]** *SIGMA_TRANSLUCENT_SHADOW* can be used for denoising of shadows from multiple light sources:
+15. **[SIGMA]** To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
+
+16. **[SIGMA]** *SIGMA_TRANSLUCENT_SHADOW* can be used for denoising of shadows from multiple light sources:
 
     *L[i]* - unshadowed analytical lighting from a single light source (**not noisy**)<br/>
     *S[i]* - stochastically sampled light visibility for *L[i]* (**noisy**)<br/>
@@ -302,7 +308,10 @@ To avoid code duplication ``NRD_GetTrimmingFactor`` can be used in a shader code
         // "distanceToOccluder" should respect rules described in NRD.hlsl in "INPUT PARAMETERS" section
         float distanceToOccluder = SampleShadow( i );
 
-        SIGMA_FrontEnd_MultiLightUpdate( L, distanceToOccluder, tanOfLightAngularRadius, multiLightShadowData );
+        // The weight should be zero if a pixel is not in penumbra, but it is not trivial to compute...
+        float weight = ...;
+
+        SIGMA_FrontEnd_MultiLightUpdate( L, distanceToOccluder, tanOfLightAngularRadius, weight, multiLightShadowData );
     }
 
     float4 shadowTranslucency;
@@ -313,8 +322,10 @@ To avoid code duplication ``NRD_GetTrimmingFactor`` can be used in a shader code
 
     *&Sigma;( L[i] &times; S[i] )* = *&Sigma;( L[i] )* &times; *OUT_SHADOW_TRANSLUCENCY.yzw*
 
-    Is this a biased solution? If spatial filtering is off - no, because we just reorginized the math equation.
-    If spatial filtering is on - yes, because denoising will be driven by most important light in a given pixel.
+Is this a biased solution? If spatial filtering is off - no, because we just reorginized the math equation.
+If spatial filtering is on - yes, because denoising will be driven by most important light in a given pixel.
 
-    15. **[RELAX]** Works incredibly well with signals produced by RTXDI or very clean high RPP signals.
-    The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
+**This solution is limited** and hard to use:
+- obviously, can be used "as is" if shadows don't overlap (*weight* = 1)
+- if shadows overlap, a separate pass is needed to analyze noisy input and classify pixels as *umbra* - *penumbra* (and optionally *empty space*). Raster shadow maps can be used for this if available
+- it is not recommended to mix 1 cd and 100000 cd lights, since FP32 texture will be needed for weighted sum. In this case, it's better to process the sun and other bright light sources separately

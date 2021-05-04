@@ -17,11 +17,13 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
     REBLUR_DIFF_SHARED_CB_DATA;
 
-    uint2 gScreenSizei;
+    float4x4 gWorldToView;
+    float4 gRotator;
+    float gDiffFastHistoryClampingColorBoxSigmaScale;
     uint gDiffAntiFirefly;
 };
 
-#if( REBLUR_5X5_HISTORY_CLAMPING == 1 )
+#if( REBLUR_USE_5X5_HISTORY_CLAMPING == 1 )
     #define NRD_USE_BORDER_2
 #endif
 #include "NRD_Common.hlsl"
@@ -29,10 +31,11 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 #include "REBLUR_Common.hlsl"
 
 // Inputs
-NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 0, 0 );
-NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 1, 0 ); // mips 0+
-NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 2, 0 );  // mips 1+, mip = 0 actually samples from mip#1!
-NRI_RESOURCE( Texture2D<float4>, gIn_Fast_Diff, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
+NRI_RESOURCE( Texture2D<float2>, gIn_InternalData, t, 1, 0 );
+NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );
+NRI_RESOURCE( Texture2D<float4>, gIn_Fast_Diff, t, 4, 0 );
 
 // Outputs
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 0, 0 );
@@ -47,9 +50,6 @@ void Preload( int2 sharedId, int2 globalId )
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    uint2 pixelPosUser = gRectOrigin + pixelPos;
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
-
     PRELOAD_INTO_SMEM;
 
     // Early out
@@ -60,37 +60,19 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     if( viewZ > gInf )
         return;
 
-    // Debug
-    #if( REBLUR_DEBUG == REBLUR_SHOW_MIPS )
-    {
-        int realMipLevel = int( gDebug * REBLUR_MIP_NUM );
-        int mipLevel = realMipLevel - 1;
-        if( realMipLevel == 0 )
-            return;
-
-        float2 mipSize = float2( gScreenSizei >> realMipLevel );
-        float2 mipUv = pixelUv * gScreenSize / ( mipSize * float( 1 << realMipLevel ) );
-
-        float2 mipUvScaled = mipUv * gResolutionScale;
-        float4 diff = gIn_Diff.SampleLevel( gLinearClamp, mipUvScaled, mipLevel );
-
-        gOut_Diff[ pixelPos ] = diff;
-
-        return;
-    }
-    #endif
+    uint2 pixelPosUser = gRectOrigin + pixelPos;
+    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] );
+    float3 N = normalAndRoughness.xyz;
 
     float2 diffInternalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ] );
-    float diffRealMipLevelf = GetMipLevel( diffInternalData.y );
-    uint diffRealMipLevel = uint( diffRealMipLevelf );
+    float4 diff = ReconstructHistoryDiff( diffInternalData, pixelPos, scaledViewZ, N, gRotator, gWorldToView, gIn_ScaledViewZ, gIn_Diff );
 
-    // Local variance
+    // History clamping
     #if( REBLUR_USE_FAST_HISTORY == 1 )
         float4 diffM1 = 0;
         float4 diffM2 = 0;
-
-        float4 diffMaxInput = -INF;
-        float4 diffMinInput = INF;
+        float4 diffMaxInput = -NRD_INF;
+        float4 diffMinInput = NRD_INF;
 
         [unroll]
         for( int dy = 0; dy <= BORDER * 2; dy++ )
@@ -114,40 +96,26 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
         float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
 
-        diffM1 *= invSum;
-        diffM2 *= invSum;
-        float4 diffSigma = GetStdDev( diffM1, diffM2 );
-        float4 diff = gOut_Diff[ pixelPos ];
-
         #if( REBLUR_USE_ANTI_FIREFLY == 1 )
             [flatten]
             if( gDiffAntiFirefly != 0 )
                 diff = clamp( diff, diffMinInput, diffMaxInput );
         #endif
+
+        diffM1 *= invSum;
+        diffM2 *= invSum;
+        float4 diffSigma = GetStdDev( diffM1, diffM2 );
+        float4 diffMin = diffM1 - gDiffFastHistoryClampingColorBoxSigmaScale * diffSigma;
+        float4 diffMax = diffM1 + gDiffFastHistoryClampingColorBoxSigmaScale * diffSigma;
+        float4 diffCenter = s_Diff[ threadId.y + BORDER ][ threadId.x + BORDER ];
+        diffMin = min( diffMin, diffCenter );
+        diffMax = max( diffMax, diffCenter );
+        float4 diffClamped = clamp( diff, diffMin, diffMax );
+
+        [flatten]
+        if( gDiffMaxFastAccumulatedFrameNum < gDiffMaxAccumulatedFrameNum )
+            diff = lerp( diffClamped, diff, diffInternalData.x );
     #endif
 
-    // Diffuse
-    [branch]
-    if( diffRealMipLevel != 0 && REBLUR_USE_HISTORY_FIX != 0 )
-    {
-        #if( REBLUR_USE_FAST_HISTORY == 0 )
-            float4 diff = gOut_Diff[ pixelPos ];
-        #endif
-
-        float4 blurry = ReconstructHistory( diff, diffRealMipLevel, gScreenSizei, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Diff );
-        diff = lerp( diff, blurry, diffInternalData.x );
-
-        #if( REBLUR_USE_FAST_HISTORY == 0 )
-            gOut_Diff[ pixelPos ] = diff;
-        #endif
-    }
-
-    #if( REBLUR_USE_FAST_HISTORY == 1 )
-        float4 diffClamped = STL::Color::Clamp( diffM1, REBLUR_FAST_HISTORY_SIGMA_AMPLITUDE * diffSigma, diff );
-        float diffFactor = saturate( 1.0 - diffRealMipLevelf / REBLUR_MIP_NUM );
-
-        diff = lerp( diff, diffClamped, diffFactor * float( gDiffMaxFastAccumulatedFrameNum < gDiffMaxAccumulatedFrameNum ) );
-
-        gOut_Diff[ pixelPos ] = diff;
-    #endif
+    gOut_Diff[ pixelPos ] = diff;
 }
