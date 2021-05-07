@@ -52,7 +52,7 @@ namespace nrd
 
         // RELAX ===========================================================================================================================
 
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF, IN_SPEC
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT, IN_SPEC_HIT
         // OUTPUTS - OUT_DIFF, OUT_SPEC
         RELAX_DIFFUSE_SPECULAR,
 
@@ -63,7 +63,7 @@ namespace nrd
     {
         // INPUTS ===========================================================================================================================
 
-        // 3D world space motion (RGBA16f+) or 2D screen space motion (RG16f+), MVs must be non-jittered, old = new + MV
+        // 3D world space motion (RGBA16f+) or 2D screen space motion (RG16f+), MVs must be non-jittered, MV = previous - current
         IN_MV,
 
         // See "NRD.hlsl/_NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+ or R10G10B10A2+ depending on encoding)
@@ -111,14 +111,6 @@ namespace nrd
         PERMANENT_POOL,
 
         MAX_NUM,
-
-        // RENAMINGS ========================================================================================================================
-
-        // Just to clarify that .w channel will be ignored (only RGB color space is supported!)
-        IN_DIFF = IN_DIFF_HIT,
-        IN_SPEC = IN_SPEC_HIT,
-        OUT_DIFF = OUT_DIFF_HIT,
-        OUT_SPEC = OUT_SPEC_HIT,
     };
 
     enum class Format : uint32_t

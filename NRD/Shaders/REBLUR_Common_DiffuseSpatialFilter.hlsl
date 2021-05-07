@@ -34,8 +34,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float radiusBias = 0.0;
-        error.x = 1.0;
     #else
+        // TODO: on thin objects adaptive scale can lead to sampling from "not contributing" surfaces. Mips for viewZ can be computed
+        // and used to estimate "local planarity". If abs( z_mip0 - z_mip3 ) is big reduce adaptive radius scale accordingly.
         float radiusBias = error.x * gDiffBlurRadiusScale;
     #endif
 
@@ -49,7 +50,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     // Denoising
     float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, edge );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, lerp( 1.0, 0.05, diffInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams2( diffInternalData.x, edge, error.x, Xv, Nv );
+    float normalWeightParams = GetNormalWeightParams2( diffInternalData.x, edge, error.x, Xv, Nv, gNormalWeightStrictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, diffInternalData.x );
     float2 sum = 1.0;
 
@@ -85,9 +86,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         Ns = _NRD_FrontEnd_UnpackNormalAndRoughness( Ns );
 
         // Sample weight
-        float w = GetGaussianWeight( offset.z );
+        float w = GetGeometryWeight( geometryWeightParams, Nv, Xvs );
         w *= IsInScreen( uv );
-        w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
+        w *= GetGaussianWeight( offset.z );
         w *= GetNormalWeight( normalWeightParams, N, Ns.xyz );
 
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )

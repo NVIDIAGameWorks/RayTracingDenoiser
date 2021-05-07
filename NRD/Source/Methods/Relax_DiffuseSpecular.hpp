@@ -10,30 +10,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
 
-inline float3 GetFrustumForwardNonSymmetricProjection(const float4x4& worldToView, const float4x4& clipToWorld, const float3& cameraPos)
+inline float3 GetFrustumForward(const float4x4& viewToWorld, const float4& frustum)
 {
-    float3 frustumForwardSymmetricProjection = worldToView.GetRow2().To3d();
-
-    float4 leftTopNDC = float4(-1.f, 1.f, 0.f, 1.f);
-    float4 leftBottomNDC = float4(-1.f, -1.f, 0.f, 1.f);
-    float4 rightBottomNDC = float4(1.f, -1.f, 0.f, 1.f);
-    float4 rightTopNDC = float4(1.f, 1.f, 0.f, 1.f);
-
-    float4 leftTopWorld = clipToWorld * leftTopNDC;
-    leftTopWorld /= leftTopWorld.w;
-    float4 leftBottomWorld = clipToWorld * leftBottomNDC;
-    leftBottomWorld /= leftBottomWorld.w;
-    float4 rightBottomWorld = clipToWorld * rightBottomNDC;
-    rightBottomWorld /= rightBottomWorld.w;
-    float4 rightTopWorld = clipToWorld * rightTopNDC;
-    rightTopWorld /= rightTopWorld.w;
-
-    float3 frustumForwardNonSymmetricProjection = float4((leftTopWorld + leftBottomWorld + rightBottomWorld + rightTopWorld) / 4.f).To3d() - cameraPos;
-    frustumForwardNonSymmetricProjection = Normalize(frustumForwardNonSymmetricProjection);
-    float dot = Dot33(frustumForwardSymmetricProjection, frustumForwardNonSymmetricProjection);
-    frustumForwardNonSymmetricProjection /= dot;
-
-    return frustumForwardNonSymmetricProjection;
+    // Note: this vector is not normalized for non-symmetric projections but that's correct.
+    // It has to have .z coordinate equal to 1.0 to correctly reconstruct world position in shaders.
+    float4 frustumForwardView = float4(0.5f, 0.5f, 1.0f, 0.0f) * float4(frustum.z, frustum.w, 1.0f, 0.0f) + float4(frustum.x, frustum.y, 0.0f, 0.0f);
+    float3 frustumForwardWorld = (viewToWorld * frustumForwardView).To3d();
+    return frustumForwardWorld;
 }
 
 size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
@@ -102,8 +85,8 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
 
     PushPass("RELAX::DiffuseSpecular - Reproject");
     {
-        PushInput( AsUint(ResourceType::IN_SPEC));
-        PushInput( AsUint(ResourceType::IN_DIFF));
+        PushInput( AsUint(ResourceType::IN_SPEC_HIT));
+        PushInput( AsUint(ResourceType::IN_DIFF_HIT));
         PushInput( AsUint(ResourceType::IN_MV));
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
         PushInput( AsUint(Permanent::SPEC_DIFF_ILLUM_RESPONSIVE_LOGLUV_PREV) );
@@ -230,8 +213,8 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
-        PushOutput( AsUint( ResourceType::OUT_SPEC ) );
-        PushOutput( AsUint( ResourceType::OUT_DIFF ) );
+        PushOutput( AsUint( ResourceType::OUT_SPEC_HIT ) );
+        PushOutput( AsUint( ResourceType::OUT_DIFF_HIT ) );
 
         AddDispatch( RELAX_ATrousStandard, SumConstants(0, 3, 2, 12), 8, 1 );
     }
@@ -245,8 +228,8 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
         PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_CURR), 0, 1, AsUint(Permanent::NORMAL_ROUGHNESS_DEPTH_PREV) );
 
-        PushOutput( AsUint( ResourceType::OUT_SPEC ) );
-        PushOutput( AsUint( ResourceType::OUT_DIFF ) );
+        PushOutput( AsUint( ResourceType::OUT_SPEC_HIT ) );
+        PushOutput( AsUint( ResourceType::OUT_DIFF_HIT ) );
 
         AddDispatch( RELAX_ATrousStandard, SumConstants(0, 3, 2, 12), 8, 1 );
     }
@@ -255,11 +238,11 @@ size_t DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_SPEC));
-        PushInput( AsUint(ResourceType::IN_DIFF));
+        PushInput( AsUint(ResourceType::IN_SPEC_HIT));
+        PushInput( AsUint(ResourceType::IN_DIFF_HIT));
 
-        PushOutput( AsUint( ResourceType::OUT_SPEC ) );
-        PushOutput( AsUint( ResourceType::OUT_DIFF ) );
+        PushOutput( AsUint( ResourceType::OUT_SPEC_HIT ) );
+        PushOutput( AsUint( ResourceType::OUT_DIFF_HIT ) );
 
         AddDispatch( RELAX_SplitScreen, SumConstants(0, 0, 2, 2), 16, 1 );
     }
@@ -300,13 +283,13 @@ void DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodDat
     float aspect = m_ViewToClip.a00 / m_ViewToClip.a11;
     float3 frustumRight = m_WorldToView.GetRow0().To3d() * tanHalfFov;
     float3 frustumUp = m_WorldToView.GetRow1().To3d() * tanHalfFov * aspect;
-    float3 frustumForward = GetFrustumForwardNonSymmetricProjection(m_WorldToView, m_ClipToWorld, 0.f);
+    float3 frustumForward = GetFrustumForward(m_ViewToWorld, m_Frustum);
 
     float prevTanHalfFov = 1.0f / m_ViewToClipPrev.a00;
     float prevAspect = m_ViewToClipPrev.a00 / m_ViewToClipPrev.a11;
     float3 prevFrustumRight = m_WorldToViewPrev.GetRow0().To3d() * prevTanHalfFov;
     float3 prevFrustumUp = m_WorldToViewPrev.GetRow1().To3d() * prevTanHalfFov * prevAspect;
-    float3 prevFrustumForward = GetFrustumForwardNonSymmetricProjection(m_WorldToViewPrev, m_ClipToWorldPrev, m_CameraDelta);
+    float3 prevFrustumForward = GetFrustumForward(m_ViewToWorldPrev, m_FrustumPrev);
 
     float maxLuminanceRelativeDifference = -Log( Saturate(settings.minLuminanceWeight) );
 

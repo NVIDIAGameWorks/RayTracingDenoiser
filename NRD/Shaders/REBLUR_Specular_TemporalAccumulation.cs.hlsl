@@ -45,7 +45,7 @@ NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 6, 0 );
 
 // Outputs
 NRI_RESOURCE( RWTexture2D<unorm float3>, gOut_InternalData, u, 0, 0 );
-NRI_RESOURCE( RWTexture2D<float2>, gOut_Error, u, 1, 0 );
+NRI_RESOURCE( RWTexture2D<float4>, gOut_Error, u, 1, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 2, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Fast_Spec, u, 3, 0 );
 
@@ -397,7 +397,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     float specError = GetColorErrorForAdaptiveRadiusScale( specResult, specHistory, 1.0 / ( 1.0 + specAccumSpeed ), lerp( 1.0, roughness, saturate( parallax ) ) );
 
-    gOut_Error[ pixelPos ] = float2( specError, boost );
+    gOut_Error[ pixelPos ] = float4( 0, specError, boost, 0 );
 
     // Fast history
     #if( REBLUR_USE_FAST_HISTORY == 1 )

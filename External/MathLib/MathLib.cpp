@@ -992,7 +992,7 @@ PLATFORM_INLINE v4f _xmm_ldexp(const v4f& x, const v4i& q)
     return _mm_mul_ps(r, u);
 }
 
-v4f _mm_sin_ps(const v4f& x)
+v4f emu_mm_sin_ps(const v4f& x)
 {
     v4i q = _mm_cvtps_epi32( _mm_mul_ps(x, _mm_broadcast_ss(c_f + 0)) );
     v4f u = _mm_cvtepi32_ps(q);
@@ -1017,7 +1017,7 @@ v4f _mm_sin_ps(const v4f& x)
     return u;
 }
 
-v4f _mm_cos_ps(const v4f& x)
+v4f emu_mm_cos_ps(const v4f& x)
 {
     v4i q = _mm_cvtps_epi32(_mm_sub_ps(_mm_mul_ps(x, _mm_broadcast_ss(c_f + 0)), _mm_broadcast_ss(c_f + 42)));
     q = _mm_add_epi32(_mm_add_epi32(q, q), _mm_set1_epi32(1));
@@ -1044,7 +1044,7 @@ v4f _mm_cos_ps(const v4f& x)
     return u;
 }
 
-v4f _mm_sincos_ps(v4f* pCos, const v4f& d)
+v4f emu_mm_sincos_ps(v4f* pCos, const v4f& d)
 {
     v4i q = _mm_cvtps_epi32(_mm_mul_ps(d, _mm_broadcast_ss(c_f + 24)));
 
@@ -1092,7 +1092,7 @@ v4f _mm_sincos_ps(v4f* pCos, const v4f& d)
     return _mm_or_ps(m, rrx);
 }
 
-v4f _mm_tan_ps(const v4f& x)
+v4f emu_mm_tan_ps(const v4f& x)
 {
     v4i q = _mm_cvtps_epi32(_mm_mul_ps(x, _mm_broadcast_ss(c_f + 24)));
     v4f r = x;
@@ -1123,7 +1123,7 @@ v4f _mm_tan_ps(const v4f& x)
     return u;
 }
 
-v4f _mm_atan_ps(const v4f& d)
+v4f emu_mm_atan_ps(const v4f& d)
 {
     v4i q = _xmm_iselect(_mm_cmplt_ps(d, xmm_zero), _mm_set1_epi32(2), _mm_setzero_si128());
     v4f s = xmm_abs(d);
@@ -1151,7 +1151,7 @@ v4f _mm_atan_ps(const v4f& d)
     return t;
 }
 
-v4f _mm_atan2_ps(const v4f& y, const v4f& x)
+v4f emu_mm_atan2_ps(const v4f& y, const v4f& x)
 {
     v4f r = _xmm_atan2(xmm_abs(y), x);
 
@@ -1165,7 +1165,7 @@ v4f _mm_atan2_ps(const v4f& y, const v4f& x)
     return r;
 }
 
-v4f _mm_asin_ps(const v4f& d)
+v4f emu_mm_asin_ps(const v4f& d)
 {
     v4f x = _mm_add_ps(_mm_broadcast_ss(c_f + 33), d);
     v4f y = _mm_sub_ps(_mm_broadcast_ss(c_f + 33), d);
@@ -1176,7 +1176,7 @@ v4f _mm_asin_ps(const v4f& d)
     return _xmm_mulsign(x, d);
 }
 
-v4f _mm_acos_ps(const v4f& d)
+v4f emu_mm_acos_ps(const v4f& d)
 {
     v4f x = _mm_add_ps(_mm_broadcast_ss(c_f + 33), d);
     v4f y = _mm_sub_ps(_mm_broadcast_ss(c_f + 33), d);
@@ -1189,7 +1189,7 @@ v4f _mm_acos_ps(const v4f& d)
     return x;
 }
 
-v4f _mm_log_ps(const v4f& d)
+v4f emu_mm_log_ps(const v4f& d)
 {
     v4f x = _mm_mul_ps(d, _mm_broadcast_ss(c_f + 44));
     v4i e = _xmm_logbp1(x);
@@ -1214,7 +1214,7 @@ v4f _mm_log_ps(const v4f& d)
     return x;
 }
 
-v4f _mm_exp_ps(const v4f& d)
+v4f emu_mm_exp_ps(const v4f& d)
 {
     v4i q = _mm_cvtps_epi32(_mm_mul_ps(d, _mm_broadcast_ss(c_f + 51)));
 
@@ -1466,7 +1466,7 @@ PLATFORM_INLINE v4d _ymm_ldexp(const v4d& x, const v4i& q)
     return _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(x, y), y), y), y), _ymm_pow2i(t));
 }
 
-v4d _mm256_sin_pd(const v4d& d)
+v4d emu_mm256_sin_pd(const v4d& d)
 {
     v4i q = _mm256_cvtpd_epi32(_mm256_mul_pd(d, _mm256_broadcast_sd(c_d + 25)));
 
@@ -1496,7 +1496,7 @@ v4d _mm256_sin_pd(const v4d& d)
     return u;
 }
 
-v4d _mm256_cos_pd(const v4d& d)
+v4d emu_mm256_cos_pd(const v4d& d)
 {
     v4i q = _mm256_cvtpd_epi32(ymm_madd(d, _mm256_broadcast_sd(c_d + 25), _mm256_broadcast_sd(c_d + 39)));
     q = _mm_add_epi32(_mm_add_epi32(q, q), _mm_set1_epi32(1));
@@ -1527,7 +1527,7 @@ v4d _mm256_cos_pd(const v4d& d)
     return u;
 }
 
-v4d _mm256_sincos_pd(v4d* pCos, const v4d& d)
+v4d emu_mm256_sincos_pd(v4d* pCos, const v4d& d)
 {
     v4i q = _mm256_cvtpd_epi32(_mm256_mul_pd(d, _mm256_broadcast_sd(c_d + 44)));
     v4d s = d;
@@ -1578,7 +1578,7 @@ v4d _mm256_sincos_pd(v4d* pCos, const v4d& d)
     return _mm256_or_pd(m, rrx);
 }
 
-v4d _mm256_tan_pd(const v4d& d)
+v4d emu_mm256_tan_pd(const v4d& d)
 {
     v4i q = _mm256_cvtpd_epi32(_mm256_mul_pd(d, _mm256_broadcast_sd(c_d + 44)));
 
@@ -1618,7 +1618,7 @@ v4d _mm256_tan_pd(const v4d& d)
     return u;
 }
 
-v4d _mm256_atan_pd(const v4d& s)
+v4d emu_mm256_atan_pd(const v4d& s)
 {
     v4i q = _ymm_selecti(s, ymm_zero, _mm_set1_epi32(2), _mm_setzero_si128());
     v4d r = ymm_abs(s);
@@ -1656,7 +1656,7 @@ v4d _mm256_atan_pd(const v4d& s)
     return t;
 }
 
-v4d _mm256_atan2_pd(const v4d& y, const v4d& x)
+v4d emu_mm256_atan2_pd(const v4d& y, const v4d& x)
 {
     v4d r = _ymm_atan2(ymm_abs(y), x);
 
@@ -1669,7 +1669,7 @@ v4d _mm256_atan2_pd(const v4d& y, const v4d& x)
     return r;
 }
 
-v4d _mm256_asin_pd(const v4d& d)
+v4d emu_mm256_asin_pd(const v4d& d)
 {
     v4d x = _mm256_add_pd(_mm256_broadcast_sd(c_d + 0), d);
     v4d y = _mm256_sub_pd(_mm256_broadcast_sd(c_d + 0), d);
@@ -1693,7 +1693,7 @@ v4d _mm256_acos_pd(const v4d& d)
     return x;
 }
 
-v4d _mm256_log_pd(const v4d& d)
+v4d emu_mm256_log_pd(const v4d& d)
 {
     v4i e = _ymm_logbp1(_mm256_mul_pd(d, _mm256_broadcast_sd(c_d + 60)));
     v4d m = _ymm_ldexp(d, _xmm_negatei(e));
@@ -1719,7 +1719,7 @@ v4d _mm256_log_pd(const v4d& d)
     return x;
 }
 
-v4d _mm256_exp_pd(const v4d& d)
+v4d emu_mm256_exp_pd(const v4d& d)
 {
     v4i q = _mm256_cvtpd_epi32(_mm256_mul_pd(d, _mm256_broadcast_sd(c_d + 70)));
 

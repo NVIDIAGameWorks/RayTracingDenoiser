@@ -38,7 +38,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::R8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
 
     SetSharedConstants(1, 2, 8, 12);
 
@@ -63,7 +63,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::SCALED_VIEWZ) );
         PushOutput( TEMP );
 
-        AddDispatch( REBLUR_Diffuse_PreBlur, SumConstants(1, 1, 0, 2), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_PreBlur, SumConstants(1, 1, 0, 3), 16, 1 );
     }
 
     // Temporal accumulation after pre-blur
@@ -127,7 +127,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::ERROR) );
         PushOutput( AsUint(Transient::ACCUMULATED) );
 
-        AddDispatch( REBLUR_Diffuse_Blur, SumConstants(1, 1, 0, 1), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_Blur, SumConstants(1, 1, 0, 2), 16, 1 );
     }
 
     PushPass("REBLUR::Diffuse - post-blur");
@@ -140,7 +140,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::ERROR) );
         PushOutput( AsUint(Permanent::HISTORY) );
 
-        AddDispatch( REBLUR_Diffuse_PostBlur, SumConstants(1, 1, 0, 1), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_PostBlur, SumConstants(1, 1, 0, 2), 16, 1 );
     }
 
     PushPass("REBLUR::Diffuse - temporal stabilization");
@@ -192,6 +192,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     const ReblurDiffuseSettings& settings = methodData.settings.diffuse;
 
     bool useCopyViewZ = !settings.usePrePass && settings.checkerboardMode == CheckerboardMode::OFF;
+    float normalWeightStrictness = Lerp( 0.1f, 1.0f, settings.normalWeightStrictness );
 
     uint32_t diffCheckerboard = ((uint32_t)settings.checkerboardMode + 2) % 3;
     float4 diffAntilag1 = float4(settings.antilagIntensitySettings.sigmaScale / m_CommonSettings.resolutionScale, settings.antilagHitDistanceSettings.sigmaScale / m_CommonSettings.resolutionScale, settings.antilagIntensitySettings.sensitivityToDarkness, settings.antilagHitDistanceSettings.sensitivityToDarkness);
@@ -220,6 +221,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
         AddFloat4(data, m_Rotator[0]);
         AddUint(data, diffCheckerboard);
         AddUint(data, settings.usePrePass ? 1 : 0);
+        AddFloat(data, normalWeightStrictness);
     }
     ValidateConstants(data);
 
@@ -252,6 +254,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[1]);
     AddFloat(data, settings.maxAdaptiveRadiusScale);
+    AddFloat(data, normalWeightStrictness);
     ValidateConstants(data);
 
     // POST_BLUR
@@ -260,6 +263,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[2]);
     AddFloat(data, settings.maxAdaptiveRadiusScale);
+    AddFloat(data, normalWeightStrictness);
     ValidateConstants(data);
 
     // TEMPORAL_STABILIZATION
@@ -294,7 +298,7 @@ void DenoiserImpl::AddSharedConstants_ReblurDiffuse(const MethodData& methodData
     uint32_t rectHprev = uint32_t(screenH * m_ResolutionScalePrev + 0.5f);
     float maxAccumulatedFrameNum = float( Min(settings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM) );
     float blurRadius = settings.blurRadius * m_CommonSettings.resolutionScale;
-    float amount = Saturate( settings.temporalStabilizationAmount );
+    float amount = m_CommonSettings.forceReferenceAccumulation ? 4.0f : Saturate( settings.stabilizationStrength );
     float frameRateScale = Max( m_FrameRateScale * amount, 2.0f / 16.0f );
     float4 diffHitDistParams = float4(&settings.hitDistanceParameters.A);    
 

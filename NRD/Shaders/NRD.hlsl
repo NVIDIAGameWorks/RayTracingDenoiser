@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v2.1.0
+// NRD v2.1.1
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -153,8 +153,14 @@ float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDist
     return saturate( hitDist / f );
 }
 
-float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist )
+float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist, bool sanitize = true )
 {
+    if( sanitize )
+    {
+        radiance = ( any( isnan( radiance ) ) || any( isinf( radiance ) ) ) ? 0 : radiance;
+        normHitDist = ( isnan( normHitDist ) || isinf( normHitDist ) ) ? 0 : normHitDist;
+    }
+
     return float4( radiance, normHitDist );
 }
 
@@ -162,8 +168,14 @@ float4 REBLUR_FrontEnd_PackRadiance( float3 radiance, float normHitDist )
 // RELAX
 //========
 
-float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist )
+float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist, bool sanitize = true )
 {
+    if( sanitize )
+    {
+        radiance = ( any( isnan( radiance ) ) || any( isinf( radiance ) ) ) ? 0 : radiance;
+        hitDist = ( isnan( hitDist ) || isinf( hitDist ) ) ? 0 : hitDist;
+    }
+
     return float4( radiance, hitDist );
 }
 

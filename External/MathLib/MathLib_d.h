@@ -293,31 +293,6 @@ PLATFORM_INLINE v4d ymm_length(const v4d& x)
     return _mm256_sqrt_pd(r);
 }
 
-#ifndef PLATFORM_HAS_SVML_INTRISICS
-
-    // IMPORTANT: use Intel SVML compatible names
-
-    v4d _mm256_sin_pd(const v4d& x);
-    v4d _mm256_cos_pd(const v4d& x);
-    v4d _mm256_sincos_pd(v4d* pCos, const v4d& d);
-    v4d _mm256_tan_pd(const v4d& x);
-    v4d _mm256_atan_pd(const v4d& d);
-    v4d _mm256_atan2_pd(const v4d& y, const v4d& x);
-    v4d _mm256_asin_pd(const v4d& d);
-    v4d _mm256_acos_pd(const v4d& d);
-    v4d _mm256_log_pd(const v4d& d);
-    v4d _mm256_exp_pd(const v4d& d);
-
-    PLATFORM_INLINE v4d _mm256_pow_pd(const v4d& x, const v4d& y)
-    {
-        v4d t = _mm256_log_pd(x);
-        t = _mm256_mul_pd(t, y);
-
-        return _mm256_exp_pd(t);
-    }
-
-#endif
-
 //======================================================================================================================
 //                                                      double3
 //======================================================================================================================

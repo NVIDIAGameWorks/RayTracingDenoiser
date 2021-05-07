@@ -57,6 +57,8 @@ Result QueryPoolVK::Create(const QueryPoolDesc& queryPoolDesc)
         }
     }
 
+    m_Stride = GetQuerySize();
+
     return Result::SUCCESS;
 }
 

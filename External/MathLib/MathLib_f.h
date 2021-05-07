@@ -278,31 +278,6 @@ PLATFORM_INLINE v4i xmmi_select(const v4i& x, const v4i& y, const v4i& mask)
     return _mm_or_si128(_mm_and_si128(mask, x), _mm_andnot_si128(mask, y));
 }
 
-// IMPORTANT: use Intel SVML compatible names
-
-#ifndef PLATFORM_HAS_SVML_INTRISICS
-
-    v4f _mm_sin_ps(const v4f& x);
-    v4f _mm_cos_ps(const v4f& x);
-    v4f _mm_sincos_ps(v4f* pCos, const v4f& d);
-    v4f _mm_tan_ps(const v4f& x);
-    v4f _mm_atan_ps(const v4f& d);
-    v4f _mm_atan2_ps(const v4f& y, const v4f& x);
-    v4f _mm_asin_ps(const v4f& d);
-    v4f _mm_acos_ps(const v4f& d);
-    v4f _mm_log_ps(const v4f& d);
-    v4f _mm_exp_ps(const v4f& d);
-
-    PLATFORM_INLINE v4f _mm_pow_ps(const v4f& x, const v4f& y)
-    {
-        v4f t = _mm_log_ps(x);
-        t = _mm_mul_ps(t, y);
-
-        return _mm_exp_ps(t);
-    }
-
-#endif
-
 //======================================================================================================================
 //                                                      float2
 //======================================================================================================================

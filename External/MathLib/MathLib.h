@@ -89,7 +89,7 @@ namespace ml {
 #include "NdcConfig.h"
 
 //======================================================================================================================
-//                                                      SIMD ASM
+//                                                SIMD FUNCTIONALITY
 //======================================================================================================================
 
 #ifdef MATH_EXEPTIONS
@@ -100,15 +100,71 @@ namespace ml {
 
 #include "IntrinEmu.h"
 
-typedef __m128      v4f;
-typedef __m256      v8f;
+typedef __m64                   v2i;
+typedef __m128d                 v2d;
 
-typedef __m64       v2i;
-typedef __m128i     v4i;
-typedef __m256i     v8i;
+typedef __m128                  v4f;
+typedef __m128i                 v4i;
 
-typedef __m128d     v2d;
-typedef __m256d     v4d;
+#if( PLATFORM_INTRINSIC >= PLATFORM_INTRINSIC_AVX1 )
+    typedef __m256              v8f;
+    typedef __m256i             v8i;
+    typedef __m256d             v4d;
+#else
+    typedef emu__m256           v8f;
+    typedef emu__m256i          v8i;
+    typedef emu__m256d          v4d;
+#endif
+
+v4f emu_mm_sin_ps(const v4f& x);
+v4f emu_mm_cos_ps(const v4f& x);
+v4f emu_mm_sincos_ps(v4f* pCos, const v4f& d);
+v4f emu_mm_tan_ps(const v4f& x);
+v4f emu_mm_atan_ps(const v4f& d);
+v4f emu_mm_atan2_ps(const v4f& y, const v4f& x);
+v4f emu_mm_asin_ps(const v4f& d);
+v4f emu_mm_acos_ps(const v4f& d);
+v4f emu_mm_log_ps(const v4f& d);
+v4f emu_mm_exp_ps(const v4f& d);
+
+v4d emu_mm256_sin_pd(const v4d& x);
+v4d emu_mm256_cos_pd(const v4d& x);
+v4d emu_mm256_sincos_pd(v4d* pCos, const v4d& d);
+v4d emu_mm256_tan_pd(const v4d& x);
+v4d emu_mm256_atan_pd(const v4d& d);
+v4d emu_mm256_atan2_pd(const v4d& y, const v4d& x);
+v4d emu_mm256_asin_pd(const v4d& d);
+v4d emu_mm256_acos_pd(const v4d& d);
+v4d emu_mm256_log_pd(const v4d& d);
+v4d emu_mm256_exp_pd(const v4d& d);
+
+#if( !PLATFORM_VS2019_PLUS )
+    #define _mm_sin_ps              emu_mm_sin_ps
+    #define _mm_cos_ps              emu_mm_cos_ps
+    #define _mm_sincos_ps           emu_mm_sincos_ps
+    #define _mm_tan_ps              emu_mm_tan_ps
+    #define _mm_atan_ps             emu_mm_atan_ps
+    #define _mm_atan2_ps            emu_mm_atan2_ps
+    #define _mm_asin_ps             emu_mm_asin_ps
+    #define _mm_acos_ps             emu_mm_acos_ps
+    #define _mm_log_ps              emu_mm_log_ps
+    #define _mm_exp_ps              emu_mm_exp_ps
+    #define _mm_pow_ps(x, y)        emu_mm_exp_ps( _mm_mul_ps( emu_mm_log_ps(x), y ) )
+#endif
+
+#if( PLATFORM_INTRINSIC < PLATFORM_INTRINSIC_AVX1 || !PLATFORM_VS2019_PLUS )
+    #define _mm256_sin_pd           emu_mm256_sin_pd
+    #define _mm256_cos_pd           emu_mm256_cos_pd
+    #define _mm256_sincos_pd        emu_mm256_sincos_pd
+    #define _mm256_tan_pd           emu_mm256_tan_pd
+    #define _mm256_atan_pd          emu_mm256_atan_pd
+    #define _mm256_atan2_pd         emu_mm256_atan2_pd
+    #define _mm256_asin_pd          emu_mm256_asin_pd
+    #define _mm256_acos_pd          emu_mm256_acos_pd
+    #define _mm256_log_pd           emu_mm256_log_pd
+    #define _mm256_exp_pd           emu_mm256_exp_pd
+    #define _mm256_pow_pd(x, y)     emu_mm256_exp_pd( _mm256_mul_pd( emu_mm256_log_pd(x), y ) )
+#endif
 
 //======================================================================================================================
 //                                                  Enums

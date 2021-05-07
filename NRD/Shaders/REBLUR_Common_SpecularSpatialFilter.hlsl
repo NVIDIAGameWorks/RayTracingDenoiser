@@ -19,7 +19,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float2 specInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
         radius *= REBLUR_PRE_BLUR_RADIUS_SCALE( roughness );
-        float boost = 0;
     #else
         float minAccumSpeed = ( REBLUR_FRAME_NUM_WITH_HISTORY_FIX - 1 ) * STL::Math::Sqrt01( 1.0 ) + 0.001;
         float boost = saturate( 1.0 - specInternalData.y / minAccumSpeed );
@@ -37,8 +36,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float radiusBias = 0.0;
-        error.y = 1.0;
     #else
+        // TODO: on thin objects adaptive scale can lead to sampling from "not contributing" surfaces. Mips for viewZ can be computed
+        // and used to estimate "local planarity". If abs( z_mip0 - z_mip3 ) is big reduce adaptive radius scale accordingly.
         float radiusBias = error.y * gSpecBlurRadiusScale;
     #endif
 
@@ -53,14 +53,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     // Denoising
     float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, edge, roughness );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, lerp( 1.0, 0.05, specInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams2( specInternalData.x, edge, error.y, Xv, Nv, roughness );
+    float normalWeightParams = GetNormalWeightParams2( specInternalData.x, edge, error.y, Xv, Nv, gNormalWeightStrictness, roughness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, specInternalData.x, roughness );
     float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
     float2 sum = 1.0;
 
-    float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( 0, roughness, STL_SPECULAR_DOMINANT_DIRECTION_APPROX );
-    float3 Vv = -normalize( Xv );
-    float3 Dv = STL::ImportanceSampling::GetSpecularDominantDirectionWithFactor( Nv, Vv, dominantFactor );
+    #if( REBLUR_USE_DOMINANT_DIRECTION_IN_WEIGHT == 1 )
+        float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( 0, roughness, STL_SPECULAR_DOMINANT_DIRECTION_APPROX );
+        float3 Vv = -normalize( Xv );
+        float3 Dv = STL::ImportanceSampling::GetSpecularDominantDirectionWithFactor( Nv, Vv, dominantFactor );
+    #endif
 
     [unroll]
     for( uint i = 0; i < REBLUR_POISSON_SAMPLE_NUM; i++ )
@@ -94,9 +96,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         Ns = _NRD_FrontEnd_UnpackNormalAndRoughness( Ns );
 
         // Sample weight
-        float w = GetGaussianWeight( offset.z );
+        float w = GetGeometryWeight( geometryWeightParams, Nv, Xvs );
         w *= IsInScreen( uv );
-        w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
+        w *= GetGaussianWeight( offset.z );
         w *= GetRoughnessWeight( roughnessWeightParams, Ns.w );
 
         #if( REBLUR_USE_DOMINANT_DIRECTION_IN_WEIGHT == 1 )

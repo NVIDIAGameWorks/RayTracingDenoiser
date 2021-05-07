@@ -78,7 +78,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( DIFF_TEMP );
         PushOutput( SPEC_TEMP );
 
-        AddDispatch( REBLUR_DiffuseSpecular_PreBlur, SumConstants(1, 2, 0, 4), 16, 1 );
+        AddDispatch( REBLUR_DiffuseSpecular_PreBlur, SumConstants(1, 2, 0, 5), 16, 1 );
     }
 
     // Temporal accumulation after pre-blur
@@ -157,7 +157,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        AddDispatch( REBLUR_DiffuseSpecular_Blur, SumConstants(1, 2, 0, 3), 16, 1 );
+        AddDispatch( REBLUR_DiffuseSpecular_Blur, SumConstants(1, 2, 0, 4), 16, 1 );
     }
 
     PushPass("REBLUR::DiffuseSpecular - post-blur");
@@ -172,7 +172,7 @@ size_t DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::DIFF_HISTORY) );
         PushOutput( AsUint(Permanent::SPEC_HISTORY) );
 
-        AddDispatch( REBLUR_DiffuseSpecular_PostBlur, SumConstants(1, 2, 0, 3), 16, 1 );
+        AddDispatch( REBLUR_DiffuseSpecular_PostBlur, SumConstants(1, 2, 0, 4), 16, 1 );
     }
 
     PushPass("REBLUR::DiffuseSpecular - temporal stabilization");
@@ -235,6 +235,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodDa
 
     bool usePrePass = diffSettings.usePrePass && specSettings.usePrePass;
     bool useCopyViewZ = !usePrePass && diffSettings.checkerboardMode == CheckerboardMode::OFF && specSettings.checkerboardMode == CheckerboardMode::OFF;
+    float normalWeightStrictness = Lerp( 0.1f, 1.0f, Max( diffSettings.normalWeightStrictness, specSettings.normalWeightStrictness ) );
 
     uint32_t diffCheckerboard = ((uint32_t)diffSettings.checkerboardMode + 2) % 3;
     float4 diffAntilag1 = float4(diffSettings.antilagIntensitySettings.sigmaScale / m_CommonSettings.resolutionScale, diffSettings.antilagHitDistanceSettings.sigmaScale / m_CommonSettings.resolutionScale, diffSettings.antilagIntensitySettings.sensitivityToDarkness, diffSettings.antilagHitDistanceSettings.sensitivityToDarkness);
@@ -284,6 +285,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodDa
         AddFloat(data, diffBlurRadius);
         AddUint(data, diffCheckerboard);
         AddUint(data, usePrePass ? 1 : 0);
+        AddFloat(data, normalWeightStrictness);
     }
     ValidateConstants(data);
 
@@ -326,6 +328,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodDa
     AddFloat(data, specSettings.maxAdaptiveRadiusScale);
     AddFloat(data, diffBlurRadius);
     AddFloat(data, diffSettings.maxAdaptiveRadiusScale);
+    AddFloat(data, normalWeightStrictness);
     ValidateConstants(data);
 
     // POST_BLUR
@@ -337,6 +340,7 @@ void DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodDa
     AddFloat(data, specSettings.maxAdaptiveRadiusScale);
     AddFloat(data, diffBlurRadius);
     AddFloat(data, diffSettings.maxAdaptiveRadiusScale);
+    AddFloat(data, normalWeightStrictness);
     ValidateConstants(data);
 
     // TEMPORAL_STABILIZATION
@@ -375,7 +379,7 @@ void DenoiserImpl::AddSharedConstants_ReblurDiffuseSpecular(const MethodData& me
     float planeDistanceSensitivity = Min( settings.diffuseSettings.planeDistanceSensitivity, settings.specularSettings.planeDistanceSensitivity );
     float diffMaxAccumulatedFrameNum = float( Min(settings.diffuseSettings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM) );
     float specMaxAccumulatedFrameNum = float( Min(settings.specularSettings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM) );
-    float amount = Saturate( Min( settings.diffuseSettings.temporalStabilizationAmount, settings.specularSettings.temporalStabilizationAmount ) );
+    float amount = m_CommonSettings.forceReferenceAccumulation ? 4.0f : Saturate( Min( settings.diffuseSettings.stabilizationStrength, settings.specularSettings.stabilizationStrength ) );
     float frameRateScale = Max( m_FrameRateScale * amount, 2.0f / 16.0f );
     float4 diffHitDistParams = float4(&settings.diffuseSettings.hitDistanceParameters.A);    
     float4 specHitDistParams = float4(&settings.specularSettings.hitDistanceParameters.A);

@@ -30,6 +30,7 @@ workspace "SANDBOX"
     startproject "09_RayTracing_NRD"
     debugargs { "Please, install Smart Command Line Arguments for Visual Studio" }
     warnings "Extra"
+    vectorextensions "SSE4.1" -- SSSE3, SSE4.1, AVX, AVX2
 
     filter { "configurations:Release" }
         optimize "Full"
@@ -42,10 +43,6 @@ workspace "SANDBOX"
 
     filter { "files:**.hlsl" }
         flags { "ExcludeFromBuild" }
-    filter {}
-
-    filter { "kind:WindowedApp" }
-        vectorextensions "AVX"
     filter {}
 
     targetdir (targetDirBin)

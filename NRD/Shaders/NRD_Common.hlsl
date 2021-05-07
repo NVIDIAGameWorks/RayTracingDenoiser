@@ -151,11 +151,11 @@ float IsInScreen( float2 uv )
     return float( all( saturate( uv ) == uv ) );
 }
 
-float IsInScreen2x2( float2 uv, float2 screenSize ) // TODO: ideally needs to be per pixel
+float IsInScreen2x2( float2 uv, float2 screenSize )
 {
-    float2 t = 1.5 / screenSize;
+    float2 offset = 0.5 / screenSize;
 
-    return uv.x > t.x && uv.x < 1.0 - t.x && uv.y > t.y && uv.y < 1.0 - t.y;
+    return all( uv > offset ) && all( uv < 1.0 - offset );
 }
 
 float2 ApplyCheckerboard( inout float2 uv, uint mode, uint counter, float2 screenSize, float2 invScreenSize, uint frameIndex )

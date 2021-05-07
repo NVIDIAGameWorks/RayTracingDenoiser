@@ -35,14 +35,6 @@
 
 #endif
 
-#ifdef __INTEL_COMPILER
-    #define PLATFORM_INTEL_COMPILER
-#endif
-
-#if defined(PLATFORM_INTEL_COMPILER) || (_MSC_VER >= 1920)
-    #define PLATFORM_HAS_SVML_INTRISICS
-#endif
-
 // NOTE: limits
 
 #define PLATFORM_MAX_CHAR                               int8_t(~(1 << (sizeof(int8_t) * 8 - 1)))
@@ -69,21 +61,26 @@
 
 // NOTE: asm level
 
-#define PLATFORM_INTRINSIC_SSE3                         0       // NOTE: +SSSE3
+#define PLATFORM_INTRINSIC_SSE3                         0 // NOTE: +SSSE3
 #define PLATFORM_INTRINSIC_SSE4                         1
-#define PLATFORM_INTRINSIC_AVX1                         2       // NOTE: +FP16C
-#define PLATFORM_INTRINSIC_AVX2                         3       // NOTE: +FMA3
+#define PLATFORM_INTRINSIC_AVX1                         2 // NOTE: +FP16C
+#define PLATFORM_INTRINSIC_AVX2                         3 // NOTE: +FMA3
 
-#if (defined(_MSC_VER) && (_MSC_VER >= 1920)) || defined(__clang__) || defined(__GNUC__)
-    // TODO: disable __m256d emulation if VS2019 is used
+#if defined ( __AVX2__ )
     #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_AVX2
-#else
+    #pragma message("MathLib: AVX2 detected")
+#elif defined ( __AVX__ )
+    #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_AVX1
+    #pragma message("MathLib: AVX detected")
+#elif defined ( __SSE4_2__ ) || defined ( __SSE4_1__ )
     #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_SSE4
+    #pragma message("MathLib: SSE4 detected")
+#else
+    #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_SSE3
+    #pragma message("MathLib: SSE3 (default)")
 #endif
 
-#if( _MSC_VER < 1800 )
-    #define round(x)        floor(x + T(0.5))
-#endif
+#define PLATFORM_VS2019_PLUS                           (_MSC_VER >= 1920)
 
 // NOTE: x32 / x64
 
@@ -138,12 +135,7 @@
 
 #endif
 
-#ifdef PLATFORM_INTEL_COMPILER
-    #define TEMP_FUNC                                   "unknown"
-#else
-    #define TEMP_FUNC                                   __FUNCTION__
-#endif
-
+#define TEMP_FUNC                                       __FUNCTION__
 #define PLATFORM_MESSAGE(msg)                           __pragma(message(TEMP_LOCATION "message: PLATFORM MESSAGE(" TEMP_FUNC "): " msg))
 #define PLATFORM_WARNING(msg)                           __pragma(message(TEMP_LOCATION "warning: PLATFORM WARNING(" TEMP_FUNC "): " msg))
 #define PLATFORM_ERROR(msg)                             __pragma(message(TEMP_LOCATION "error: PLATFORM ERROR(" TEMP_FUNC "): " msg))

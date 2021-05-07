@@ -5,6 +5,56 @@ Provide feedback to: maxim.locktyukhin intel com, phil.j.kerly intel com
 - problem with all immediate values for _mm[256]_cmp_[ps|pd]
 */
 
+#define M256_ALIGN( a ) alignas(a)
+
+union M256_ALIGN(32) emu__m256
+{
+    float       emu_arr[8];
+    __m128      emu_m128[2];
+
+    PLATFORM_INLINE emu__m256()
+    {
+    }
+
+    PLATFORM_INLINE emu__m256(const __m128& lo, const __m128& hi)
+    {
+        emu_m128[0] = lo;
+        emu_m128[1] = hi;
+    }
+};
+
+union M256_ALIGN(32) emu__m256d
+{
+    double      emu_arr[4];
+    __m128d     emu_m128[2];
+
+    PLATFORM_INLINE emu__m256d()
+    {
+    }
+
+    PLATFORM_INLINE emu__m256d(const __m128d& lo, const __m128d& hi)
+    {
+        emu_m128[0] = lo;
+        emu_m128[1] = hi;
+    }
+};
+
+union M256_ALIGN(32) emu__m256i
+{
+    int32_t     emu_arr[8];
+    __m128i     emu_m128[2];
+
+    PLATFORM_INLINE emu__m256i()
+    {
+    }
+
+    PLATFORM_INLINE emu__m256i(const __m128i& lo, const __m128i& hi)
+    {
+        emu_m128[0] = lo;
+        emu_m128[1] = hi;
+    }
+};
+
 //======================================================================================================================
 //                                                      SSE4
 //======================================================================================================================
@@ -128,56 +178,6 @@ template<> PLATFORM_INLINE __m128 emu_mm_dp_ps<255>(const __m128& x, const __m12
 
 #if( PLATFORM_INTRINSIC < PLATFORM_INTRINSIC_AVX1 )
 
-#define M256_ALIGN( a ) alignas(a)
-
-union M256_ALIGN(32) emu__m256
-{
-    float       emu_arr[8];
-    __m128      emu_m128[2];
-
-    PLATFORM_INLINE emu__m256()
-    {
-    }
-
-    PLATFORM_INLINE emu__m256(const __m128& lo, const __m128& hi)
-    {
-        emu_m128[0] = lo;
-        emu_m128[1] = hi;
-    }
-};
-
-union M256_ALIGN(32) emu__m256d
-{
-    double      emu_arr[4];
-    __m128d     emu_m128[2];
-
-    PLATFORM_INLINE emu__m256d()
-    {
-    }
-
-    PLATFORM_INLINE emu__m256d(const __m128d& lo, const __m128d& hi)
-    {
-        emu_m128[0] = lo;
-        emu_m128[1] = hi;
-    }
-};
-
-union M256_ALIGN(32) emu__m256i
-{
-    int32_t         emu_arr[8];
-    __m128i     emu_m128[2];
-
-    PLATFORM_INLINE emu__m256i()
-    {
-    }
-
-    PLATFORM_INLINE emu__m256i(const __m128i& lo, const __m128i& hi)
-    {
-        emu_m128[0] = lo;
-        emu_m128[1] = hi;
-    }
-};
-
 #define __EMU_M256_IMPL_M1( type, func ) \
 PLATFORM_INLINE emu##type emu_mm256_##func( const emu##type& m256_param1 ) \
 {   emu##type res; \
@@ -264,9 +264,9 @@ __EMU_M256_IMPL_M2( __m256d, add_pd );
 __EMU_M256_IMPL_M2( __m256, add_ps );
 
 __EMU_M256_IMPL_M2( __m256d, addsub_pd );
-__EMU_M256_IMPL_M2( __m256, addsub_ps  );
+__EMU_M256_IMPL_M2( __m256, addsub_ps );
 
-__EMU_M256_IMPL_M2( __m256d, and_pd  );
+__EMU_M256_IMPL_M2( __m256d, and_pd );
 __EMU_M256_IMPL_M2( __m256, and_ps );
 
 __EMU_M256_IMPL_M2( __m256d, andnot_pd );
@@ -331,12 +331,12 @@ __EMU_M256_IMPL_M3( __m256d, blendv_pd );
 __EMU_M256_IMPL_M3( __m256, blendv_ps );
 
 const __m128d sign_bits_pd = _mm_castsi128_pd( _mm_set_epi32( 1 << 31, 0, 1 << 31, 0 ) );
-const __m128  sign_bits_ps = _mm_castsi128_ps( _mm_set1_epi32( 1 << 31 ) );
+const __m128 sign_bits_ps = _mm_castsi128_ps( _mm_set1_epi32( 1 << 31 ) );
 
 #define emu_mm_test_impl( op, sfx, vec_type ) \
 PLATFORM_INLINE int32_t emu_mm_test##op##_##sfx(const vec_type& s1, const vec_type& s2) {           \
-    vec_type t1 = _mm_and_##sfx( s1,  sign_bits_##sfx );                                           \
-    vec_type t2 = _mm_and_##sfx( s2,  sign_bits_##sfx );                                           \
+    vec_type t1 = _mm_and_##sfx( s1, sign_bits_##sfx );                                           \
+    vec_type t2 = _mm_and_##sfx( s2, sign_bits_##sfx );                                           \
     return _mm_test##op##_si128( _mm_cast##sfx##_si128( t1 ), _mm_cast##sfx##_si128( t2 ) );       \
 }
 
@@ -355,83 +355,83 @@ PLATFORM_INLINE int32_t emu_mm256_test##op##_##sfx(const vec_type& s1, const vec
     return ( ret1 && ret2 );                                                         \
 };
 
-emu_mm256_test_impl( _mm, z,   si256, si128, emu__m256i );
-emu_mm256_test_impl( _mm, c,   si256, si128, emu__m256i );
+emu_mm256_test_impl( _mm, z, si256, si128, emu__m256i );
+emu_mm256_test_impl( _mm, c, si256, si128, emu__m256i );
 emu_mm256_test_impl( _mm, nzc, si256, si128, emu__m256i );
 
-emu_mm256_test_impl( emu_mm, z,   pd, pd, emu__m256d );
-emu_mm256_test_impl( emu_mm, c,   pd, pd, emu__m256d );
+emu_mm256_test_impl( emu_mm, z, pd, pd, emu__m256d );
+emu_mm256_test_impl( emu_mm, c, pd, pd, emu__m256d );
 emu_mm256_test_impl( emu_mm, nzc, pd, pd, emu__m256d );
 
-emu_mm256_test_impl( emu_mm, z,   ps, ps, emu__m256 );
-emu_mm256_test_impl( emu_mm, c,   ps, ps, emu__m256 );
+emu_mm256_test_impl( emu_mm, z, ps, ps, emu__m256 );
+emu_mm256_test_impl( emu_mm, c, ps, ps, emu__m256 );
 emu_mm256_test_impl( emu_mm, nzc, ps, ps, emu__m256 );
 
 // NOTE: end SSE4 section
 
 template<int32_t imm>   PLATFORM_INLINE __m128 emu_mm_cmp_ps(const __m128&, const __m128&)                      { return _mm_setzero_ps(); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_OQ>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_UQ>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_US>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_OS>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LT_OS>(const __m128& a, const __m128& b)      { return _mm_cmplt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LT_OQ>(const __m128& a, const __m128& b)      { return _mm_cmplt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LE_OS>(const __m128& a, const __m128& b)      { return _mm_cmple_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LE_OQ>(const __m128& a, const __m128& b)      { return _mm_cmple_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GE_OS>(const __m128& a, const __m128& b)      { return _mm_cmpge_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GE_OQ>(const __m128& a, const __m128& b)      { return _mm_cmpge_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GT_OS>(const __m128& a, const __m128& b)      { return _mm_cmpgt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GT_OQ>(const __m128& a, const __m128& b)      { return _mm_cmpgt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_OQ>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_US>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_OS>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLT_US>(const __m128& a, const __m128& b)     { return _mm_cmpnlt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLT_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpnlt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLE_US>(const __m128& a, const __m128& b)     { return _mm_cmpnle_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLE_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpnle_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGT_US>(const __m128& a, const __m128& b)     { return _mm_cmpngt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGT_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpngt_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGE_US>(const __m128& a, const __m128& b)     { return _mm_cmpnge_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGE_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpnge_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_ORD_Q>(const __m128& a, const __m128& b)      { return _mm_cmpord_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_ORD_S>(const __m128& a, const __m128& b)      { return _mm_cmpord_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_UNORD_Q>(const __m128& a, const __m128& b)        { return _mm_cmpunord_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_UNORD_S>(const __m128& a, const __m128& b)        { return _mm_cmpunord_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_TRUE_UQ>(const __m128& a, const __m128& b)        { return _mm_cmpunord_ps(a, b); }
-template<>          PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_TRUE_US>(const __m128&, const __m128&)            { return _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF)); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_OQ>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_UQ>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_US>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_EQ_OS>(const __m128& a, const __m128& b)      { return _mm_cmpeq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LT_OS>(const __m128& a, const __m128& b)      { return _mm_cmplt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LT_OQ>(const __m128& a, const __m128& b)      { return _mm_cmplt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LE_OS>(const __m128& a, const __m128& b)      { return _mm_cmple_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_LE_OQ>(const __m128& a, const __m128& b)      { return _mm_cmple_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GE_OS>(const __m128& a, const __m128& b)      { return _mm_cmpge_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GE_OQ>(const __m128& a, const __m128& b)      { return _mm_cmpge_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GT_OS>(const __m128& a, const __m128& b)      { return _mm_cmpgt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_GT_OQ>(const __m128& a, const __m128& b)      { return _mm_cmpgt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_OQ>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_US>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NEQ_OS>(const __m128& a, const __m128& b)     { return _mm_cmpneq_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLT_US>(const __m128& a, const __m128& b)     { return _mm_cmpnlt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLT_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpnlt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLE_US>(const __m128& a, const __m128& b)     { return _mm_cmpnle_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NLE_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpnle_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGT_US>(const __m128& a, const __m128& b)     { return _mm_cmpngt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGT_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpngt_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGE_US>(const __m128& a, const __m128& b)     { return _mm_cmpnge_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_NGE_UQ>(const __m128& a, const __m128& b)     { return _mm_cmpnge_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_ORD_Q>(const __m128& a, const __m128& b)      { return _mm_cmpord_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_ORD_S>(const __m128& a, const __m128& b)      { return _mm_cmpord_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_UNORD_Q>(const __m128& a, const __m128& b)    { return _mm_cmpunord_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_UNORD_S>(const __m128& a, const __m128& b)    { return _mm_cmpunord_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_TRUE_UQ>(const __m128& a, const __m128& b)    { return _mm_cmpunord_ps(a, b); }
+template<>              PLATFORM_INLINE __m128 emu_mm_cmp_ps<_CMP_TRUE_US>(const __m128&, const __m128&)        { return _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF)); }
 
 template<int32_t imm>   PLATFORM_INLINE __m128d emu_mm_cmp_pd(const __m128d&, const __m128d&)                   { return _mm_setzero_pd(); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_UQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_US>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LT_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmplt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LT_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmplt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LE_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmple_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LE_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmple_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GE_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmpge_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GE_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpge_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GT_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmpgt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GT_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpgt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_OQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_OS>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLT_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpnlt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLT_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpnlt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLE_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpnle_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLE_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpnle_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGT_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpngt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGT_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpngt_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGE_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpnge_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGE_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpnge_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_ORD_Q>(const __m128d& a, const __m128d& b)   { return _mm_cmpord_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_ORD_S>(const __m128d& a, const __m128d& b)   { return _mm_cmpord_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_UNORD_Q>(const __m128d& a, const __m128d& b) { return _mm_cmpunord_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_UNORD_S>(const __m128d& a, const __m128d& b) { return _mm_cmpunord_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_TRUE_UQ>(const __m128d& a, const __m128d& b) { return _mm_cmpunord_pd(a, b); }
-template<>          PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_TRUE_US>(const __m128d&, const __m128d&)     { return _mm_castsi128_pd(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF)); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_UQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_US>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_EQ_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmpeq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LT_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmplt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LT_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmplt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LE_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmple_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_LE_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmple_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GE_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmpge_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GE_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpge_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GT_OS>(const __m128d& a, const __m128d& b)   { return _mm_cmpgt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_GT_OQ>(const __m128d& a, const __m128d& b)   { return _mm_cmpgt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_OQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NEQ_OS>(const __m128d& a, const __m128d& b)  { return _mm_cmpneq_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLT_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpnlt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLT_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpnlt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLE_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpnle_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NLE_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpnle_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGT_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpngt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGT_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpngt_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGE_US>(const __m128d& a, const __m128d& b)  { return _mm_cmpnge_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_NGE_UQ>(const __m128d& a, const __m128d& b)  { return _mm_cmpnge_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_ORD_Q>(const __m128d& a, const __m128d& b)   { return _mm_cmpord_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_ORD_S>(const __m128d& a, const __m128d& b)   { return _mm_cmpord_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_UNORD_Q>(const __m128d& a, const __m128d& b) { return _mm_cmpunord_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_UNORD_S>(const __m128d& a, const __m128d& b) { return _mm_cmpunord_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_TRUE_UQ>(const __m128d& a, const __m128d& b) { return _mm_cmpunord_pd(a, b); }
+template<>              PLATFORM_INLINE __m128d emu_mm_cmp_pd<_CMP_TRUE_US>(const __m128d&, const __m128d&)     { return _mm_castsi128_pd(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF)); }
 
 #define emu_mm256_cmp_ps(m256_param1, m256_param2, param3) \
     emu__m256(emu_mm_cmp_ps<param3>( m256_param1.emu_m128[0], m256_param2.emu_m128[0] ), emu_mm_cmp_ps<param3>( m256_param1.emu_m128[1], m256_param2.emu_m128[1] ))
@@ -455,7 +455,7 @@ PLATFORM_INLINE __m128i emu_mm256_extractf128_si256(const emu__m256i& m1, const 
 PLATFORM_INLINE void emu_mm256_zeroall(void) {}
 PLATFORM_INLINE void emu_mm256_zeroupper(void) {}
 
-PLATFORM_INLINE __m128  emu_mm_permutevar_ps(const __m128& a, __m128i control)
+PLATFORM_INLINE __m128 emu_mm_permutevar_ps(const __m128& a, __m128i control)
 {
     int32_t const* sel = (int32_t const*)&control;
     float const* src = (float const*)&a;
@@ -529,7 +529,7 @@ emu_mm_broadcast_impl( emu_mm256_broadcast_sd, emu__m256d, double )
 emu_mm_broadcast_impl( emu_mm256_broadcast_ps, emu__m256, __m128 )
 emu_mm_broadcast_impl( emu_mm256_broadcast_pd, emu__m256d, __m128d )
 
-PLATFORM_INLINE emu__m256  emu_mm256_insertf128_ps(const emu__m256& a, const __m128& b, int32_t offset)
+PLATFORM_INLINE emu__m256 emu_mm256_insertf128_ps(const emu__m256& a, const __m128& b, int32_t offset)
 {
     emu__m256 t = a;
     t.emu_m128[ offset ] = b;
@@ -543,7 +543,7 @@ PLATFORM_INLINE emu__m256d emu_mm256_insertf128_pd(const emu__m256d& a, const __
     return t;
 }
 
-PLATFORM_INLINE emu__m256i emu_mm256_insertf128_si256(const emu__m256i& a,const  __m128i& b, int32_t offset)
+PLATFORM_INLINE emu__m256i emu_mm256_insertf128_si256(const emu__m256i& a,const __m128i& b, int32_t offset)
 {
     emu__m256i t = a;
     t.emu_m128[ offset ] = b;
@@ -688,14 +688,14 @@ PLATFORM_INLINE emu__m256i emu_mm256_set_epi8(int8_t a1, int8_t a2, int8_t a3, i
                                        int8_t a25, int8_t a26, int8_t a27, int8_t a28, int8_t a29, int8_t a30, int8_t a31, int8_t a32)
 {
     return emu__m256i( _mm_set_epi8( a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30, a31, a32 ),
-                      _mm_set_epi8( a1,   a2,  a3,  a4,  a5,  a6,  a7,  a8,  a9, a10, a11, a12, a13, a14, a15, a16 ) );
+                      _mm_set_epi8( a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16 ) );
 }
 
 PLATFORM_INLINE emu__m256i emu_mm256_set_epi16(int16_t a1, int16_t a2, int16_t a3, int16_t a4, int16_t a5, int16_t a6, int16_t a7, int16_t a8,
                                                        int16_t a9, int16_t a10, int16_t a11, int16_t a12, int16_t a13, int16_t a14, int16_t a15, int16_t a16)
 {
     return emu__m256i(_mm_set_epi16( a9, a10, a11, a12, a13, a14, a15, a16 ),
-                      _mm_set_epi16( a1,  a2,  a3,  a4,  a5,  a6,  a7,  a8 ));
+                      _mm_set_epi16( a1, a2, a3, a4, a5, a6, a7, a8 ));
 }
 
 PLATFORM_INLINE emu__m256i emu_mm256_set_epi32(int32_t a1, int32_t a2, int32_t a3, int32_t a4, int32_t a5, int32_t a6, int32_t a7, int32_t a8)
@@ -705,11 +705,7 @@ PLATFORM_INLINE emu__m256i emu_mm256_set_epi32(int32_t a1, int32_t a2, int32_t a
 
 PLATFORM_INLINE __m128i emu_mm_set_epi64x(int64_t a, int64_t b)
 {
-    #if( _MSC_VER >= 1900 )
-        return _mm_set_epi64x(a, b);
-    #else
-        return _mm_set_epi64( *(__m64*)&a, *(__m64*)&b );
-    #endif
+    return _mm_set_epi64x(a, b);
 }
 
 PLATFORM_INLINE emu__m256i emu_mm256_set_epi64x(int64_t a1, int64_t a2, int64_t a3, int64_t a4)
@@ -722,7 +718,7 @@ PLATFORM_INLINE emu__m256d emu_mm256_setr_pd(double a1, double a2, double a3, do
     return emu__m256d( _mm_setr_pd( a1, a2 ), _mm_setr_pd( a3, a4 ) );
 }
 
-PLATFORM_INLINE emu__m256  emu_mm256_setr_ps(float a1, float a2, float a3, float a4, float a5, float a6, float a7, float a8)
+PLATFORM_INLINE emu__m256 emu_mm256_setr_ps(float a1, float a2, float a3, float a4, float a5, float a6, float a7, float a8)
 {
     return emu__m256( _mm_setr_ps( a1, a2, a3, a4 ), _mm_setr_ps( a5, a6, a7, a8 ) );
 }
@@ -732,14 +728,14 @@ PLATFORM_INLINE emu__m256i emu_mm256_setr_epi8(int8_t a1, int8_t a2, int8_t a3, 
                                                       int8_t a17, int8_t a18, int8_t a19, int8_t a20, int8_t a21, int8_t a22, int8_t a23, int8_t a24,
                                                       int8_t a25, int8_t a26, int8_t a27, int8_t a28, int8_t a29, int8_t a30, int8_t a31, int8_t a32)
 {
-    return emu__m256i( _mm_setr_epi8( a1,   a2,  a3,  a4,  a5,  a6,  a7,  a8,  a9, a10, a11, a12, a13, a14, a15, a16 ),
+    return emu__m256i( _mm_setr_epi8( a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16 ),
                       _mm_setr_epi8( a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30, a31, a32 ));
 }
 
 PLATFORM_INLINE emu__m256i emu_mm256_setr_epi16(int16_t a1, int16_t a2, int16_t a3, int16_t a4, int16_t a5, int16_t a6, int16_t a7, int16_t a8,
                                                        int16_t a9, int16_t a10, int16_t a11, int16_t a12, int16_t a13, int16_t a14, int16_t a15, int16_t a16)
 {
-    return emu__m256i( _mm_setr_epi16( a1,  a2,  a3,  a4,  a5,  a6,  a7,  a8 ),
+    return emu__m256i( _mm_setr_epi16( a1, a2, a3, a4, a5, a6, a7, a8 ),
                       _mm_setr_epi16( a9, a10, a11, a12, a13, a14, a15, a16 ) );
 }
 
@@ -780,7 +776,7 @@ __EMU_M256_IMPL_M1_RET_NAME( __m256i, __m256d, castpd_si128, castpd_si256 );
 __EMU_M256_IMPL_M1_RET_NAME( __m256, __m256i, castsi128_ps, castsi256_ps );
 __EMU_M256_IMPL_M1_RET_NAME( __m256d, __m256i, castsi128_pd, castsi256_pd );
 
-PLATFORM_INLINE __m128  emu_mm256_castps256_ps128(const emu__m256& a)
+PLATFORM_INLINE __m128 emu_mm256_castps256_ps128(const emu__m256& a)
 {
     return ( a.emu_m128[0] );
 }
@@ -809,10 +805,6 @@ PLATFORM_INLINE emu__m256i emu_mm256_castsi128_si256(const __m128i& a)
 {
     return emu__m256i(a, _mm_setzero_si128());
 }
-
-#define __m256  emu__m256
-#define __m256i emu__m256i
-#define __m256d emu__m256d
 
 #define _mm256_add_pd emu_mm256_add_pd
 #define _mm256_add_ps emu_mm256_add_ps
@@ -907,8 +899,8 @@ PLATFORM_INLINE emu__m256i emu_mm256_castsi128_si256(const __m128i& a)
 #define _mm256_broadcast_ss emu_mm256_broadcast_ss
 #define _mm_broadcast_ss(x) _mm_set1_ps(*(x))
 
-#define _mm256_broadcast_sd(x) emu_mm256_set1_pd(*(x))
-//#define _mm256_broadcast_sd emu_mm256_broadcast_sd
+//#define _mm256_broadcast_sd(x) emu_mm256_set1_pd(*(x))
+#define _mm256_broadcast_sd emu_mm256_broadcast_sd
 
 #define _mm256_broadcast_ps emu_mm256_broadcast_ps
 #define _mm256_broadcast_pd emu_mm256_broadcast_pd
@@ -1035,13 +1027,19 @@ PLATFORM_INLINE emu__m256i emu_mm256_castsi128_si256(const __m128i& a)
 
 #if( PLATFORM_INTRINSIC < PLATFORM_INTRINSIC_AVX2 )
 
-    PLATFORM_INLINE __m256d emu_mm256_permute4x64_pd(const __m256d& x, int32_t imm)
+    #if( PLATFORM_INTRINSIC < PLATFORM_INTRINSIC_AVX1 )
+        #define TYPE emu__m256d
+    #else
+        #define TYPE __m256d        
+    #endif
+
+    PLATFORM_INLINE TYPE emu_mm256_permute4x64_pd(const TYPE& x, int32_t imm)
     {
         DEBUG_Assert( imm >= 0 && imm <= PLATFORM_MAX_UCHAR );
 
-        __m256d r;
+        TYPE r;
 
-        const double* src =  (double const*)&x;
+        const double* src = (double const*)&x;
         double* dst = (double*)&r;
 
         dst[0] = src[(imm >> 0) & 0x3];
@@ -1051,6 +1049,8 @@ PLATFORM_INLINE emu__m256i emu_mm256_castsi128_si256(const __m128i& a)
 
         return r;
     }
+
+    #undef TYPE
 
     #define _mm256_cvtepi32_epi64(a)        _mm256_castpd_si256(_mm256_cmp_pd(_mm256_cvtepi32_pd(_mm_and_si128(a, _mm_set1_epi32(1))), _mm256_set1_pd(1.0), _CMP_EQ_OQ))
     #define _mm256_permute4x64_pd           emu_mm256_permute4x64_pd

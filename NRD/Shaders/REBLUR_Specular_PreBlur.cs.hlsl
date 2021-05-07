@@ -22,6 +22,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4 gSpecTrimmingParams;
     uint gSpecCheckerboard;
     uint gSpatialFiltering;
+    float gNormalWeightStrictness;
 };
 
 #include "NRD_Common.hlsl"
@@ -107,7 +108,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         spec += s0 * w.x + s1 * w.y;
     }
 
-    float3 error = 0;
+    float4 error = float4( 1, 1, 0, 0 );
 
     // Spatial filtering
     [branch]

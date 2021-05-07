@@ -601,7 +601,7 @@ void CommandBufferVK::CopyQueries(const QueryPool& queryPool, uint32_t offset, u
 
     VkQueryResultFlags flags = VK_QUERY_RESULT_PARTIAL_BIT;
     if (queryPoolImpl.GetType() == VK_QUERY_TYPE_TIMESTAMP)
-        flags |= VK_QUERY_RESULT_64_BIT;
+        flags = VK_QUERY_RESULT_64_BIT;
 
     m_VK.CmdCopyQueryPoolResults(m_Handle, queryPoolImpl.GetHandle(m_PhysicalDeviceIndex), offset, num, bufferImpl.GetHandle(m_PhysicalDeviceIndex), dstOffset,
         queryPoolImpl.GetStride(), flags);

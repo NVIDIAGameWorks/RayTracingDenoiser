@@ -233,10 +233,10 @@ struct GlobalConstantBufferData
 
 struct NrdSettings
 {
-    float diffBlurRadius = 30.0f;
-    float diffAdaptiveRadiusScale = 5.0f;
-    float specBlurRadius = 30.0f;
-    float specAdaptiveRadiusScale = 5.0f;
+    float blurRadius = 30.0f;
+    float adaptiveRadiusScale = 5.0f;
+    float stabilizationStrength = 1.0f;
+    float normalWeightStrictness = 1.0f;
     float antilagIntensitySigmaScale = 2.0f;
     float antilagHitDistanceSigmaScale = 2.0f;
     float antilagIntensityThresholdMin = 2.0f;
@@ -1029,16 +1029,10 @@ void Sample::PrepareFrame(uint32_t frameIndex)
                             ImGui::Text("SPATIAL FILTERING (DIFFUSE / SPECULAR):");
                             ImGui::PushID("SPATIAL FILTERING (DIFFUSE / SPECULAR)");
                             {
-                                float2 t = float2(m_Settings.nrdSettings.diffBlurRadius, m_Settings.nrdSettings.specBlurRadius);
-                                ImGui::SliderFloat2("Blur radius (px)", &t.x, 0.0f, 60.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
-                                m_Settings.nrdSettings.diffBlurRadius = t.x;
-                                m_Settings.nrdSettings.specBlurRadius = t.y;
-
-                                t = float2(m_Settings.nrdSettings.diffAdaptiveRadiusScale, m_Settings.nrdSettings.specAdaptiveRadiusScale);
-                                ImGui::SliderFloat2("Adaptive radius scale", &t.x, 0.0f, 10.0f, "%.2f");
-                                m_Settings.nrdSettings.diffAdaptiveRadiusScale = t.x;
-                                m_Settings.nrdSettings.specAdaptiveRadiusScale = t.y;
-
+                                ImGui::SliderFloat("Blur radius (px)", &m_Settings.nrdSettings.blurRadius, 0.0f, 60.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+                                ImGui::SliderFloat("Adaptive radius scale", &m_Settings.nrdSettings.adaptiveRadiusScale, 0.0f, 10.0f, "%.2f");
+                                ImGui::SliderFloat("Normal weight strictness", &m_Settings.nrdSettings.normalWeightStrictness, 0.0f, 1.0f, "%.2f");
+                                ImGui::SliderFloat("Stabilization strength", &m_Settings.nrdSettings.stabilizationStrength, 0.0f, 1.0f, "%.2f");
                                 ImGui::Checkbox("Reference", &m_Settings.nrdSettings.referenceAccumulation);
                                 ImGui::SameLine();
                                 ImGui::Checkbox("Anti-firefly", &m_Settings.nrdSettings.antifirefly);
@@ -2964,8 +2958,10 @@ void Sample::RenderFrame(uint32_t frameIndex)
             reblurSettings.diffuseSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
             reblurSettings.diffuseSettings.maxAccumulatedFrameNum = m_Settings.nrdSettings.referenceAccumulation ? nrd::REBLUR_MAX_HISTORY_FRAME_NUM : maxAccumulatedFrameNum;
             reblurSettings.diffuseSettings.maxFastAccumulatedFrameNum = m_Settings.nrdSettings.referenceAccumulation ? nrd::REBLUR_MAX_HISTORY_FRAME_NUM : maxFastAccumulatedFrameNum;
-            reblurSettings.diffuseSettings.blurRadius = m_Settings.nrdSettings.referenceAccumulation ? 0.0f : m_Settings.nrdSettings.diffBlurRadius;
-            reblurSettings.diffuseSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.diffAdaptiveRadiusScale;
+            reblurSettings.diffuseSettings.blurRadius = m_Settings.nrdSettings.referenceAccumulation ? 0.0f : m_Settings.nrdSettings.blurRadius;
+            reblurSettings.diffuseSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.adaptiveRadiusScale;
+            reblurSettings.diffuseSettings.normalWeightStrictness = m_Settings.nrdSettings.normalWeightStrictness;
+            reblurSettings.diffuseSettings.stabilizationStrength = m_Settings.nrdSettings.stabilizationStrength;
             reblurSettings.diffuseSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::WHITE : nrd::CheckerboardMode::OFF;
             reblurSettings.diffuseSettings.antifirefly = m_Settings.nrdSettings.antifirefly;
             reblurSettings.diffuseSettings.usePrePass = m_Settings.nrdSettings.usePrePass;
@@ -2976,8 +2972,10 @@ void Sample::RenderFrame(uint32_t frameIndex)
             reblurSettings.specularSettings.antilagHitDistanceSettings = antilagHitDistanceSettings;
             reblurSettings.specularSettings.maxAccumulatedFrameNum = reblurSettings.diffuseSettings.maxAccumulatedFrameNum;
             reblurSettings.specularSettings.maxFastAccumulatedFrameNum = reblurSettings.diffuseSettings.maxFastAccumulatedFrameNum;
-            reblurSettings.specularSettings.blurRadius = m_Settings.nrdSettings.referenceAccumulation ? 0.0f : m_Settings.nrdSettings.specBlurRadius;
-            reblurSettings.specularSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.specAdaptiveRadiusScale;
+            reblurSettings.specularSettings.blurRadius = m_Settings.nrdSettings.referenceAccumulation ? 0.0f : m_Settings.nrdSettings.blurRadius;
+            reblurSettings.specularSettings.maxAdaptiveRadiusScale = m_Settings.nrdSettings.adaptiveRadiusScale;
+            reblurSettings.specularSettings.normalWeightStrictness = m_Settings.nrdSettings.normalWeightStrictness;
+            reblurSettings.specularSettings.stabilizationStrength = m_Settings.nrdSettings.stabilizationStrength;
             reblurSettings.specularSettings.checkerboardMode = m_Settings.nrdSettings.checkerboard ? nrd::CheckerboardMode::BLACK : nrd::CheckerboardMode::OFF;
             reblurSettings.specularSettings.antifirefly = m_Settings.nrdSettings.antifirefly;
             reblurSettings.specularSettings.usePrePass = m_Settings.nrdSettings.usePrePass;

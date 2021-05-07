@@ -20,6 +20,7 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
     float4x4 gWorldToView;
     float4 gRotator;
     float gDiffBlurRadiusScale;
+    float gNormalWeightStrictness;
 };
 
 #include "NRD_Common.hlsl"
@@ -32,7 +33,7 @@ NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 );
 NRI_RESOURCE( Texture2D<float4>, gIn_Diff, t, 3, 0 );
 
 // Outputs
-NRI_RESOURCE( RWTexture2D<unorm float>, gInOut_Error, u, 0, 0 );
+NRI_RESOURCE( RWTexture2D<unorm float4>, gInOut_Error, u, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 1, 0 );
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
@@ -64,7 +65,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Center data
     float4 diff = gIn_Diff[ pixelPos ];
-    float3 error = float3( gInOut_Error[ pixelPos ].x, 0.0, 0.0 );
+    float4 error = gInOut_Error[ pixelPos ];
 
     // Spatial filtering
     #define REBLUR_SPATIAL_MODE REBLUR_POST_BLUR

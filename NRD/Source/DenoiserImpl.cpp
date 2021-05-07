@@ -350,7 +350,7 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
         float4(commonSettings.worldToViewRotationMatrixPrev + 12)
     );
 
-    // Convert main matrices to LHS ("viewZ" MUST BE always used as "abs( viewZ )")
+    // Convert main matrices to LHS ("viewZ" MUST BE used as "abs( viewZ )")
     uint32_t flags = 0;
     DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
     if ( (flags & PROJ_LEFT_HANDED) == 0 )

@@ -496,17 +496,19 @@ float GetNormalWeightParams( float nonLinearAccumSpeed, float edge, float error,
     return rcp( angle );
 }
 
-float GetNormalWeightParams2( float nonLinearAccumSpeed, float edge, float error, float3 Xv, float3 Nv, float roughness = 1.0 )
+float GetNormalWeightParams2( float nonLinearAccumSpeed, float edge, float error, float3 Xv, float3 Nv, float strictness, float roughness = 1.0 )
 {
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
 
-    float s = lerp( 0.05, 0.15, error );
+    float s = lerp( 0.05, 0.15, error ); // TODO: 0.15 can be different for BLUR / POST_BLUR passes
 
     #if 1
         // TODO: without this addition it's GetNormalWeightParams
         // - needed to avoid underblurring on curved surfaces (if the signal is bad)
         // - ideally shouldn't be here
         // - retune?
+
+        s *= strictness;
 
         // Use bigger angle if normalized angular size is small
         float r = PixelRadiusToWorld( gUnproject, gIsOrtho, gScreenSize.y, Xv.z );

@@ -39,10 +39,10 @@ float2 GetBlueNoise( bool isCheckerboard, uint seed, Texture2D<uint3> texScrambl
     //     https://belcour.github.io/blog/research/2019/06/17/sampling-bluenoise.html (but 2D only)
 
     uint2 pixelPos = DispatchRaysIndex( ).xy;
-    pixelPos.x >>= isCheckerboard ? 1 : 0;
 
     // Sample index
-    uint virtualSampleIndex = ( gFrameIndex + seed ) & ( sppVirtual - 1 );
+    uint frameIndex = isCheckerboard ? ( gFrameIndex >> 1 ) : gFrameIndex;
+    uint virtualSampleIndex = ( frameIndex + seed ) & ( sppVirtual - 1 );
     sampleIndex &= spp - 1;
     sampleIndex += virtualSampleIndex * spp;
 
