@@ -47,32 +47,32 @@ uint4 packIllumination1stMoments(uint2 specularAndDiffuseIlluminationLogLuv)
     float3 specularIllum;
     float3 diffuseIllum;
     UnpackSpecularAndDiffuseFromLogLuvUint2(specularIllum, diffuseIllum, specularAndDiffuseIlluminationLogLuv);
-	uint4 result;
+    uint4 result;
     result.r = f32tof16(specularIllum.r) | f32tof16(specularIllum.g) << 16;
-	result.g = f32tof16(specularIllum.b) | f32tof16(STL::Color::Luminance(specularIllum.rgb)) << 16;
+    result.g = f32tof16(specularIllum.b) | f32tof16(STL::Color::Luminance(specularIllum.rgb)) << 16;
     result.b = f32tof16(diffuseIllum.r) | f32tof16(diffuseIllum.g) << 16;
-	result.a = f32tof16(diffuseIllum.b) | f32tof16(STL::Color::Luminance(diffuseIllum.rgb)) << 16;
-	return result;
+    result.a = f32tof16(diffuseIllum.b) | f32tof16(STL::Color::Luminance(diffuseIllum.rgb)) << 16;
+    return result;
 }
 
 void unpackIllumination1stMoments(uint4 packed, out float3 specularIllum, out float3 diffuseIllum, out float specular1stMoment, out float diffuse1stMoment)
 {
-	specularIllum.r = f16tof32(packed.r);
-	specularIllum.g = f16tof32(packed.r >> 16);
+    specularIllum.r = f16tof32(packed.r);
+    specularIllum.g = f16tof32(packed.r >> 16);
     specularIllum.b = f16tof32(packed.g);
     specular1stMoment = f16tof32(packed.g >> 16);
-	diffuseIllum.r = f16tof32(packed.b);
-	diffuseIllum.g = f16tof32(packed.b >> 16);
+    diffuseIllum.r = f16tof32(packed.b);
+    diffuseIllum.g = f16tof32(packed.b >> 16);
     diffuseIllum.b = f16tof32(packed.a);
     diffuse1stMoment = f16tof32(packed.a >> 16);
 }
 
 uint4 packNormalRoughnessDepth2ndMoments(uint2 packedNormalRoughnessDepth, float2 specularAndDiffuse2ndMoments)
 {
-	uint4 result;
+    uint4 result;
     result.rg = packedNormalRoughnessDepth.rg;
     result.b = f32tof16(specularAndDiffuse2ndMoments.r) | f32tof16(specularAndDiffuse2ndMoments.g) << 16;
-	return result;
+    return result;
 }
 
 void unpackNormalRoughnessDepth2ndMoments(uint4 packed, out float3 normal, out float roughness, out float depth, out float specular2ndMoment, out float diffuse2ndMoment)
@@ -95,57 +95,57 @@ float computeDepthWeight(float depthCenter, float depthP, float phiDepth)
 
 float computeNormalWeight(float3 normalCenter, float3 normalP, float phiNormal)
 {
-    return pow(saturate(dot(normalCenter, normalP)), phiNormal);
+    return phiNormal == 0.0f ? 1.0f : pow(saturate(dot(normalCenter, normalP)), phiNormal);
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     const int2 ipos = dispatchThreadId.xy;
 
     // Populating shared memory
-	uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
+    uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
     uint newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
     uint newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
     uint blockXStart = groupId.x * THREAD_GROUP_SIZE;
     uint blockYStart = groupId.y * THREAD_GROUP_SIZE;
 
-	// First stage
-	int ox = newIdxX;
-	int oy = newIdxY;
-	int xx = blockXStart + newIdxX - SKIRT;
-	int yy = blockYStart + newIdxY - SKIRT;
+    // First stage
+    int ox = newIdxX;
+    int oy = newIdxY;
+    int xx = blockXStart + newIdxX - SKIRT;
+    int yy = blockYStart + newIdxY - SKIRT;
 
     uint4 packedIllumination1stMoments = 0;
     float2 specularAndDiffuse2ndMoments = 0;
     uint2 packedNormalRoughnessDepth = 0;
 
-	if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
-	{
+    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+    {
         packedIllumination1stMoments = packIllumination1stMoments(gSpecularAndDiffuseIlluminationLogLuv[int2(xx,yy)]);
         specularAndDiffuse2ndMoments = gSpecularAndDiffuse2ndMoments[int2(xx, yy)];
         packedNormalRoughnessDepth = gNormalRoughnessDepth[int2(xx, yy)];
-	}
+    }
     sharedPackedIllumination1stMoments[oy][ox] = packedIllumination1stMoments;
     sharedPackedNormalRoughnessDepth2ndMoments[oy][ox] = packNormalRoughnessDepth2ndMoments(packedNormalRoughnessDepth, specularAndDiffuse2ndMoments);
 
-	// Second stage
-	linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
-	newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
-	newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
+    // Second stage
+    linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
+    newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+    newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
-	ox = newIdxX;
-	oy = newIdxY;
+    ox = newIdxX;
+    oy = newIdxY;
     xx = blockXStart + newIdxX - SKIRT;
-	yy = blockYStart + newIdxY - SKIRT;
+    yy = blockYStart + newIdxY - SKIRT;
 
     packedIllumination1stMoments = 0;
     specularAndDiffuse2ndMoments = 0;
     packedNormalRoughnessDepth = 0;
 
-  	if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
-	{
+      if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
+    {
         if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
         {
             packedIllumination1stMoments = packIllumination1stMoments(gSpecularAndDiffuseIlluminationLogLuv[int2(xx, yy)]);

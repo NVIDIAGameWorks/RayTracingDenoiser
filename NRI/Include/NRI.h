@@ -15,8 +15,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <cstdint>
 
 #define NRI_VERSION_MAJOR 1
-#define NRI_VERSION_MINOR 62
-#define NRI_VERSION_DATE "3 February 2021"
+#define NRI_VERSION_MINOR 63
+#define NRI_VERSION_DATE "18 May 2021"
 #define NRI_INTERFACE( name ) #name, sizeof(name)
 
 #if _WIN32
@@ -114,7 +114,8 @@ namespace nri
         void (NRI_CALL *CmdCopyTexture)(CommandBuffer& commandBuffer, Texture& dstTexture, uint32_t dstPhysicalDeviceIndex, const TextureRegionDesc* dstRegionDesc, const Texture& srcTexture, uint32_t srcPhysicalDeviceIndex, const TextureRegionDesc* srcRegionDesc);
         void (NRI_CALL *CmdUploadBufferToTexture)(CommandBuffer& commandBuffer, Texture& dstTexture, const TextureRegionDesc& dstRegionDesc, const Buffer& srcBuffer, const TextureDataLayoutDesc& srcDataLayoutDesc);
         void (NRI_CALL *CmdReadbackTextureToBuffer)(CommandBuffer& commandBuffer, Buffer& dstBuffer, TextureDataLayoutDesc& dstDataLayoutDesc, const Texture& srcTexture, const TextureRegionDesc& srcRegionDesc);
-        void (NRI_CALL *CmdCopyQueries)(CommandBuffer& commandBuffer, const QueryPool& queryPool, uint32_t offset, uint32_t num, Buffer& dstBuffer, uint64_t dstOffset);
+        void (NRI_CALL* CmdCopyQueries)(CommandBuffer& commandBuffer, const QueryPool& queryPool, uint32_t offset, uint32_t num, Buffer& dstBuffer, uint64_t dstOffset);
+        void (NRI_CALL* CmdResetQueries)(CommandBuffer& commandBuffer, const QueryPool& queryPool, uint32_t offset, uint32_t num);
 
         void (NRI_CALL *SubmitQueueWork)(CommandQueue& commandQueue, const WorkSubmissionDesc& workSubmissionDesc, DeviceSemaphore* deviceSemaphore);
         void (NRI_CALL *WaitForSemaphore)(CommandQueue& commandQueue, DeviceSemaphore& deviceSemaphore);

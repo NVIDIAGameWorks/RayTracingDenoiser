@@ -23,7 +23,6 @@ namespace nri
         DeviceVK& GetDevice() const;
         uint32_t GetStride() const;
         VkQueryType GetType() const;
-
         Result Create(const QueryPoolDesc& queryPoolDesc);
         Result Create(const QueryPoolVulkanDesc& queryPoolDesc);
 

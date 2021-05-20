@@ -20,7 +20,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 specInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
         radius *= REBLUR_PRE_BLUR_RADIUS_SCALE( roughness );
     #else
-        float minAccumSpeed = ( REBLUR_FRAME_NUM_WITH_HISTORY_FIX - 1 ) * STL::Math::Sqrt01( 1.0 ) + 0.001;
+        float minAccumSpeed = ( REBLUR_FRAME_NUM_WITH_HISTORY_FIX - 1 ) * STL::Math::Sqrt01( roughness ) + 0.001;
         float boost = saturate( 1.0 - specInternalData.y / minAccumSpeed );
         radius *= ( 1.0 + 2.0 * boost ) / 3.0;
 
@@ -43,7 +43,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
     // Blur radius
-    float hitDist = GetHitDist( center.w, viewZ, gSpecHitDistParams, roughness, true );
+    float hitDist = GetHitDist( center.w, viewZ, gSpecHitDistParams, roughness );
     float blurRadius = GetBlurRadius( radius, roughness, hitDist, viewZ, specInternalData.x, specInternalData.y, error.z, error.y );
     blurRadius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams.xyz );
     blurRadius = blurRadius * ( radiusScale + radiusBias ) + radiusBias;
@@ -51,7 +51,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
-    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, edge, roughness );
+    float anisoFade = lerp( edge, 1.0, specInternalData.x );
+    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, roughness, anisoFade );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, lerp( 1.0, 0.05, specInternalData.x ) );
     float normalWeightParams = GetNormalWeightParams2( specInternalData.x, edge, error.y, Xv, Nv, gNormalWeightStrictness, roughness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, specInternalData.x, roughness );
@@ -134,9 +135,5 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     spec = lerp( spec, center, REBLUR_INPUT_MIX.xxxy );
 
     // Output
-    #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
-        spec = DecompressRadianceAndNormHitDist( spec.xyz, spec.w, viewZ, gSpecHitDistParams, roughness );
-    #endif
-
     gOut_Spec[ pixelPos ] = spec;
 }

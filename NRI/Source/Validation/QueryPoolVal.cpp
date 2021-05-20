@@ -14,10 +14,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 using namespace nri;
 
-QueryPoolVal::QueryPoolVal(DeviceVal& device, QueryPool& queryPool, QueryType queryType) :
+QueryPoolVal::QueryPoolVal(DeviceVal& device, QueryPool& queryPool, QueryType queryType, uint32_t queryNum) :
     DeviceObjectVal(device, queryPool),
-    m_QueryType(queryType)
+    m_QueryType(queryType),
+    m_DeviceState(device.GetStdAllocator())
 {
+    m_QueryNum = queryNum;
+
+    if (queryNum != 0)
+    {
+        const size_t batchNum = std::max(queryNum >> 6, 1u);
+        m_DeviceState.resize(batchNum, 0);
+    }
 }
 
 void QueryPoolVal::SetDebugName(const char* name)
@@ -31,9 +39,10 @@ uint32_t QueryPoolVal::GetQuerySize() const
     return m_CoreAPI.GetQuerySize(m_ImplObject);
 }
 
-QueryType QueryPoolVal::GetQueryType() const
+void QueryPoolVal::ResetQueries(uint32_t offset, uint32_t number)
 {
-    return m_QueryType;
+    for (uint32_t i = 0; i < number; i++)
+        SetQueryState(offset + i, false);
 }
 
 #include "QueryPoolVal.hpp"

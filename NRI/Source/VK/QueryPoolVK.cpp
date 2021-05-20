@@ -76,10 +76,12 @@ Result QueryPoolVK::Create(const QueryPoolVulkanDesc& queryPoolDesc)
             m_Handles[i] = handle;
     }
 
+    m_Stride = GetQuerySize();
+
     return Result::SUCCESS;
 }
 
-void QueryPoolVK::SetDebugName(const char* name)
+inline void QueryPoolVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_QUERY_POOL, (void**)m_Handles.data(), name);
 }

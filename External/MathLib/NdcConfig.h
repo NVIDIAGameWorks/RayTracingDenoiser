@@ -3,18 +3,6 @@
 #define NDC_D3D                         0
 #define NDC_OGL                         1
 
-// IMPORTANT: prerequisities (must be defined outside of this file)
-
-#if( defined PROPS_D3D11 || defined PROPS_D3D12 )
-    #define NDC_ORIGIN                  NDC_D3D
-    #define NDC_DEPTH                   NDC_D3D
-#elif( defined PROPS_GL || defined PROPS_VK )
-    #define NDC_ORIGIN                  NDC_OGL
-    #define NDC_DEPTH                   NDC_OGL
-#else
-    #error "One of PROPS_D3D11 / PROPS_D3D12 / PROPS_GL / PROPS_VK must be defined!"
-#endif
-
 //=========================================================================================
 // NOTE: settings
 //=========================================================================================
@@ -30,28 +18,19 @@
 // NOTE: private
 //=========================================================================================
 
-#if( NDC_ORIGIN == NDC_OGL )
-    #define NDC_ORIGIN_TOKEN            GL_LOWER_LEFT
-#else
-    #define NDC_ORIGIN_TOKEN            GL_UPPER_LEFT
-#endif
-
-#if( NDC_DEPTH == NDC_OGL )
-    #define NDC_DEPTH_TOKEN             GL_NEGATIVE_ONE_TO_ONE
+#if( defined PROPS_GL )
+    // depth range [-1; 1], origin "lower left"
     #define _NDC_NEAR_NO_REVERSE        -1.0f
     #define _DEPTH_C0                   (0.5f * (DEPTH_RANGE_FAR - DEPTH_RANGE_NEAR))
     #define _DEPTH_C1                   (0.5f * (DEPTH_RANGE_FAR + DEPTH_RANGE_NEAR))
     #define _ModifyProjZ(c2, c3)        (c2)
 #else
-    #define NDC_DEPTH_TOKEN             GL_ZERO_TO_ONE
+    // depth range [0; 1], origin "upper left"
     #define _NDC_NEAR_NO_REVERSE        0.0f
     #define _DEPTH_C0                   (DEPTH_RANGE_FAR - DEPTH_RANGE_NEAR)
     #define _DEPTH_C1                   DEPTH_RANGE_NEAR
     #define _ModifyProjZ(c2, c3)        (T(0.5) * (c2 + c3))
 #endif
-
-#define _DEPTH_FAR_MARKER               99999.0f
-#define _DEPTH_NEAR_MARKER              -99999.0f
 
 #define _NDC_FAR_NO_REVERSE             1.0f
 
@@ -72,26 +51,6 @@
 //=========================================================================================
 // NOTE: public
 //=========================================================================================
-
-#ifdef DEPTH_REVERSED
-
-    #define DEPTH_FUNC                  GLID_GREATER
-    #define DEPTH_FUNC_EQUAL            GLID_GEQUAL
-    #define DEPTH_MaxStr                "in"
-    #define DEPTH_MinStr                "ax"
-    #define ZbufferMax                  Min
-    #define ZbufferMin                  Max
-
-#else
-
-    #define DEPTH_FUNC                  GLID_LESS
-    #define DEPTH_FUNC_EQUAL            GLID_LEQUAL
-    #define DEPTH_MaxStr                "ax"
-    #define DEPTH_MinStr                "in"
-    #define ZbufferMax                  Max
-    #define ZbufferMin                  Min
-
-#endif
 
 namespace Zbuffer
 {

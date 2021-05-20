@@ -817,7 +817,7 @@ void Sample::CreateTransformConstantBuffer()
         Box& box = m_Boxes[i];
 
         float4x4& matrix = *(float4x4*)(bufferContentRange + dynamicConstantBufferOffset);
-        matrix = float4x4::identity;
+        matrix = float4x4::Identity();
 
         const size_t x = i % lineSize;
         const size_t y = i / lineSize;
@@ -1038,8 +1038,7 @@ void Sample::SetupProjViewMatrix(float4x4& projViewMatrix)
     float4x4 projectionMatrix;
     projectionMatrix.SetupByHalfFovxInf(DegToRad(45.0f), aspect, 0.1f, 0);
 
-    float4x4 viewMatrix;
-    viewMatrix.SetIdentity();
+    float4x4 viewMatrix = float4x4::Identity();
     viewMatrix.SetupByRotationYPR(DegToRad(0.0f), DegToRad(0.0f), 0.0f);
     viewMatrix.WorldToView();
 

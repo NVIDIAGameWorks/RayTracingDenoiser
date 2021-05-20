@@ -31,7 +31,6 @@ size_t DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
-        PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
         PushInput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
         PushOutput( AsUint(Transient::DATA_1) );
@@ -68,7 +67,6 @@ size_t DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     PushPass("SIGMA::Shadow - split screen");
     {
         PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
-        PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
@@ -134,7 +132,7 @@ void DenoiserImpl::AddSharedConstants_SigmaShadow(const MethodData& methodData, 
     float unproject = 1.0f / (0.5f * screenH * m_ProjectY);
 
     // TODO: it's needed due to history copying in PreBlur which can copy less than needed in case of DRS
-    float historyCorrection = 1.0f / Saturate(m_CommonSettings.resolutionScale / m_ResolutionScalePrev + 15.0f / float(rectW));
+    float historyCorrection = 1.0f / ml::Saturate(m_CommonSettings.resolutionScale / m_ResolutionScalePrev + 15.0f / float(rectW));
 
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4(data, m_Frustum);

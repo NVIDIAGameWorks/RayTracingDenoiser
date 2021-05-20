@@ -1,5 +1,6 @@
 local WIN_SDK_VERSION = "10.0.19041.0"
-local VK_SDK_PATH = os.getenv("VULKAN_SDK") .. "/"
+local VK_SDK_PATH_INCLUDE = os.getenv("VULKAN_SDK") .. "/Include/"
+local VK_SDK_PATH_LIB = os.getenv("VULKAN_SDK") .. "/Lib/"
 
 workspace "SANDBOX"
 
@@ -91,7 +92,7 @@ workspace "SANDBOX"
             vpaths { ["NRD"] = inc.."**.h" }
             vpaths { ["Methods"] = "**.hpp" }
             vpaths { ["Sources"] = {"**.cpp", "**.h", "**.rc"} }
-            defines { "WIN32_LEAN_AND_MEAN", "NOMINMAX", "NRD_API=extern \"C\" __declspec(dllexport)" }
+            defines { "WIN32_LEAN_AND_MEAN", "NOMINMAX", "NRD_USE_PRECOMPILED_SHADERS", "NRD_API=extern \"C\" __declspec(dllexport)" }
             dependson { "CompileShaders" }
 
     group "NRI"
@@ -121,8 +122,8 @@ workspace "SANDBOX"
         project "NRI_VK"
             kind "StaticLib"
             location (workspaceDir.."/%{prj.name}")
-            includedirs { incs, VK_SDK_PATH }
-            libdirs { VK_SDK_PATH }
+            includedirs { incs, VK_SDK_PATH_INCLUDE }
+            libdirs { VK_SDK_PATH_LIB }
             files { src.."VK/*", inc.."**.h", src.."Shared/*", "External/StdAllocator/*"  }
             vpaths { ["NRI"] = inc.."**.h" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
@@ -140,7 +141,7 @@ workspace "SANDBOX"
         project "NRI_Creation"
             kind "StaticLib"
             location (workspaceDir.."/%{prj.name}")
-            includedirs { incs, VK_SDK_PATH }
+            includedirs { incs, VK_SDK_PATH_INCLUDE }
             files { src.."Creation/*", inc.."**.h" }
             vpaths { ["NRI"] = inc.."**.h" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
@@ -149,13 +150,13 @@ workspace "SANDBOX"
         project "NRI"
             kind "SharedLib"
             location (workspaceDir.."/%{prj.name}")
-            includedirs { incs, VK_SDK_PATH }
+            includedirs { incs, VK_SDK_PATH_INCLUDE }
             files { inc.."**.h*", src.."Creation/*" }
             vpaths { ["NRI"] = inc.."**.h*" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             links { "NRI_D3D11", "d3d11", "dxguid", "nvapi64", "amd_ags_x64", "DelayImp" }
             links { "NRI_D3D12", "d3d12", "dxguid" }
-            links { "NRI_VK", VK_SDK_PATH.."Lib/vulkan-1" }
+            links { "NRI_VK", VK_SDK_PATH_LIB.."vulkan-1" }
             links { "NRI_Validation" }
             links { "dxgi" }
             linkoptions { "/DELAYLOAD:amd_ags_x64.dll", "/DELAYLOAD:vulkan-1.dll" }
@@ -280,7 +281,7 @@ workspace "SANDBOX"
         project "09_RayTracing_NRD"
             kind "WindowedApp"
             location (workspaceDir.."/%{prj.name}")
-            includedirs { inc, "NRD/Include", "NRD/Integration", VK_SDK_PATH }
+            includedirs { inc, "NRD/Include", "NRD/Integration", VK_SDK_PATH_INCLUDE }
             files { dir.."%{prj.name}.cpp", "NRD/Integration/*.*" }
             vpaths { ["Sources"] = {"**.cpp", "**.inl", "**.h", "**.hpp"} }
             defines { "PROJECT_NAME=%{prj.name}" }

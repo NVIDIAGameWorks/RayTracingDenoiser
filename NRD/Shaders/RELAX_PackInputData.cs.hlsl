@@ -29,7 +29,7 @@ NRI_RESOURCE(Texture2D<float>, gIn_ViewZ, t, 1, 0);
 NRI_RESOURCE(RWTexture2D<uint2>, gOut_Normal_Roughness_ViewZ, u, 0, 0);
 
 [numthreads(16, 16, 1)]
-void main(uint2 pixelPos : SV_DispatchThreadID)
+void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadID)
 {
     uint2 pixelPosUser = pixelPos + gRectOrigin;
 

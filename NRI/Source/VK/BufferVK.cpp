@@ -112,7 +112,7 @@ void BufferVK::SetHostMemory(MemoryVK& memory, uint64_t memoryOffset)
     }
 }
 
-void BufferVK::SetDebugName(const char* name)
+inline void BufferVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_BUFFER, (void**)m_Handles.data(), name);
 }
@@ -156,7 +156,7 @@ void BufferVK::GetMemoryInfo(MemoryLocation memoryLocation, MemoryDesc& memoryDe
     memoryDesc.type = unpack.type;
 }
 
-void* BufferVK::Map(uint64_t offset, uint64_t size)
+inline void* BufferVK::Map(uint64_t offset, uint64_t size)
 {
     CHECK(m_Device.GetLog(), m_Memory != nullptr, "The buffer does not support memory mapping.");
 
@@ -169,7 +169,7 @@ void* BufferVK::Map(uint64_t offset, uint64_t size)
     return m_Memory->GetMappedMemory(0) + m_MappedMemoryOffset + offset;
 }
 
-void BufferVK::Unmap()
+inline void BufferVK::Unmap()
 {
     // TODO: flush the range if the memory is not host coherent
     // if (m_Memory->IsHostCoherent())

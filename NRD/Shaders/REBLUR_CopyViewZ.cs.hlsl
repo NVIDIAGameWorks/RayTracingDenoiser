@@ -24,7 +24,7 @@ NRI_RESOURCE( Texture2D<float>, gIn_ViewZ, t, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float>, gOut_ScaledViewZ, u, 0, 0 );
 
 [numthreads( 16, 16, 1 )]
-void main( uint2 pixelPos : SV_DispatchThreadId )
+void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 {
     float viewZ = abs( gIn_ViewZ[ pixelPos ] );
     float scaledViewZ = min( viewZ * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX );

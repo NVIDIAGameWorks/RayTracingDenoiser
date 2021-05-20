@@ -43,11 +43,12 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     albedo *= STL::ImportanceSampling::Cosine::GetInversePDF( ) / STL::Math::Pi( 1.0 );
 
     // Denoised data
-    float viewZ = gIn_ViewZ[ pixelPos ];
     float4 indirectDiff = gIn_Diff[ pixelPos ];
+    indirectDiff = gDenoiserType != REBLUR ? RELAX_BackEnd_UnpackRadiance( indirectDiff ) : REBLUR_BackEnd_UnpackRadiance( indirectDiff );
     indirectDiff.xyz *= gIndirectDiffuse;
 
     float4 indirectSpec = gIn_Spec[ pixelPos ];
+    indirectSpec = gDenoiserType != REBLUR ? RELAX_BackEnd_UnpackRadiance( indirectSpec ) : REBLUR_BackEnd_UnpackRadiance( indirectSpec );
     indirectSpec.xyz *= gIndirectSpecular;
 
     float4 shadowData = gIn_Shadow[ pixelPos ];
@@ -64,6 +65,7 @@ void main( uint2 pixelPos : SV_DispatchThreadId )
     float3 Lsum = directLighting * shadow;
 
     // Environment (pre-integrated) specular terms
+    float viewZ = gIn_ViewZ[ pixelPos ];
     float3 Vv = STL::Geometry::ReconstructViewPosition( pixelUv, gCameraFrustum, viewZ, gIsOrtho );
     float3 V = -STL::Geometry::RotateVector( gViewToWorld, normalize( Vv ) );
     float NoV = abs( dot( N, V ) );

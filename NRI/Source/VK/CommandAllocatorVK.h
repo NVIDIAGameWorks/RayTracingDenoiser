@@ -21,7 +21,6 @@ namespace nri
 
         operator VkCommandPool() const;
         DeviceVK& GetDevice() const;
-
         Result Create(const CommandQueue& commandQueue, uint32_t physicalDeviceMask);
         Result Create(const CommandAllocatorVulkanDesc& commandAllocatorDesc);
 

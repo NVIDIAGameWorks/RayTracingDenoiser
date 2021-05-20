@@ -21,7 +21,6 @@ namespace nri
 
         operator VkFence() const;
         DeviceVK& GetDevice() const;
-
         Result Create(bool signaled);
         Result Create(void* vkFence);
 

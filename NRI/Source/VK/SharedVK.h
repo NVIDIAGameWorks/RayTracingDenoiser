@@ -21,7 +21,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 #define VK_ENABLE_BETA_EXTENSIONS
-#include "Include/vulkan/vulkan.h"
+#include <vulkan/vulkan.h>
 #undef CreateSemaphore
 
 #include "DispatchTable.h"

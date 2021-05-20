@@ -12,7 +12,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRD.h"
 
-#define NDC_DONT_CARE
+// TODO: move to a C++ / HLSL shared file (most likely with CB layout declarations)
+#define NRD_CS_MAIN "main"
+
+#define MATH_NAMESPACE
 #include "MathLib/MathLib.h"
 
 typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
@@ -20,11 +23,19 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 
 #include "Timer/Timer.h"
 
-#define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-    AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", "main", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+#ifdef NRD_USE_PRECOMPILED_SHADERS
+    #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
+        AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
 
-#define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-    AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", "main", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+    #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
+        AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+#else
+    #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
+        AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {})
+
+    #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
+        AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {})
+#endif
 
 inline uint16_t DivideUp(uint16_t x, uint16_t y)
 { return (x + y - 1) / y; }
@@ -109,9 +120,9 @@ namespace nrd
         void UpdateMethod_SigmaShadow(const MethodData& methodData);
         void AddSharedConstants_SigmaShadow(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data);
 
-        size_t AddMethod_SigmaTranslucentShadow(uint16_t w, uint16_t h);
-        void UpdateMethod_SigmaTranslucentShadow(const MethodData& methodData);
-        void AddSharedConstants_SigmaTranslucentShadow(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data);
+        size_t AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h);
+        void UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData);
+        void AddSharedConstants_SigmaShadowTranslucency(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data);
 
         size_t AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodData);
@@ -158,7 +169,7 @@ namespace nrd
     private:
         void Optimize();
         void PrepareDesc();
-        void AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv);
+        void AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv);
         void UpdatePingPong(const MethodData& methodData);
         void UpdateCommonSettings(const CommonSettings& commonSettings);
         void PushTexture(DescriptorType descriptorType, uint16_t index, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith = uint16_t(-1));
@@ -237,24 +248,24 @@ namespace nrd
         Timer m_Timer;
         DenoiserDesc m_Desc = {};
         CommonSettings m_CommonSettings = {};
-        float4x4 m_ViewToClip = float4x4::identity;
-        float4x4 m_ViewToClipPrev = float4x4::identity;
-        float4x4 m_ClipToView = float4x4::identity;
-        float4x4 m_ClipToViewPrev = float4x4::identity;
-        float4x4 m_WorldToView = float4x4::identity;
-        float4x4 m_WorldToViewPrev = float4x4::identity;
-        float4x4 m_ViewToWorld = float4x4::identity;
-        float4x4 m_ViewToWorldPrev = float4x4::identity;
-        float4x4 m_WorldToClip = float4x4::identity;
-        float4x4 m_WorldToClipPrev = float4x4::identity;
-        float4x4 m_ClipToWorld = float4x4::identity;
-        float4x4 m_ClipToWorldPrev = float4x4::identity;
-        float4 m_Rotator[3] = {};
-        float4 m_Frustum = float4(0.0f);
-        float4 m_FrustumPrev = float4(0.0f);
-        float3 m_CameraDelta = float3(0.0f);
-        float3 m_CameraDeltaSmoothed = float3(0.0f);
-        float2 m_JitterPrev = float2(0.0f);
+        ml::float4x4 m_ViewToClip = ml::float4x4::Identity();
+        ml::float4x4 m_ViewToClipPrev = ml::float4x4::Identity();
+        ml::float4x4 m_ClipToView = ml::float4x4::Identity();
+        ml::float4x4 m_ClipToViewPrev = ml::float4x4::Identity();
+        ml::float4x4 m_WorldToView = ml::float4x4::Identity();
+        ml::float4x4 m_WorldToViewPrev = ml::float4x4::Identity();
+        ml::float4x4 m_ViewToWorld = ml::float4x4::Identity();
+        ml::float4x4 m_ViewToWorldPrev = ml::float4x4::Identity();
+        ml::float4x4 m_WorldToClip = ml::float4x4::Identity();
+        ml::float4x4 m_WorldToClipPrev = ml::float4x4::Identity();
+        ml::float4x4 m_ClipToWorld = ml::float4x4::Identity();
+        ml::float4x4 m_ClipToWorldPrev = ml::float4x4::Identity();
+        ml::float4 m_Rotator[3] = {};
+        ml::float4 m_Frustum = ml::float4(0.0f);
+        ml::float4 m_FrustumPrev = ml::float4(0.0f);
+        ml::float3 m_CameraDelta = ml::float3(0.0f);
+        ml::float3 m_CameraDeltaSmoothed = ml::float3(0.0f);
+        ml::float2 m_JitterPrev = ml::float2(0.0f);
         const char* m_PassName = nullptr;
         uint8_t* m_ConstantData = nullptr;
         size_t m_ConstantDataOffset = 0;
@@ -273,15 +284,15 @@ namespace nrd
         bool m_IsFirstUse = true;
     };
 
-    inline void AddFloat4x4(Constant*& dst, const float4x4& x)
+    inline void AddFloat4x4(Constant*& dst, const ml::float4x4& x)
     {
-        memcpy(dst, &x, sizeof(float4x4));
+        memcpy(dst, &x, sizeof(ml::float4x4));
         dst += 16;
     }
 
-    inline void AddFloat4(Constant*& dst, const float4& x)
+    inline void AddFloat4(Constant*& dst, const ml::float4& x)
     {
-        memcpy(dst, &x, sizeof(float4));
+        memcpy(dst, &x, sizeof(ml::float4));
         dst += 4;
     }
 

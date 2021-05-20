@@ -28,6 +28,7 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
     float  gSpecularLobeAngleFraction;
     float  gSpecularLobeAngleSlack;
     uint   gStepSize;
+    uint   gRoughnessEdgeStoppingEnabled;
     float  gRoughnessEdgeStoppingRelaxation;
     float  gNormalEdgeStoppingRelaxation;
     float  gLuminanceEdgeStoppingRelaxation;
@@ -68,7 +69,7 @@ float getRoughnessWeight(float2 params0, float roughness)
 }
 
 [numthreads(8, 8, 1)]
-void main(int2 ipos : SV_DispatchThreadID)
+void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID)
 {
     float3 centerNormal;
     float centerRoughness;
@@ -153,7 +154,7 @@ void main(int2 ipos : SV_DispatchThreadID)
             float geometryW = GetGeometryWeight(centerWorldPos, centerNormal, centerLinearZ, sampleWorldPos, phiDepth);
 
             float normalWSpecular = GetSpecularNormalWeight_ATrous(normalWeightParams, gSpecularLobeAngleSlack, centerNormal, sampleNormal);
-            normalWSpecular *= GetSpecularVWeight_ATrous(normalWeightParams, centerV, sampleV);
+            normalWSpecular *= GetSpecularVWeight_ATrous(normalWeightParams, gSpecularLobeAngleSlack, centerV, sampleV);
             float normalWDiffuse = GetDiffuseNormalWeight_ATrous(centerNormal, sampleNormal, gPhiNormal);
 
             // Calculating luminande weigths
@@ -169,8 +170,9 @@ void main(int2 ipos : SV_DispatchThreadID)
             float specularRoughnessW = getRoughnessWeight(roughnessWeightParams, sampleRoughness);
 
             // Calculating bilateral weight for specular
-            float wSpecular = max(1e-6, normalWSpecular * exp(-geometryW - specularLuminanceW)) * specularRoughnessW * kernel;
-            //float wSpecular = max(1e-6, normalWSpecular * exp(-geometryW - specularLuminanceW)) * kernel;
+            float wSpecular = exp(-geometryW - specularLuminanceW);
+            wSpecular *= gRoughnessEdgeStoppingEnabled ? (normalWSpecular * specularRoughnessW) : normalWDiffuse;
+            wSpecular = max(1e-6, wSpecular) * kernel;
 
             // Calculating bilateral weight for diffuse
             float wDiffuse = max(1e-6, normalWDiffuse * exp(-geometryW - diffuseLuminanceW)) * kernel;

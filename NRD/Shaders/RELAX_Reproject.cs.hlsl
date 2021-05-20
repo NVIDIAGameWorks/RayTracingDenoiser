@@ -39,6 +39,7 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
     float    gDiffuseMaxFastAccumulatedFrameNum;
     float    gWorldSpaceMotion;
     float    gIsOrtho;
+    uint     gRoughnessBasedSpecularAccumulation;
     uint     gVirtualHistoryClampingEnabled;
     float    gUnproject;
     float    gNeedHistoryReset;
@@ -512,7 +513,7 @@ float loadVirtualMotionBasedPrevData(
 //
 
 [numthreads(8, 8, 1)]
-void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     // Reading raw noisy specular and diffuse.
     // Specular has noisy HitT in its alpha channel
@@ -657,10 +658,10 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
     float parallax = ComputeParallax(currentWorldPos, currentWorldPos + motionVector * (gWorldSpaceMotion != 0 ? 1.0 : 0.0), gPrevCameraPosition.xyz);
 
     // Current specular signal ( surface motion )
-    float specSurfaceFrames = GetSpecAccumSpeed(specHistoryFrames, currentRoughnessModified, NoV, parallax);
+    float specSurfaceFrames = gRoughnessBasedSpecularAccumulation ? GetSpecAccumSpeed(specHistoryFrames, currentRoughnessModified, NoV, parallax) : specHistoryFrames;
     float specSurfaceAlpha = 1.0 / (specSurfaceFrames + 1.0);
 
-    float specSurfaceResponsiveFrames = GetSpecAccumSpeed(specHistoryResponsiveFrames, currentRoughnessModified, NoV, parallax);
+    float specSurfaceResponsiveFrames = gRoughnessBasedSpecularAccumulation ? GetSpecAccumSpeed(specHistoryResponsiveFrames, currentRoughnessModified, NoV, parallax) : specHistoryResponsiveFrames;
     float specSurfaceResponsiveAlpha = 1.0 / (specSurfaceResponsiveFrames + 1.0);
 
     float surfaceHistoryConfidence = specSurfaceFrames / (specHistoryFrames + 1.0);
@@ -723,11 +724,11 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
     }
 
     // Current specular signal ( virtual motion )
-    float specVirtualFrames = GetSpecAccumSpeed(specHistoryFrames, currentRoughnessModified, NoV, 0.0); // parallax = 0 cancels NoV too
+    float specVirtualFrames = gRoughnessBasedSpecularAccumulation ? GetSpecAccumSpeed(specHistoryFrames, currentRoughnessModified, NoV, 0.0) : specHistoryFrames; // parallax = 0 cancels NoV too
     float minSpecVirtualFrames = min(specVirtualFrames, specVirtualFrames * (0.1 + 0.1 * STL::Math::Sqrt01(currentRoughnessModified)));
     specVirtualFrames = InterpolateAccumSpeeds(minSpecVirtualFrames, specVirtualFrames, STL::Math::Sqrt01(virtualHistoryConfidence));
 
-    float specVirtualResponsiveFrames = GetSpecAccumSpeed(specHistoryResponsiveFrames, currentRoughnessModified, NoV, 0.0); // parallax = 0 cancels NoV too
+    float specVirtualResponsiveFrames = gRoughnessBasedSpecularAccumulation ? GetSpecAccumSpeed(specHistoryResponsiveFrames, currentRoughnessModified, NoV, 0.0) : specHistoryResponsiveFrames; // parallax = 0 cancels NoV too
     float minSpecVirtualResponsiveFrames = min(specVirtualResponsiveFrames, specVirtualResponsiveFrames * (0.1 + 0.1 * STL::Math::Sqrt01(currentRoughnessModified)));
     specVirtualResponsiveFrames = InterpolateAccumSpeeds(minSpecVirtualResponsiveFrames, specVirtualResponsiveFrames, STL::Math::Sqrt01(virtualHistoryConfidence));
 

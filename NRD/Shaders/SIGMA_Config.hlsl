@@ -16,7 +16,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_PENUMBRA_FIX_BLUR_RADIUS_ADDON            5.0
 #define SIGMA_MAX_SIGMA_SCALE                           3.5
 #define SIGMA_TS_MOTION_MAX_REUSE                       0.11
-#define SIGMA_REFERENCE                                 0 // works better with 16-bit precision
 #define SIGMA_USE_CATROM_RESAMPLING                     1
 #define SIGMA_5X5_TEMPORAL_KERNEL                       1
 

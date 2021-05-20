@@ -19,10 +19,9 @@ namespace nri
         AccelerationStructureVK(DeviceVK& device);
         ~AccelerationStructureVK();
 
-        VkAccelerationStructureNV GetHandle(uint32_t physicalDeviceIndex) const;
         DeviceVK& GetDevice() const;
-
         Result Create(const AccelerationStructureDesc& accelerationStructureDesc);
+        VkAccelerationStructureNV GetHandle(uint32_t physicalDeviceIndex) const;
         Result RetrieveNativeHandle();
         uint32_t GetCreationFlags() const;
 

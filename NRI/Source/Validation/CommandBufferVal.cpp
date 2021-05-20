@@ -35,7 +35,8 @@ static bool ValidateTextureTransitionBarrierDesc(const DeviceVal& device, uint32
 CommandBufferVal::CommandBufferVal(DeviceVal& device, CommandBuffer& commandBuffer) :
     DeviceObjectVal(device, commandBuffer),
     m_RayTracingAPI(device.GetRayTracingInterface()),
-    m_MeshShaderAPI(device.GetMeshShaderInterface())
+    m_MeshShaderAPI(device.GetMeshShaderInterface()),
+    m_ValidationCommands(device.GetStdAllocator())
 {
 }
 
@@ -60,6 +61,8 @@ Result CommandBufferVal::Begin(const DescriptorPool* descriptorPool, uint32_t ph
     Result result = m_CoreAPI.BeginCommandBuffer(m_ImplObject, descriptorPoolImpl, physicalDeviceIndex);
     if (result == Result::SUCCESS)
         m_IsRecordingStarted = true;
+
+    m_ValidationCommands.clear();
 
     return result;
 }
@@ -510,6 +513,17 @@ void CommandBufferVal::BeginQuery(const QueryPool& queryPool, uint32_t offset)
     RETURN_ON_FAILURE(m_Device.GetLog(), queryPoolVal.GetQueryType() != QueryType::TIMESTAMP, ReturnVoid(),
         "Can't begin query: BeginQuery() is not supported for timestamp queries.");
 
+    if (!queryPoolVal.IsImported())
+    {
+        RETURN_ON_FAILURE(m_Device.GetLog(), offset < queryPoolVal.GetQueryNum(), ReturnVoid(),
+        "Can't begin query: the offset ('%u') is out of range.", offset);
+
+        ValidationCommandUseQuery& validationCommand = AllocateValidationCommand<ValidationCommandUseQuery>();
+        validationCommand.type = ValidationCommandType::BEGIN_QUERY;
+        validationCommand.queryPool = const_cast<QueryPool*>(&queryPool);
+        validationCommand.queryPoolOffset = offset;
+    }
+
     QueryPool* queryPoolImpl = NRI_GET_IMPL(QueryPool, &queryPool);
 
     m_CoreAPI.CmdBeginQuery(m_ImplObject, *queryPoolImpl, offset);
@@ -519,6 +533,19 @@ void CommandBufferVal::EndQuery(const QueryPool& queryPool, uint32_t offset)
 {
     RETURN_ON_FAILURE(m_Device.GetLog(), m_IsRecordingStarted, ReturnVoid(),
         "Can't end query: the command buffer must be in the recording state.");
+
+    const QueryPoolVal& queryPoolVal = (const QueryPoolVal&)queryPool;
+
+    if (!queryPoolVal.IsImported())
+    {
+        RETURN_ON_FAILURE(m_Device.GetLog(), offset < queryPoolVal.GetQueryNum(), ReturnVoid(),
+            "Can't end query: the offset ('%u') is out of range.", offset);
+
+        ValidationCommandUseQuery& validationCommand = AllocateValidationCommand<ValidationCommandUseQuery>();
+        validationCommand.type = ValidationCommandType::END_QUERY;
+        validationCommand.queryPool = const_cast<QueryPool*>(&queryPool);
+        validationCommand.queryPoolOffset = offset;
+    }
 
     QueryPool* queryPoolImpl = NRI_GET_IMPL(QueryPool, &queryPool);
 
@@ -533,10 +560,45 @@ void CommandBufferVal::CopyQueries(const QueryPool& queryPool, uint32_t offset, 
     RETURN_ON_FAILURE(m_Device.GetLog(), m_FrameBuffer == nullptr, ReturnVoid(),
         "Can't copy queries: this operation is allowed only outside render pass.");
 
+    const QueryPoolVal& queryPoolVal = (const QueryPoolVal&)queryPool;
+
+    if (!queryPoolVal.IsImported())
+    {
+        RETURN_ON_FAILURE(m_Device.GetLog(), offset + num <= queryPoolVal.GetQueryNum(), ReturnVoid(),
+            "Can't copy queries: offset + num ('%u') is out of range.", offset + num);
+    }
+
     QueryPool* queryPoolImpl = NRI_GET_IMPL(QueryPool, &queryPool);
     Buffer* dstBufferImpl = NRI_GET_IMPL(Buffer, &dstBuffer);
 
     m_CoreAPI.CmdCopyQueries(m_ImplObject, *queryPoolImpl, offset, num, *dstBufferImpl, dstOffset);
+}
+
+void CommandBufferVal::ResetQueries(const QueryPool& queryPool, uint32_t offset, uint32_t num)
+{
+    RETURN_ON_FAILURE(m_Device.GetLog(), m_IsRecordingStarted, ReturnVoid(),
+        "Can't reset queries: the command buffer must be in the recording state.");
+
+    RETURN_ON_FAILURE(m_Device.GetLog(), m_FrameBuffer == nullptr, ReturnVoid(),
+        "Can't reset queries: this operation is allowed only outside render pass.");
+
+    const QueryPoolVal& queryPoolVal = (const QueryPoolVal&)queryPool;
+
+    if (!queryPoolVal.IsImported())
+    {
+        RETURN_ON_FAILURE(m_Device.GetLog(), offset + num <= queryPoolVal.GetQueryNum(), ReturnVoid(),
+            "Can't reset queries: offset + num ('%u') is out of range.", offset + num);
+
+        ValidationCommandResetQuery& validationCommand = AllocateValidationCommand<ValidationCommandResetQuery>();
+        validationCommand.type = ValidationCommandType::RESET_QUERY;
+        validationCommand.queryPool = const_cast<QueryPool*>(&queryPool);
+        validationCommand.queryPoolOffset = offset;
+        validationCommand.queryNum = num;
+    }
+
+    QueryPool* queryPoolImpl = NRI_GET_IMPL(QueryPool, &queryPool);
+
+    m_CoreAPI.CmdResetQueries(m_ImplObject, *queryPoolImpl, offset, num);
 }
 
 void CommandBufferVal::BeginAnnotation(const char* name)
@@ -772,6 +834,22 @@ ID3D12GraphicsCommandList* CommandBufferVal::GetCommandBufferD3D12() const
 VkCommandBuffer CommandBufferVal::GetCommandBufferVK() const
 {
     return m_Device.GetWrapperVKInterface().GetCommandBufferVK(m_ImplObject);
+}
+
+template<typename Command>
+Command& CommandBufferVal::AllocateValidationCommand()
+{
+    const size_t commandSize = sizeof(Command);
+    const size_t newSize = m_ValidationCommands.size() + commandSize;
+    const size_t capacity = m_ValidationCommands.capacity();
+
+    if (newSize > capacity)
+        m_ValidationCommands.reserve(std::max(capacity + (capacity >> 1), newSize));
+
+    const size_t offset = m_ValidationCommands.size();
+    m_ValidationCommands.resize(newSize);
+
+    return *(Command*)(m_ValidationCommands.data() + offset);
 }
 
 static bool ValidateBufferTransitionBarrierDesc(const DeviceVal& device, uint32_t i, const BufferTransitionBarrierDesc& bufferTransitionBarrierDesc)

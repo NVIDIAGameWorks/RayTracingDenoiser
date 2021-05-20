@@ -247,7 +247,7 @@ Result MemoryVK::CreateDedicated(TextureVK& texture, uint32_t physicalDeviceMask
     return Result::SUCCESS;
 }
 
-void MemoryVK::SetDebugName(const char* name)
+inline void MemoryVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_DEVICE_MEMORY, (void**)m_Handles.data(), name);
 }

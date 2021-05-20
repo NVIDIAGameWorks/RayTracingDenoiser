@@ -19,12 +19,11 @@ namespace nri
         TextureVK(DeviceVK& device);
         ~TextureVK();
 
-        VkImage GetHandle(uint32_t physicalDeviceIndex) const;
         DeviceVK& GetDevice() const;
-
         void Create(VkImage handle, VkImageAspectFlags aspectFlags, VkImageType imageType, const VkExtent3D& extent, Format format);
         Result Create(const TextureDesc& textureDesc);
         Result Create(const TextureVulkanDesc& textureDesc);
+        VkImage GetHandle(uint32_t physicalDeviceIndex) const;
         VkImageAspectFlags GetImageAspectFlags() const;
         const VkExtent3D& GetExtent() const;
         uint16_t GetSize(uint32_t dim, uint32_t mipOffset = 0) const;
@@ -35,9 +34,6 @@ namespace nri
         VkSampleCountFlagBits GetSampleCount() const;
         void ClearHandle();
 
-        //================================================================================================================
-        // NRI
-        //================================================================================================================
         void SetDebugName(const char* name);
         void GetMemoryInfo(MemoryLocation memoryLocation, MemoryDesc& memoryDesc) const;
         void GetTextureVK(uint32_t physicalDeviceIndex, TextureVulkanDesc& textureVulkanDesc) const;

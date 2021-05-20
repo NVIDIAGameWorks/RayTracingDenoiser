@@ -53,7 +53,7 @@ void Preload( int2 sharedId, int2 globalId )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;

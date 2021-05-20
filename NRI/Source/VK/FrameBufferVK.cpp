@@ -210,7 +210,7 @@ Result FrameBufferVK::Create(const FrameBufferDesc& frameBufferDesc)
     return Result::SUCCESS;
 }
 
-void FrameBufferVK::SetDebugName(const char* name)
+inline void FrameBufferVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_FRAMEBUFFER, (void**)m_Handles.data(), name);
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_RENDER_PASS, m_RenderPass, name);

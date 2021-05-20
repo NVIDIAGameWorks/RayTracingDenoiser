@@ -638,14 +638,14 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
             const nrd::MethodDesc methodDescs[] =
             {
                 { nrd::Method::REBLUR_DIFFUSE_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-                { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::SIGMA_SHADOW_TRANSLUCENCY, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
             };
         #else
             const nrd::MethodDesc methodDescs[] =
             {
                 { nrd::Method::REBLUR_DIFFUSE, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
                 { nrd::Method::REBLUR_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-                { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+                { nrd::Method::SIGMA_SHADOW_TRANSLUCENCY, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
             };
         #endif
 
@@ -661,7 +661,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI)
         const nrd::MethodDesc methodDescs[] =
         {
             { nrd::Method::RELAX_DIFFUSE_SPECULAR, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
-            { nrd::Method::SIGMA_TRANSLUCENT_SHADOW, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
+            { nrd::Method::SIGMA_SHADOW_TRANSLUCENCY, (uint16_t)m_RenderResolution.x, (uint16_t)m_RenderResolution.y },
         };
 
         nrd::DenoiserCreationDesc denoiserCreationDesc = {};
@@ -1329,8 +1329,8 @@ void Sample::PrepareFrame(uint32_t frameIndex)
             {
                 const uint32_t index = (i + 1) * 3 + (j + 1);
 
-                float x = float(i) * scale * 5.0f;
-                float y = float(j) * scale * 5.0f;
+                float x = float(i) * scale * 4.0f;
+                float y = float(j) * scale * 4.0f;
                 float z = 10.0f * scale * (CAMERA_LEFT_HANDED ? 1.0f : -1.0f);
 
                 float3 pos = basePos + vRight * x + vTop * y + vForward * z;
@@ -2986,7 +2986,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
                 m_NRD.SetMethodSettings(nrd::Method::REBLUR_DIFFUSE, &reblurSettings.diffuseSettings);
                 m_NRD.SetMethodSettings(nrd::Method::REBLUR_SPECULAR, &reblurSettings.specularSettings);
             #endif
-            m_NRD.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
+            m_NRD.SetMethodSettings(nrd::Method::SIGMA_SHADOW_TRANSLUCENCY, &shadowSettings);
 
             m_NRD.Denoise(frameIndex, commandBuffer2, commonSettings, userPool);
         }
@@ -2999,7 +2999,7 @@ void Sample::RenderFrame(uint32_t frameIndex)
             m_RelaxSettings.minLuminanceWeight = m_BlueNoise ? 0.15f : 0.0f;
 
             m_RELAX.SetMethodSettings(nrd::Method::RELAX_DIFFUSE_SPECULAR, &m_RelaxSettings);
-            m_RELAX.SetMethodSettings(nrd::Method::SIGMA_TRANSLUCENT_SHADOW, &shadowSettings);
+            m_RELAX.SetMethodSettings(nrd::Method::SIGMA_SHADOW_TRANSLUCENCY, &shadowSettings);
 
             m_RELAX.Denoise(frameIndex, commandBuffer2, commonSettings, userPool);
         }

@@ -1,9 +1,7 @@
 #include "Timer.h"
 
-#define NDC_DONT_CARE
-#include "MathLib/MathLib.h"
-
 #include <assert.h>
+#include <algorithm>
 
 #if defined(_WIN32)
     #include <windows.h>
@@ -57,11 +55,11 @@ void Timer::UpdateElapsedTimeSinceLastSave()
     double ms = (GetTicks() - m_Time) * m_InvTicksPerMs;
     m_Delta = float(ms);
 
-    float relativeDelta = Abs(m_Delta - m_SmoothedDelta) / (Min(m_Delta, m_SmoothedDelta) + 1e-7f);
+    float relativeDelta = std::abs(m_Delta - m_SmoothedDelta) / (std::min(m_Delta, m_SmoothedDelta) + 1e-7f);
     float f = relativeDelta / (1.0f + relativeDelta);
 
-    m_SmoothedDelta = Lerp(m_SmoothedDelta, m_Delta, Max(f, 1.0f / 32.0f));
-    m_VerySmoothedDelta = Lerp(m_VerySmoothedDelta, m_Delta, Max(f, 1.0f / 64.0f));
+    m_SmoothedDelta = m_SmoothedDelta + (m_Delta - m_SmoothedDelta) * std::max(f, 1.0f / 32.0f);
+    m_VerySmoothedDelta = m_VerySmoothedDelta + (m_Delta - m_VerySmoothedDelta) * std::max(f, 1.0f / 64.0f);
 }
 
 void Timer::SaveCurrentTime()

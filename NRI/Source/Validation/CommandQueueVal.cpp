@@ -17,6 +17,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "QueueSemaphoreVal.h"
 #include "TextureVal.h"
 #include "BufferVal.h"
+#include "QueryPoolVal.h"
 
 using namespace nri;
 
@@ -39,6 +40,8 @@ void CommandQueueVal::SetDebugName(const char* name)
 
 void CommandQueueVal::Submit(const WorkSubmissionDesc& workSubmissionDesc, DeviceSemaphore* deviceSemaphore)
 {
+    ProcessValidationCommands((const CommandBufferVal* const*)workSubmissionDesc.commandBuffers, workSubmissionDesc.commandBufferNum);
+
     auto workSubmissionDescImpl = workSubmissionDesc;
     workSubmissionDescImpl.commandBuffers = STACK_ALLOC(CommandBuffer*, workSubmissionDesc.commandBufferNum);
     for (uint32_t i = 0; i < workSubmissionDesc.commandBufferNum; i++)
@@ -155,6 +158,105 @@ Result CommandQueueVal::UploadData(const TextureUploadDesc* textureUploadDescs, 
 Result CommandQueueVal::WaitForIdle()
 {
     return m_HelperAPI.WaitForIdle(m_ImplObject);
+}
+
+template<typename Command>
+const Command* ReadCommand(const uint8_t*& begin, const uint8_t* end)
+{
+    if (begin + sizeof(Command) <= end)
+    {
+        const Command* command = (const Command*)begin;
+        begin += sizeof(Command);
+        return command;
+    }
+    return nullptr;
+}
+
+void CommandQueueVal::ProcessValidationCommandBeginQuery(const uint8_t*& begin, const uint8_t* end)
+{
+    const ValidationCommandUseQuery* command = ReadCommand<ValidationCommandUseQuery>(begin, end);
+    CHECK(m_Device.GetLog(), command != nullptr, "ProcessValidationCommandBeginQuery() failed: can't parse command.");
+    CHECK(m_Device.GetLog(), command->queryPool != nullptr, "ProcessValidationCommandBeginQuery() failed: query pool is invalid.");
+
+    QueryPoolVal& queryPool = *(QueryPoolVal*)command->queryPool;
+    const bool used = queryPool.SetQueryState(command->queryPoolOffset, true);
+
+    if (used)
+    {
+        REPORT_ERROR(m_Device.GetLog(), "Can't begin query: it must be reset before use. (QueryPool='%s', offset=%u)",
+            queryPool.GetDebugName().c_str(), command->queryPoolOffset);
+    }
+}
+
+void CommandQueueVal::ProcessValidationCommandEndQuery(const uint8_t*& begin, const uint8_t* end)
+{
+    const ValidationCommandUseQuery* command = ReadCommand<ValidationCommandUseQuery>(begin, end);
+    CHECK(m_Device.GetLog(), command != nullptr, "ProcessValidationCommandEndQuery() failed: can't parse command.");
+    CHECK(m_Device.GetLog(), command->queryPool != nullptr, "ProcessValidationCommandEndQuery() failed: query pool is invalid.");
+
+    QueryPoolVal& queryPool = *(QueryPoolVal*)command->queryPool;
+    const bool used = queryPool.SetQueryState(command->queryPoolOffset, true);
+
+    if (queryPool.GetQueryType() == QueryType::TIMESTAMP)
+    {
+        if (used)
+        {
+            REPORT_ERROR(m_Device.GetLog(), "Can't end query: it must be reset before use. (QueryPool='%s', offset=%u)",
+                queryPool.GetDebugName().c_str(), command->queryPoolOffset);
+        }
+    }
+    else
+    {
+        if (!used)
+        {
+            REPORT_ERROR(m_Device.GetLog(), "Can't end query: it's not in active state. (QueryPool='%s', offset=%u)",
+                queryPool.GetDebugName().c_str(), command->queryPoolOffset);
+        }
+    }
+}
+
+void CommandQueueVal::ProcessValidationCommandResetQuery(const uint8_t*& begin, const uint8_t* end)
+{
+    const ValidationCommandResetQuery* command = ReadCommand<ValidationCommandResetQuery>(begin, end);
+    CHECK(m_Device.GetLog(), command != nullptr, "ProcessValidationCommandResetQuery() failed: can't parse command.");
+    CHECK(m_Device.GetLog(), command->queryPool != nullptr, "ProcessValidationCommandResetQuery() failed: query pool is invalid.");
+ 
+    QueryPoolVal& queryPool = *(QueryPoolVal*)command->queryPool;
+    queryPool.ResetQueries(command->queryPoolOffset, command->queryNum);
+}
+
+void CommandQueueVal::ProcessValidationCommands(const CommandBufferVal* const* commandBuffers, uint32_t commandBufferNum)
+{
+    ExclusiveScope lockScope(m_Device.GetLock());
+
+    using ProcessValidationCommandMethod = void (CommandQueueVal::*)(const uint8_t*& begin, const uint8_t* end);
+
+    constexpr ProcessValidationCommandMethod table[] = {
+        &CommandQueueVal::ProcessValidationCommandBeginQuery, // ValidationCommandType::BEGIN_QUERY
+        &CommandQueueVal::ProcessValidationCommandEndQuery,   // ValidationCommandType::END_QUERY
+        &CommandQueueVal::ProcessValidationCommandResetQuery  // ValidationCommandType::RESET_QUERY
+    };
+
+    for (size_t i = 0; i < commandBufferNum; i++)
+    {
+        const Vector<uint8_t>& buffer = commandBuffers[i]->GetValidationCommands();
+        const uint8_t* begin = buffer.data();
+        const uint8_t* end = buffer.data() + buffer.size();
+
+        while (begin != end)
+        {
+            const ValidationCommandType type = *(const ValidationCommandType*)begin;
+
+            if (type == ValidationCommandType::NONE && type >= ValidationCommandType::MAX_NUM)
+            {
+                REPORT_ERROR(m_Device.GetLog(), "Invalid validation command: %u", (uint32_t)type);
+                break;
+            }
+ 
+            const ProcessValidationCommandMethod method = table[(size_t)type - 1];
+            (this->*method)(begin, end);
+        }
+    }
 }
 
 static bool ValidateTransitionBarrierDesc(DeviceVal& device, uint32_t i, const BufferTransitionBarrierDesc& bufferTransitionBarrierDesc)

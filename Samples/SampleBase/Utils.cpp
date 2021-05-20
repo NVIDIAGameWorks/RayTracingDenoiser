@@ -666,7 +666,7 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
                     Instance& instance = scene.instances[nodeInstanceOffset];
                     instance.meshIndex = meshIndex;
                     instance.position = position + ToDouble(instanceData[j * 2]);
-                    instance.rotationPrev.SetIdentity();
+                    instance.rotationPrev = float4x4::Identity();
                     instance.rotation = mInstanceRotation * transform;
 
                     std::map<const aiNode*, std::vector<uint32_t>>::iterator nodeToInstIt = nodeToInstanceMap.find(relatedNodes[z].node);
@@ -690,8 +690,8 @@ bool utils::LoadScene(const std::string& path, Scene& scene, bool simpleOIT, con
             material->instanceNum++;
             Instance& instance = scene.instances[instanceOffset + i];
             instance.meshIndex = meshIndex;
-            instance.rotation.SetIdentity();
-            instance.rotationPrev.SetIdentity();
+            instance.rotation = float4x4::Identity();
+            instance.rotationPrev = float4x4::Identity();
         }
 
         if (material != prevMaterial)
@@ -1174,7 +1174,7 @@ void utils::Scene::Animate(float animationSpeed, float elapsedTime, float& anima
     if (outCameraTransform)
     {
         float4x4 transform;
-        selectedAnimation.cameraNode.Animate(*this, selectedAnimation.animationNodes, float4x4::identity, &transform);
+        selectedAnimation.cameraNode.Animate(*this, selectedAnimation.animationNodes, float4x4::Identity(), &transform);
 
         float4x4 m = mSceneToWorld * transform;
         m.Transpose();

@@ -44,21 +44,21 @@ uint4 repackIllumination(uint2 specularAndDiffuseIlluminationLogLuv)
     float3 specularIllum;
     float3 diffuseIllum;
     UnpackSpecularAndDiffuseFromLogLuvUint2(specularIllum, diffuseIllum, specularAndDiffuseIlluminationLogLuv);
-	uint4 result;
+    uint4 result;
     result.r = f32tof16(specularIllum.r) | f32tof16(specularIllum.g) << 16;
-	result.g = f32tof16(specularIllum.b);
+    result.g = f32tof16(specularIllum.b);
     result.b = f32tof16(diffuseIllum.r) | f32tof16(diffuseIllum.g) << 16;
-	result.a = f32tof16(diffuseIllum.b);
-	return result;
+    result.a = f32tof16(diffuseIllum.b);
+    return result;
 }
 
 void unpackIllumination(uint4 packed, out float3 specularIllum, out float3 diffuseIllum)
 {
-	specularIllum.r = f16tof32(packed.r);
-	specularIllum.g = f16tof32(packed.r >> 16);
+    specularIllum.r = f16tof32(packed.r);
+    specularIllum.g = f16tof32(packed.r >> 16);
     specularIllum.b = f16tof32(packed.g);
-	diffuseIllum.r = f16tof32(packed.b);
-	diffuseIllum.g = f16tof32(packed.b >> 16);
+    diffuseIllum.r = f16tof32(packed.b);
+    diffuseIllum.g = f16tof32(packed.b >> 16);
     diffuseIllum.b = f16tof32(packed.a);
 }
 
@@ -84,50 +84,50 @@ float edgeStoppingDepth(float centerDepth, float sampleDepth)
 
 void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId, uint2 groupId)
 {
-	uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
-	uint newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
-	uint newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
+    uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
+    uint newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+    uint newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
     uint blockXStart = groupId.x * THREAD_GROUP_SIZE;
     uint blockYStart = groupId.y * THREAD_GROUP_SIZE;
 
-	// First stage
-	uint ox = newIdxX;
-	uint oy = newIdxY;
-	int xx = blockXStart + newIdxX - SKIRT;
-	int yy = blockYStart + newIdxY - SKIRT;
+    // First stage
+    uint ox = newIdxX;
+    uint oy = newIdxY;
+    int xx = blockXStart + newIdxX - SKIRT;
+    int yy = blockYStart + newIdxY - SKIRT;
 
     uint4 packedIllumination = 0;
     float4 packedNormalAndDepth = 0;
 
-	if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
-	{
+    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+    {
         packedIllumination = repackIllumination(gSpecularAndDiffuseIlluminationLogLuv[int2(xx,yy)]);
         packedNormalAndDepth = repackNormalAndDepth(gNormalRoughnessDepth[int2(xx,yy)]);
-	}
+    }
     sharedPackedIllumination[oy][ox] = packedIllumination;
     sharedPackedZAndNormal[oy][ox] = packedNormalAndDepth;
 
-	// Second stage
-	linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
-	newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
-	newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
+    // Second stage
+    linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
+    newIdxX = linearThreadIndex % (THREAD_GROUP_SIZE + SKIRT * 2);
+    newIdxY = linearThreadIndex / (THREAD_GROUP_SIZE + SKIRT * 2);
 
-	ox = newIdxX;
-	oy = newIdxY;
-	xx = blockXStart + newIdxX - SKIRT;
-	yy = blockYStart + newIdxY - SKIRT;
+    ox = newIdxX;
+    oy = newIdxY;
+    xx = blockXStart + newIdxX - SKIRT;
+    yy = blockYStart + newIdxY - SKIRT;
 
     packedIllumination = 0;
     packedNormalAndDepth = 0;
 
-  	if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
-	{
-	    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
-	    {
+      if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
+    {
+        if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+        {
             packedIllumination = repackIllumination(gSpecularAndDiffuseIlluminationLogLuv[int2(xx,yy)]);
             packedNormalAndDepth = repackNormalAndDepth(gNormalRoughnessDepth[int2(xx,yy)]);
-	    }
+        }
         sharedPackedIllumination[oy][ox] = packedIllumination;
         sharedPackedZAndNormal[oy][ox] = packedNormalAndDepth;
     }
@@ -244,7 +244,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, flo
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     // Populating shared memory for firefly filter
     PopulateSharedMemoryForFirefly(dispatchThreadId.xy, groupThreadId.xy, groupId.xy);

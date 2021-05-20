@@ -81,7 +81,7 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc)
     return Result::SUCCESS;
 }
 
-void PipelineLayoutVK::SetDebugName(const char* name)
+inline void PipelineLayoutVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_PIPELINE_LAYOUT, m_Handle, name);
 }

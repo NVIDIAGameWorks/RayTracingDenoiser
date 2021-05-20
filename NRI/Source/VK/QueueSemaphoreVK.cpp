@@ -48,7 +48,7 @@ Result QueueSemaphoreVK::Create(void* vkSemaphore)
     return Result::SUCCESS;
 }
 
-void QueueSemaphoreVK::SetDebugName(const char* name)
+inline void QueueSemaphoreVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_SEMAPHORE, m_Handle, name);
 }

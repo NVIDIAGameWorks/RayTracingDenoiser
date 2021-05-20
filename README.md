@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoisers v2.1.1
+# NVIDIA Real-time (Ray tracing) Denoisers v2.2.0
 
 ## QUICK START GUIDE
 
@@ -59,7 +59,7 @@ for the *NRD* sample (API, resolution, scene selection...)
   - Or use ``3b-Run NRD Sample.bat`` to view the *NRD* sample application
 
 If you only need to run the sample and don't want to interact with the code:
-- Update *Windows* to the latest version (2004)
+- Update *Windows* to the latest version (20H2)
 - Install latest *Vulkan SDK*
 - Set the variable ``WINSDK_PATH`` in the ``CompileShaders\CompileShader.bat`` file to where you installed your Windows SDK
 - Run ``1-Deploy.bat`` and choose *Visual Studio* version
@@ -93,7 +93,7 @@ In such cases the default behavior can be returned by pressing the ``Default set
 
 ## INTEGRATION VARIANTS
 
-### Integration Method 1: Using the application-side Render Hardware Interface (RHI)
+### Integration Method 1: Black-box library (using the application-side Render Hardware Interface)
 RHI must have the ability to do the following:
 * Create shaders from precompiled binary blobs
 * Create an SRV for a specific range of subresources (a real example from the library - SRV = mips { 1, 2, 3, 4 }, UAV = mip 0)
@@ -101,7 +101,7 @@ RHI must have the ability to do the following:
 * Invoke a Dispatch call (no raster, no VS/PS)
 * Create 2D textures with SRV / UAV access
 
-### Integration Method 2: Using native API pointers
+### Integration Method 2: Black-box library (using native API pointers)
 
 If Graphics API's native pointers are retrievable from the RHI, the standard *NRD*
 integration layer can be used to greatly simplify the integration. In this case,
@@ -126,6 +126,16 @@ after invoking the denoiser.
 In rare cases, when the integration via engine’s RHI is not possible and the integration
 using native pointers is complicated, a "DoDenoising" call can be added explicitly to the
 application-side RHI. It helps to avoid increasing code entropy.
+
+### Integration Method 3: White-box library (using the application-side Render Hardware Interface)
+
+Logically it's close to the Method 1, but the integration takes place in the full source code
+(only NRD project is needed). In this case NRD shaders are handled by the application shader
+compilation pipeline. The application should still use NRD via NRD API to preserve forward
+compatibility. This method suits best for compilation on other platforms (consoles, ARM),
+unlocks NRD modification on the application side and increases portability.
+
+NOTE: this method is WIP. It works, but in the future it will work better out of the box.
 
 ## NRD TERMINOLOGY
 
@@ -194,20 +204,24 @@ as ``HitDistanceParameters`` for diffuse and specular separately for internal us
 * **IN\_SHADOWDATA** (RG16f+) - *SIGMA* input, needs to be packed using a ``XXX_FrontEnd_PackShadow``
 function from ``NRD.hlsl``. Infinite (sky) pixels must be cleared using ``XXX_INF_SHADOW`` macros
 
-* **IN\_SHADOW\_TRANSLUCENCY** (R8+ for SIGMA_SHADOW or RGBA8+ for SIGMA_TRANSLUCENT_SHADOW) - ``.x`` - shadow.
-``.yzw`` - optional translucency. ``XXX_FrontEnd_PackShadow`` also returns ``shadow``, which needs to be placed
-into ``.x`` channel. There are several ways how translucency can be used:
-
-  ```
-  finalShadow = lerp( translucency, 1.0, shadow ); // or
-  finalShadow = translucency * shadow; // or
-  finalShadow = translucency;
-  ```
+* **IN\_SHADOW\_TRANSLUCENCY** (RGBA8+) - ``.x`` - shadow, ``.yzw`` - translucency.
+One variant if ``XXX_FrontEnd_PackShadow`` returns a merged ``float``.
 
 ### NRD OUTPUTS
 
-* **OUT\_SHADOW\_TRANSLUCENCY** (R8+ for SIGMA_SHADOW or RGBA8+ for SIGMA_TRANSLUCENT_SHADOW) - denoised
-shadow with optional translucency. Must be unpacked using ``XXX_BackEnd_UnpackShadow`` function from ``NRD.hlsl``
+NOTE: In some denoisers these textures can potentially be used as history buffers!
+
+* **OUT\_SHADOW\_TRANSLUCENCY** (R8+ for SIGMA_SHADOW or RGBA8+ for SIGMA_TRANSLUCENT_SHADOW) - denoised shadow
+``.x`` with optional translucency ``.yzw``. Must be unpacked using ``XXX_BackEnd_UnpackShadow`` function from
+``NRD.hlsl``. Usage:
+
+  ```
+  shadowData = SIGMA_BackEnd_UnpackShadow( shadowData );
+
+  float3 finalShadowCommon = lerp( shadowData.yzw, 1.0, shadowData.x ); // or
+  float3 finalShadowExotic = shadowData.yzw * shadowData.x; // or
+  float3 finalShadowMoreExotic = shadowData.yzw;
+  ```
 
 * **OUT\_DIFF\_HIT** (RGBA16f+) - ``.xyz`` - denoisied diffuse radiance, ``.w`` - denoised normalized
 hit distance (will be already unpacked internally)

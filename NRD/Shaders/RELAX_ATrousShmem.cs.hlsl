@@ -28,6 +28,7 @@ NRI_RESOURCE(cbuffer, globalConstants, b, 0, 0)
     float  gSpecularLobeAngleFraction;
     float  gSpecularLobeAngleSlack;
     uint   gStepSize;
+    uint   gRoughnessEdgeStoppingEnabled;
     float  gRoughnessEdgeStoppingRelaxation;
     float  gNormalEdgeStoppingRelaxation;
     float  gLuminanceEdgeStoppingRelaxation;
@@ -136,7 +137,7 @@ float kernelWeight3x3(float index)
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
-void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     // Populating shared memory
     //
@@ -292,7 +293,7 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
             float geometryW = GetGeometryWeight(centerWorldPos, centerNormal, centerLinearZ, sampleWorldPos, phiDepth);
 
             float normalWSpecular = GetSpecularNormalWeight_ATrous(normalWeightParams, gSpecularLobeAngleSlack, centerNormal, sampleNormal);
-            normalWSpecular *= GetSpecularVWeight_ATrous(normalWeightParams, centerV, sampleV);
+            normalWSpecular *= GetSpecularVWeight_ATrous(normalWeightParams, gSpecularLobeAngleSlack, centerV, sampleV);
             float normalWDiffuse = GetDiffuseNormalWeight_ATrous(centerNormal, sampleNormal, gPhiNormal);
 
             // Calculating luminande weigths
@@ -304,11 +305,21 @@ void main(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadI
             float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) / diffusePhiLIllumination;
             diffuseLuminanceW = min(gMaxLuminanceRelativeDifference, diffuseLuminanceW);
 
-            // Calculating bilateral weight for specular
-            float wSpecular =  isCenter ? kernel : kernel * max(1e-6, normalWSpecular * exp(-geometryW - specularLuminanceW)) * getRoughnessWeight(roughnessWeightParams, sampleRoughness);
+            // Roughness weight for specular
+            float specularRoughnessW = getRoughnessWeight(roughnessWeightParams, sampleRoughness);
 
-            // Calculating bilateral weight for diffuse
-            float wDiffuse = isCenter ? kernel : max(1e-6, normalWDiffuse * exp(-geometryW - diffuseLuminanceW)) * kernel;
+            float wSpecular = kernel;
+            float wDiffuse = kernel;
+            if (!isCenter)
+            {
+                // Calculating bilateral weight for specular
+                wSpecular = exp(-geometryW - specularLuminanceW);
+                wSpecular *= gRoughnessEdgeStoppingEnabled ? (normalWSpecular * specularRoughnessW) : normalWDiffuse;
+                wSpecular = kernel * max(1e-6, wSpecular);
+
+                // Calculating bilateral weight for diffuse
+                wDiffuse = kernel * max(1e-6, normalWDiffuse * exp(-geometryW - diffuseLuminanceW));
+            }
 
             // Discarding out of screen samples
             wSpecular *= isInside ? 1.0 : 0.0;

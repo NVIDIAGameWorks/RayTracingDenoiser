@@ -54,12 +54,12 @@ Result CommandAllocatorVK::Create(const CommandAllocatorVulkanDesc& commandAlloc
     return Result::SUCCESS;
 }
 
-void CommandAllocatorVK::SetDebugName(const char* name)
+inline void CommandAllocatorVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_COMMAND_POOL, m_Handle, name);
 }
 
-Result CommandAllocatorVK::CreateCommandBuffer(CommandBuffer*& commandBuffer)
+inline Result CommandAllocatorVK::CreateCommandBuffer(CommandBuffer*& commandBuffer)
 {
     const auto& vk = m_Device.GetDispatchTable();
 
@@ -85,7 +85,7 @@ Result CommandAllocatorVK::CreateCommandBuffer(CommandBuffer*& commandBuffer)
     return Result::SUCCESS;
 }
 
-void CommandAllocatorVK::Reset()
+inline void CommandAllocatorVK::Reset()
 {
     const auto& vk = m_Device.GetDispatchTable();
     const VkResult result = vk.ResetCommandPool(m_Device, m_Handle, (VkCommandPoolResetFlags)0);

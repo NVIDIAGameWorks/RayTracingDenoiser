@@ -20,12 +20,10 @@ namespace nri
         CommandQueueVK(DeviceVK& device, VkQueue queue, uint32_t familyIndex, CommandQueueType type);
 
         operator VkQueue() const;
-
         DeviceVK& GetDevice() const;
+        Result Create(const CommandQueueVulkanDesc& commandQueueDesc);
         uint32_t GetFamilyIndex() const;
         CommandQueueType GetType() const;
-
-        Result Create(const CommandQueueVulkanDesc& commandQueueDesc);
 
         void SetDebugName(const char* name);
         void Submit(const WorkSubmissionDesc& workSubmissionDesc, DeviceSemaphore* deviceSemaphore);

@@ -48,7 +48,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
-    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, edge );
+    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, Xv, Nv, lerp( 1.0, 0.05, diffInternalData.x ) );
     float normalWeightParams = GetNormalWeightParams2( diffInternalData.x, edge, error.x, Xv, Nv, gNormalWeightStrictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, diffInternalData.x );

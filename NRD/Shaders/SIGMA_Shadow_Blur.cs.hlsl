@@ -27,10 +27,15 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<float2>, gIn_Hit_ViewZ, t, 1, 0 );
-NRI_RESOURCE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 2, 0 );
 
 #ifdef SIGMA_FIRST_PASS
-    NRI_RESOURCE( Texture2D<SIGMA_TYPE>, gIn_History, t, 3, 0 );
+    NRI_RESOURCE( Texture2D<SIGMA_TYPE>, gIn_History, t, 2, 0 );
+
+    #ifdef SIGMA_TRANSLUCENT
+        NRI_RESOURCE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 3, 0 );
+    #endif
+#else
+    NRI_RESOURCE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 2, 0 );
 #endif
 
 // Outputs
@@ -55,7 +60,13 @@ void Preload( int2 sharedId, int2 globalId )
 
     s_Data[ sharedId.y ][ sharedId.x ] = data;
 
-    SIGMA_TYPE s = gIn_Shadow_Translucency[ globalId ];
+    SIGMA_TYPE s;
+    #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
+        s = gIn_Shadow_Translucency[ globalId ];
+    #else
+        s = float( data.x == NRD_FP16_MAX );
+    #endif
+
     #ifndef SIGMA_FIRST_PASS
         s = UnpackShadowSpecial( s );
     #endif
@@ -64,8 +75,14 @@ void Preload( int2 sharedId, int2 globalId )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
+    // Copy history
+    #ifdef SIGMA_FIRST_PASS
+        gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
+    #endif
+
+    // Populate shared memory
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
@@ -78,14 +95,9 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float centerSignNoL = float( centerData.x != 0.0 );
     float viewZ = centerData.y;
 
-    // Copy history
-    #ifdef SIGMA_FIRST_PASS
-        gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
-    #endif
-
     // Early out
     [branch]
-    if( viewZ > gInf || centerHitDist == 0.0 ) // TODO: think about multi-light shadows...
+    if( viewZ > gInf || centerHitDist == 0.0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
         gOut_Hit_ViewZ[ pixelPos ] = float2( 0.0, viewZ * NRD_FP16_VIEWZ_SCALE );
@@ -188,7 +200,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         float signNoL = float( data.x != 0.0 );
         float z = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
 
-        SIGMA_TYPE s = gIn_Shadow_Translucency.SampleLevel( gNearestMirror, uvScaled, 0 );
+        SIGMA_TYPE s;
+        #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
+            s = gIn_Shadow_Translucency.SampleLevel( gNearestMirror, uvScaled, 0 );
+        #else
+            s = float( h == NRD_FP16_MAX );
+        #endif
+
         #ifndef SIGMA_FIRST_PASS
             s = UnpackShadowSpecial( s );
         #endif

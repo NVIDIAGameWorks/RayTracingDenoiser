@@ -20,14 +20,12 @@ namespace nri
         ~FrameBufferVK();
 
         DeviceVK& GetDevice() const;
-
+        Result Create(const FrameBufferDesc& frameBufferDesc);
         VkFramebuffer GetHandle(uint32_t physicalDeviceIndex) const;
         const VkRect2D& GetRenderArea() const;
         VkRenderPass GetRenderPass(RenderPassBeginFlag renderPassBeginFlag) const;
         uint32_t GetAttachmentNum() const;
         void GetClearValues(VkClearValue* values) const;
-
-        Result Create(const FrameBufferDesc& frameBufferDesc);
 
         void SetDebugName(const char* name);
 

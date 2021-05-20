@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v2.1.1
+// NRD v2.2.0
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -21,10 +21,10 @@ float3 radiance:
     - radiance should not include PI for diffuse ( it will be canceled out later when the denoised output will be multiplied with albedo / PI )
     - for diffuse rays
         - use COS-distribution ( or custom importance sampling )
-        - if radiance is the result of path tracing pass normalized hit distance as the sum of 1-all hits (always ignore primary hit!)
+        - if radiance is the result of path tracing, pass normalized hit distance as the sum of 1-all hits (always ignore primary hit!)
     - for specular
         - use VNDF sampling ( or custom importance sampling )
-        - if radiance is the result of path tracing pass normalized hit distance as the sum of first 1-3 hits (always ignore primary hit!)
+        - if radiance is the result of path tracing, pass normalized hit distance as the sum of first 1-3 hits (always ignore primary hit!)
 
 float linearRoughness:
     - linearRoughness = sqrt( roughness ), where "roughness" = "m" = "alpha" - specular or real roughness
@@ -36,13 +36,13 @@ float viewZ:
     - linear view space Z for primary rays ( linearized camera depth )
 
 float distanceToOccluder:
-    - distance to occluder, rules:
+    - distance to occluder, must follow the rules:
         - NoL <= 0         - 0 ( it's very important )
         - NoL > 0 ( hit )  - hit distance
         - NoL > 0 ( miss ) - NRD_FP16_MAX
 
 float normHitDist:
-    - normalized hit distance
+    - normalized hit distance, gotten by using "REBLUR_FrontEnd_GetNormHitDist"
     - REBLUR must be aware of the normalization function via "nrd::HitDistanceParameters"
     - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse and SO ( specular occlusion ) for specular
     - AO can be used to emulate 2nd+ diffuse bounces
@@ -62,6 +62,8 @@ float normHitDist:
 #ifndef NRD_USE_OCT_PACKED_NORMALS
     #define NRD_USE_OCT_PACKED_NORMALS                          0
 #endif
+
+#define NRD_CS_MAIN                                             main
 
 //=================================================================================================================================
 // PRIVATE
@@ -118,26 +120,6 @@ float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, fl
 }
 
 //=================================================================================================================================
-// MISC
-//=================================================================================================================================
-
-// We loose G-term if trimming is high, return it back in pre-integrated form
-// A typical use case is:
-/*
-    float g = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV, roughness ), 0.0 ).x; // pre-integrated G-term
-
-    float trimmingFactor = NRD_GetTrimmingFactor( roughness, trimmingParams );
-    F *= lerp( g, 1.0, trimmingFactor );
-    Lsum += spec * F;
-*/
-float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
-{
-    float trimmingFactor = trimmingParams.x * smoothstep( trimmingParams.y, trimmingParams.z, roughness );
-
-    return trimmingFactor;
-}
-
-//=================================================================================================================================
 // FRONT-END PACKING
 //=================================================================================================================================
 
@@ -189,7 +171,7 @@ float4 RELAX_FrontEnd_PackRadiance( float3 radiance, float hitDist, bool sanitiz
 
 // SIGMA ( single light )
 
-float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius, out float shadow )
+float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius )
 {
     float2 r;
     r.x = 0.0;
@@ -200,15 +182,19 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
         r.x = NRD_FP16_MAX;
     else if( distanceToOccluder != 0.0 )
     {
-        // Premultiply with angular size here, it's needed to unlock multi-light shadow denoising, when angular size can vary per pixel, depending on which light was sampled
-        float projDistanceToOccluder = distanceToOccluder * tanOfLightAngularRadius;
-
-        r.x = clamp( projDistanceToOccluder, SIGMA_MIN_DISTANCE, 32768.0 );
+        float distanceToOccluderProj = distanceToOccluder * tanOfLightAngularRadius;
+        r.x = clamp( distanceToOccluderProj, SIGMA_MIN_DISTANCE, 32768.0 );
     }
 
-    shadow = float( distanceToOccluder == NRD_FP16_MAX );
-
     return r;
+}
+
+float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius, float3 translucency, out float4 shadowTranslucency )
+{
+    shadowTranslucency.x = float( distanceToOccluder == NRD_FP16_MAX );
+    shadowTranslucency.yzw = saturate( translucency );
+
+    return SIGMA_FrontEnd_PackShadow( viewZ, distanceToOccluder, tanOfLightAngularRadius );
 }
 
 // SIGMA ( multi light )
@@ -222,8 +208,8 @@ SIGMA_MULTILIGHT_DATATYPE SIGMA_FrontEnd_MultiLightStart()
 
 void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float tanOfLightAngularRadius, float weight, inout SIGMA_MULTILIGHT_DATATYPE multiLightShadowData )
 {
-    float shadow;
-    float distanceToOccluderProj = SIGMA_FrontEnd_PackShadow( 0, distanceToOccluder, tanOfLightAngularRadius, shadow ).x;
+    float shadow = float( distanceToOccluder == NRD_FP16_MAX );
+    float distanceToOccluderProj = SIGMA_FrontEnd_PackShadow( 0, distanceToOccluder, tanOfLightAngularRadius ).x;
 
     // Weighted sum for "pseudo" translucency
     multiLightShadowData[ 0 ] += L * shadow;
@@ -254,16 +240,36 @@ float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE mult
 // REBLUR
 //========
 
-// unpacks internally
+#define REBLUR_BackEnd_UnpackRadiance( color )  ( color ) // it's a stub for compatibility, currently unpacks internally
 
 //========
 // RELAX
 //========
 
-// unpacks internally
+#define RELAX_BackEnd_UnpackRadiance( color )  ( color ) // it's a stub for compatibility, currently unpacks internally
 
 //========
 // SIGMA
 //========
 
 #define SIGMA_BackEnd_UnpackShadow( color )  ( color * color )
+
+//=================================================================================================================================
+// MISC
+//=================================================================================================================================
+
+// We loose G-term if trimming is high, return it back in pre-integrated form
+// A typical use case is:
+/*
+    float g = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV, roughness ), 0.0 ).x; // pre-integrated G-term
+
+    float trimmingFactor = NRD_GetTrimmingFactor( roughness, trimmingParams );
+    F *= lerp( g, 1.0, trimmingFactor );
+    Lsum += spec * F;
+*/
+float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
+{
+    float trimmingFactor = trimmingParams.x * smoothstep( trimmingParams.y, trimmingParams.z, roughness );
+
+    return trimmingFactor;
+}

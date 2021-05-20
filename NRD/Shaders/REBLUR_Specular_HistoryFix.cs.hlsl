@@ -17,8 +17,6 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 {
     REBLUR_SPEC_SHARED_CB_DATA;
 
-    float4x4 gWorldToView;
-    float4 gRotator;
     float gSpecMaxFastAccumulatedFrameNum;
     float gSpecFastHistoryClampingColorBoxSigmaScale;
     uint gSpecAntiFirefly;
@@ -34,8 +32,8 @@ NRI_RESOURCE( cbuffer, globalConstants, b, 0, 0 )
 // Inputs
 NRI_RESOURCE( Texture2D<float4>, gIn_Normal_Roughness, t, 0, 0 );
 NRI_RESOURCE( Texture2D<float3>, gIn_InternalData, t, 1, 0 );
-NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 ); // mips 0+
-NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 3, 0 ); // mips 1+, mip = 0 actually samples from mip#1!
+NRI_RESOURCE( Texture2D<float>, gIn_ScaledViewZ, t, 2, 0 ); // with mips
+NRI_RESOURCE( Texture2D<float4>, gIn_Spec, t, 3, 0 ); // with mips
 NRI_RESOURCE( Texture2D<float4>, gIn_Fast_Spec, t, 4, 0 );
 
 // Outputs
@@ -49,8 +47,11 @@ void Preload( int2 sharedId, int2 globalId )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
+    uint2 pixelPosUser = gRectOrigin + pixelPos;
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
+
     PRELOAD_INTO_SMEM;
 
     // Early out
@@ -61,15 +62,13 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     if( viewZ > gInf )
         return;
 
-    uint2 pixelPosUser = gRectOrigin + pixelPos;
-    float4 normalAndRoughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] );
-    float3 N = normalAndRoughness.xyz;
-    float roughness = normalAndRoughness.w;
+    float roughness = _NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] ).w;
 
+    // History reconstruction
     float2 specInternalData = UnpackSpecInternalData( gIn_InternalData[ pixelPos ], roughness );
-    float4 spec = ReconstructHistorySpec( specInternalData, pixelPos, scaledViewZ, N, gRotator, gWorldToView, gIn_ScaledViewZ, gIn_Spec, roughness, gIn_Normal_Roughness );
+    float4 spec = ReconstructHistory( specInternalData.y, roughness, pixelPos, pixelUv, scaledViewZ, gIn_ScaledViewZ, gIn_Spec );
 
-    // History clamping
+    // History clamping & anti-firefly
     #if( REBLUR_USE_FAST_HISTORY == 1 )
         float4 specM1 = 0;
         float4 specM2 = 0;
@@ -98,12 +97,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
         float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
 
-        #if( REBLUR_USE_ANTI_FIREFLY == 1 )
-            [flatten]
-            if( gSpecAntiFirefly != 0 )
-                spec = clamp( spec, specMinInput, specMaxInput );
-        #endif
-
+        // Specular
         specM1 *= invSum;
         specM2 *= invSum;
         float4 specSigma = GetStdDev( specM1, specM2 );
@@ -117,7 +111,14 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         [flatten]
         if( gSpecMaxFastAccumulatedFrameNum < gSpecMaxAccumulatedFrameNum )
             spec = lerp( specClamped, spec, specInternalData.x );
+
+        [flatten]
+        if( gSpecAntiFirefly != 0 && REBLUR_USE_ANTI_FIREFLY == 1 )
+        {
+            float4 specAntifirefly = clamp( spec, specMinInput, specMaxInput );
+            spec = lerp( specAntifirefly, spec, specInternalData.x );
+        }
     #endif
 
-    gOut_Spec[ pixelPos ] = CompressRadianceAndNormHitDist( spec.xyz, spec.w, viewZ, gSpecHitDistParams, roughness );
+    gOut_Spec[ pixelPos ] = spec;
 }

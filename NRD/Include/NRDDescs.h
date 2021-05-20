@@ -42,13 +42,13 @@ namespace nrd
 
         // SIGMA ===========================================================================================================================
 
-        // INPUTS - IN_NORMAL_ROUGHNESS, IN_SHADOWDATA, OUT_SHADOW_TRANSLUCENCY
+        // INPUTS - IN_NORMAL_ROUGHNESS, IN_SHADOWDATA, OUT_SHADOW_TRANSLUCENCY (used as history)
         // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
         SIGMA_SHADOW,
 
-        // INPUTS - IN_NORMAL_ROUGHNESS, IN_SHADOWDATA, OUT_SHADOW_TRANSLUCENCY
+        // INPUTS - IN_NORMAL_ROUGHNESS, IN_SHADOWDATA, IN_SHADOW_TRANSLUCENCY, OUT_SHADOW_TRANSLUCENCY (used as history)
         // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
-        SIGMA_TRANSLUCENT_SHADOW,
+        SIGMA_SHADOW_TRANSLUCENCY,
 
         // RELAX ===========================================================================================================================
 
@@ -81,18 +81,16 @@ namespace nrd
         // Data must be packed using "NRD.hlsl/XXX_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
         IN_SHADOWDATA,
 
-        // .x - shadow, .yzw - translucency (RGBA8+) / .x - shadow (R8+)
-        // Shadow (for simplicity) should be taken from "NRD.hlsl/XXX_PackShadow"
-        // Translucency can be omitted (by using a 1-channel texture format)
+        // .x - shadow, .yzw - translucency (RGBA8+)
+        // Data must be packed using "NRD.hlsl/XXX_PackShadow"
         IN_SHADOW_TRANSLUCENCY,
 
         // OUTPUTS ==========================================================================================================================
 
-        // IMPORTANT: These textures:
-        // - can potentially be used as history buffers
-        // - as intermediate buffers
+        // IMPORTANT: These textures can potentially be used as history buffers
 
-        // .x - shadow, .yzw - translucency (RGBA8+) / .x - shadow (R8+)
+        // SIGMA_SHADOW_TRANSLUCENCY - .x - shadow, .yzw - translucency (RGBA8+)
+        // SIGMA_SHADOW - .x - shadow (R8+)
         // Data must be unpacked using "NRD.hlsl/XXX_UnpackShadow"
         OUT_SHADOW_TRANSLUCENCY,
 

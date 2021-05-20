@@ -36,7 +36,7 @@ NRI_RESOURCE( RWTexture2D<float4>, gOut_Diff, u, 0, 0 );
 NRI_RESOURCE( RWTexture2D<float4>, gOut_Spec, u, 1, 0 );
 
 [numthreads( GROUP_X, GROUP_Y, 1)]
-void main( uint2 pixelPos : SV_DispatchThreadId)
+void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId)
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
     uint2 pixelPosUser = gRectOrigin + pixelPos;

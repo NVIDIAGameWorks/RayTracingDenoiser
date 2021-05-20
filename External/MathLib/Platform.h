@@ -80,7 +80,7 @@
     #pragma message("MathLib: SSE3 (default)")
 #endif
 
-#define PLATFORM_VS2019_PLUS                           (_MSC_VER >= 1920)
+#define PLATFORM_HAS_TRANSCENDENTAL_INTRINSICS          (_MSC_VER >= 1920)
 
 // NOTE: x32 / x64
 

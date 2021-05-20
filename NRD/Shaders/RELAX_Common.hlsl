@@ -246,7 +246,7 @@ float GetGeometryWeight(float3 centerWorldPos, float3 centerNormal, float center
 
 float GetDiffuseNormalWeight_ATrous(float3 centerNormal, float3 sampleNormal, float phiNormal)
 {
-    return pow(saturate(dot(centerNormal, sampleNormal)), phiNormal);
+    return phiNormal == 0.0f ? 1.0f : pow(saturate(dot(centerNormal, sampleNormal)), phiNormal);
 }
 
 float GetSpecularLobeHalfAngle_ATrous(float roughness)
@@ -275,10 +275,11 @@ float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, f
     return float2(angle, f);
 }
 
-float GetSpecularVWeight_ATrous(float2 params0, float3 v0, float3 v)
+float GetSpecularVWeight_ATrous(float2 params0, float specularLobeAngleSlack, float3 v0, float3 v)
 {
     float cosa = saturate(dot(v0, v));
     float a = STL::Math::AcosApprox(cosa) * 0.5;
+    params0.x += specularLobeAngleSlack;
     a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
     return saturate(1.0 + (a - 1.0) * params0.y);
 }

@@ -22,7 +22,7 @@ static const std::array<Method, 6> g_NrdSupportedMethods =
     Method::REBLUR_SPECULAR,
     Method::REBLUR_DIFFUSE_SPECULAR,
     Method::SIGMA_SHADOW,
-    Method::SIGMA_TRANSLUCENT_SHADOW,
+    Method::SIGMA_SHADOW_TRANSLUCENCY,
     Method::RELAX_DIFFUSE_SPECULAR,
 };
 

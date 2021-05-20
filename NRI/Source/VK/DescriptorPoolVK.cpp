@@ -104,12 +104,12 @@ Result DescriptorPoolVK::Create(void* vkDescriptorPool)
     return Result::SUCCESS;
 }
 
-void DescriptorPoolVK::SetDebugName(const char* name)
+inline void DescriptorPoolVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_DESCRIPTOR_POOL, m_Handle, name);
 }
 
-Result DescriptorPoolVK::AllocateDescriptorSets(const PipelineLayout& pipelineLayout, uint32_t setIndex, DescriptorSet** const descriptorSets,
+inline Result DescriptorPoolVK::AllocateDescriptorSets(const PipelineLayout& pipelineLayout, uint32_t setIndex, DescriptorSet** const descriptorSets,
     uint32_t numberOfCopies, uint32_t physicalDeviceMask, uint32_t variableDescriptorNum)
 {
     const PipelineLayoutVK& pipelineLayoutVK = (const PipelineLayoutVK&)pipelineLayout;
@@ -180,7 +180,7 @@ Result DescriptorPoolVK::AllocateDescriptorSets(const PipelineLayout& pipelineLa
     return Result::SUCCESS;
 }
 
-void DescriptorPoolVK::Reset()
+inline void DescriptorPoolVK::Reset()
 {
     m_UsedSets = 0;
 

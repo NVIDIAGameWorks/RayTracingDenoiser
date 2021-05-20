@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "SharedExternal.h"
 #include "DeviceBase.h"
 
-#include "Include/vulkan/vulkan.h"
+#include <vulkan/vulkan.h>
 
 #define NRI_STRINGIFY(name) #name
 

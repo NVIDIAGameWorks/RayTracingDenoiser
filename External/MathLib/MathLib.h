@@ -2,13 +2,8 @@
 
 #define MATHLIB 1
 #define MATHLIB_MAJOR 1
-#define MATHLIB_MINOR 2
-#define MATHLIB_DATE "17 May 2020"
-
-#ifdef NDC_DONT_CARE
-    // FIXME: absolutely not important here...
-    #define PROPS_D3D11
-#endif
+#define MATHLIB_MINOR 4
+#define MATHLIB_DATE "12 May 2021"
 
 // IMPORTANT: disable - nonstandard extension used: nameless struct/union
 #pragma warning(disable:4201)
@@ -38,20 +33,27 @@
 
 // NOTE: more precision (a little bit slower)
 
-#define MATH_NEWTONRAPHSON_APROXIMATION
+#ifndef MATH_NEWTONRAPHSON_APROXIMATION
+    #define MATH_NEWTONRAPHSON_APROXIMATION
+#endif
 
 // NOTE: only for debug (not need if you are accurate in horizontal operations)
 
-#define MATH_CHECK_W_IS_ZERO
-#undef MATH_CHECK_W_IS_ZERO
+#ifndef MATH_CHECK_W_IS_ZERO
+    //#define MATH_CHECK_W_IS_ZERO
+#endif
 
 // NOTE: only for debug (generate exeptions in rounding operations, only for SSE4)
 
-#define MATH_EXEPTIONS
-#undef MATH_EXEPTIONS
+#ifndef MATH_EXEPTIONS
+    //#define MATH_EXEPTIONS
+#endif
 
-#define MATH_NAMESPACE
-#undef MATH_NAMESPACE
+// NOTE: can be set in the project settings to wrap the library into namespace "ml"
+
+#ifndef MATH_NAMESPACE
+    //#define MATH_NAMESPACE 
+#endif
 
 // NOTE: see RND modes above
 
@@ -63,12 +65,9 @@
 //                                                      START
 //======================================================================================================================
 
-#ifdef MATH_NAMESPACE
-namespace ml {
-#endif
-
 #include <math.h>
 #include <float.h>
+
 #if defined(__GNUC__) || defined (__clang__)
     #if defined(__i386__) || defined(__x86_64__)
         #include <x86intrin.h>
@@ -85,86 +84,22 @@ namespace ml {
     #include <intrin.h>
 #endif
 
-#include "Platform.h"
-#include "NdcConfig.h"
-
-//======================================================================================================================
-//                                                SIMD FUNCTIONALITY
-//======================================================================================================================
-
 #ifdef MATH_EXEPTIONS
     #define ROUNDING_EXEPTIONS_MASK     _MM_FROUND_RAISE_EXC
 #else
     #define ROUNDING_EXEPTIONS_MASK     _MM_FROUND_NO_EXC
 #endif
 
+#include "Platform.h"
+
+#ifdef MATH_NAMESPACE
+namespace ml {
+#endif
+
+#include "NdcConfig.h"
+
+// also it defines vXY types
 #include "IntrinEmu.h"
-
-typedef __m64                   v2i;
-typedef __m128d                 v2d;
-
-typedef __m128                  v4f;
-typedef __m128i                 v4i;
-
-#if( PLATFORM_INTRINSIC >= PLATFORM_INTRINSIC_AVX1 )
-    typedef __m256              v8f;
-    typedef __m256i             v8i;
-    typedef __m256d             v4d;
-#else
-    typedef emu__m256           v8f;
-    typedef emu__m256i          v8i;
-    typedef emu__m256d          v4d;
-#endif
-
-v4f emu_mm_sin_ps(const v4f& x);
-v4f emu_mm_cos_ps(const v4f& x);
-v4f emu_mm_sincos_ps(v4f* pCos, const v4f& d);
-v4f emu_mm_tan_ps(const v4f& x);
-v4f emu_mm_atan_ps(const v4f& d);
-v4f emu_mm_atan2_ps(const v4f& y, const v4f& x);
-v4f emu_mm_asin_ps(const v4f& d);
-v4f emu_mm_acos_ps(const v4f& d);
-v4f emu_mm_log_ps(const v4f& d);
-v4f emu_mm_exp_ps(const v4f& d);
-
-v4d emu_mm256_sin_pd(const v4d& x);
-v4d emu_mm256_cos_pd(const v4d& x);
-v4d emu_mm256_sincos_pd(v4d* pCos, const v4d& d);
-v4d emu_mm256_tan_pd(const v4d& x);
-v4d emu_mm256_atan_pd(const v4d& d);
-v4d emu_mm256_atan2_pd(const v4d& y, const v4d& x);
-v4d emu_mm256_asin_pd(const v4d& d);
-v4d emu_mm256_acos_pd(const v4d& d);
-v4d emu_mm256_log_pd(const v4d& d);
-v4d emu_mm256_exp_pd(const v4d& d);
-
-#if( !PLATFORM_VS2019_PLUS )
-    #define _mm_sin_ps              emu_mm_sin_ps
-    #define _mm_cos_ps              emu_mm_cos_ps
-    #define _mm_sincos_ps           emu_mm_sincos_ps
-    #define _mm_tan_ps              emu_mm_tan_ps
-    #define _mm_atan_ps             emu_mm_atan_ps
-    #define _mm_atan2_ps            emu_mm_atan2_ps
-    #define _mm_asin_ps             emu_mm_asin_ps
-    #define _mm_acos_ps             emu_mm_acos_ps
-    #define _mm_log_ps              emu_mm_log_ps
-    #define _mm_exp_ps              emu_mm_exp_ps
-    #define _mm_pow_ps(x, y)        emu_mm_exp_ps( _mm_mul_ps( emu_mm_log_ps(x), y ) )
-#endif
-
-#if( PLATFORM_INTRINSIC < PLATFORM_INTRINSIC_AVX1 || !PLATFORM_VS2019_PLUS )
-    #define _mm256_sin_pd           emu_mm256_sin_pd
-    #define _mm256_cos_pd           emu_mm256_cos_pd
-    #define _mm256_sincos_pd        emu_mm256_sincos_pd
-    #define _mm256_tan_pd           emu_mm256_tan_pd
-    #define _mm256_atan_pd          emu_mm256_atan_pd
-    #define _mm256_atan2_pd         emu_mm256_atan2_pd
-    #define _mm256_asin_pd          emu_mm256_asin_pd
-    #define _mm256_acos_pd          emu_mm256_acos_pd
-    #define _mm256_log_pd           emu_mm256_log_pd
-    #define _mm256_exp_pd           emu_mm256_exp_pd
-    #define _mm256_pow_pd(x, y)     emu_mm256_exp_pd( _mm256_mul_pd( emu_mm256_log_pd(x), y ) )
-#endif
 
 //======================================================================================================================
 //                                                  Enums
@@ -296,8 +231,6 @@ template<class T> PLATFORM_INLINE T Pi(const T& mul = T(1));
 template<class T> PLATFORM_INLINE T RadToDeg(const T& a);
 template<class T> PLATFORM_INLINE T DegToRad(const T& a);
 
-template<class T> PLATFORM_INLINE void Swap(T& x, T& y);
-
 template<class T> PLATFORM_INLINE T Slerp(const T& a, const T& b, float x);
 
 template<class T> PLATFORM_INLINE T CurveSmooth(const T& x);
@@ -308,6 +241,13 @@ template<class T> PLATFORM_INLINE T WaveTriangleSmooth(const T& x);
 template<eCmp cmp, class T> PLATFORM_INLINE bool All(const T& x, const T& y);
 template<eCmp cmp, class T> PLATFORM_INLINE bool Any(const T& x, const T& y);
 
+template<class T> PLATFORM_INLINE void Swap(T& x, T& y)
+{
+    T t = x;
+    x = y;
+    y = t;
+}
+
 #include "MathLib_f.h"
 #include "MathLib_d.h"
 
@@ -317,14 +257,14 @@ template<eCmp cmp, class T> PLATFORM_INLINE bool Any(const T& x, const T& y);
 
 PLATFORM_INLINE float3 ToFloat(const double3& x)
 {
-    v4f r = ymm_to_xmm(x.ymm);
+    v4f r = v4d_to_v4f(x.ymm);
 
     return r;
 }
 
 PLATFORM_INLINE float4 ToFloat(const double4& x)
 {
-    v4f r = ymm_to_xmm(x.ymm);
+    v4f r = v4d_to_v4f(x.ymm);
 
     return r;
 }
@@ -332,31 +272,31 @@ PLATFORM_INLINE float4 ToFloat(const double4& x)
 PLATFORM_INLINE float4x4 ToFloat(const double4x4& m)
 {
     float4x4 r;
-    r.col0 = ymm_to_xmm(m.col0);
-    r.col1 = ymm_to_xmm(m.col1);
-    r.col2 = ymm_to_xmm(m.col2);
-    r.col3 = ymm_to_xmm(m.col3);
+    r.col0 = v4d_to_v4f(m.col0);
+    r.col1 = v4d_to_v4f(m.col1);
+    r.col2 = v4d_to_v4f(m.col2);
+    r.col3 = v4d_to_v4f(m.col3);
 
     return r;
 }
 
 PLATFORM_INLINE double3 ToDouble(const float3& x)
 {
-    return xmm_to_ymm(x.xmm);
+    return v4f_to_v4d(x.xmm);
 }
 
 PLATFORM_INLINE double4 ToDouble(const float4& x)
 {
-    return xmm_to_ymm(x.xmm);
+    return v4f_to_v4d(x.xmm);
 }
 
 PLATFORM_INLINE double4x4 ToDouble(const float4x4& m)
 {
     double4x4 r;
-    r.col0 = xmm_to_ymm(m.col0);
-    r.col1 = xmm_to_ymm(m.col1);
-    r.col2 = xmm_to_ymm(m.col2);
-    r.col3 = xmm_to_ymm(m.col3);
+    r.col0 = v4f_to_v4d(m.col0);
+    r.col1 = v4f_to_v4d(m.col1);
+    r.col2 = v4f_to_v4d(m.col2);
+    r.col3 = v4f_to_v4d(m.col3);
 
     return r;
 }
@@ -489,14 +429,14 @@ class int4
         {
             v4f r = _mm_castsi128_ps( _mm_cmpeq_epi32(xmm, v.xmm) );
 
-            return xmm_test4_all(r);
+            return v4f_test4_all(r);
         }
 
         PLATFORM_INLINE bool operator != (const int4& v) const
         {
             v4f r = _mm_castsi128_ps( _mm_cmpeq_epi32(xmm, v.xmm) );
 
-            return !xmm_test4_all(r);
+            return !v4f_test4_all(r);
         }
 };
 
@@ -564,14 +504,14 @@ class uint4
         {
             v4f r = _mm_castsi128_ps( _mm_cmpeq_epi32(xmm, v.xmm) );
 
-            return xmm_test4_all(r);
+            return v4f_test4_all(r);
         }
 
         PLATFORM_INLINE bool operator != (const uint4& v) const
         {
             v4f r = _mm_castsi128_ps( _mm_cmpeq_epi32(xmm, v.xmm) );
 
-            return xmm_test4_none(r);
+            return v4f_test4_none(r);
         }
 };
 
@@ -707,8 +647,59 @@ union uDouble
     }
 };
 
-float DoubleToGequal(double dValue);
-float DoubleToLequal(double dValue);
+PLATFORM_INLINE float DoubleToGequal(double dValue)
+{
+    float fValue = (float)dValue;
+    float fError = (float)(dValue - fValue);
+
+    int32_t exponent = 0;
+    frexp(fValue, &exponent);
+    exponent = Max(exponent, 0);
+    exponent = (int32_t)log10f(float(1 << exponent));
+
+    float fStep = 1.0f / Pow(10.0f, float(7 - exponent));
+
+    while( fError > 0.0f )
+    {
+        fValue += fStep;
+
+        float fCurrError = float(dValue - fValue);
+
+        if( fCurrError == fError )
+            fStep += fStep;
+        else
+            fError = fCurrError;
+    }
+
+    return fValue;
+}
+
+PLATFORM_INLINE float DoubleToLequal(double dValue)
+{
+    float fValue = (float)dValue;
+    float fError = (float)(dValue - fValue);
+
+    int32_t exponent = 0;
+    frexp(fValue, &exponent);
+    exponent = Max(exponent, 0);
+    exponent = (int32_t)log10f(float(1 << exponent));
+
+    float fStep = 1.0f / Pow(10.0f, float(7 - exponent));
+
+    while( fError < 0.0f )
+    {
+        fValue -= fStep;
+
+        float fCurrError = float(dValue - fValue);
+
+        if( fCurrError == fError )
+            fStep += fStep;
+        else
+            fError = fCurrError;
+    }
+
+    return fValue;
+}
 
 //======================================================================================================================
 //                                                      Errors
@@ -912,7 +903,7 @@ struct sFastRand
     }
 };
 
-extern sFastRand g_frand;
+__declspec(selectany) sFastRand g_frand;
 
 namespace Rand
 {
@@ -1075,7 +1066,7 @@ namespace Rand
         #else
 
             r = _mm_castsi128_ps(_mm_srli_epi32(rnd, 9));
-            r = _mm_or_ps(r, c_xmm1111);
+            r = _mm_or_ps(r, c_v4f_1111);
             r = _mm_sub_ps(_mm_set1_ps(2.0f), r);
 
         #endif
@@ -1091,13 +1082,13 @@ namespace Rand
         #if( PLATFORM_RND_MODE == PLATFORM_RND_CRT )
 
             r = _mm_cvtepi32_ps(rnd);
-            r = xmm_madd(r, _mm_broadcast_ss(&m2), _mm_broadcast_ss(&a2));
+            r = v4f_madd(r, _mm_broadcast_ss(&m2), _mm_broadcast_ss(&a2));
 
         #else
 
-            v4f sign = _mm_and_ps(_mm_castsi128_ps(rnd), c_xmmSign);
+            v4f sign = _mm_and_ps(_mm_castsi128_ps(rnd), c_v4f_Sign);
             r = _mm_castsi128_ps(_mm_srli_epi32(rnd, 8));
-            r = _mm_or_ps(r, c_xmm1111);
+            r = _mm_or_ps(r, c_v4f_1111);
             r = _mm_sub_ps(_mm_set1_ps(2.0f), r);
             r = _mm_or_ps(r, sign);
 
@@ -1128,22 +1119,22 @@ template<class T> PLATFORM_INLINE T Sign(const T& x)
 
 template<> PLATFORM_INLINE float3 Sign(const float3& x)
 {
-    return xmm_sign(x.xmm);
+    return v4f_sign(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Sign(const float4& x)
 {
-    return xmm_sign(x.xmm);
+    return v4f_sign(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Sign(const double3& x)
 {
-    return ymm_sign(x.ymm);
+    return v4d_sign(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Sign(const double4& x)
 {
-    return ymm_sign(x.ymm);
+    return v4d_sign(x.ymm);
 }
 
 //======================================================================================================================
@@ -1163,22 +1154,22 @@ template<> PLATFORM_INLINE float Abs(const float& x)
 
 template<> PLATFORM_INLINE float3 Abs(const float3& x)
 {
-    return xmm_abs(x.xmm);
+    return v4f_abs(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Abs(const float4& x)
 {
-    return xmm_abs(x.xmm);
+    return v4f_abs(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Abs(const double3& x)
 {
-    return ymm_abs(x.ymm);
+    return v4d_abs(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Abs(const double4& x)
 {
-    return ymm_abs(x.ymm);
+    return v4d_abs(x.ymm);
 }
 
 //======================================================================================================================
@@ -1190,22 +1181,22 @@ template<class T> PLATFORM_INLINE T Floor(const T& x)
 
 template<> PLATFORM_INLINE float3 Floor(const float3& x)
 {
-    return xmm_floor(x.xmm);
+    return v4f_floor(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Floor(const float4& x)
 {
-    return xmm_floor(x.xmm);
+    return v4f_floor(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Floor(const double3& x)
 {
-    return ymm_floor(x.ymm);
+    return v4d_floor(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Floor(const double4& x)
 {
-    return ymm_floor(x.ymm);
+    return v4d_floor(x.ymm);
 }
 
 //======================================================================================================================
@@ -1217,22 +1208,22 @@ template<class T> PLATFORM_INLINE T Round(const T& x)
 
 template<> PLATFORM_INLINE float3 Round(const float3& x)
 {
-    return xmm_round(x.xmm);
+    return v4f_round(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Round(const float4& x)
 {
-    return xmm_round(x.xmm);
+    return v4f_round(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Round(const double3& x)
 {
-    return ymm_round(x.ymm);
+    return v4d_round(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Round(const double4& x)
 {
-    return ymm_round(x.ymm);
+    return v4d_round(x.ymm);
 }
 
 //======================================================================================================================
@@ -1244,22 +1235,22 @@ template<class T> PLATFORM_INLINE T Fract(const T& x)
 
 template<> PLATFORM_INLINE float3 Fract(const float3& x)
 {
-    return xmm_fract(x.xmm);
+    return v4f_fract(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Fract(const float4& x)
 {
-    return xmm_fract(x.xmm);
+    return v4f_fract(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Fract(const double3& x)
 {
-    return ymm_fract(x.ymm);
+    return v4d_fract(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Fract(const double4& x)
 {
-    return ymm_fract(x.ymm);
+    return v4d_fract(x.ymm);
 }
 
 //======================================================================================================================
@@ -1287,22 +1278,22 @@ template<> PLATFORM_INLINE int32_t Mod(const int32_t& x, const int32_t& y)
 
 template<> PLATFORM_INLINE float3 Mod(const float3& x, const float3& y)
 {
-    return xmm_mod(x.xmm, y.xmm);
+    return v4f_mod(x.xmm, y.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Mod(const float4& x, const float4& y)
 {
-    return xmm_mod(x.xmm, y.xmm);
+    return v4f_mod(x.xmm, y.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Mod(const double3& x, const double3& y)
 {
-    return ymm_mod(x.ymm, y.ymm);
+    return v4d_mod(x.ymm, y.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Mod(const double4& x, const double4& y)
 {
-    return ymm_mod(x.ymm, y.ymm);
+    return v4d_mod(x.ymm, y.ymm);
 }
 
 //======================================================================================================================
@@ -1351,28 +1342,28 @@ template<eCmp cmp> PLATFORM_INLINE bool All(const float3& x, const float3& y)
 {
     v4f t = _mm_cmp_ps(x.xmm, y.xmm, cmp);
 
-    return xmm_test3_all(t);
+    return v4f_test3_all(t);
 }
 
 template<eCmp cmp> PLATFORM_INLINE bool All(const float4& x, const float4& y)
 {
     v4f t = _mm_cmp_ps(x.xmm, y.xmm, cmp);
 
-    return xmm_test4_all(t);
+    return v4f_test4_all(t);
 }
 
 template<eCmp cmp> PLATFORM_INLINE bool All(const double3& x, const double3& y)
 {
     v4d t = _mm256_cmp_pd(x.ymm, y.ymm, cmp);
 
-    return ymm_test3_all(t);
+    return v4d_test3_all(t);
 }
 
 template<eCmp cmp> PLATFORM_INLINE bool All(const double4& x, const double4& y)
 {
     v4d t = _mm256_cmp_pd(x.ymm, y.ymm, cmp);
 
-    return ymm_test4_all(t);
+    return v4d_test4_all(t);
 }
 
 //======================================================================================================================
@@ -1388,28 +1379,28 @@ template<eCmp cmp> PLATFORM_INLINE bool Any(const float3& x, const float3& y)
 {
     v4f t = _mm_cmp_ps(x.xmm, y.xmm, cmp);
 
-    return xmm_test3_any(t);
+    return v4f_test3_any(t);
 }
 
 template<eCmp cmp> PLATFORM_INLINE bool Any(const float4& x, const float4& y)
 {
     v4f t = _mm_cmp_ps(x.xmm, y.xmm, cmp);
 
-    return xmm_test4_any(t);
+    return v4f_test4_any(t);
 }
 
 template<eCmp cmp> PLATFORM_INLINE bool Any(const double3& x, const double3& y)
 {
     v4d t = _mm256_cmp_pd(x.ymm, y.ymm, cmp);
 
-    return ymm_test3_any(t);
+    return v4d_test3_any(t);
 }
 
 template<eCmp cmp> PLATFORM_INLINE bool Any(const double4& x, const double4& y)
 {
     v4d t = _mm256_cmp_pd(x.ymm, y.ymm, cmp);
 
-    return ymm_test4_any(t);
+    return v4d_test4_any(t);
 }
 
 //======================================================================================================================
@@ -1475,22 +1466,22 @@ template<class T> PLATFORM_INLINE T Clamp(const T& x, const T& a, const T& b)
 
 template<> PLATFORM_INLINE float3 Clamp(const float3& x, const float3& vMin, const float3& vMax)
 {
-    return xmm_clamp(x.xmm, vMin.xmm, vMax.xmm);
+    return v4f_clamp(x.xmm, vMin.xmm, vMax.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Clamp(const float4& x, const float4& vMin, const float4& vMax)
 {
-    return xmm_clamp(x.xmm, vMin.xmm, vMax.xmm);
+    return v4f_clamp(x.xmm, vMin.xmm, vMax.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Clamp(const double3& x, const double3& vMin, const double3& vMax)
 {
-    return ymm_clamp(x.ymm, vMin.ymm, vMax.ymm);
+    return v4d_clamp(x.ymm, vMin.ymm, vMax.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Clamp(const double4& x, const double4& vMin, const double4& vMax)
 {
-    return ymm_clamp(x.ymm, vMin.ymm, vMax.ymm);
+    return v4d_clamp(x.ymm, vMin.ymm, vMax.ymm);
 }
 
 //======================================================================================================================
@@ -1502,22 +1493,22 @@ template<class T> PLATFORM_INLINE T Saturate(const T& x)
 
 template<> PLATFORM_INLINE float3 Saturate(const float3& x)
 {
-    return xmm_saturate(x.xmm);
+    return v4f_saturate(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Saturate(const float4& x)
 {
-    return xmm_saturate(x.xmm);
+    return v4f_saturate(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Saturate(const double3& x)
 {
-    return ymm_saturate(x.ymm);
+    return v4d_saturate(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Saturate(const double4& x)
 {
-    return ymm_saturate(x.ymm);
+    return v4d_saturate(x.ymm);
 }
 
 //======================================================================================================================
@@ -1529,22 +1520,22 @@ template<class T> PLATFORM_INLINE T Lerp(const T& a, const T& b, const T& x)
 
 template<> PLATFORM_INLINE float3 Lerp(const float3& a, const float3& b, const float3& x)
 {
-    return xmm_mix(a.xmm, b.xmm, x.xmm);
+    return v4f_mix(a.xmm, b.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Lerp(const float4& a, const float4& b, const float4& x)
 {
-    return xmm_mix(a.xmm, b.xmm, x.xmm);
+    return v4f_mix(a.xmm, b.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Lerp(const double3& a, const double3& b, const double3& x)
 {
-    return ymm_mix(a.ymm, b.ymm, x.ymm);
+    return v4d_mix(a.ymm, b.ymm, x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Lerp(const double4& a, const double4& b, const double4& x)
 {
-    return ymm_mix(a.ymm, b.ymm, x.ymm);
+    return v4d_mix(a.ymm, b.ymm, x.ymm);
 }
 
 //======================================================================================================================
@@ -1558,22 +1549,22 @@ template<class T> PLATFORM_INLINE T Smoothstep(const T& a, const T& b, const T& 
 
 template<> PLATFORM_INLINE float3 Smoothstep(const float3& a, const float3& b, const float3& x)
 {
-    return xmm_smoothstep(a.xmm, b.xmm, x.xmm);
+    return v4f_smoothstep(a.xmm, b.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Smoothstep(const float4& a, const float4& b, const float4& x)
 {
-    return xmm_smoothstep(a.xmm, b.xmm, x.xmm);
+    return v4f_smoothstep(a.xmm, b.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Smoothstep(const double3& a, const double3& b, const double3& x)
 {
-    return ymm_smoothstep(a.ymm, b.ymm, x.ymm);
+    return v4d_smoothstep(a.ymm, b.ymm, x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Smoothstep(const double4& a, const double4& b, const double4& x)
 {
-    return ymm_smoothstep(a.ymm, b.ymm, x.ymm);
+    return v4d_smoothstep(a.ymm, b.ymm, x.ymm);
 }
 
 //======================================================================================================================
@@ -1585,22 +1576,22 @@ template<class T> PLATFORM_INLINE T Linearstep(const T& a, const T& b, const T& 
 
 template<> PLATFORM_INLINE float3 Linearstep(const float3& a, const float3& b, const float3& x)
 {
-    return xmm_linearstep(a.xmm, b.xmm, x.xmm);
+    return v4f_linearstep(a.xmm, b.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Linearstep(const float4& a, const float4& b, const float4& x)
 {
-    return xmm_linearstep(a.xmm, b.xmm, x.xmm);
+    return v4f_linearstep(a.xmm, b.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Linearstep(const double3& a, const double3& b, const double3& x)
 {
-    return ymm_linearstep(a.ymm, b.ymm, x.ymm);
+    return v4d_linearstep(a.ymm, b.ymm, x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Linearstep(const double4& a, const double4& b, const double4& x)
 {
-    return ymm_linearstep(a.ymm, b.ymm, x.ymm);
+    return v4d_linearstep(a.ymm, b.ymm, x.ymm);
 }
 
 //======================================================================================================================
@@ -1612,22 +1603,22 @@ template<class T> PLATFORM_INLINE T Step(const T& edge, const T& x)
 
 template<> PLATFORM_INLINE float3 Step(const float3& edge, const float3& x)
 {
-    return xmm_step(edge.xmm, x.xmm);
+    return v4f_step(edge.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Step(const float4& edge, const float4& x)
 {
-    return xmm_step(edge.xmm, x.xmm);
+    return v4f_step(edge.xmm, x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Step(const double3& edge, const double3& x)
 {
-    return ymm_step(edge.ymm, x.ymm);
+    return v4d_step(edge.ymm, x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Step(const double4& edge, const double4& x)
 {
-    return ymm_step(edge.ymm, x.ymm);
+    return v4d_step(edge.ymm, x.ymm);
 }
 
 //======================================================================================================================
@@ -1879,22 +1870,22 @@ template<class T> PLATFORM_INLINE T Sqrt(const T& x)
 
 template<> PLATFORM_INLINE float3 Sqrt(const float3& x)
 {
-    return xmm_sqrt(x.xmm);
+    return v4f_sqrt(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Sqrt(const float4& x)
 {
-    return xmm_sqrt(x.xmm);
+    return v4f_sqrt(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Sqrt(const double3& x)
 {
-    return ymm_sqrt(x.ymm);
+    return v4d_sqrt(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Sqrt(const double4& x)
 {
-    return ymm_sqrt(x.ymm);
+    return v4d_sqrt(x.ymm);
 }
 
 //======================================================================================================================
@@ -1908,22 +1899,22 @@ template<class T> PLATFORM_INLINE T Rsqrt(const T& x)
 
 template<> PLATFORM_INLINE float3 Rsqrt(const float3& x)
 {
-    return xmm_rsqrt(x.xmm);
+    return v4f_rsqrt(x.xmm);
 }
 
 template<> PLATFORM_INLINE float4 Rsqrt(const float4& x)
 {
-    return xmm_rsqrt(x.xmm);
+    return v4f_rsqrt(x.xmm);
 }
 
 template<> PLATFORM_INLINE double3 Rsqrt(const double3& x)
 {
-    return ymm_rsqrt(x.ymm);
+    return v4d_rsqrt(x.ymm);
 }
 
 template<> PLATFORM_INLINE double4 Rsqrt(const double4& x)
 {
-    return ymm_rsqrt(x.ymm);
+    return v4d_rsqrt(x.ymm);
 }
 
 //======================================================================================================================
@@ -2051,34 +2042,6 @@ template<> PLATFORM_INLINE float4 DegToRad(const float4& x)         { return x *
 template<> PLATFORM_INLINE double DegToRad(const double& x)         { return x * (Pi(1.0) / 180.0); }
 template<> PLATFORM_INLINE double3 DegToRad(const double3& x)       { return x * (Pi(1.0) / 180.0); }
 template<> PLATFORM_INLINE double4 DegToRad(const double4& x)       { return x * (Pi(1.0) / 180.0); }
-
-//======================================================================================================================
-
-template<class T> PLATFORM_INLINE void Swap(T& x, T& y)
-{
-    T t = x;
-    x = y;
-    y = t;
-}
-
-template<> PLATFORM_INLINE void Swap(uint32_t& x, uint32_t& y)
-{
-    x ^= y;
-    y ^= x;
-    x ^= y;
-}
-
-template<class T> PLATFORM_INLINE void Swap(T* x, T* y)
-{
-    // NOTE: just swap memory, skip constructor/destructor...
-
-    const uint32_t N = sizeof(T);
-    uint8_t temp[N];
-
-    memcpy(temp, x, N);
-    memcpy(x, y, N);
-    memcpy(y, temp, N);
-}
 
 //======================================================================================================================
 
@@ -2260,6 +2223,55 @@ template<class T> class ctRect
 //                                                      Frustum
 //======================================================================================================================
 
+PLATFORM_INLINE bool MvpToPlanes(uint8_t ucNdcDepth, const float4x4& m, float4* pvPlane6)
+{
+    float4x4 mt;
+    m.TransposeTo(mt);
+
+    float4 l = mt.GetCol3() + mt.GetCol0();
+    float4 r = mt.GetCol3() - mt.GetCol0();
+    float4 b = mt.GetCol3() + mt.GetCol1();
+    float4 t = mt.GetCol3() - mt.GetCol1();
+    float4 f = mt.GetCol3() - mt.GetCol2();
+    float4 n = mt.GetCol2();
+
+    if( ucNdcDepth == NDC_OGL )
+        n += mt.GetCol3();
+
+    // NOTE: side planes
+
+    l *= Rsqrt( Dot33(l.xmm, l.xmm) );
+    r *= Rsqrt( Dot33(r.xmm, r.xmm) );
+    b *= Rsqrt( Dot33(b.xmm, b.xmm) );
+    t *= Rsqrt( Dot33(t.xmm, t.xmm) );
+
+    // NOTE: near & far planes
+
+    n /= Max( Sqrt( Dot33(n.xmm, n.xmm) ), FLT_MIN );
+    f /= Max( Sqrt( Dot33(f.xmm, f.xmm) ), FLT_MIN );
+
+    // NOTE: handle reversed projection
+
+    bool bReversed = Abs(n.w) > Abs(f.w);
+
+    if( bReversed )
+        Swap(n, f);
+
+    // NOTE: handle infinite projection
+
+    if( Dot33(f.xmm, f.xmm) <= FLT_MIN )
+        f = float4(-n.x, -n.y, -n.z, f.w);
+
+    pvPlane6[PLANE_LEFT]    = l;
+    pvPlane6[PLANE_RIGHT]   = r;
+    pvPlane6[PLANE_BOTTOM]  = b;
+    pvPlane6[PLANE_TOP]     = t;
+    pvPlane6[PLANE_NEAR]    = n;
+    pvPlane6[PLANE_FAR]     = f;
+
+    return bReversed;
+}
+
 class cFrustum
 {
     private:
@@ -2274,22 +2286,270 @@ class cFrustum
         {
         }
 
-        void Setup(uint8_t ucNdcDepthRange, const float4x4& mMvp);
-        void Translate(const float3& vPos);
+        PLATFORM_INLINE void Setup(uint8_t ucNdcDepthRange, const float4x4& mMvp)
+        {
+            MvpToPlanes(ucNdcDepthRange, mMvp, m_vPlane);
 
-        bool CheckSphere(const float3& center, float fRadius, uint32_t planes = PLANES_NUM) const;
-        bool CheckAabb(const float3& minv, const float3& maxv, uint32_t planes = PLANES_NUM) const;
-        bool CheckCapsule(const float3& capsule_start, const float3& capsule_axis, float capsule_radius, uint32_t planes = PLANES_NUM) const;
+            m_mPlanesT.SetCol0(m_vPlane[PLANE_LEFT]);
+            m_mPlanesT.SetCol1(m_vPlane[PLANE_RIGHT]);
+            m_mPlanesT.SetCol2(m_vPlane[PLANE_BOTTOM]);
+            m_mPlanesT.SetCol3(m_vPlane[PLANE_TOP]);
+            m_mPlanesT.Transpose();
 
-        bool CheckSphere_mask(const float3& center, float fRadius, uint32_t mask, uint32_t planes = PLANES_NUM) const;
-        bool CheckAabb_mask(const float3& minv, const float3& maxv, uint32_t mask, uint32_t planes = PLANES_NUM) const;
+            for( uint32_t i = 0; i < PLANES_NUM; i++ )
+                m_vMask[i] = _mm_cmpgt_ps(m_vPlane[i].xmm, v4f_zero);
+        }
 
-        eClip CheckSphere_state(const float3& center, float fRadius, uint32_t planes = PLANES_NUM) const;
-        eClip CheckAabb_state(const float3& minv, const float3& maxv, uint32_t planes = PLANES_NUM) const;
-        eClip CheckCapsule_state(const float3& capsule_start, const float3& capsule_axis, float capsule_radius, uint32_t planes = PLANES_NUM) const;
+        PLATFORM_INLINE void Translate(const float3& vPos)
+        {
+            // NOTE: update of m_vMask is not required, because only m_vMask.w can be changed, but this component doesn't affect results
 
-        eClip CheckSphere_mask_state(const float3& center, float fRadius, uint32_t& mask, uint32_t planes = PLANES_NUM) const;
-        eClip CheckAabb_mask_state(const float3& minv, const float3& maxv, uint32_t& mask, uint32_t planes = PLANES_NUM) const;
+            for( uint32_t i = 0; i < PLANES_NUM; i++ )
+                m_vPlane[i].w = Dot43(m_vPlane[i], vPos);
+        }
+
+
+        PLATFORM_INLINE bool CheckSphere(const float3& center, float fRadius, uint32_t planes = PLANES_NUM) const
+        {
+            v4f p1 = v4f_setw1(center.xmm);
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                float d = Dot44(m_vPlane[i].xmm, p1);
+
+                if( d < -fRadius )
+                    return false;
+            }
+
+            return true;
+        }
+
+        PLATFORM_INLINE bool CheckAabb(const float3& minv, const float3& maxv, uint32_t planes) const
+        {
+            v4f min1 = v4f_setw1(minv.xmm);
+            v4f max1 = v4f_setw1(maxv.xmm);
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                v4f v = v4f_select(min1, max1, m_vMask[i]);
+                v = v4f_dot44(m_vPlane[i].xmm, v);
+
+                if( v4f_isnegative1_all(v) )
+                    return false;
+            }
+
+            return true;
+        }
+
+        PLATFORM_INLINE bool CheckCapsule(const float3& capsule_start, const float3& capsule_axis, float capsule_radius, uint32_t planes) const
+        {
+            // NOTE: https://github.com/toxygen/STA/blob/master/celestia-src/celmath/frustum.cpp
+
+            float r2 = capsule_radius * capsule_radius;
+            float3 capsule_end = capsule_start + capsule_axis;
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                float signedDist0 = Dot43(m_vPlane[i], capsule_start);
+                float signedDist1 = Dot43(m_vPlane[i], capsule_end);
+
+                if( signedDist0 * signedDist1 > r2 )
+                {
+                    if( Abs(signedDist0) <= Abs(signedDist1) )
+                    {
+                        if( signedDist0 < -capsule_radius )
+                            return false;
+                    }
+                    else
+                    {
+                        if( signedDist1 < -capsule_radius )
+                            return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        PLATFORM_INLINE bool CheckSphere_mask(const float3& center, float fRadius, uint32_t mask, uint32_t planes) const
+        {
+            v4f p1 = v4f_setw1(center.xmm);
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                if( !(mask & (1 << i)) )
+                {
+                    float d = Dot44(m_vPlane[i].xmm, p1);
+
+                    if( d < -fRadius )
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        PLATFORM_INLINE bool CheckAabb_mask(const float3& minv, const float3& maxv, uint32_t mask, uint32_t planes) const
+        {
+            v4f min1 = v4f_setw1(minv.xmm);
+            v4f max1 = v4f_setw1(maxv.xmm);
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                if( !(mask & (1 << i)) )
+                {
+                    v4f v = v4f_select(min1, max1, m_vMask[i]);
+                    v = v4f_dot44(m_vPlane[i].xmm, v);
+
+                    if( v4f_isnegative1_all(v) )
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        PLATFORM_INLINE eClip CheckSphere_state(const float3& center, float fRadius, uint32_t planes) const
+        {
+            v4f p1 = v4f_setw1(center.xmm);
+
+            eClip clip = CLIP_IN;
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                float d = Dot44(m_vPlane[i].xmm, p1);
+
+                if( d < -fRadius )
+                    return CLIP_OUT;
+
+                if( d < fRadius )
+                    clip = CLIP_PARTIAL;
+            }
+
+            return clip;
+        }
+
+        PLATFORM_INLINE eClip CheckAabb_state(const float3& minv, const float3& maxv, uint32_t planes) const
+        {
+            v4f min1 = v4f_setw1(minv.xmm);
+            v4f max1 = v4f_setw1(maxv.xmm);
+
+            eClip clip = CLIP_IN;
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                v4f v = v4f_select(min1, max1, m_vMask[i]);
+                v = v4f_dot44(m_vPlane[i].xmm, v);
+
+                if( v4f_isnegative1_all(v) )
+                    return CLIP_OUT;
+
+                v = v4f_select(max1, min1, m_vMask[i]);
+                v = v4f_dot44(m_vPlane[i].xmm, v);
+
+                if( v4f_isnegative1_all(v) )
+                    clip = CLIP_PARTIAL;
+            }
+
+            return clip;
+        }
+
+        PLATFORM_INLINE eClip CheckCapsule_state(const float3& capsule_start, const float3& capsule_axis, float capsule_radius, uint32_t planes) const
+        {
+            float r2 = capsule_radius * capsule_radius;
+            float3 capsule_end = capsule_start + capsule_axis;
+
+            uint32_t intersections = 0;
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                float signedDist0 = Dot43(m_vPlane[i], capsule_start);
+                float signedDist1 = Dot43(m_vPlane[i], capsule_end);
+
+                if( signedDist0 * signedDist1 > r2 )
+                {
+                    // Endpoints of capsule are on same side of plane;
+                    // test closest endpoint to see if it lies closer to the plane than radius
+
+                    if( Abs(signedDist0) <= Abs(signedDist1) )
+                    {
+                        if( signedDist0 < -capsule_radius )
+                            return CLIP_OUT;
+                        else if( signedDist0 < capsule_radius )
+                            intersections |= (1 << i);
+                    }
+                    else
+                    {
+                        if( signedDist1 < -capsule_radius )
+                            return CLIP_OUT;
+                        else if( signedDist1 < capsule_radius )
+                            intersections |= (1 << i);
+                    }
+                }
+                else
+                {
+                    // Capsule endpoints are on different sides of the plane, so we have an intersection
+                    intersections |= (1 << i);
+                }
+            }
+
+            return !intersections ? CLIP_IN : CLIP_PARTIAL;
+        }
+
+        PLATFORM_INLINE eClip CheckSphere_mask_state(const float3& center, float fRadius, uint32_t& mask, uint32_t planes) const
+        {
+            v4f p1 = v4f_setw1(center.xmm);
+
+            eClip clip = CLIP_IN;
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                if( !(mask & (1 << i)) )
+                {
+                    float d = Dot44(m_vPlane[i].xmm, p1);
+
+                    if( d < -fRadius )
+                        return CLIP_OUT;
+
+                    if( d < fRadius )
+                        clip = CLIP_PARTIAL;
+                    else
+                        mask |= 1 << i;
+                }
+            }
+
+            return clip;
+        }
+
+        PLATFORM_INLINE eClip CheckAabb_mask_state(const float3& minv, const float3& maxv, uint32_t& mask, uint32_t planes) const
+        {
+            v4f min1 = v4f_setw1(minv.xmm);
+            v4f max1 = v4f_setw1(maxv.xmm);
+
+            eClip result = CLIP_IN;
+
+            for( uint32_t i = 0; i < planes; i++ )
+            {
+                if( !(mask & (1 << i)) )
+                {
+                    v4f v = v4f_select(min1, max1, m_vMask[i]);
+                    v = v4f_dot44(m_vPlane[i].xmm, v);
+
+                    if( v4f_isnegative1_all(v) )
+                        return CLIP_OUT;
+
+                    v = v4f_select(max1, min1, m_vMask[i]);
+                    v = v4f_dot44(m_vPlane[i].xmm, v);
+
+                    if( v4f_isnegative1_all(v) )
+                        result = CLIP_PARTIAL;
+                    else
+                        mask |= 1 << i;
+                }
+            }
+
+            return result;
+        }
 
         PLATFORM_INLINE void SetNearFar(float zNearNeg, float zFarNeg)
         {
@@ -2341,11 +2601,22 @@ PLATFORM_INLINE float SplitZ_Mixed(uint32_t i, uint32_t splits, float fZnear, fl
     return z;
 }
 
-uint32_t greatest_common_divisor(uint32_t a, uint32_t b);
-
-PLATFORM_INLINE uint32_t least_common_multiple(uint32_t a, uint32_t b)
+PLATFORM_INLINE uint32_t GreatestCommonDivisor(uint32_t a, uint32_t b)
 {
-    return (a * b) / greatest_common_divisor(a, b);
+    while( a && b )
+    {
+        if( a >= b )
+            a = a % b;
+        else
+            b = b % a;
+    }
+
+    return a + b;
+}
+
+PLATFORM_INLINE uint32_t LeastCommonMultiple(uint32_t a, uint32_t b)
+{
+    return (a * b) / GreatestCommonDivisor(a, b);
 }
 
 // Bit operations
@@ -2434,12 +2705,150 @@ PLATFORM_INLINE float2 Halton2D( uint32_t idx )
 //                                                      Misc
 //======================================================================================================================
 
-void DecomposeProjection(uint8_t ucNdcOrigin, uint8_t ucNdcDepth, const float4x4& proj, uint32_t* puiFlags, float* pfSettings15, float* pfUnproject2, float* pfFrustum4, float* pfProject3, float* pfSafeNearZ);
+PLATFORM_INLINE void DecomposeProjection(uint8_t ucNdcOrigin, uint8_t ucNdcDepth, const float4x4& proj, uint32_t* puiFlags, float* pfSettings15, float* pfUnproject2, float* pfFrustum4, float* pfProject3, float* pfSafeNearZ)
+{
+    float4 vPlane[PLANES_NUM];
+    bool bReversedZ = MvpToPlanes(ucNdcDepth, proj, vPlane);
 
-// NOTE: 1D cubic interpolator, assumes x > 0.0, constraint parameter = -1
-float CubicFilter(float x, float i1, float i2, float i3, float v4i);
+    bool bIsOrtho = proj.a33 == 1.0f ? true : false;
 
-void Hammersley(float* pXyz, uint32_t n);
+    float fNearZ = -vPlane[PLANE_NEAR].w;
+    float fFarZ = vPlane[PLANE_FAR].w;
+
+    float x0, x1, y0, y1;
+    bool bLeftHanded;
+
+    if( bIsOrtho )
+    {
+        x0 = -vPlane[PLANE_LEFT].w;
+        x1 = vPlane[PLANE_RIGHT].w;
+        y0 = -vPlane[PLANE_BOTTOM].w;
+        y1 = vPlane[PLANE_TOP].w;
+
+        bLeftHanded = proj.a22 > 0.0f;
+    }
+    else
+    {
+        x0 = vPlane[PLANE_LEFT].z / vPlane[PLANE_LEFT].x;
+        x1 = vPlane[PLANE_RIGHT].z / vPlane[PLANE_RIGHT].x;
+        y0 = vPlane[PLANE_BOTTOM].z / vPlane[PLANE_BOTTOM].y;
+        y1 = vPlane[PLANE_TOP].z / vPlane[PLANE_TOP].y;
+
+        bLeftHanded = x0 > x1 && y0 > y1;
+    }
+
+    if( puiFlags )
+    {
+        *puiFlags = bIsOrtho ? PROJ_ORTHO : 0;
+        *puiFlags |= bReversedZ ? PROJ_REVERSED_Z : 0;
+        *puiFlags |= bLeftHanded ? PROJ_LEFT_HANDED : 0;
+    }
+
+    if( pfUnproject2 )
+        Zbuffer::UnprojectZ(pfUnproject2, proj.a22, proj.a23, proj.a32);
+
+    if( pfSafeNearZ )
+    {
+        *pfSafeNearZ = fNearZ - _DEPTH_EPS;
+
+        if( !bIsOrtho )
+        {
+            float maxx = Max(Abs(x0), Abs(x1));
+            float maxy = Max(Abs(y0), Abs(y1));
+
+            *pfSafeNearZ *= Sqrt(maxx * maxx + maxy * maxy + 1.0f);
+        }
+    }
+
+    if( pfProject3 )
+    {
+        // IMPORTANT: Rg - geometry radius, Rp - projected radius, Rn - projected normalized radius
+
+        //      keep in mind:
+        //          zp = -(mView * p).z
+        //          zp_fix = mix(zp, 1.0, bIsOrtho), or
+        //          zp_fix = (mViewProj * p).w
+
+        //      project:
+        //          Rn.x = Rg * pfProject3[0] / zp_fix
+        //          Rn.y = Rg * pfProject3[1] / zp_fix
+        //          Rp = 0.5 * viewport.w * Rn.x, or
+        //          Rp = 0.5 * viewport.h * Rn.y, or
+        //          Rp = Rg * K / zp_fix
+
+        //
+        //      unproject:
+        //          Rn.x = 2.0 * Rp / viewport.w
+        //          Rn.y = 2.0 * Rp / viewport.h
+        //          Rg = Rn.x * zp_fix / pfProject3[0], or
+        //          Rg = Rn.y * zp_fix / pfProject3[1], or
+        //          Rg = Rp * zp_fix / K
+
+        //          K = 0.5 * viewport.w * pfProject3[0] = 0.5 * viewport.h * pfProject3[1]
+
+        float fProjectx = 2.0f / (x1 - x0);
+        float fProjecty = 2.0f / (y1 - y0);
+
+        pfProject3[0] = Abs(fProjectx);
+        pfProject3[1] = Abs(fProjecty);
+        pfProject3[2] = bIsOrtho ? 1.0f : 0.0f;
+    }
+
+    if( pfFrustum4 )
+    {
+        // IMPORTANT: view space position from screen space uv [0, 1]
+        //          ray.xy = (pfFrustum4.zw * uv + pfFrustum4.xy) * mix(zDistanceNeg, -1.0, bIsOrtho)
+        //          ray.z = 1.0 * zDistanceNeg
+
+        pfFrustum4[0] = -x0;
+        pfFrustum4[2] = x0 - x1;
+
+        if( ucNdcOrigin == NDC_D3D )
+        {
+            pfFrustum4[1] = -y1;
+            pfFrustum4[3] = y1 - y0;
+        }
+        else
+        {
+            pfFrustum4[1] = -y0;
+            pfFrustum4[3] = y0 - y1;
+        }
+    }
+
+    if( pfSettings15 )
+    {
+        // NOTE: swap is possible, because it is the last pass...
+
+        if( bLeftHanded )
+        {
+            Swap(x0, x1);
+            Swap(y0, y1);
+        }
+
+        float fAngleY0 = Atan(bIsOrtho ? 0.0f : y0);
+        float fAngleY1 = Atan(bIsOrtho ? 0.0f : y1);
+        float fAngleX0 = Atan(bIsOrtho ? 0.0f : x0);
+        float fAngleX1 = Atan(bIsOrtho ? 0.0f : x1);
+
+        float fAspect = (x1 - x0) / (y1 - y0);
+
+        pfSettings15[PROJ_ZNEAR]        = fNearZ;
+        pfSettings15[PROJ_ZFAR]         = fFarZ;
+        pfSettings15[PROJ_ASPECT]       = fAspect;
+        pfSettings15[PROJ_FOVX]         = fAngleX1 - fAngleX0;
+        pfSettings15[PROJ_FOVY]         = fAngleY1 - fAngleY0;
+        pfSettings15[PROJ_MINX]         = x0 * fNearZ;
+        pfSettings15[PROJ_MAXX]         = x1 * fNearZ;
+        pfSettings15[PROJ_MINY]         = y0 * fNearZ;
+        pfSettings15[PROJ_MAXY]         = y1 * fNearZ;
+        pfSettings15[PROJ_ANGLEMINX]    = fAngleX0;
+        pfSettings15[PROJ_ANGLEMAXX]    = fAngleX1;
+        pfSettings15[PROJ_ANGLEMINY]    = fAngleY0;
+        pfSettings15[PROJ_ANGLEMAXY]    = fAngleY1;
+        pfSettings15[PROJ_DIRX]         = (fAngleX0 + fAngleX1) * 0.5f;
+        pfSettings15[PROJ_DIRY]         = (fAngleY0 + fAngleY1) * 0.5f;
+    }
+}
 
 PLATFORM_INLINE float2 Hammersley(uint32_t i, uint32_t uiSamples, uint32_t rnd0 = 0, uint32_t rnd1 = 0)
 {
@@ -2450,11 +2859,207 @@ PLATFORM_INLINE float2 Hammersley(uint32_t i, uint32_t uiSamples, uint32_t rnd0 
 }
 
 // NOTE: overlapping axis-aligned boundary box and triangle (center - aabb center, extents - half size)
-bool IsOverlapBoxTriangle(const float3& center, const float3& extents, const float3& tri0, const float3& tri1, const float3& tri2);
+// NOTE: AABB-triangle overlap test code by Tomas Akenine-Moller
+//       http://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/
+//       SSE code from http://www.codercorner.com/blog/?p=1118
+
+PLATFORM_INLINE uint32_t TestClassIII(const v4f& e0V, const v4f& v0V, const v4f& v1V, const v4f& v2V, const v4f& extents)
+{
+    v4f fe0ZYX_V = v4f_abs(e0V);
+
+    v4f e0XZY_V = v4f_swizzle(e0V, 1, 2, 0, 3);
+    v4f v0XZY_V = v4f_swizzle(v0V, 1, 2, 0, 3);
+    v4f v1XZY_V = v4f_swizzle(v1V, 1, 2, 0, 3);
+    v4f v2XZY_V = v4f_swizzle(v2V, 1, 2, 0, 3);
+    v4f fe0XZY_V = v4f_swizzle(fe0ZYX_V, 1, 2, 0, 3);
+    v4f extentsXZY_V = v4f_swizzle(extents, 1, 2, 0, 3);
+
+    v4f radV = _mm_add_ps(_mm_mul_ps(extents, fe0XZY_V), _mm_mul_ps(extentsXZY_V, fe0ZYX_V));
+    v4f p0V = _mm_sub_ps(_mm_mul_ps(v0V, e0XZY_V), _mm_mul_ps(v0XZY_V, e0V));
+    v4f p1V = _mm_sub_ps(_mm_mul_ps(v1V, e0XZY_V), _mm_mul_ps(v1XZY_V, e0V));
+    v4f p2V = _mm_sub_ps(_mm_mul_ps(v2V, e0XZY_V), _mm_mul_ps(v2XZY_V, e0V));
+
+    v4f minV = _mm_min_ps(_mm_min_ps(p0V, p1V), p2V);
+    v4f maxV = _mm_max_ps(_mm_max_ps(p0V, p1V), p2V);
+
+    uint32_t test = _mm_movemask_ps(_mm_cmpgt_ps(minV, radV));
+    radV = _mm_sub_ps(v4f_zero, radV);
+    test |= _mm_movemask_ps(_mm_cmpgt_ps(radV, maxV));
+
+    return test & 7;
+}
+
+PLATFORM_INLINE bool IsOverlapBoxTriangle(const float3& boxcenter, const float3& extents, const float3& p0, const float3& p1, const float3& p2)
+{
+    v4f v0V = _mm_sub_ps(p0.xmm, boxcenter.xmm);
+    v4f cV = v4f_abs(v0V);
+    uint32_t test = _mm_movemask_ps(_mm_sub_ps(cV, extents.xmm));
+
+    if( (test & 7) == 7 )
+        return true;
+
+    v4f v1V = _mm_sub_ps(p1.xmm, boxcenter.xmm);
+    v4f v2V = _mm_sub_ps(p2.xmm, boxcenter.xmm);
+    v4f minV = _mm_min_ps(v0V, v1V);
+    minV = _mm_min_ps(minV, v2V);
+    test = _mm_movemask_ps(_mm_cmpgt_ps(minV, extents.xmm));
+
+    if( test & 7 )
+        return false;
+
+    v4f maxV = _mm_max_ps(v0V, v1V);
+    maxV = _mm_max_ps(maxV, v2V);
+    cV = _mm_sub_ps(v4f_zero, extents.xmm);
+    test = _mm_movemask_ps(_mm_cmpgt_ps(cV, maxV));
+
+    if( test & 7 )
+        return false;
+
+    v4f e0V = _mm_sub_ps(v1V, v0V);
+    v4f e1V = _mm_sub_ps(v2V, v1V);
+    v4f normalV = v4f_cross(e0V, e1V);
+    v4f dV = v4f_dot33(normalV, v0V);
+
+    v4f normalSignsV = _mm_and_ps(normalV, c_v4f_Sign);
+    maxV = _mm_or_ps(extents.xmm, normalSignsV);
+
+    v4f tmpV = v4f_dot33(normalV, maxV);
+    test = _mm_movemask_ps(_mm_cmpgt_ps(dV, tmpV));
+
+    if( test & 7 )
+        return false;
+
+    normalSignsV = _mm_xor_ps(normalSignsV, c_v4f_Sign);
+    minV = _mm_or_ps(extents.xmm, normalSignsV);
+
+    tmpV = v4f_dot33(normalV, minV);
+    test = _mm_movemask_ps(_mm_cmpgt_ps(tmpV, dV));
+
+    if( test & 7 )
+        return false;
+
+    if( TestClassIII(e0V, v0V, v1V, v2V, extents.xmm) )
+        return false;
+
+    if( TestClassIII(e1V, v0V, v1V, v2V, extents.xmm) )
+        return false;
+
+    v4f e2V = _mm_sub_ps(v0V, v2V);
+
+    if( TestClassIII(e2V, v0V, v1V, v2V, extents.xmm) )
+        return false;
+
+    return true;
+}
 
 // NOTE: barycentric ray-triangle test by Tomas Akenine-Moller
-bool IsIntersectRayTriangle(const float3& origin, const float3& dir, const float3& v1, const float3& v2, const float3& v3, float3& out_tuv);
-bool IsIntersectRayTriangle(const float3& from, const float3& to, const float3& v1, const float3& v2, const float3& v3, float3& out_intersection, float3& out_normal);
+PLATFORM_INLINE bool IsIntersectRayTriangle(const float3& origin, const float3& dir, const float3& v1, const float3& v2, const float3& v3, float3& out_tuv)
+{
+    // find vectors for two edges sharing vert0
+
+    float3 e1 = v2 - v1;
+    float3 e2 = v3 - v1;
+
+    // begin calculating determinant - also used to calculate U parameter
+
+    float3 pvec = Cross(dir, e2);
+
+    // if determinant is near zero, ray lies in plane of triangle
+
+    float det = Dot33(e1, pvec);
+
+    if( det < -c_fEps )
+        return false;
+
+    // calculate distance from vert0 to ray origin
+
+    float3 tvec = origin - v1;
+
+    // calculate U parameter and test bounds
+
+    float u = Dot33(tvec, pvec);
+
+    if( u < 0.0f || u > det )
+        return false;
+
+    // prepare to test V parameter
+
+    float3 qvec = Cross(tvec, e1);
+
+    // calculate V parameter and test bounds
+
+    float v = Dot33(dir, qvec);
+
+    if( v < 0.0f || u + v > det )
+        return false;
+
+    // calculate t, scale parameters, ray intersects triangle
+
+    out_tuv.x = Dot33(e2, qvec);
+    out_tuv.y = u;          // v
+    out_tuv.z = v;          // 1 - (u + v)
+
+    float idet = 1.0f / det;
+    out_tuv *= idet;
+
+    return true;
+}
+
+PLATFORM_INLINE bool IsIntersectRayTriangle(const float3& from, const float3& to, const float3& v1, const float3& v2, const float3& v3, float3& out_intersection, float3& out_normal)
+{
+    // find vectors for two edges sharing vert0
+
+    float3 e1 = v2 - v1;
+    float3 e2 = v3 - v1;
+
+    // begin calculating determinant - also used to calculate U parameter
+    float3 dir = to - from;
+    float length = Length(dir);
+    dir = Normalize(dir);
+
+    float3 pvec = Cross(dir, e2);
+
+    // if determinant is near zero, ray lies in plane of triangle
+
+    float det = Dot33(e1, pvec);
+
+    if( det < -c_fEps )
+        return false;
+
+    // calculate distance from vert0 to ray origin point "from"
+
+    float3 tvec = from - v1;
+
+    // calculate U parameter and test bounds
+
+    float u = Dot33(tvec, pvec);
+
+    if( u < 0.0f || u > det )
+        return false;
+
+    // prepare to test V parameter
+
+    float3 qvec = Cross(tvec, e1);
+
+    // calculate V parameter and test bounds
+
+    float v = Dot33(dir, qvec);
+
+    if( v < 0.0f || u + v > det )
+        return false;
+
+    // calculate t, scale parameters, ray intersects triangle
+
+    float t = Dot33(e2, qvec) / det;
+
+    if( t > length )
+        return false;
+
+    out_intersection = from + dir * t;
+    out_normal = Normalize( Cross(e1, e2) );
+
+    return true;
+}
 
 #include "Packed.h"
 

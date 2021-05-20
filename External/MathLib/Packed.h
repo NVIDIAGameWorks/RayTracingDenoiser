@@ -194,7 +194,7 @@ template<uint32_t Rbits, uint32_t Gbits, uint32_t Bbits, uint32_t Abits> PLATFOR
     const uint32_t Bshift = Gshift + Gbits;
     const uint32_t Ashift = Bshift + Bbits;
 
-    const v4f scale = xmm_set_4f(float(Rmask), float(Gmask), float(Bmask), float(Amask));
+    const v4f scale = v4f_set(float(Rmask), float(Gmask), float(Bmask), float(Amask));
 
     v4f t = _mm_mul_ps(v.xmm, scale);
     v4i i = _mm_cvtps_epi32(t);
@@ -218,7 +218,7 @@ template<> PLATFORM_INLINE uint32_t uf4_to_uint<8, 8, 8, 8>(const float4& v)
 
 PLATFORM_INLINE uint32_t uf2_to_uint1616(float x, float y)
 {
-    v4f t = xmm_set_4f(x, y, 0.0f, 0.0f);
+    v4f t = v4f_set(x, y, 0.0f, 0.0f);
     t = _mm_mul_ps(t, _mm_set1_ps(65535.0f));
     v4i i = _mm_cvtps_epi32(t);
 
@@ -259,7 +259,7 @@ template<uint32_t Rbits, uint32_t Gbits, uint32_t Bbits, uint32_t Abits> PLATFOR
     const uint32_t Brange = (1 << (Bbits - 1)) - 1;
     const uint32_t Arange = (1 << (Abits - 1)) - 1;
 
-    const v4f scale = xmm_set_4f(float(Rrange), float(Grange), float(Brange), float(Arange));
+    const v4f scale = v4f_set(float(Rrange), float(Grange), float(Brange), float(Arange));
     const v4i mask = _mm_setr_epi32(Rmask, Gmask, Bmask, Amask);
 
     v4f t = _mm_mul_ps(v.xmm, scale);
@@ -285,7 +285,7 @@ template<> PLATFORM_INLINE uint32_t sf4_to_int<8, 8, 8, 8>(const float4& v)
 
 PLATFORM_INLINE uint32_t sf2_to_int1616(float x, float y)
 {
-    v4f t = xmm_set_4f(x, y, 0.0f, 0.0f);
+    v4f t = v4f_set(x, y, 0.0f, 0.0f);
     t = _mm_mul_ps(t, _mm_set1_ps(32767.0f));
     v4i i = _mm_cvtps_epi32(t);
     i = _mm_and_si128(i, _mm_setr_epi32(65535, 65535, 0, 0));
@@ -300,8 +300,8 @@ PLATFORM_INLINE uint16_t sf_to_h(float x)
 {
     #if( PLATFORM_INTRINSIC >= PLATFORM_INTRINSIC_AVX1 )
 
-        v4f v = xmm_set_4f(x, 0.0f, 0.0f, 0.0f);
-        v4i p = xmm_to_h4(v);
+        v4f v = v4f_set(x, 0.0f, 0.0f, 0.0f);
+        v4i p = v4f_to_h4(v);
 
         uint32_t r = _mm_cvtsi128_si32(p);
 
@@ -318,8 +318,8 @@ PLATFORM_INLINE uint32_t sf2_to_h2(float x, float y)
 {
     #if( PLATFORM_INTRINSIC >= PLATFORM_INTRINSIC_AVX1 )
 
-        v4f v = xmm_set_4f(x, y, 0.0f, 0.0f);
-        v4i p = xmm_to_h4(v);
+        v4f v = v4f_set(x, y, 0.0f, 0.0f);
+        v4i p = v4f_to_h4(v);
 
         uint32_t r = _mm_cvtsi128_si32(p);
 
@@ -337,7 +337,7 @@ PLATFORM_INLINE void sf4_to_h4(const float4& v, uint32_t* pu2)
 {
     #if( PLATFORM_INTRINSIC >= PLATFORM_INTRINSIC_AVX1 )
 
-        v4i p = xmm_to_h4(v.xmm);
+        v4i p = v4f_to_h4(v.xmm);
 
         //*(v2i*)pu2 = _mm_movepi64_pi64(p);
         _mm_storel_epi64((v4i*)pu2, p);
@@ -365,7 +365,7 @@ template<uint32_t Rbits, uint32_t Gbits, uint32_t Bbits, uint32_t Abits> PLATFOR
     const uint32_t Bshift = Gshift + Gbits;
     const uint32_t Ashift = Bshift + Bbits;
 
-    const v4f scale = xmm_set_4f(1.0f / Rmask, 1.0f / Gmask, 1.0f / Bmask, 1.0f / Amask);
+    const v4f scale = v4f_set(1.0f / Rmask, 1.0f / Gmask, 1.0f / Bmask, 1.0f / Amask);
 
     v4i i = _mm_setr_epi32(p & Rmask, (p >> Gshift) & Gmask, (p >> Bshift) & Bmask, (p >> Ashift) & Amask);
     v4f t = _mm_cvtepi32_ps(i);
@@ -439,7 +439,7 @@ template<uint32_t Rbits, uint32_t Gbits, uint32_t Bbits, uint32_t Abits> PLATFOR
 
     const v4i vsign = _mm_setr_epi32(Rsign, Gsign, Bsign, Asign);
     const v4i vor = _mm_setr_epi32(~(Rsign - 1), ~(Gsign - 1), ~(Bsign - 1), ~(Asign - 1));
-    const v4f vscale = xmm_set_4f(1.0f / (Rsign - 1), 1.0f / (Gsign - 1), 1.0f / (Bsign - 1), 1.0f / (Asign - 1));
+    const v4f vscale = v4f_set(1.0f / (Rsign - 1), 1.0f / (Gsign - 1), 1.0f / (Bsign - 1), 1.0f / (Asign - 1));
 
     v4i i = _mm_setr_epi32(p & Rmask, (p >> Gshift) & Gmask, (p >> Bshift) & Bmask, (p >> Ashift) & Amask);
 
@@ -589,7 +589,7 @@ struct half_float
         #if( PLATFORM_INTRINSIC >= PLATFORM_INTRINSIC_AVX1 )
 
             v4f v = _mm_set_ss(x);
-            v4i p = xmm_to_h4(v);
+            v4i p = v4f_to_h4(v);
 
             us = (uint16_t)_mm_cvtsi128_si32(p);
 

@@ -685,7 +685,8 @@ Result DeviceVal::CreateQueryPool(const QueryPoolDesc& queryPoolDesc, QueryPool*
     if (result == Result::SUCCESS)
     {
         RETURN_ON_FAILURE(GetLog(), queryPoolImpl != nullptr, Result::FAILURE, "Unexpected error: 'queryPoolImpl' is NULL!");
-        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl, queryPoolDesc.queryType);
+        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl, queryPoolDesc.queryType,
+            queryPoolDesc.capacity);
     }
 
     return result;
@@ -1212,7 +1213,7 @@ Result DeviceVal::CreateQueryPoolVK(const QueryPoolVulkanDesc& queryPoolVulkanDe
 
         const QueryType queryType = GetQueryTypeVK(queryPoolVulkanDesc.vkQueryType);
 
-        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl, queryType);
+        queryPool = (QueryPool*)Allocate<QueryPoolVal>(GetStdAllocator(), *this, *queryPoolImpl, queryType, 0);
     }
 
     return result;

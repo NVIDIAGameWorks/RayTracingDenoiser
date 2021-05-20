@@ -9,6 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "DenoiserImpl.h"
+
 #include <array>
 
 using namespace nrd;
@@ -60,8 +61,8 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
             methodData.settingsSize = AddMethod_ReblurDiffuseSpecular(w, h);
         else if (methodDesc.method == Method::SIGMA_SHADOW)
             methodData.settingsSize = AddMethod_SigmaShadow(w, h);
-        else if (methodDesc.method == Method::SIGMA_TRANSLUCENT_SHADOW)
-            methodData.settingsSize = AddMethod_SigmaTranslucentShadow(w, h);
+        else if (methodDesc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
+            methodData.settingsSize = AddMethod_SigmaShadowTranslucency(w, h);
         else if (methodDesc.method == Method::RELAX_DIFFUSE_SPECULAR)
             methodData.settingsSize = AddMethod_RelaxDiffuseSpecular(w, h);
         else
@@ -103,8 +104,8 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
             UpdateMethod_ReblurDiffuseSpecular(methodData);
         else if (methodData.desc.method == Method::SIGMA_SHADOW)
             UpdateMethod_SigmaShadow(methodData);
-        else if (methodData.desc.method == Method::SIGMA_TRANSLUCENT_SHADOW)
-            UpdateMethod_SigmaTranslucentShadow(methodData);
+        else if (methodData.desc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
+            UpdateMethod_SigmaShadowTranslucency(methodData);
         else if (methodData.desc.method == Method::RELAX_DIFFUSE_SPECULAR)
             UpdateMethod_RelaxDiffuseSpecular(methodData);
     }
@@ -190,7 +191,7 @@ void DenoiserImpl::PrepareDesc()
     // Since now all std::vectors become "locked" (no reallocations)
 }
 
-void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const char* entryPointName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv)
+void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv)
 {
     // Resource binding
     DescriptorRangeDesc descriptorRanges[2] =
@@ -217,7 +218,7 @@ void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsa
     pipelineDesc.descriptorRangeNum = GetCountOf(descriptorRanges);
     pipelineDesc.descriptorRanges = (DescriptorRangeDesc*)rangeOffset;
     pipelineDesc.shaderFileName = shaderFileName;
-    pipelineDesc.shaderEntryPointName = entryPointName;
+    pipelineDesc.shaderEntryPointName = NRD_CS_MAIN;
     pipelineDesc.computeShaderDXBC = dxbc;
     pipelineDesc.computeShaderDXIL = dxil;
     pipelineDesc.computeShaderSPIRV = spirv;
@@ -293,7 +294,7 @@ void DenoiserImpl::UpdatePingPong(const MethodData& methodData)
 void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 {
     // TODO: add to CommonSettings?
-    m_JitterPrev = float2(m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
+    m_JitterPrev = ml::float2(m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
     m_ResolutionScalePrev = m_CommonSettings.resolutionScale;
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
@@ -306,68 +307,68 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     }
 
     // Rotators
-    float whiteNoise = Rand::uf1() * DegToRad(360.0f);
-    float ca = Cos( whiteNoise );
-    float sa = Sin( whiteNoise );
-    m_Rotator[0] = float4( ca, sa, -sa, ca );
+    float whiteNoise = ml::Rand::uf1() * ml::DegToRad(360.0f);
+    float ca = ml::Cos( whiteNoise );
+    float sa = ml::Sin( whiteNoise );
+    m_Rotator[0] = ml::float4( ca, sa, -sa, ca );
 
-    whiteNoise = Rand::uf1() * DegToRad(360.0f);
-    ca = Cos( whiteNoise );
-    sa = Sin( whiteNoise );
-    m_Rotator[1] = float4( -sa, ca, -ca, -sa );
-    m_Rotator[2] = float4( ca, sa, -sa, ca );
+    whiteNoise = ml::Rand::uf1() * ml::DegToRad(360.0f);
+    ca = ml::Cos( whiteNoise );
+    sa = ml::Sin( whiteNoise );
+    m_Rotator[1] = ml::float4( -sa, ca, -ca, -sa );
+    m_Rotator[2] = ml::float4( ca, sa, -sa, ca );
 
     // Main matrices
-    m_ViewToClip = float4x4
+    m_ViewToClip = ml::float4x4
     (
-        float4(commonSettings.viewToClipMatrix),
-        float4(commonSettings.viewToClipMatrix + 4),
-        float4(commonSettings.viewToClipMatrix + 8),
-        float4(commonSettings.viewToClipMatrix + 12)
+        ml::float4(commonSettings.viewToClipMatrix),
+        ml::float4(commonSettings.viewToClipMatrix + 4),
+        ml::float4(commonSettings.viewToClipMatrix + 8),
+        ml::float4(commonSettings.viewToClipMatrix + 12)
     );
 
-    m_ViewToClipPrev = float4x4
+    m_ViewToClipPrev = ml::float4x4
     (
-        float4(commonSettings.viewToClipMatrixPrev),
-        float4(commonSettings.viewToClipMatrixPrev + 4),
-        float4(commonSettings.viewToClipMatrixPrev + 8),
-        float4(commonSettings.viewToClipMatrixPrev + 12)
+        ml::float4(commonSettings.viewToClipMatrixPrev),
+        ml::float4(commonSettings.viewToClipMatrixPrev + 4),
+        ml::float4(commonSettings.viewToClipMatrixPrev + 8),
+        ml::float4(commonSettings.viewToClipMatrixPrev + 12)
     );
 
-    m_WorldToView = float4x4
+    m_WorldToView = ml::float4x4
     (
-        float4(commonSettings.worldToViewRotationMatrix),
-        float4(commonSettings.worldToViewRotationMatrix + 4),
-        float4(commonSettings.worldToViewRotationMatrix + 8),
-        float4(commonSettings.worldToViewRotationMatrix + 12)
+        ml::float4(commonSettings.worldToViewRotationMatrix),
+        ml::float4(commonSettings.worldToViewRotationMatrix + 4),
+        ml::float4(commonSettings.worldToViewRotationMatrix + 8),
+        ml::float4(commonSettings.worldToViewRotationMatrix + 12)
     );
 
-    m_WorldToViewPrev = float4x4
+    m_WorldToViewPrev = ml::float4x4
     (
-        float4(commonSettings.worldToViewRotationMatrixPrev),
-        float4(commonSettings.worldToViewRotationMatrixPrev + 4),
-        float4(commonSettings.worldToViewRotationMatrixPrev + 8),
-        float4(commonSettings.worldToViewRotationMatrixPrev + 12)
+        ml::float4(commonSettings.worldToViewRotationMatrixPrev),
+        ml::float4(commonSettings.worldToViewRotationMatrixPrev + 4),
+        ml::float4(commonSettings.worldToViewRotationMatrixPrev + 8),
+        ml::float4(commonSettings.worldToViewRotationMatrixPrev + 12)
     );
 
     // Convert main matrices to LHS ("viewZ" MUST BE used as "abs( viewZ )")
     uint32_t flags = 0;
     DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
-    if ( (flags & PROJ_LEFT_HANDED) == 0 )
+    if ( (flags & ml::PROJ_LEFT_HANDED) == 0 )
     {
-        m_ViewToClip.col2 = xmm_negate(m_ViewToClip.col2);
-        m_ViewToClipPrev.col2 = xmm_negate(m_ViewToClipPrev.col2);
+        m_ViewToClip.col2 = (-ml::float4(m_ViewToClip.col2)).xmm;
+        m_ViewToClipPrev.col2 = (-ml::float4(m_ViewToClipPrev.col2)).xmm;
     }
 
     bool isViewMatrixRightHanded = m_WorldToView.IsRightHanded();
     if (isViewMatrixRightHanded)
     {
         m_WorldToView.InvertOrtho();
-        m_WorldToView.col2 = xmm_negate(m_WorldToView.col2);
+        m_WorldToView.col2 = (-ml::float4(m_WorldToView.col2)).xmm;
         m_WorldToView.InvertOrtho();
 
         m_WorldToViewPrev.InvertOrtho();
-        m_WorldToViewPrev.col2 = xmm_negate(m_WorldToViewPrev.col2);
+        m_WorldToViewPrev.col2 = (-ml::float4(m_WorldToViewPrev.col2)).xmm;
         m_WorldToViewPrev.InvertOrtho();
     }
 
@@ -378,7 +379,7 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     m_ViewToWorldPrev = m_WorldToViewPrev;
     m_ViewToWorldPrev.InvertOrtho();
 
-    m_CameraDelta = float3(commonSettings.cameraMotion);
+    m_CameraDelta = ml::float3(commonSettings.cameraMotion);
 
     if( m_CommonSettings.frameIndex == 0 )
         m_CameraDeltaSmoothed = m_CameraDelta;
@@ -387,15 +388,15 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
         float l1 = Length(m_CameraDeltaSmoothed);
         float l2 = Length(m_CameraDelta);
 
-        float relativeDelta = Abs(l1 - l2) / (Min(l1, l2) + 1e-7f);
+        float relativeDelta = ml::Abs(l1 - l2) / (ml::Min(l1, l2) + 1e-7f);
         float f = relativeDelta / (1.0f + relativeDelta);
-        f = Max(f, 0.1f);
+        f = ml::Max(f, 0.1f);
 
-        m_CameraDeltaSmoothed = Lerp(m_CameraDeltaSmoothed, m_CameraDelta, float3(f));
+        m_CameraDeltaSmoothed = ml::Lerp(m_CameraDeltaSmoothed, m_CameraDelta, ml::float3(f));
     }
 
     // IMPORTANT: this part is mandatory needed to preserve precision by making matrices camera relative
-    m_ViewToWorld.SetTranslation( float3::Zero() );
+    m_ViewToWorld.SetTranslation( ml::float3::Zero() );
     m_WorldToView = m_ViewToWorld;
     m_WorldToView.InvertOrtho();
 
@@ -419,202 +420,215 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     m_ClipToWorld.Invert();
 
     float project[3];
-    float settings[PROJ_NUM];
-    DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
+    float settings[ml::PROJ_NUM];
+    ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
     m_ProjectY = project[1];
-    m_IsOrtho = (flags & PROJ_ORTHO) == 0 ? 0.0f : 1.0f;
+    m_IsOrtho = (flags & ml::PROJ_ORTHO) == 0 ? 0.0f : 1.0f;
 
-    DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
+    ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
 
-    float dx = Abs(m_CommonSettings.cameraJitter[0] - m_JitterPrev.x);
-    float dy = Abs(m_CommonSettings.cameraJitter[1] - m_JitterPrev.y);
-    m_JitterDelta = Max(dx, dy);
-    m_CheckerboardResolveAccumSpeed = Lerp(0.95f, 0.5f, m_JitterDelta);
+    float dx = ml::Abs(m_CommonSettings.cameraJitter[0] - m_JitterPrev.x);
+    float dy = ml::Abs(m_CommonSettings.cameraJitter[1] - m_JitterPrev.y);
+    m_JitterDelta = ml::Max(dx, dy);
+    m_CheckerboardResolveAccumSpeed = ml::Lerp(0.95f, 0.5f, m_JitterDelta);
 
     m_Timer.UpdateElapsedTimeSinceLastSave();
     m_Timer.SaveCurrentTime();
 
     m_TimeDelta = m_CommonSettings.timeDeltaBetweenFrames > 0.0f ? m_CommonSettings.timeDeltaBetweenFrames : m_Timer.GetSmoothedElapsedTime();
-    m_FrameRateScale = Clamp(33.333f / m_TimeDelta, 2.0f / 16.0f, 4.0f);
+    m_FrameRateScale = ml::Clamp(33.333f / m_TimeDelta, 2.0f / 16.0f, 4.0f);
 }
+
+// SHADERS =================================================================================
 
 #ifndef BYTE
     #define BYTE unsigned char
 #endif
 
+#ifdef NRD_USE_PRECOMPILED_SHADERS
+    // NRD
+    #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxbc.h"
+    #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.dxil.h"
+    #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float.cs.spirv.h"
+
+    #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.dxbc.h"
+    #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.dxil.h"
+    #include "../../_Build/Shaders/NRD_MipGeneration_Float4_Float4_Float.cs.spirv.h"
+
+
+    // REBLUR_DIFFUSE
+    #include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.spirv.h"
+
+
+    // REBLUR_SPECULAR
+    #include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.spirv.h"
+
+
+    // REBLUR_DIFFUSE_SPECULAR
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.dxbc.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.dxil.h"
+    #include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.spirv.h"
+
+
+    // SIGMA_SHADOW
+    #include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.spirv.h"
+
+    #include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.spirv.h"
+
+
+    // SIGMA_SHADOW_TRANSLUCENCY
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_PreBlur.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_PreBlur.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_PreBlur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_Blur.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_Blur.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_Blur.cs.spirv.h"
+
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_TemporalStabilization.cs.spirv.h"
+
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_SplitScreen.cs.dxbc.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_SplitScreen.cs.dxil.h"
+    #include "../../_Build/Shaders/SIGMA_ShadowTranslucency_SplitScreen.cs.spirv.h"
+
+
+    // RELAX_DIFFUSE_SPECULAR
+    #include "../../_Build/Shaders/RELAX_PackInputData.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_PackInputData.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_PackInputData.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_Reproject.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_Reproject.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_Reproject.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_HistoryClamping.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_HistoryClamping.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_HistoryClamping.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_Firefly.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_Firefly.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_Firefly.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_ATrousShmem.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_ATrousShmem.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_ATrousShmem.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_ATrousStandard.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_ATrousStandard.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_ATrousStandard.cs.spirv.h"
+
+    #include "../../_Build/Shaders/RELAX_SplitScreen.cs.dxbc.h"
+    #include "../../_Build/Shaders/RELAX_SplitScreen.cs.dxil.h"
+    #include "../../_Build/Shaders/RELAX_SplitScreen.cs.spirv.h"
+#endif
+
 // METHODS =================================================================================
 
-// REBLUR_DIFFUSE
-#include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_CopyViewZ.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_PreBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_HistoryFix.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_Blur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_TemporalStabilization.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_PostBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Diffuse_SplitScreen.cs.spirv.h"
-
 #include "Methods/Reblur_Diffuse.hpp"
-
-
-// REBLUR_SPECULAR
-#include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Specular_PreBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Specular_HistoryFix.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Specular_Blur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Specular_PostBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Specular_TemporalStabilization.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_Specular_SplitScreen.cs.spirv.h"
-
 #include "Methods/Reblur_Specular.hpp"
-
-
-// REBLUR_DIFFUSE_SPECULAR
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PreBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_Blur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.dxbc.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.dxil.h"
-#include "../../_Build/Shaders/REBLUR_DiffuseSpecular_SplitScreen.cs.spirv.h"
-
 #include "Methods/Reblur_DiffuseSpecular.hpp"
-
-
-// SIGMA_SHADOW
-#include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.dxil.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_PreBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.dxbc.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.dxil.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_Blur.cs.spirv.h"
-
-#include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxbc.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.dxil.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_TemporalStabilization.cs.spirv.h"
-
-#include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.dxbc.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.dxil.h"
-#include "../../_Build/Shaders/SIGMA_Shadow_SplitScreen.cs.spirv.h"
-
 #include "Methods/Sigma_Shadow.hpp"
-
-
-// SIGMA_TRANSLUCENT_SHADOW
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_PreBlur.cs.dxbc.h"
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_PreBlur.cs.dxil.h"
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_PreBlur.cs.spirv.h"
-
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_Blur.cs.dxbc.h"
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_Blur.cs.dxil.h"
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_Blur.cs.spirv.h"
-
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_TemporalStabilization.cs.dxbc.h"
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_TemporalStabilization.cs.dxil.h"
-#include "../../_Build/Shaders/SIGMA_TranslucentShadow_TemporalStabilization.cs.spirv.h"
-
-#include "Methods/Sigma_TranslucentShadow.hpp"
-
-
-// RELAX_DIFFUSE_SPECULAR
-#include "../../_Build/Shaders/RELAX_PackInputData.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_PackInputData.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_PackInputData.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_Reproject.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_Reproject.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_Reproject.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_DisocclusionFix.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_HistoryClamping.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_HistoryClamping.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_HistoryClamping.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_Firefly.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_Firefly.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_Firefly.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_SpatialVarianceEstimation.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_ATrousShmem.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_ATrousShmem.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_ATrousShmem.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_ATrousStandard.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_ATrousStandard.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_ATrousStandard.cs.spirv.h"
-
-#include "../../_Build/Shaders/RELAX_SplitScreen.cs.dxbc.h"
-#include "../../_Build/Shaders/RELAX_SplitScreen.cs.dxil.h"
-#include "../../_Build/Shaders/RELAX_SplitScreen.cs.spirv.h"
-
+#include "Methods/Sigma_ShadowTranslucency.hpp"
 #include "Methods/Relax_DiffuseSpecular.hpp"

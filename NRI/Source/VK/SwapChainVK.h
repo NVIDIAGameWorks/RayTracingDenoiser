@@ -22,7 +22,6 @@ namespace nri
         ~SwapChainVK();
 
         DeviceVK& GetDevice() const;
-
         Result Create(const SwapChainDesc& swapChainDesc);
 
         void SetDebugName(const char* name);

@@ -11,8 +11,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #include "Timer/Timer.h"
-
-#define NDC_DONT_CARE
 #include "MathLib/MathLib.h"
 
 struct CameraDesc
@@ -30,18 +28,18 @@ struct CameraDesc
     bool isProjectionReversed = false;
     bool isLeftHanded = true;
     bool isCustomMatrixSet = false;
-    float4x4 customMatrix = float4x4::identity;
+    float4x4 customMatrix = float4x4::Identity();
 };
 
 struct CameraState
 {
     double3 globalPosition = {};
-    float4x4 mViewToClip = float4x4::identity;
-    float4x4 mClipToView = float4x4::identity;
-    float4x4 mWorldToView = float4x4::identity;
-    float4x4 mViewToWorld = float4x4::identity;
-    float4x4 mWorldToClip = float4x4::identity;
-    float4x4 mClipToWorld = float4x4::identity;
+    float4x4 mViewToClip = float4x4::Identity();
+    float4x4 mClipToView = float4x4::Identity();
+    float4x4 mWorldToView = float4x4::Identity();
+    float4x4 mViewToWorld = float4x4::Identity();
+    float4x4 mWorldToClip = float4x4::Identity();
+    float4x4 mClipToWorld = float4x4::Identity();
     float4 frustum = {};
     float3 position = {};
     float3 rotation = {};

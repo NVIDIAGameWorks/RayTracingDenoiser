@@ -259,7 +259,7 @@ Result DescriptorVK::Create(const VkAccelerationStructureNV* accelerationStructu
     return Result::SUCCESS;
 }
 
-void DescriptorVK::SetDebugName(const char* name)
+inline void DescriptorVK::SetDebugName(const char* name)
 {
     switch (m_Type)
     {
@@ -277,12 +277,12 @@ void DescriptorVK::SetDebugName(const char* name)
     }
 }
 
-VkBufferView DescriptorVK::GetBufferDescriptorVK(uint32_t physicalDeviceIndex) const
+inline VkBufferView DescriptorVK::GetBufferDescriptorVK(uint32_t physicalDeviceIndex) const
 {
     return m_BufferViews[physicalDeviceIndex];
 }
 
-VkImageView DescriptorVK::GetTextureDescriptorVK(uint32_t physicalDeviceIndex, VkImageSubresourceRange& subresourceRange) const
+inline VkImageView DescriptorVK::GetTextureDescriptorVK(uint32_t physicalDeviceIndex, VkImageSubresourceRange& subresourceRange) const
 {
     GetImageSubresourceRange(subresourceRange);
     return m_ImageViews[physicalDeviceIndex];

@@ -54,7 +54,7 @@ void Preload( int2 sharedId, int2 globalId )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
@@ -181,6 +181,12 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     occlusion2.y *= frontFacing.z;
     occlusion3.x *= frontFacing.w;
 
+    float4 occlusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
+
+    // For CatRom
+    float4 occlusionSum = occlusion0 + occlusion1 + occlusion2 + occlusion3;
+    float occlusionAvg = dot( occlusionSum, 1.0 / 16.0 );
+
     // Sample diffuse history
     float2 catmullRomFilterAtPrevPosOrigin = ( catmullRomFilterAtPrevPos.origin + 0.5 ) * gInvScreenSize;
     float4 d10 = gIn_History_Diff.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 1, 0 ) );
@@ -196,11 +202,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 d13 = gIn_History_Diff.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 1, 3 ) );
     float4 d23 = gIn_History_Diff.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 2, 3 ) );
 
-    float4 diffOcclusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
-    float4 diffWeights = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevPos, diffOcclusion2x2 );
+    float4 diffWeights = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevPos, occlusion2x2 );
     float4 diffHistory = STL::Filtering::ApplyBilinearCustomWeights( d11, d21, d12, d22, diffWeights );
     float4 diffHistoryCatRom = STL::Filtering::ApplyCatmullRomFilterNoCorners( catmullRomFilterAtPrevPos, d10, d20, d01, d11, d21, d31, d02, d12, d22, d32, d13, d23 );
-    diffHistory = MixLinearAndCatmullRom( diffHistory, diffHistoryCatRom, occlusion0, occlusion1, occlusion2, occlusion3 );
+    diffHistory = MixLinearAndCatmullRom( diffHistory, diffHistoryCatRom, occlusionAvg );
 
     // Accumulation speeds
     float diffMaxAccumSpeed = GetAccumSpeed( diffPrevAccumSpeeds, diffWeights, gDiffMaxAccumulatedFrameNum );

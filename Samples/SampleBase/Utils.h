@@ -11,8 +11,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #include "Detex/detex.h"
-
-#define NDC_DONT_CARE
 #include "MathLib/MathLib.h"
 
 #include "NRIDescs.h"
@@ -205,7 +203,7 @@ namespace utils
         std::vector<float> positionKeys;
         std::vector<float> rotationKeys;
         std::vector<float> scaleKeys;
-        float4x4 mTransform = float4x4::identity;
+        float4x4 mTransform = float4x4::Identity();
 
         void Animate(float time);
     };
@@ -214,7 +212,7 @@ namespace utils
     {
         std::vector<NodeTree> mChildren;
         std::vector<uint32_t> mInstances;
-        float4x4 mTransform = float4x4::identity;
+        float4x4 mTransform = float4x4::Identity();
         uint64_t mHash = 0;
         int32_t animationNodeID = -1;
 
@@ -257,7 +255,7 @@ namespace utils
         std::vector<Vertex> vertices;
         std::vector<Index> indices;
         std::vector<Animation> animations;
-        float4x4 mSceneToWorld = float4x4::identity;
+        float4x4 mSceneToWorld = float4x4::Identity();
         cBoxf aabb;
 
         void Animate(float animationSpeed, float elapsedTime, float& animationProgress, uint32_t animationID, float4x4* outCameraTransform = nullptr);

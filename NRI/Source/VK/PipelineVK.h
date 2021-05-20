@@ -22,9 +22,7 @@ namespace nri
 
         operator VkPipeline() const;
         DeviceVK& GetDevice() const;
-
         VkPipelineBindPoint GetBindPoint() const;
-  
         Result Create(const GraphicsPipelineDesc& graphicsPipelineDesc);
         Result Create(const ComputePipelineDesc& computePipelineDesc);
         Result Create(const RayTracingPipelineDesc& rayTracingPipelineDesc);

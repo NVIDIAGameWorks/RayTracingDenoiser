@@ -50,6 +50,7 @@ namespace nri
         void BeginQuery(const QueryPool& queryPool, uint32_t offset);
         void EndQuery(const QueryPool& queryPool, uint32_t offset);
         void CopyQueries(const QueryPool& queryPool, uint32_t offset, uint32_t num, Buffer& dstBuffer, uint64_t dstOffset);
+        void ResetQueries(const QueryPool& queryPool, uint32_t offset, uint32_t num);
         void BeginAnnotation(const char* name);
         void EndAnnotation();
         void Destroy();
@@ -72,12 +73,46 @@ namespace nri
         ID3D11DeviceContext* GetCommandBufferD3D11() const;
         ID3D12GraphicsCommandList* GetCommandBufferD3D12() const;
         VkCommandBuffer GetCommandBufferVK() const;
+        const Vector<uint8_t>& GetValidationCommands() const;
 
     private:
+        template<typename Command>
+        Command& AllocateValidationCommand();
+
+        Vector<uint8_t> m_ValidationCommands;
         bool m_IsRecordingStarted = false;
         const FrameBuffer* m_FrameBuffer = nullptr;
         int32_t m_AnnotationStack = 0;
         const RayTracingInterface& m_RayTracingAPI;
         const MeshShaderInterface& m_MeshShaderAPI;
+    };
+
+    inline const Vector<uint8_t>& CommandBufferVal::GetValidationCommands() const
+    {
+        return m_ValidationCommands;
+    }
+
+    enum class ValidationCommandType : uint32_t
+    {
+        NONE,
+        BEGIN_QUERY,
+        END_QUERY,
+        RESET_QUERY,
+        MAX_NUM
+    };
+
+    struct ValidationCommandUseQuery
+    {
+        ValidationCommandType type;
+        QueryPool* queryPool;
+        uint32_t queryPoolOffset;
+    };
+
+    struct ValidationCommandResetQuery
+    {
+        ValidationCommandType type;
+        QueryPool* queryPool;
+        uint32_t queryPoolOffset;
+        uint32_t queryNum;
     };
 }

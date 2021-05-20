@@ -60,7 +60,7 @@ void Preload( int2 sharedId, int2 globalId )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
@@ -203,7 +203,11 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     occlusion2.y *= frontFacing.z;
     occlusion3.x *= frontFacing.w;
 
-    float4 diffOcclusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
+    float4 occlusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
+
+    // For CatRom
+    float4 occlusionSum = occlusion0 + occlusion1 + occlusion2 + occlusion3;
+    float occlusionAvg = dot( occlusionSum, 1.0 / 16.0 );
 
     // Sample specular history ( surface motion )
     // Averaging of values with different compression can be dangerous, especially in case of CatRom with negative lobes
@@ -221,11 +225,10 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     float4 s13 = gIn_History_Spec.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 1, 3 ) );
     float4 s23 = gIn_History_Spec.SampleLevel( gNearestClamp, catmullRomFilterAtPrevPosOrigin, 0, int2( 2, 3 ) );
 
-    float4 specOcclusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
-    float4 specWeights = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevPos, specOcclusion2x2 );
+    float4 specWeights = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevPos, occlusion2x2 );
     float4 specHistorySurface = STL::Filtering::ApplyBilinearCustomWeights( s11, s21, s12, s22, specWeights );
     float4 specHistorySurfaceCatRom = STL::Filtering::ApplyCatmullRomFilterNoCorners( catmullRomFilterAtPrevPos, s10, s20, s01, s11, s21, s31, s02, s12, s22, s32, s13, s23 );
-    specHistorySurface = MixLinearAndCatmullRom( specHistorySurface, specHistorySurfaceCatRom, occlusion0, occlusion1, occlusion2, occlusion3 );
+    specHistorySurface = MixLinearAndCatmullRom( specHistorySurface, specHistorySurfaceCatRom, occlusionAvg );
 
     // Accumulation speeds
     float specMaxAccumSpeed = GetAccumSpeed( specPrevAccumSpeeds, specWeights, gSpecMaxAccumulatedFrameNum );
@@ -372,10 +375,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     currentVirtual.w = lerp( specHistoryVirtual.w, spec.w, max( accumSpeedVirtualNonLinear, REBLUR_HIT_DIST_MIN_ACCUM_SPEED( roughnessModified ) ) );
 
     // Final composition
-    float4 specResult;
-    specResult.xyz = lerp( currentSurface.xyz, currentVirtual.xyz, virtualHistoryAmount );
-    specResult.w = lerp( currentSurface.w, currentVirtual.w, virtualHistoryAmount * hitDistToSurfaceRatio );
-
+    float4 specResult = InterpolateSurfaceAndVirtualMotion( currentSurface, currentVirtual, virtualHistoryAmount, hitDistToSurfaceRatio, parallax );
     float specAccumSpeed = InterpolateAccumSpeeds( accumSpeedSurface, accumSpeedVirtual, virtualHistoryAmount );
 
     // Output
@@ -387,9 +387,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
     gOut_Spec[ pixelPos ] = specResult;
 
     // Error
-    float4 specHistory;
-    specHistory.xyz = lerp( specHistorySurface.xyz, specHistoryVirtual.xyz, virtualHistoryAmount );
-    specHistory.w = lerp( specHistorySurface.w, specHistoryVirtual.w, virtualHistoryAmount * hitDistToSurfaceRatio );
+    float4 specHistory = InterpolateSurfaceAndVirtualMotion( specHistorySurface, specHistoryVirtual, virtualHistoryAmount, hitDistToSurfaceRatio, parallax );
 
     float bestAccumulatedFrameNum = GetSpecAccumulatedFrameNum( roughnessModified, 1.0 );
     float boost = saturate( 1.0 - ( specAccumSpeed + 0.1 ) / ( min( bestAccumulatedFrameNum, gSpecMaxAccumulatedFrameNum ) + 0.1 ) );
@@ -413,8 +411,8 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
         // History fix (previous state)
         float specMinAccumSpeedFast = ( REBLUR_FRAME_NUM_WITH_HISTORY_FIX - 1 ) * STL::Math::Sqrt01( roughness );
-        specHistorySurfaceFast = lerp( specHistorySurface, specHistorySurfaceFast, specAccumSpeed > specMinAccumSpeedFast );
-        specHistoryVirtualFast = lerp( specHistoryVirtual, specHistoryVirtualFast, specAccumSpeed > specMinAccumSpeedFast );
+        specHistorySurfaceFast = lerp( specHistorySurface, specHistorySurfaceFast, accumSpeedSurface > specMinAccumSpeedFast );
+        specHistoryVirtualFast = lerp( specHistoryVirtual, specHistoryVirtualFast, accumSpeedVirtual > specMinAccumSpeedFast );
 
         float maxFastAccumSpeedRoughnessAdjusted = gSpecMaxFastAccumulatedFrameNum * STL::Math::Sqrt01( roughnessModified );
         float accumSpeedSurfaceNonLinearFast = 1.0 / ( min( accumSpeedSurface, maxFastAccumSpeedRoughnessAdjusted ) + 1.0 );
@@ -428,9 +426,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
         currentVirtualFast.xyz = lerp( specHistoryVirtualFast.xyz, spec.xyz, accumSpeedVirtualNonLinearFast );
         currentVirtualFast.w = lerp( specHistoryVirtualFast.w, spec.w, max( accumSpeedVirtualNonLinearFast, 2.0 * REBLUR_HIT_DIST_MIN_ACCUM_SPEED( roughnessModified ) ) );
 
-        float4 specResultFast;
-        specResultFast.xyz = lerp( currentSurfaceFast.xyz, currentVirtualFast.xyz, virtualHistoryAmount );
-        specResultFast.w = lerp( currentSurfaceFast.w, currentVirtualFast.w, virtualHistoryAmount * hitDistToSurfaceRatio );
+        float4 specResultFast = InterpolateSurfaceAndVirtualMotion( currentSurfaceFast, currentVirtualFast, virtualHistoryAmount, hitDistToSurfaceRatio, parallax );
 
         gOut_Fast_Spec[ pixelPos ] = specResultFast;
     #endif

@@ -95,12 +95,12 @@ Result AccelerationStructureVK::RetrieveNativeHandle()
     return Result::SUCCESS;
 }
 
-void AccelerationStructureVK::SetDebugName(const char* name)
+inline void AccelerationStructureVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV, (void**)m_Handles.data(), name);
 }
 
-void AccelerationStructureVK::GetMemoryInfo(MemoryDesc& memoryDesc) const
+inline void AccelerationStructureVK::GetMemoryInfo(MemoryDesc& memoryDesc) const
 {
     VkMemoryRequirements2 requirements = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
     GetMemoryInfo(VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV, requirements);
@@ -116,7 +116,7 @@ void AccelerationStructureVK::GetMemoryInfo(MemoryDesc& memoryDesc) const
     memoryDesc.type = unpack.type;
 }
 
-uint64_t AccelerationStructureVK::GetUpdateScratchBufferSize() const
+inline uint64_t AccelerationStructureVK::GetUpdateScratchBufferSize() const
 {
     VkMemoryRequirements2 requirements = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
     GetMemoryInfo(VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_NV, requirements);
@@ -124,7 +124,7 @@ uint64_t AccelerationStructureVK::GetUpdateScratchBufferSize() const
     return requirements.memoryRequirements.size;
 }
 
-uint64_t AccelerationStructureVK::GetBuildScratchBufferSize() const
+inline uint64_t AccelerationStructureVK::GetBuildScratchBufferSize() const
 {
     VkMemoryRequirements2 requirements = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
     GetMemoryInfo(VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV, requirements);
@@ -132,7 +132,7 @@ uint64_t AccelerationStructureVK::GetBuildScratchBufferSize() const
     return requirements.memoryRequirements.size;
 }
 
-void AccelerationStructureVK::GetMemoryInfo(VkAccelerationStructureMemoryRequirementsTypeNV type, VkMemoryRequirements2& requirements) const
+inline void AccelerationStructureVK::GetMemoryInfo(VkAccelerationStructureMemoryRequirementsTypeNV type, VkMemoryRequirements2& requirements) const
 {
     VkAccelerationStructureNV handle = VK_NULL_HANDLE;
     for (uint32_t i = 0; i < m_Device.GetPhyiscalDeviceGroupSize() && handle == VK_NULL_HANDLE; i++)
@@ -147,7 +147,7 @@ void AccelerationStructureVK::GetMemoryInfo(VkAccelerationStructureMemoryRequire
     vk.GetAccelerationStructureMemoryRequirementsNV(m_Device, &info, &requirements);
 }
 
-Result AccelerationStructureVK::CreateDescriptor(uint32_t physicalDeviceMask, Descriptor*& descriptor) const
+inline Result AccelerationStructureVK::CreateDescriptor(uint32_t physicalDeviceMask, Descriptor*& descriptor) const
 {
     DescriptorVK& descriptorImpl = *Allocate<DescriptorVK>(m_Device.GetStdAllocator(), m_Device);
     descriptorImpl.Create(m_Handles.data(), physicalDeviceMask);

@@ -77,7 +77,7 @@ namespace nrd
     };
 
     // Optional specular lobe trimming = A * smoothstep( B, C, roughness )
-    // Recommended settings if lobe trimming is used = { 0.85f, 0.04f, 0.11f }
+    // Recommended settings if lobe trimming is needed = { 0.85f, 0.04f, 0.11f }
     struct LobeTrimmingParameters
     {
         float A = 1.0f;
@@ -98,7 +98,7 @@ namespace nrd
         float thresholdMax = 0.15f;             // max > min, usually 2-4x times greater than min
         float sigmaScale = 2.0f;                // plain "delta" is reduced by local variance multiplied by this value (2 - is a good start, 0.5-1.5 - can be used in many cases)
         float sensitivityToDarkness = 0.75f;    // the only value which is a real intensity!
-        bool enable = true;
+        bool enable = false;                    // ideally, must be enabled, but since "sensitivityToDarkness" requires fine tuning from the app side it is disabled by default
     };
 
     struct AntilagHitDistanceSettings
@@ -161,7 +161,7 @@ namespace nrd
         ReblurSpecularSettings specularSettings;
     };
 
-    // SIGMA_SHADOW and SIGMA_TRANSLUCENT_SHADOW
+    // SIGMA_SHADOW and SIGMA_SHADOW_TRANSLUCENCY
 
     struct SigmaShadowSettings
     {
@@ -182,6 +182,7 @@ namespace nrd
         uint32_t diffuseMaxFastAccumulatedFrameNum = 8;             // [0; RELAX_MAX_HISTORY_FRAME_NUM]
         float specularVarianceBoost = 1.0f;                         // how much variance we inject to specular if reprojection confidence is low
         bool specularVirtualHistoryClamping = true;                 // clamp specular virtual history to the current frame neighborhood
+        bool roughnessBasedSpecularAccumulation = true;             // limit specular accumulation based on roughness
 
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;        // normal edge stopper for cross-bilateral sparse filter
         float disocclusionFixMaxRadius = 14.0f;                     // maximum radius for sparse bilateral filter, expressed in pixels
@@ -202,6 +203,7 @@ namespace nrd
         float phiDepth = 0.05f;                                     // A-trous edge stopping depth sensitivity
         float specularLobeAngleFraction = 0.333f;                   // base fraction of the specular lobe angle used in normal based rejection of specular during A-Trous passes; 0.333 works well perceptually
         float specularLobeAngleSlack = 1.0f;                        // slack (in degrees) for the specular lobe angle used in normal based rejection of specular during A-Trous passes
+        bool roughnessEdgeStoppingEnabled = true;                   // roughness based rejection
         float roughnessEdgeStoppingRelaxation = 0.3f;               // how much we relax roughness based rejection in areas where specular reprojection is low
         float normalEdgeStoppingRelaxation = 0.3f;                  // how much we relax normal based rejection in areas where specular reprojection is low
         float luminanceEdgeStoppingRelaxation = 1.0f;               // how much we relax luminance based rejection in areas where specular reprojection is low

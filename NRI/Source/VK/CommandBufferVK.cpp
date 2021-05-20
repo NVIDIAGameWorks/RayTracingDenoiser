@@ -63,12 +63,12 @@ Result CommandBufferVK::Create(const CommandBufferVulkanDesc& commandBufferDesc)
     return Result::SUCCESS;
 }
 
-void CommandBufferVK::SetDebugName(const char* name)
+inline void CommandBufferVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_COMMAND_BUFFER, m_Handle, name);
 }
 
-Result CommandBufferVK::Begin(const DescriptorPool* descriptorPool, uint32_t physicalDeviceIndex)
+inline Result CommandBufferVK::Begin(const DescriptorPool* descriptorPool, uint32_t physicalDeviceIndex)
 {
     m_PhysicalDeviceIndex = physicalDeviceIndex;
 
@@ -108,7 +108,7 @@ Result CommandBufferVK::Begin(const DescriptorPool* descriptorPool, uint32_t phy
     return Result::SUCCESS;
 }
 
-Result CommandBufferVK::End()
+inline Result CommandBufferVK::End()
 {
     const VkResult result = m_VK.EndCommandBuffer(m_Handle);
 
@@ -118,7 +118,7 @@ Result CommandBufferVK::End()
     return Result::SUCCESS;
 }
 
-void CommandBufferVK::SetViewports(const Viewport* viewports, uint32_t viewportNum)
+inline void CommandBufferVK::SetViewports(const Viewport* viewports, uint32_t viewportNum)
 {
     VkViewport* flippedViewports = STACK_ALLOC(VkViewport, viewportNum);
 
@@ -134,22 +134,22 @@ void CommandBufferVK::SetViewports(const Viewport* viewports, uint32_t viewportN
     m_VK.CmdSetViewport(m_Handle, 0, viewportNum, flippedViewports);
 }
 
-void CommandBufferVK::SetScissors(const Rect* rects, uint32_t rectNum)
+inline void CommandBufferVK::SetScissors(const Rect* rects, uint32_t rectNum)
 {
     m_VK.CmdSetScissor(m_Handle, 0, rectNum, (const VkRect2D*)rects);
 }
 
-void CommandBufferVK::SetDepthBounds(float boundsMin, float boundsMax)
+inline void CommandBufferVK::SetDepthBounds(float boundsMin, float boundsMax)
 {
     m_VK.CmdSetDepthBounds(m_Handle, boundsMin, boundsMax);
 }
 
-void CommandBufferVK::SetStencilReference(uint8_t reference)
+inline void CommandBufferVK::SetStencilReference(uint8_t reference)
 {
     m_VK.CmdSetStencilReference(m_Handle, VK_STENCIL_FRONT_AND_BACK, reference);
 }
 
-void CommandBufferVK::SetSamplePositions(const SamplePosition* positions, uint32_t positionNum)
+inline void CommandBufferVK::SetSamplePositions(const SamplePosition* positions, uint32_t positionNum)
 {
     RETURN_ON_FAILURE(m_Device.GetLog(), false, ReturnVoid(),
         "CommandBufferVK::SetSamplePositions() is not implemented.");
@@ -157,7 +157,7 @@ void CommandBufferVK::SetSamplePositions(const SamplePosition* positions, uint32
     // TODO: not implemented
 }
 
-void CommandBufferVK::ClearAttachments(const ClearDesc* clearDescs, uint32_t clearDescNum, const Rect* rects, uint32_t rectNum)
+inline void CommandBufferVK::ClearAttachments(const ClearDesc* clearDescs, uint32_t clearDescNum, const Rect* rects, uint32_t rectNum)
 {
     VkClearAttachment* attachments = STACK_ALLOC(VkClearAttachment, clearDescNum);
 
@@ -219,13 +219,13 @@ void CommandBufferVK::ClearAttachments(const ClearDesc* clearDescs, uint32_t cle
     m_VK.CmdClearAttachments(m_Handle, clearDescNum, attachments, rectNum, clearRects);
 }
 
-void CommandBufferVK::ClearStorageBuffer(const ClearStorageBufferDesc& clearDesc)
+inline void CommandBufferVK::ClearStorageBuffer(const ClearStorageBufferDesc& clearDesc)
 {
     const DescriptorVK& descriptor = *(const DescriptorVK*)clearDesc.storageBuffer;
     m_VK.CmdFillBuffer(m_Handle, descriptor.GetBuffer(m_PhysicalDeviceIndex), 0, VK_WHOLE_SIZE, clearDesc.value);
 }
 
-void CommandBufferVK::ClearStorageTexture(const ClearStorageTextureDesc& clearDesc)
+inline void CommandBufferVK::ClearStorageTexture(const ClearStorageTextureDesc& clearDesc)
 {
     const DescriptorVK& descriptor = *(const DescriptorVK*)clearDesc.storageTexture;
     const VkClearColorValue* value = (const VkClearColorValue*)&clearDesc.value;
@@ -236,7 +236,7 @@ void CommandBufferVK::ClearStorageTexture(const ClearStorageTextureDesc& clearDe
     m_VK.CmdClearColorImage(m_Handle, descriptor.GetImage(m_PhysicalDeviceIndex), VK_IMAGE_LAYOUT_GENERAL, value, 1, &range);
 }
 
-void CommandBufferVK::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
+inline void CommandBufferVK::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPassBeginFlag renderPassBeginFlag)
 {
     const FrameBufferVK& frameBufferImpl = (const FrameBufferVK&)frameBuffer;
 
@@ -259,12 +259,12 @@ void CommandBufferVK::BeginRenderPass(const FrameBuffer& frameBuffer, RenderPass
     m_CurrentFrameBuffer = &frameBufferImpl;
 }
 
-void CommandBufferVK::EndRenderPass()
+inline void CommandBufferVK::EndRenderPass()
 {
     m_VK.CmdEndRenderPass(m_Handle);
 }
 
-void CommandBufferVK::SetVertexBuffers(uint32_t baseSlot, uint32_t bufferNum, const Buffer* const* buffers, const uint64_t* offsets)
+inline void CommandBufferVK::SetVertexBuffers(uint32_t baseSlot, uint32_t bufferNum, const Buffer* const* buffers, const uint64_t* offsets)
 {
     VkBuffer* bufferHandles = STACK_ALLOC(VkBuffer, bufferNum);
 
@@ -274,13 +274,13 @@ void CommandBufferVK::SetVertexBuffers(uint32_t baseSlot, uint32_t bufferNum, co
     m_VK.CmdBindVertexBuffers(m_Handle, baseSlot, bufferNum, bufferHandles, offsets);
 }
 
-void CommandBufferVK::SetIndexBuffer(const Buffer& buffer, uint64_t offset, IndexType indexType)
+inline void CommandBufferVK::SetIndexBuffer(const Buffer& buffer, uint64_t offset, IndexType indexType)
 {
     const VkBuffer bufferHandle = GetVulkanHandle<VkBuffer, BufferVK>(&buffer, m_PhysicalDeviceIndex);
     m_VK.CmdBindIndexBuffer(m_Handle, bufferHandle, offset, GetIndexType(indexType));
 }
 
-void CommandBufferVK::SetPipelineLayout(const PipelineLayout& pipelineLayout)
+inline void CommandBufferVK::SetPipelineLayout(const PipelineLayout& pipelineLayout)
 {
     const PipelineLayoutVK& pipelineLayoutVK = (const PipelineLayoutVK&)pipelineLayout;
 
@@ -289,7 +289,7 @@ void CommandBufferVK::SetPipelineLayout(const PipelineLayout& pipelineLayout)
     m_CurrentPipelineBindPoint = pipelineLayoutVK.GetPipelineBindPoint();
 }
 
-void CommandBufferVK::SetPipeline(const Pipeline& pipeline)
+inline void CommandBufferVK::SetPipeline(const Pipeline& pipeline)
 {
     if (m_CurrentPipeline == (PipelineVK*)&pipeline)
         return;
@@ -300,11 +300,11 @@ void CommandBufferVK::SetPipeline(const Pipeline& pipeline)
     m_CurrentPipeline = &pipelineImpl;
 }
 
-void CommandBufferVK::SetDescriptorPool(const DescriptorPool& descriptorPool)
+inline void CommandBufferVK::SetDescriptorPool(const DescriptorPool& descriptorPool)
 {
 }
 
-void CommandBufferVK::SetDescriptorSets(uint32_t baseIndex, uint32_t setNum, const DescriptorSet* const* descriptorSets, const uint32_t* offsets)
+inline void CommandBufferVK::SetDescriptorSets(uint32_t baseIndex, uint32_t setNum, const DescriptorSet* const* descriptorSets, const uint32_t* offsets)
 {
     VkDescriptorSet* sets = STACK_ALLOC(VkDescriptorSet, setNum);
     uint32_t dynamicOffsetNum = 0;
@@ -328,7 +328,7 @@ void CommandBufferVK::SetDescriptorSets(uint32_t baseIndex, uint32_t setNum, con
         offsets);
 }
 
-void CommandBufferVK::SetConstants(uint32_t pushConstantIndex, const void* data, uint32_t size)
+inline void CommandBufferVK::SetConstants(uint32_t pushConstantIndex, const void* data, uint32_t size)
 {
     const auto& bindingInfo = m_CurrentPipelineLayout->GetRuntimeBindingInfo();
     const PushConstantRangeBindingDesc& desc = bindingInfo.pushConstantBindings[pushConstantIndex];
@@ -336,29 +336,29 @@ void CommandBufferVK::SetConstants(uint32_t pushConstantIndex, const void* data,
     m_VK.CmdPushConstants(m_Handle, m_CurrentPipelineLayoutHandle, desc.flags, desc.offset, size, data);
 }
 
-void CommandBufferVK::Draw(uint32_t vertexNum, uint32_t instanceNum, uint32_t baseVertex, uint32_t baseInstance)
+inline void CommandBufferVK::Draw(uint32_t vertexNum, uint32_t instanceNum, uint32_t baseVertex, uint32_t baseInstance)
 {
     m_VK.CmdDraw(m_Handle, vertexNum, instanceNum, baseVertex, baseInstance);
 }
 
-void CommandBufferVK::DrawIndexed(uint32_t indexNum, uint32_t instanceNum, uint32_t baseIndex, uint32_t baseVertex, uint32_t baseInstance)
+inline void CommandBufferVK::DrawIndexed(uint32_t indexNum, uint32_t instanceNum, uint32_t baseIndex, uint32_t baseVertex, uint32_t baseInstance)
 {
     m_VK.CmdDrawIndexed(m_Handle, indexNum, instanceNum, baseIndex, baseVertex, baseInstance);
 }
 
-void CommandBufferVK::DrawIndirect(const Buffer& buffer, uint64_t offset, uint32_t drawNum, uint32_t stride)
+inline void CommandBufferVK::DrawIndirect(const Buffer& buffer, uint64_t offset, uint32_t drawNum, uint32_t stride)
 {
     const VkBuffer bufferHandle = GetVulkanHandle<VkBuffer, BufferVK>(&buffer, m_PhysicalDeviceIndex);
     m_VK.CmdDrawIndirect(m_Handle, bufferHandle, offset, drawNum, (uint32_t)stride);
 }
 
-void CommandBufferVK::DrawIndexedIndirect(const Buffer& buffer, uint64_t offset, uint32_t drawNum, uint32_t stride)
+inline void CommandBufferVK::DrawIndexedIndirect(const Buffer& buffer, uint64_t offset, uint32_t drawNum, uint32_t stride)
 {
     const VkBuffer bufferHandle = GetVulkanHandle<VkBuffer, BufferVK>(&buffer, m_PhysicalDeviceIndex);
     m_VK.CmdDrawIndexedIndirect(m_Handle, bufferHandle, offset, drawNum, (uint32_t)stride);
 }
 
-void CommandBufferVK::CopyBuffer(Buffer& dstBuffer, uint32_t dstPhysicalDeviceIndex, uint64_t dstOffset, const Buffer& srcBuffer,
+inline void CommandBufferVK::CopyBuffer(Buffer& dstBuffer, uint32_t dstPhysicalDeviceIndex, uint64_t dstOffset, const Buffer& srcBuffer,
     uint32_t srcPhysicalDeviceIndex, uint64_t srcOffset, uint64_t size)
 {
     const BufferVK& srcBufferImpl = (const BufferVK&)srcBuffer;
@@ -373,7 +373,7 @@ void CommandBufferVK::CopyBuffer(Buffer& dstBuffer, uint32_t dstPhysicalDeviceIn
     m_VK.CmdCopyBuffer(m_Handle, srcBufferImpl.GetHandle(srcPhysicalDeviceIndex), dstBufferImpl.GetHandle(dstPhysicalDeviceIndex), 1, &region);
 }
 
-void CommandBufferVK::CopyTexture(Texture& dstTexture, uint32_t dstPhysicalDeviceIndex, const TextureRegionDesc* dstRegionDesc,
+inline void CommandBufferVK::CopyTexture(Texture& dstTexture, uint32_t dstPhysicalDeviceIndex, const TextureRegionDesc* dstRegionDesc,
     const Texture& srcTexture, uint32_t srcPhysicalDeviceIndex, const TextureRegionDesc* srcRegionDesc)
 {
     const TextureVK& srcTextureImpl = (const TextureVK&)srcTexture;
@@ -452,7 +452,7 @@ void CommandBufferVK::CopyTexture(Texture& dstTexture, uint32_t dstPhysicalDevic
         dstTextureImpl.GetHandle(srcPhysicalDeviceIndex), VK_IMAGE_LAYOUT_GENERAL, 1, &region);
 }
 
-void CommandBufferVK::UploadBufferToTexture(Texture& dstTexture, const TextureRegionDesc& dstRegionDesc, const Buffer& srcBuffer, const TextureDataLayoutDesc& srcDataLayoutDesc)
+inline void CommandBufferVK::UploadBufferToTexture(Texture& dstTexture, const TextureRegionDesc& dstRegionDesc, const Buffer& srcBuffer, const TextureDataLayoutDesc& srcDataLayoutDesc)
 {
     const BufferVK& srcBufferImpl = (const BufferVK&)srcBuffer;
     const TextureVK& dstTextureImpl = (const TextureVK&)dstTexture;
@@ -488,7 +488,7 @@ void CommandBufferVK::UploadBufferToTexture(Texture& dstTexture, const TextureRe
     m_VK.CmdCopyBufferToImage(m_Handle, srcBufferImpl.GetHandle(0), dstTextureImpl.GetHandle(m_PhysicalDeviceIndex), VK_IMAGE_LAYOUT_GENERAL, 1, &region);
 }
 
-void CommandBufferVK::ReadbackTextureToBuffer(Buffer& dstBuffer, TextureDataLayoutDesc& dstDataLayoutDesc, const Texture& srcTexture, const TextureRegionDesc& srcRegionDesc)
+inline void CommandBufferVK::ReadbackTextureToBuffer(Buffer& dstBuffer, TextureDataLayoutDesc& dstDataLayoutDesc, const Texture& srcTexture, const TextureRegionDesc& srcRegionDesc)
 {
     const TextureVK& srcTextureImpl = (const TextureVK&)srcTexture;
     const BufferVK& dstBufferImpl = (const BufferVK&)dstBuffer;
@@ -524,18 +524,18 @@ void CommandBufferVK::ReadbackTextureToBuffer(Buffer& dstBuffer, TextureDataLayo
     m_VK.CmdCopyImageToBuffer(m_Handle, srcTextureImpl.GetHandle(m_PhysicalDeviceIndex), VK_IMAGE_LAYOUT_GENERAL, dstBufferImpl.GetHandle(0), 1, &region);
 }
 
-void CommandBufferVK::Dispatch(uint32_t x, uint32_t y, uint32_t z)
+inline void CommandBufferVK::Dispatch(uint32_t x, uint32_t y, uint32_t z)
 {
     m_VK.CmdDispatch(m_Handle, x, y, z);
 }
 
-void CommandBufferVK::DispatchIndirect(const Buffer& buffer, uint64_t offset)
+inline void CommandBufferVK::DispatchIndirect(const Buffer& buffer, uint64_t offset)
 {
     const BufferVK& bufferImpl = (const BufferVK&)buffer;
     m_VK.CmdDispatchIndirect(m_Handle, bufferImpl.GetHandle(m_PhysicalDeviceIndex), offset);
 }
 
-void CommandBufferVK::PipelineBarrier(const TransitionBarrierDesc* transitionBarriers, const AliasingBarrierDesc* aliasingBarriers, BarrierDependency dependency)
+inline void CommandBufferVK::PipelineBarrier(const TransitionBarrierDesc* transitionBarriers, const AliasingBarrierDesc* aliasingBarriers, BarrierDependency dependency)
 {
     Barriers barriers = {};
 
@@ -575,13 +575,13 @@ void CommandBufferVK::PipelineBarrier(const TransitionBarrierDesc* transitionBar
         barriers.images);
 }
 
-void CommandBufferVK::BeginQuery(const QueryPool& queryPool, uint32_t offset)
+inline void CommandBufferVK::BeginQuery(const QueryPool& queryPool, uint32_t offset)
 {
     const QueryPoolVK& queryPoolImpl = (const QueryPoolVK&)queryPool;
     m_VK.CmdBeginQuery(m_Handle, queryPoolImpl.GetHandle(m_PhysicalDeviceIndex), offset, (VkQueryControlFlagBits)0);
 }
 
-void CommandBufferVK::EndQuery(const QueryPool& queryPool, uint32_t offset)
+inline void CommandBufferVK::EndQuery(const QueryPool& queryPool, uint32_t offset)
 {
     const QueryPoolVK& queryPoolImpl = (const QueryPoolVK&)queryPool;
 
@@ -594,7 +594,7 @@ void CommandBufferVK::EndQuery(const QueryPool& queryPool, uint32_t offset)
     m_VK.CmdEndQuery(m_Handle, queryPoolImpl.GetHandle(m_PhysicalDeviceIndex), offset);
 }
 
-void CommandBufferVK::CopyQueries(const QueryPool& queryPool, uint32_t offset, uint32_t num, Buffer& dstBuffer, uint64_t dstOffset)
+inline void CommandBufferVK::CopyQueries(const QueryPool& queryPool, uint32_t offset, uint32_t num, Buffer& dstBuffer, uint64_t dstOffset)
 {
     const QueryPoolVK& queryPoolImpl = (const QueryPoolVK&)queryPool;
     const BufferVK& bufferImpl = (const BufferVK&)dstBuffer;
@@ -605,11 +605,16 @@ void CommandBufferVK::CopyQueries(const QueryPool& queryPool, uint32_t offset, u
 
     m_VK.CmdCopyQueryPoolResults(m_Handle, queryPoolImpl.GetHandle(m_PhysicalDeviceIndex), offset, num, bufferImpl.GetHandle(m_PhysicalDeviceIndex), dstOffset,
         queryPoolImpl.GetStride(), flags);
+}
+
+inline void CommandBufferVK::ResetQueries(const QueryPool& queryPool, uint32_t offset, uint32_t num)
+{
+    const QueryPoolVK& queryPoolImpl = (const QueryPoolVK&)queryPool;
 
     m_VK.CmdResetQueryPool(m_Handle, queryPoolImpl.GetHandle(m_PhysicalDeviceIndex), offset, num);
 }
 
-void CommandBufferVK::BeginAnnotation(const char* name)
+inline void CommandBufferVK::BeginAnnotation(const char* name)
 {
     if (m_VK.CmdBeginDebugUtilsLabelEXT == nullptr)
         return;
@@ -620,7 +625,7 @@ void CommandBufferVK::BeginAnnotation(const char* name)
     m_VK.CmdBeginDebugUtilsLabelEXT(m_Handle, &info);
 }
 
-void CommandBufferVK::EndAnnotation()
+inline void CommandBufferVK::EndAnnotation()
 {
     if (m_VK.CmdEndDebugUtilsLabelEXT == nullptr)
         return;
@@ -730,7 +735,7 @@ inline void CommandBufferVK::FillTransitionImageBarriers(const TransitionBarrier
     }
 }
 
-void CommandBufferVK::CopyWholeTexture(const TextureVK& dstTexture, uint32_t dstPhysicalDeviceIndex, const TextureVK& srcTexture, uint32_t srcPhysicalDeviceIndex)
+inline void CommandBufferVK::CopyWholeTexture(const TextureVK& dstTexture, uint32_t dstPhysicalDeviceIndex, const TextureVK& srcTexture, uint32_t srcPhysicalDeviceIndex)
 {
     VkImageCopy* regions = STACK_ALLOC(VkImageCopy, dstTexture.GetMipNum());
 
@@ -761,7 +766,7 @@ void CommandBufferVK::CopyWholeTexture(const TextureVK& dstTexture, uint32_t dst
         dstTexture.GetMipNum(), regions);
 }
 
-void CommandBufferVK::BuildTopLevelAccelerationStructure(uint32_t instanceNum, const Buffer& buffer, uint64_t bufferOffset,
+inline void CommandBufferVK::BuildTopLevelAccelerationStructure(uint32_t instanceNum, const Buffer& buffer, uint64_t bufferOffset,
     AccelerationStructureBuildBits flags, AccelerationStructure& dst, Buffer& scratch, uint64_t scratchOffset)
 {
     VkAccelerationStructureInfoNV info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV };
@@ -777,7 +782,7 @@ void CommandBufferVK::BuildTopLevelAccelerationStructure(uint32_t instanceNum, c
         scratchHandle, scratchOffset);
 }
 
-void CommandBufferVK::BuildBottomLevelAccelerationStructure(uint32_t geometryObjectNum, const GeometryObject* geometryObjects,
+inline void CommandBufferVK::BuildBottomLevelAccelerationStructure(uint32_t geometryObjectNum, const GeometryObject* geometryObjects,
     AccelerationStructureBuildBits flags, AccelerationStructure& dst, Buffer& scratch, uint64_t scratchOffset)
 {
     Vector<VkGeometryNV> geometries(geometryObjectNum, m_Device.GetStdAllocator());
@@ -796,7 +801,7 @@ void CommandBufferVK::BuildBottomLevelAccelerationStructure(uint32_t geometryObj
         scratchHandle, scratchOffset);
 }
 
-void CommandBufferVK::UpdateTopLevelAccelerationStructure(uint32_t instanceNum, const Buffer& buffer, uint64_t bufferOffset,
+inline void CommandBufferVK::UpdateTopLevelAccelerationStructure(uint32_t instanceNum, const Buffer& buffer, uint64_t bufferOffset,
     AccelerationStructureBuildBits flags, AccelerationStructure& dst, AccelerationStructure& src, Buffer& scratch, uint64_t scratchOffset)
 {
     VkAccelerationStructureInfoNV info = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV };
@@ -812,7 +817,7 @@ void CommandBufferVK::UpdateTopLevelAccelerationStructure(uint32_t instanceNum, 
         scratchHandle, scratchOffset);
 }
 
-void CommandBufferVK::UpdateBottomLevelAccelerationStructure(uint32_t geometryObjectNum, const GeometryObject* geometryObjects,
+inline void CommandBufferVK::UpdateBottomLevelAccelerationStructure(uint32_t geometryObjectNum, const GeometryObject* geometryObjects,
     AccelerationStructureBuildBits flags, AccelerationStructure& dst, AccelerationStructure& src, Buffer& scratch, uint64_t scratchOffset)
 {
     Vector<VkGeometryNV> geometries(geometryObjectNum, m_Device.GetStdAllocator());
@@ -831,7 +836,7 @@ void CommandBufferVK::UpdateBottomLevelAccelerationStructure(uint32_t geometryOb
         scratchHandle, scratchOffset);
 }
 
-void CommandBufferVK::CopyAccelerationStructure(AccelerationStructure& dst, AccelerationStructure& src, CopyMode copyMode)
+inline void CommandBufferVK::CopyAccelerationStructure(AccelerationStructure& dst, AccelerationStructure& src, CopyMode copyMode)
 {
     const VkAccelerationStructureNV dstASHandle = ((const AccelerationStructureVK&)dst).GetHandle(m_PhysicalDeviceIndex);
     const VkAccelerationStructureNV srcASHandle = ((const AccelerationStructureVK&)src).GetHandle(m_PhysicalDeviceIndex);
@@ -839,7 +844,7 @@ void CommandBufferVK::CopyAccelerationStructure(AccelerationStructure& dst, Acce
     m_VK.CmdCopyAccelerationStructureNV(m_Handle, dstASHandle, srcASHandle, GetCopyMode(copyMode));
 }
 
-void CommandBufferVK::WriteAccelerationStructureSize(const AccelerationStructure* const* accelerationStructures, uint32_t accelerationStructureNum,
+inline void CommandBufferVK::WriteAccelerationStructureSize(const AccelerationStructure* const* accelerationStructures, uint32_t accelerationStructureNum,
     QueryPool& queryPool, uint32_t queryPoolOffset)
 {
     VkAccelerationStructureNV* handles = STACK_ALLOC(VkAccelerationStructureNV, accelerationStructureNum);
@@ -851,7 +856,7 @@ void CommandBufferVK::WriteAccelerationStructureSize(const AccelerationStructure
     m_VK.CmdWriteAccelerationStructuresPropertiesNV(m_Handle, accelerationStructureNum, handles, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV, queryPoolHandle, queryPoolOffset);
 }
 
-void CommandBufferVK::DispatchRays(const DispatchRaysDesc& dispatchRaysDesc)
+inline void CommandBufferVK::DispatchRays(const DispatchRaysDesc& dispatchRaysDesc)
 {
     const VkBuffer raygenBufferHandle = GetVulkanHandle<VkBuffer, BufferVK>(dispatchRaysDesc.raygenShader.buffer, m_PhysicalDeviceIndex);
     const VkBuffer missBufferHandle = GetVulkanHandle<VkBuffer, BufferVK>(dispatchRaysDesc.missShaders.buffer, m_PhysicalDeviceIndex);
@@ -866,7 +871,7 @@ void CommandBufferVK::DispatchRays(const DispatchRaysDesc& dispatchRaysDesc)
         dispatchRaysDesc.width, dispatchRaysDesc.height, dispatchRaysDesc.depth);
 }
 
-void CommandBufferVK::DispatchMeshTasks(uint32_t taskNum)
+inline void CommandBufferVK::DispatchMeshTasks(uint32_t taskNum)
 {
     m_VK.CmdDrawMeshTasksNV(m_Handle, taskNum, 0);
 }

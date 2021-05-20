@@ -213,6 +213,11 @@ static void NRI_CALL CmdCopyQueries(CommandBuffer& commandBuffer, const QueryPoo
     ((CommandBufferVK&)commandBuffer).CopyQueries(queryPool, offset, num, dstBuffer, dstOffset);
 }
 
+static void NRI_CALL CmdResetQueries(CommandBuffer& commandBuffer, const QueryPool& queryPool, uint32_t offset, uint32_t num)
+{
+    ((CommandBufferVK&)commandBuffer).ResetQueries(queryPool, offset, num);
+}
+
 static void NRI_CALL DestroyCommandBuffer(CommandBuffer& commandBuffer)
 {
     StdAllocator<uint8_t>& allocator = ((CommandBufferVK&)commandBuffer).GetDevice().GetStdAllocator();
@@ -263,6 +268,7 @@ void FillFunctionTableCommandBufferVK(CoreInterface& coreInterface)
     coreInterface.CmdUploadBufferToTexture = CmdUploadBufferToTexture;
     coreInterface.CmdReadbackTextureToBuffer = CmdReadbackTextureToBuffer;
     coreInterface.CmdCopyQueries = CmdCopyQueries;
+    coreInterface.CmdResetQueries = CmdResetQueries;
 }
 
 #pragma endregion

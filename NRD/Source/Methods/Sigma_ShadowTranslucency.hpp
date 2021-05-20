@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t DenoiserImpl::AddMethod_SigmaTranslucentShadow(uint16_t w, uint16_t h)
+size_t DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
 {
     enum class Transient
     {
@@ -27,21 +27,21 @@ size_t DenoiserImpl::AddMethod_SigmaTranslucentShadow(uint16_t w, uint16_t h)
 
     SetSharedConstants(1, 1, 9, 10);
 
-    PushPass("SIGMA::TranslucentShadow - pre blur");
+    PushPass("SIGMA::ShadowTranscluency - pre blur");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
-        PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
         PushInput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
+        PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
 
         PushOutput( AsUint(Transient::DATA_1) );
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_TranslucentShadow_PreBlur, SumConstants(1, 1, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_PreBlur, SumConstants(1, 1, 0, 0), 16, 1 );
     }
 
-    PushPass("SIGMA::TranslucentShadow - blur");
+    PushPass("SIGMA::ShadowTranscluency - blur");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::DATA_1) );
@@ -50,10 +50,10 @@ size_t DenoiserImpl::AddMethod_SigmaTranslucentShadow(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::DATA_2) );
         PushOutput( AsUint(Transient::TEMP_2) );
 
-        AddDispatch( SIGMA_TranslucentShadow_Blur, SumConstants(1, 1, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_Blur, SumConstants(1, 1, 0, 0), 16, 1 );
     }
 
-    PushPass("SIGMA::TranslucentShadow - temporal stabilization");
+    PushPass("SIGMA::ShadowTranscluency - temporal stabilization");
     {
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(Transient::DATA_2) );
@@ -62,23 +62,23 @@ size_t DenoiserImpl::AddMethod_SigmaTranslucentShadow(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_TranslucentShadow_TemporalStabilization, SumConstants(2, 0, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_TemporalStabilization, SumConstants(2, 0, 0, 0), 16, 1 );
     }
 
-    PushPass("SIGMA::TranslucentShadow - split screen");
+    PushPass("SIGMA::ShadowTranscluency - split screen");
     {
         PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
         PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_Shadow_SplitScreen, SumConstants(0, 0, 0, 1), 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_SplitScreen, SumConstants(0, 0, 0, 1), 16, 1 );
     }
 
     return sizeof(SigmaShadowSettings);
 }
 
-void DenoiserImpl::UpdateMethod_SigmaTranslucentShadow(const MethodData& methodData)
+void DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData)
 {
     enum class Dispatch
     {
@@ -92,21 +92,21 @@ void DenoiserImpl::UpdateMethod_SigmaTranslucentShadow(const MethodData& methodD
 
     // PRE_BLUR
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::PRE_BLUR));
-    AddSharedConstants_SigmaTranslucentShadow(methodData, settings, data);
+    AddSharedConstants_SigmaShadowTranslucency(methodData, settings, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[0]);
     ValidateConstants(data);
 
     // BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
-    AddSharedConstants_SigmaTranslucentShadow(methodData, settings, data);
+    AddSharedConstants_SigmaShadowTranslucency(methodData, settings, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[1]);
     ValidateConstants(data);
 
     // TEMPORAL_STABILIZATION
     data = PushDispatch(methodData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
-    AddSharedConstants_SigmaTranslucentShadow(methodData, settings, data);
+    AddSharedConstants_SigmaShadowTranslucency(methodData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     ValidateConstants(data);
@@ -115,13 +115,13 @@ void DenoiserImpl::UpdateMethod_SigmaTranslucentShadow(const MethodData& methodD
     if (m_CommonSettings.splitScreen > 0.0f)
     {
         data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_SigmaTranslucentShadow(methodData, settings, data);
+        AddSharedConstants_SigmaShadowTranslucency(methodData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         ValidateConstants(data);
     }
 }
 
-void DenoiserImpl::AddSharedConstants_SigmaTranslucentShadow(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data)
+void DenoiserImpl::AddSharedConstants_SigmaShadowTranslucency(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data)
 {
     uint32_t screenW = methodData.desc.fullResolutionWidth;
     uint32_t screenH = methodData.desc.fullResolutionHeight;
@@ -134,7 +134,7 @@ void DenoiserImpl::AddSharedConstants_SigmaTranslucentShadow(const MethodData& m
     float unproject = 1.0f / (0.5f * screenH * m_ProjectY);
 
     // TODO: it's needed due to history copying in PreBlur which can copy less than needed in case of DRS
-    float historyCorrection = 1.0f / Saturate(m_CommonSettings.resolutionScale / m_ResolutionScalePrev);
+    float historyCorrection = 1.0f / ml::Saturate(m_CommonSettings.resolutionScale / m_ResolutionScalePrev);
 
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4(data, m_Frustum);

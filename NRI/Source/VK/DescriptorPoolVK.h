@@ -22,7 +22,6 @@ namespace nri
 
         operator VkDescriptorPool() const;
         DeviceVK& GetDevice() const;
-
         Result Create(const DescriptorPoolDesc& descriptorPoolDesc);
         Result Create(void* vkDescriptorPool);
 

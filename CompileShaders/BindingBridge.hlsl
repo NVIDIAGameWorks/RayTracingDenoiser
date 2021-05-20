@@ -42,4 +42,3 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #define min16float4 float4
 
 #endif
-

@@ -26,12 +26,12 @@ Result CommandQueueVK::Create(const CommandQueueVulkanDesc& commandQueueDesc)
     return Result::SUCCESS;
 }
 
-void CommandQueueVK::SetDebugName(const char* name)
+inline void CommandQueueVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_QUEUE, m_Handle, name);
 }
 
-void CommandQueueVK::Submit(const WorkSubmissionDesc& workSubmissionDesc, DeviceSemaphore* deviceSemaphore)
+inline void CommandQueueVK::Submit(const WorkSubmissionDesc& workSubmissionDesc, DeviceSemaphore* deviceSemaphore)
 {
     VkCommandBuffer* commandBuffers = STACK_ALLOC(VkCommandBuffer, workSubmissionDesc.commandBufferNum);
     VkSemaphore* waitSemaphores = STACK_ALLOC(VkSemaphore, workSubmissionDesc.waitNum);
@@ -103,7 +103,7 @@ void CommandQueueVK::Submit(const WorkSubmissionDesc& workSubmissionDesc, Device
         "Can't submit work to a command queue: vkQueueSubmit returned %d.", (int32_t)result);
 }
 
-void CommandQueueVK::Wait(DeviceSemaphore& deviceSemaphore)
+inline void CommandQueueVK::Wait(DeviceSemaphore& deviceSemaphore)
 {
     const VkFence fence = *(DeviceSemaphoreVK*)&deviceSemaphore;
 
@@ -121,14 +121,14 @@ void CommandQueueVK::Wait(DeviceSemaphore& deviceSemaphore)
         "Can't reset a device semaphore: vkResetFences returned %d.", (int32_t)result);
 }
 
-Result CommandQueueVK::ChangeResourceStates(const TransitionBarrierDesc& transitionBarriers)
+inline Result CommandQueueVK::ChangeResourceStates(const TransitionBarrierDesc& transitionBarriers)
 {
     HelperResourceStateChange resourceStateChange(m_Device.GetCoreInterface(), (Device&)m_Device, (CommandQueue&)*this);
 
     return resourceStateChange.ChangeStates(transitionBarriers);
 }
 
-Result CommandQueueVK::UploadData(const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum,
+inline Result CommandQueueVK::UploadData(const TextureUploadDesc* textureUploadDescs, uint32_t textureUploadDescNum,
     const BufferUploadDesc* bufferUploadDescs, uint32_t bufferUploadDescNum)
 {
     HelperDataUpload helperDataUpload(m_Device.GetCoreInterface(), (Device&)m_Device, m_Device.GetStdAllocator(), (CommandQueue&)*this);
@@ -136,7 +136,7 @@ Result CommandQueueVK::UploadData(const TextureUploadDesc* textureUploadDescs, u
     return helperDataUpload.UploadData(textureUploadDescs, textureUploadDescNum, bufferUploadDescs, bufferUploadDescNum);
 }
 
-Result CommandQueueVK::WaitForIdle()
+inline Result CommandQueueVK::WaitForIdle()
 {
     const auto& vk = m_Device.GetDispatchTable();
 

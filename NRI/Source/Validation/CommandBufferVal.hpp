@@ -190,6 +190,11 @@ static void NRI_CALL CmdCopyQueries(CommandBuffer& commandBuffer, const QueryPoo
     ((CommandBufferVal*)&commandBuffer)->CopyQueries(queryPool, offset, num, dstBuffer, dstOffset);
 }
 
+static void NRI_CALL CmdResetQueries(CommandBuffer& commandBuffer, const QueryPool& queryPool, uint32_t offset, uint32_t num)
+{
+    ((CommandBufferVal*)&commandBuffer)->ResetQueries(queryPool, offset, num);
+}
+
 static void NRI_CALL DestroyCommandBuffer(CommandBuffer& commandBuffer)
 {
     ((CommandBufferVal*)&commandBuffer)->Destroy();
@@ -239,6 +244,7 @@ void FillFunctionTableCommandBufferVal(CoreInterface& coreInterface)
     coreInterface.CmdUploadBufferToTexture = CmdUploadBufferToTexture;
     coreInterface.CmdReadbackTextureToBuffer = CmdReadbackTextureToBuffer;
     coreInterface.CmdCopyQueries = CmdCopyQueries;
+    coreInterface.CmdResetQueries = CmdResetQueries;
 }
 
 #pragma endregion

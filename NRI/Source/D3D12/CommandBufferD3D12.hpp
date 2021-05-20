@@ -193,6 +193,10 @@ static void NRI_CALL CmdCopyQueries(CommandBuffer& commandBuffer, const QueryPoo
     ((CommandBufferD3D12&)commandBuffer).CopyQueries(queryPool, offset, num, dstBuffer, dstOffset);
 }
 
+static void NRI_CALL CmdResetQueries(CommandBuffer&, const QueryPool&, uint32_t, uint32_t)
+{
+}
+
 static void NRI_CALL DestroyCommandBuffer(CommandBuffer& commandBuffer)
 {
     CommandBufferD3D12& commandBufferImpl = (CommandBufferD3D12&)commandBuffer;
@@ -245,6 +249,7 @@ void FillFunctionTableCommandBufferD3D12(CoreInterface& coreInterface)
     coreInterface.CmdUploadBufferToTexture = CmdUploadBufferToTexture;
     coreInterface.CmdReadbackTextureToBuffer = CmdReadbackTextureToBuffer;
     coreInterface.CmdCopyQueries = CmdCopyQueries;
+    coreInterface.CmdResetQueries = CmdResetQueries;
 }
 
 #pragma endregion

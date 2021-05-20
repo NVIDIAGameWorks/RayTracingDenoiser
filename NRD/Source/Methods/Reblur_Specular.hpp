@@ -32,12 +32,14 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         INTERNAL_DATA = TRANSIENT_POOL_START,
         SCALED_VIEWZ,
         ACCUMULATED,
-        ERROR,
+        ESTIMATED_ERROR,
     };
 
+    #define MIP_NUM 5
+
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, MIP_NUM} );
+    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, MIP_NUM} );
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
 
     SetSharedConstants(1, 2, 8, 12);
@@ -78,7 +80,7 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         PushInput( TEMP );
 
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
-        PushOutput( AsUint(Transient::ERROR) );
+        PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::ACCUMULATED) );
         PushOutput( AsUint(Permanent::FAST_HISTORY_1), 0, 1, AsUint(Permanent::FAST_HISTORY_2) );
 
@@ -97,24 +99,38 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_SPEC_HIT) );
 
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
-        PushOutput( AsUint(Transient::ERROR) );
+        PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::ACCUMULATED) );
         PushOutput( AsUint(Permanent::FAST_HISTORY_1), 0, 1, AsUint(Permanent::FAST_HISTORY_2) );
 
         AddDispatch( REBLUR_Specular_TemporalAccumulation, SumConstants(4, 2, 1, 4), 8, 1 );
     }
 
+    PushPass("REBLUR::DiffuseSpecular - mip generation");
+    {
+        PushInput( AsUint(Transient::ACCUMULATED) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ) );
+
+        for( uint16_t i = 1; i < MIP_NUM; i++ )
+        {
+            PushOutput( AsUint(Transient::ACCUMULATED), i, 1 );
+            PushOutput( AsUint(Transient::SCALED_VIEWZ), i, 1 );
+        }
+
+        AddDispatch( NRD_MipGeneration_Float4_Float, SumConstants(0, 0, 0, 2, false), 16, 2 );
+    }
+
     PushPass("REBLUR::Specular - history fix");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SCALED_VIEWZ) );
-        PushInput( AsUint(Transient::ACCUMULATED) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ), 0, MIP_NUM );
+        PushInput( AsUint(Transient::ACCUMULATED), 0, MIP_NUM );
         PushInput( AsUint(Permanent::FAST_HISTORY_1), 0, 1, AsUint(Permanent::FAST_HISTORY_2) );
 
         PushOutput( TEMP );
 
-        AddDispatch( REBLUR_Specular_HistoryFix, SumConstants(1, 1, 0, 3), 16, 1 );
+        AddDispatch( REBLUR_Specular_HistoryFix, SumConstants(0, 0, 0, 3), 16, 1 );
     }
 
     PushPass("REBLUR::Specular - blur");
@@ -124,7 +140,7 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
         PushInput( TEMP );
 
-        PushOutput( AsUint(Transient::ERROR) );
+        PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::ACCUMULATED) );
 
         AddDispatch( REBLUR_Specular_Blur, SumConstants(1, 2, 0, 2), 16, 1 );
@@ -137,7 +153,7 @@ size_t DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
         PushInput( AsUint(Transient::ACCUMULATED) );
 
-        PushOutput( AsUint(Transient::ERROR) );
+        PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Permanent::HISTORY) );
 
         AddDispatch( REBLUR_Specular_PostBlur, SumConstants(1, 2, 0, 2), 16, 1 );
@@ -183,6 +199,7 @@ void DenoiserImpl::UpdateMethod_ReblurSpecular(const MethodData& methodData)
         PRE_BLUR,
         TEMPORAL_ACCUMULATION,
         TEMPORAL_ACCUMULATION_WITHOUT_PRE_BLUR,
+        MIP_GENERATION,
         HISTORY_FIX,
         BLUR,
         POST_BLUR,
@@ -193,12 +210,12 @@ void DenoiserImpl::UpdateMethod_ReblurSpecular(const MethodData& methodData)
     const ReblurSpecularSettings& settings = methodData.settings.specular;
 
     bool useCopyViewZ = !settings.usePrePass && settings.checkerboardMode == CheckerboardMode::OFF;
-    float normalWeightStrictness = Lerp( 0.1f, 1.0f, settings.normalWeightStrictness );
+    float normalWeightStrictness = ml::Lerp( 0.1f, 1.0f, settings.normalWeightStrictness );
 
     uint32_t specCheckerboard = ((uint32_t)settings.checkerboardMode + 2) % 3;
-    float4 specTrimmingParams = float4(settings.lobeTrimmingParameters.A, settings.lobeTrimmingParameters.B, settings.lobeTrimmingParameters.C, 0.0f);
-    float4 specAntilag1 = float4(settings.antilagIntensitySettings.sigmaScale / m_CommonSettings.resolutionScale, settings.antilagHitDistanceSettings.sigmaScale / m_CommonSettings.resolutionScale, settings.antilagIntensitySettings.sensitivityToDarkness, settings.antilagHitDistanceSettings.sensitivityToDarkness);
-    float4 specAntilag2 = float4(settings.antilagIntensitySettings.thresholdMin / m_CommonSettings.resolutionScale, settings.antilagHitDistanceSettings.thresholdMin / m_CommonSettings.resolutionScale, settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
+    ml::float4 specTrimmingParams = ml::float4(settings.lobeTrimmingParameters.A, settings.lobeTrimmingParameters.B, settings.lobeTrimmingParameters.C, 0.0f);
+    ml::float4 specAntilag1 = ml::float4(settings.antilagIntensitySettings.sigmaScale / m_CommonSettings.resolutionScale, settings.antilagHitDistanceSettings.sigmaScale / m_CommonSettings.resolutionScale, settings.antilagIntensitySettings.sensitivityToDarkness, settings.antilagHitDistanceSettings.sensitivityToDarkness);
+    ml::float4 specAntilag2 = ml::float4(settings.antilagIntensitySettings.thresholdMin / m_CommonSettings.resolutionScale, settings.antilagHitDistanceSettings.thresholdMin / m_CommonSettings.resolutionScale, settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
 
     if (!settings.antilagIntensitySettings.enable)
     {
@@ -235,7 +252,7 @@ void DenoiserImpl::UpdateMethod_ReblurSpecular(const MethodData& methodData)
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
-    AddFloat4(data, float4(m_CameraDeltaSmoothed));
+    AddFloat4(data, ml::float4(m_CameraDeltaSmoothed));
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, m_CommonSettings.disocclusionThreshold);
@@ -243,11 +260,15 @@ void DenoiserImpl::UpdateMethod_ReblurSpecular(const MethodData& methodData)
     AddUint(data, specCheckerboard);
     ValidateConstants(data);
 
+    // MIP_GENERATION
+    data = PushDispatch(methodData, AsUint(Dispatch::MIP_GENERATION));
+    AddFloat(data, m_CommonSettings.denoisingRange);
+    AddFloat(data, m_CommonSettings.debug);
+    ValidateConstants(data);
+
     // HISTORY_FIX
     data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX));
     AddSharedConstants_ReblurSpecular(methodData, settings, data);
-    AddFloat4x4(data, m_WorldToView);
-    AddFloat4(data, m_Rotator[0]);
     AddFloat(data, float(settings.maxFastAccumulatedFrameNum));
     AddFloat(data, settings.historyClampingColorBoxSigmaScale);
     AddUint(data, settings.antifirefly ? 1 : 0);
@@ -278,7 +299,7 @@ void DenoiserImpl::UpdateMethod_ReblurSpecular(const MethodData& methodData)
     AddSharedConstants_ReblurSpecular(methodData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
-    AddFloat4(data, float4(m_CameraDeltaSmoothed));
+    AddFloat4(data, ml::float4(m_CameraDeltaSmoothed));
     AddFloat4(data, specAntilag1 );
     AddFloat4(data, specAntilag2 );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
@@ -303,11 +324,11 @@ void DenoiserImpl::AddSharedConstants_ReblurSpecular(const MethodData& methodDat
     uint32_t rectH = uint32_t(screenH * m_CommonSettings.resolutionScale + 0.5f);
     uint32_t rectWprev = uint32_t(screenW * m_ResolutionScalePrev + 0.5f);
     uint32_t rectHprev = uint32_t(screenH * m_ResolutionScalePrev + 0.5f);
-    float maxAccumulatedFrameNum = float( Min(settings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM) );
+    float maxAccumulatedFrameNum = float( ml::Min(settings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM) );
     float blurRadius = settings.blurRadius * m_CommonSettings.resolutionScale;
-    float amount = m_CommonSettings.forceReferenceAccumulation ? 4.0f : Saturate( settings.stabilizationStrength );
-    float frameRateScale = Max( m_FrameRateScale * amount, 2.0f / 16.0f );
-    float4 specHitDistParams = float4(&settings.hitDistanceParameters.A);
+    float amount = m_CommonSettings.forceReferenceAccumulation ? 4.0f : ml::Saturate( settings.stabilizationStrength );
+    float frameRateScale = ml::Max( m_FrameRateScale * amount, 2.0f / 16.0f );
+    ml::float4 specHitDistParams = ml::float4(&settings.hitDistanceParameters.A);
 
     // DRS will increase reprojected values, needed for stability, compensated by blur radius adjustment
     float unproject = 1.0f / (0.5f * rectH * m_ProjectY);

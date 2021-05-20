@@ -93,11 +93,11 @@ float getSpecularRWeight(float2 params0, float3 v0, float3 v)
 //
 
 [numthreads(8, 8, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     const int2 ipos = int2(dispatchThreadId.xy);
 
-	// Getting data at the center
+    // Getting data at the center
     float3 centerNormal;
     float centerRoughness;
     float centerLinearZ;

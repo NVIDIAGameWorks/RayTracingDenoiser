@@ -287,12 +287,12 @@ Result PipelineVK::CreateCompute(void* vkPipeline)
     return Result::SUCCESS;
 }
 
-void PipelineVK::SetDebugName(const char* name)
+inline void PipelineVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToTrivialObject(VK_OBJECT_TYPE_PIPELINE, m_Handle, name);
 }
 
-Result PipelineVK::WriteShaderGroupIdentifiers(uint32_t baseShaderGroupIndex, uint32_t shaderGroupNum, void* buffer) const
+inline Result PipelineVK::WriteShaderGroupIdentifiers(uint32_t baseShaderGroupIndex, uint32_t shaderGroupNum, void* buffer) const
 {
     const uint64_t dataSize = shaderGroupNum * m_Device.GetDesc().rayTracingShaderGroupIdentifierSize;
 

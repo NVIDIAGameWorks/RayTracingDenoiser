@@ -20,12 +20,11 @@ namespace nri
         BufferVK(DeviceVK& device);
         ~BufferVK();
 
-        VkBuffer GetHandle(uint32_t physicalDeviceIndex) const;
         DeviceVK& GetDevice() const;
-        uint64_t GetSize() const;
-
         Result Create(const BufferDesc& bufferDesc);
         Result Create(const BufferVulkanDesc& bufferDesc);
+        VkBuffer GetHandle(uint32_t physicalDeviceIndex) const;
+        uint64_t GetSize() const;
         void SetHostMemory(MemoryVK& memory, uint64_t memoryOffset);
 
         void SetDebugName(const char* name);

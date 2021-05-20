@@ -48,10 +48,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_TS_WEIGHT_BOOST_POWER                            0.25
 #define REBLUR_TS_SIGMA_AMPLITUDE                               ( 3.0 * max( gFramerateScale, 0.5 ) )
 #define REBLUR_TS_MAX_HISTORY_WEIGHT                            ( ( 16.0 * gFramerateScale - 1.0 ) / ( 16.0 * gFramerateScale ) )
-#define REBLUR_FRAME_NUM_WITH_HISTORY_FIX                       3.999
-#define REBLUR_HISTORY_FIX_SAMPLE_NUM                           16
-#define REBLUR_HISTORY_FIX_SAMPLES                              g_Poisson16
-#define REBLUR_HISTORY_FIX_MAX_RADIUS                           32.0 // pixels
+#define REBLUR_MIP_NUM                                          4.999
+#define REBLUR_FRAME_NUM_WITH_HISTORY_FIX                       4.999
 #define REBLUR_HIT_DIST_MIN_WEIGHT                              0.2
 #define REBLUR_MAX_ERROR_AMPLITUDE                              0.05 // 0-1
 #define REBLUR_HIT_DIST_MIN_ACCUM_SPEED( r )                    lerp( 0.2, 0.1, STL::Math::Sqrt01( r ) )

@@ -377,11 +377,11 @@ void ENTRYPOINT( )
     // Sun shadow
     float4 shadowData0 = CastSoftShadowRay( geometryProps0, materialProps0 );
 
-    float shadow;
-    float2 shadowData = SIGMA_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.w == INF ? NRD_FP16_MAX : shadowData0.w, gTanSunAngularRadius, shadow );
+    float4 shadowTranslucency;
+    float2 shadowData = SIGMA_FrontEnd_PackShadow( geometryProps0.viewZ, shadowData0.w == INF ? NRD_FP16_MAX : shadowData0.w, gTanSunAngularRadius, shadowData0.xyz, shadowTranslucency );
 
     gOut_ShadowData[ pixelPos ] = shadowData;
-    gOut_Shadow_Translucency[ pixelPos ] = float4( shadow, shadowData0.xyz );
+    gOut_Shadow_Translucency[ pixelPos ] = shadowTranslucency;
 
     // Secondary rays
     float4 diffIndirect = 0;

@@ -42,7 +42,7 @@ DescriptorSetVK::DescriptorSetVK(DeviceVK& device, const VkDescriptorSet* handle
     }
 }
 
-void DescriptorSetVK::SetDebugName(const char* name)
+inline void DescriptorSetVK::SetDebugName(const char* name)
 {
     m_Device.SetDebugNameToDeviceGroupObject(VK_OBJECT_TYPE_DESCRIPTOR_SET, (void**)m_Handles.data(), name);
 }
@@ -184,7 +184,7 @@ static const std::array<WriteDescriptorsFunc, (uint32_t)DescriptorType::MAX_NUM>
     (WriteDescriptorsFunc)&WriteAccelerationStructures,     // ACCELERATION_STRUCTURE
 };
 
-void DescriptorSetVK::UpdateDescriptorRanges(uint32_t physicalDeviceMask, uint32_t rangeOffset, uint32_t rangeNum, const DescriptorRangeUpdateDesc* rangeUpdateDescs)
+inline void DescriptorSetVK::UpdateDescriptorRanges(uint32_t physicalDeviceMask, uint32_t rangeOffset, uint32_t rangeNum, const DescriptorRangeUpdateDesc* rangeUpdateDescs)
 {
     constexpr uint32_t writesPerIteration = 1024;
     uint32_t writeMaxNum = std::min<uint32_t>(writesPerIteration, rangeNum);
@@ -240,7 +240,7 @@ void DescriptorSetVK::UpdateDescriptorRanges(uint32_t physicalDeviceMask, uint32
     }
 }
 
-void DescriptorSetVK::UpdateDynamicConstantBuffers(uint32_t physicalDeviceMask, uint32_t bufferOffset, uint32_t descriptorNum, const Descriptor* const* descriptors)
+inline void DescriptorSetVK::UpdateDynamicConstantBuffers(uint32_t physicalDeviceMask, uint32_t bufferOffset, uint32_t descriptorNum, const Descriptor* const* descriptors)
 {
     const uint32_t descriptorMaxNum = descriptorNum * m_Device.GetPhyiscalDeviceGroupSize();
 
@@ -281,7 +281,7 @@ void DescriptorSetVK::UpdateDynamicConstantBuffers(uint32_t physicalDeviceMask, 
     vk.UpdateDescriptorSets(m_Device, writeNum, writes, 0, nullptr);
 }
 
-void DescriptorSetVK::Copy(const DescriptorSetCopyDesc& descriptorSetCopyDesc)
+inline void DescriptorSetVK::Copy(const DescriptorSetCopyDesc& descriptorSetCopyDesc)
 {
     const uint32_t descriptorRangeNum = descriptorSetCopyDesc.rangeNum + descriptorSetCopyDesc.dynamicConstantBufferNum;
     const uint32_t copyMaxNum = descriptorRangeNum * m_Device.GetPhyiscalDeviceGroupSize();

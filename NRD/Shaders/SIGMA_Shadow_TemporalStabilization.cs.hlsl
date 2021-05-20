@@ -54,7 +54,7 @@ void Preload( int2 sharedId, int2 globalId )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = pixelPos + gRectOrigin;
     float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvRectSize;
@@ -70,7 +70,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Early out
     [branch]
-    if( viewZ > gInf || centerHitDist == 0.0 ) // TODO: think about multi-light shadows...
+    if( viewZ > gInf || centerHitDist == 0.0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
         return;

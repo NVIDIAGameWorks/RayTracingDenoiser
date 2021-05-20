@@ -49,7 +49,12 @@ namespace nri
         ~DescriptorVK();
 
         DeviceVK& GetDevice() const;
-
+        Result Create(const BufferViewDesc& bufferViewDesc);
+        Result Create(const Texture1DViewDesc& textureViewDesc);
+        Result Create(const Texture2DViewDesc& textureViewDesc);
+        Result Create(const Texture3DViewDesc& textureViewDesc);
+        Result Create(const SamplerDesc& samplerDesc);
+        Result Create(const VkAccelerationStructureNV* accelerationStructures, uint32_t physicalDeviceMask);
         VkBufferView GetBufferView(uint32_t physicalDeviceIndex) const;
         VkImageView GetImageView(uint32_t physicalDeviceIndex) const;
         const VkSampler& GetSampler() const;
@@ -58,7 +63,6 @@ namespace nri
         VkImage GetImage(uint32_t physicalDeviceIndex) const;
         void GetBufferInfo(uint32_t physicalDeviceIndex, VkDescriptorBufferInfo& info) const;
         const TextureVK& GetTexture() const;
-
         DescriptorTypeVK GetType() const;
         VkExtent3D GetExtent() const;
         VkFormat GetFormat() const;
@@ -67,13 +71,6 @@ namespace nri
 
         template<typename T>
         Result CreateTextureView(const T& textureViewDesc);
-
-        Result Create(const BufferViewDesc& bufferViewDesc);
-        Result Create(const Texture1DViewDesc& textureViewDesc);
-        Result Create(const Texture2DViewDesc& textureViewDesc);
-        Result Create(const Texture3DViewDesc& textureViewDesc);
-        Result Create(const SamplerDesc& samplerDesc);
-        Result Create(const VkAccelerationStructureNV* accelerationStructures, uint32_t physicalDeviceMask);
 
         void SetDebugName(const char* name);
         VkBufferView GetBufferDescriptorVK(uint32_t physicalDeviceIndex) const;

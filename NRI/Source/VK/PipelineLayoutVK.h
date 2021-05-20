@@ -40,12 +40,10 @@ namespace nri
 
         operator VkPipelineLayout() const;
         DeviceVK& GetDevice() const;
-
+        Result Create(const PipelineLayoutDesc& pipelineLayoutDesc);
         const RuntimeBindingInfo& GetRuntimeBindingInfo() const;
         VkDescriptorSetLayout GetDescriptorSetLayout(uint32_t index) const;
         VkPipelineBindPoint GetPipelineBindPoint() const;
-
-        Result Create(const PipelineLayoutDesc& pipelineLayoutDesc);
 
         void SetDebugName(const char* name);
 

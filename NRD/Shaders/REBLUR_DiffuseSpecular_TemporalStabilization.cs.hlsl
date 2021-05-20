@@ -63,7 +63,7 @@ void Preload( int2 sharedId, int2 globalId )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
@@ -220,10 +220,7 @@ void main( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId
 
     // Specular history
     float hitDistToSurfaceRatio = saturate( hitDist * invDistToPoint );
-
-    float4 specHistory;
-    specHistory.xyz = lerp( specHistorySurface.xyz, specHistoryVirtual.xyz, virtualHistoryAmount );
-    specHistory.w = lerp( specHistorySurface.w, specHistoryVirtual.w, virtualHistoryAmount * hitDistToSurfaceRatio );
+    float4 specHistory = InterpolateSurfaceAndVirtualMotion( specHistorySurface, specHistoryVirtual, virtualHistoryAmount, hitDistToSurfaceRatio, parallax );
 
     // History weight
     float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffInternalData.y, parallax );

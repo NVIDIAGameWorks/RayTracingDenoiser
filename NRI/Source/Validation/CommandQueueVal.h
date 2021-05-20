@@ -12,6 +12,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 namespace nri
 {
+    struct CommandBufferVal;
+
     struct CommandQueueVal : public DeviceObjectVal<CommandQueue>
     {
         CommandQueueVal(DeviceVal& device, CommandQueue& commandQueue);
@@ -26,6 +28,11 @@ namespace nri
         Result WaitForIdle();
 
     private:
+        void ProcessValidationCommands(const CommandBufferVal* const* commandBuffers, uint32_t commandBufferNum);
+        void ProcessValidationCommandBeginQuery(const uint8_t*& begin, const uint8_t* end);
+        void ProcessValidationCommandEndQuery(const uint8_t*& begin, const uint8_t* end);
+        void ProcessValidationCommandResetQuery(const uint8_t*& begin, const uint8_t* end);
+
         const HelperInterface& m_HelperAPI;
     };
 }

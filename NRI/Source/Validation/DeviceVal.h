@@ -105,6 +105,8 @@ namespace nri
         uint32_t GetPhysicalDeviceNum() const;
         bool IsPhysicalDeviceMaskValid(uint32_t physicalDeviceMask) const;
 
+        Lock& GetLock();
+
         //================================================================================================================
         // DeviceBase
         //================================================================================================================
@@ -190,5 +192,10 @@ namespace nri
     inline const HelperInterface& DeviceVal::GetHelperInterface() const
     {
         return m_HelperAPI;
+    }
+
+    inline Lock& DeviceVal::GetLock()
+    {
+        return m_Lock;
     }
 }
