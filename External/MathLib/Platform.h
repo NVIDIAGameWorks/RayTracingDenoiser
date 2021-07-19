@@ -68,16 +68,12 @@
 
 #if defined ( __AVX2__ )
     #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_AVX2
-    #pragma message("MathLib: AVX2 detected")
 #elif defined ( __AVX__ )
     #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_AVX1
-    #pragma message("MathLib: AVX detected")
 #elif defined ( __SSE4_2__ ) || defined ( __SSE4_1__ )
     #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_SSE4
-    #pragma message("MathLib: SSE4 detected")
 #else
     #define PLATFORM_INTRINSIC                          PLATFORM_INTRINSIC_SSE3
-    #pragma message("MathLib: SSE3 (default)")
 #endif
 
 #define PLATFORM_HAS_TRANSCENDENTAL_INTRINSICS          (_MSC_VER >= 1920)

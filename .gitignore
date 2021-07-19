@@ -1,4 +1,46 @@
-_Build/
-_Compiler/
-_Data/
-_NRD/
+# cmake
+CMakeFiles/
+.cmake/
+*.dir/
+*.tlog/
+CMakeCache.txt
+cmake_install.cmake
+*.recipe
+
+# make
+Makefile
+
+# VS
+*.vcxproj*
+*.sln
+.vs/
+
+# VS Code
+.vscode/
+
+# Shaders
+*.dxbc
+*.dxil
+*.spirv
+*.dxbc.h
+*.dxil.h
+*.spirv.h
+
+# Library
+*.lib
+*.exp
+*.dll
+*.pdb
+*.so
+*.so.*
+*.manifest
+
+# ninja
+.ninja_deps
+.ninja_log
+build.ninja
+compile_commands.json
+*.log
+
+# batch script
+_NRD_SDK/

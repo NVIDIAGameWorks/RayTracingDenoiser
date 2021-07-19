@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoisers v2.2.0
+# NVIDIA Real-time (Ray tracing) Denoisers v2.5.0
 
 ## QUICK START GUIDE
 
@@ -23,7 +23,7 @@ Supported signal types:
 - *SIGMA*:
   - Shadows from an infinite light source (sun, moon)
   - Shadows from a local light source (omni, spot)
-  - Shadows from multiple sources
+  - Shadows from multiple sources (experimental)
 
 *NRD* is distributed as source as well with a “ready-to-use” library (if used in a precompiled form).
 It can be integrated into any DX12, VULKAN or DX11 engine using 2 methods:
@@ -32,64 +32,39 @@ It can be integrated into any DX12, VULKAN or DX11 engine using 2 methods:
 pointers for certain types of objects. The integration layer, provided as a part of SDK, can be used
 to simplify this kind of integration.
 
-### Minimum Requirements
-Any Ray Tracing compatible GPU:
-- RTX 3000 series
-- RTX 2000 series
-- GTX 1660 (Ti, S)
-- GTX 1000 series (GPUs with at least 6GB of memory)
-- AMD RX 6000 series
+## Build instructions
+- Windows: install *WindowsSDK* and *VulkanSDK*
+- Linux: install *VulkanSDK* or *DXC*
+  - Compilation of *DXBC* and *DXIL* shaders is disabled on this platform
+- Generate and build project using *CMake*
 
-### How to Compile and Run
-- Update *Windows* to the latest version (it's a requirement for the sample framework)
-- Install latest *Vulkan SDK*
-- Set the variable ``WINSDK_PATH`` in the ``CompileShaders\CompileShader.bat`` file to where
-you installed your Windows SDK
-- Run ``1-Deploy.bat`` and choose *Visual Studio* version
-- Install required *Windows SDK* (you will be prompted)
-- Open ``_Compiler\vs(2017/2019)\SANDBOX.sln``
-- Rebuild the solution
-- It's recommended to install *Smart Command Line Arguments Extension for Visual Studio*
-https://marketplace.visualstudio.com/items?itemName=MBulli.SmartCommandlineArguments.
-In this case "Command Line Arguments" tab will contain all possible command line arguments
-for the *NRD* sample (API, resolution, scene selection...)
-- Exit out of *Visual Studio* once completed
-- Run the sample
-  - Use *Smart Command Line arguments* or set this minimal command line ``--width=1920 --height=1080 --api=D3D12 --testMode --scene=Bistro/BistroInterior.fbx``
-  - Or use ``3b-Run NRD Sample.bat`` to view the *NRD* sample application
-
-If you only need to run the sample and don't want to interact with the code:
-- Update *Windows* to the latest version (20H2)
-- Install latest *Vulkan SDK*
-- Set the variable ``WINSDK_PATH`` in the ``CompileShaders\CompileShader.bat`` file to where you installed your Windows SDK
-- Run ``1-Deploy.bat`` and choose *Visual Studio* version
-- Install required *Windows SDK* (you will be prompted)
+Or by running scripts only (*Windows* only):
+- Run ``1-Deploy.bat``
 - Run ``2-Build.bat``
-- Run ``3b-Run NRD Sample.bat`` to view the *NRD* sample application
 
-Notes:
-- to recompile with modified shaders, you need to rebuild *CompileShaders* project, then build the entire solution
-- to reload shaders in the running application, you need to rebuild *CompileShaders* project, then press ``ReloadShaders`` button in the UI
+### CMake options
+`-DNRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION=ON` - disable interprocedural optimization
+
+`-DNRD_DISABLE_SHADER_COMPILATION=ON` - disable shader compilation (shaders can be built on another platform)
+
+`-DNRD_STATIC_LIBRARY=ON` - build NRD as a static library
+
+`-DNRD_DXC_CUSTOM_PATH="my/path/to/dxc"` - custom path to DXC
+
+### Cross compilation
+If target architecture is *ARM64*, set `NRD_CROSSCOMPILE_AARCH64=ON` in addition to setting correct cmake kit.
+
+### Tested platforms
+| OS                | Architectures  | Compilers   |
+|-------------------|----------------|-------------|
+| Windows           | AMD64          | MSVC, Clang |
+| Linux             | AMD64, ARM64   | GCC, Clang  |
 
 ### NRD SDK package generation
 - Compile the solution (*Debug* / *Release* or both, depending on what you want to get in *NRD* package)
-- Compile the solution (at least one configuration)
-- If you plan to use *NRD integration* layer, run ``4a-Prepare NRI SDK.bat``
-- Run ``4b-Prepare NRD SDK.bat``
+- If you plan to use *NRD integration* layer, run ``3-Prepare NRI SDK.bat`` from *NRI* project
+- Run ``3-Prepare NRD SDK.bat``
 - Grab generated in the root directory ``_NRD_SDK`` folder and use it in your project
-
-### NRD sample usage
-- Press MOUSE_RIGHT to move...
-- W/S/A/D - move camera
-- MOUSE_SCROLL - accelerate / decelerate
-- F1 - hide UI toggle
-- F2 - switch to the next denoiser (*REBLUR* => *RELAX* => ..., *SIGMA* is the only denoiser for shadows)
-- SPACE - pause animation toggle
-
-Notes:
-- RELAX doesn't support the checkerboard mode (0.5 rpp input). If RELAX is the current denoiser, ``0.5 rpp`` setting in the UI will be automatically unckecked
-- RELAX doesn't support AO / SO denoising. If RELAX is the current denoiser, ambient term will be automatically ignored, bypassing settings in the UI
-In such cases the default behavior can be returned by pressing the ``Default settings`` button or choosing a new test, if ``--testMode`` is set in the command line.
 
 ## INTEGRATION VARIANTS
 
@@ -196,10 +171,10 @@ The following textures can be requested as inputs for a method. Brackets contain
 respectively. These inputs should be prepared using the ``XXX_FrontEnd_PackRadiance`` function from ``NRD.hlsl``.
 It is recommended to clear infinite (sky) pixels using corresponding ``XXX_INF_DIFF / XXX_INF_SPEC`` macros.
 *REBLUR* denoises AO and SO for free, but at the same time real hit distances are needed for controlling
-denoising and specular tracking. To simplify this *REBLUR* suggests using ``REBLUR_FrontEnd_GetNormHitDist``
-for hit distance normalization. This value needs to be passed in to ``REBLUR_FrontEnd_PackRadiance`` along
-with normalization parameters for further compression. Normalization parameters should be passed into *NRD*
-as ``HitDistanceParameters`` for diffuse and specular separately for internal use
+denoising and specular tracking. To simplify this, *REBLUR* suggests using ``REBLUR_FrontEnd_GetNormHitDist``
+for hit distance normalization. This value needs to be passed into ``REBLUR_FrontEnd_PackRadiance``.
+Normalization parameters should be passed into *NRD* as ``HitDistanceParameters`` for diffuse and specular
+separately for internal hit distance de-normalization.
 
 * **IN\_SHADOWDATA** (RG16f+) - *SIGMA* input, needs to be packed using a ``XXX_FrontEnd_PackShadow``
 function from ``NRD.hlsl``. Infinite (sky) pixels must be cleared using ``XXX_INF_SHADOW`` macros
@@ -229,73 +204,111 @@ hit distance (will be already unpacked internally)
 * **OUT\_SPEC\_HIT** (RGBA16f+) - ``.xyz`` - denoised specular radiance, ``.w`` - normalized hit
 distance (will be already unpacked internally)
 
-## RECOMMENDATIONS AND GOOD PRACTICES
+## SAMPLE APP
+
+See README.md in *NRI samples* project.
+
+## INTEGRATION GUIDE, RECOMMENDATIONS AND GOOD PRACTICES
 
 Denoising is not a panacea or miracle. Denoising works best with ray tracing results produced by a
 suitable form of importance sampling. Additionally, *NRD* has its own restrictions. The following
 suggestions should help to achieve best image quality:
 
-1. **[NRD]** Read all comments from ``NRDDescs.h`` and ``NRD.hlsl``
+**[NRD]** NRD API has been designed to support integration into native VULKAN apps. If the RHI, you
+work with, is DX11-like, not all fields will be needed.
 
-2. **[NRD]** If you are unsure of which parameters to use - use defaults
+**[NRD]** Read all comments from ``NRDDescs.h`` and ``NRD.hlsl``.
 
-3. **[NRD]** The library doesn’t care about motion vectors much. For the first time pass all MVs set to 0
+**[NRD]** If you are unsure of which parameters to use - use defaults.
+
+**[NRD]** *NRD* works with linear roughness and world-space normals. See ``NRD.hlsl`` for more details
+and supported customizations.
+
+**[NRD]** *NRD* works with non-jittered matrices.
+
+**[NRD]** The library doesn’t care about motion vectors much. For the first time pass all MVs set to 0
 (you can use ``CommonSettings::motionVectorScale = {0}`` for this) and enable ``CommonSettings::worldSpaceMotion = true``,
-*NRD* can track camera motion internally. Enable application provided MVs after getting denoising working
+*NRD* can track camera motion internally. Enable application provided MVs after getting denoising working.
 
-4. **[NRD]** *NRD* has been designed to work with pure radiance coming from a particular direction.
+**[NRD]** Using of 2D MVs can lead to massive history reset on fast moving objects, because 2D motion provides information
+only about pixel screen position but not about real 3D world position. Consider using 3D MVs instead.
+
+**[NRD]** *NRD* has been designed to work with pure radiance coming from a particular direction.
 This means that data in the form "something / probability" should be avoided (but it doesn't mean
 that it won't work), because spatial filtering passes can start to distribute wrong energy to the
 neighboring pixels. Additionally, it means that BRDF should be applied **after** denoising:
 
     Denoising( DiffuseRadiance * Albedo ) → Denosing( DiffuseRadiance ) * Albedo
-
     Denoising( SpecularRadiance * BRDF( micro params ) ) → Denoising( SpecularRadiance ) * INTEGRATED_BRDF( macro params )
 
-5. **[NRD]** Importance sampling is recommended to achieve good results in case of complex
+It's worth noting that *RELAX* has a better capability to preserve details in this case due to usage of
+A-trous filter with luminance stoppers.
+
+**[NRD]** Denoising logic is driven by provided hit distances. For REBLUR diffuse-only denoiser only hit
+distance for the 1st bounce is needed. For specular denoisers just a length of the path can be used,
+excluding distance to the primary hit. But this solution is suboptimal, better use ``NRD_GetCorrectedHitDist``
+from ``NRD.hlsl``.
+
+**[NRD]** Denoisers (currently only *REBLUR*) can perform optional color compression in spatial filtering passes to improve
+overall IQ by sacrificing energy correctness a bit. For better IQ HDR inputs need to be in a sane range (0 - 10 / 100).
+Color compression mode is roughness based and can be tuned (or turned off) in ``NRD.hlsl``.
+
+**[NRD]** Importance sampling is recommended to achieve good results in case of complex
 lighting environments. Consider using:
    - Cosine distribution for diffuse from non-local light sources
    - VNDF sampling for specular
    - Custom importance sampling for local light sources (*RTXDI*)
 
-6. **[NRD]** It's a good idea to run a *spatial reuse* pass on noisy inputs before passing
-them to a denoiser.
+**[NRD]** It's a good idea to run a *spatial reuse* pass on noisy inputs before passing
+them to a denoiser (*Tomasz Stachowiak - Stochastic all the things: raytracing in hybrid real-time rendering*
+https://youtu.be/MyTOGHqyquU?t=1015).
 
-7. **[NRD]** Hit distances should come from an importance sampling method. But if in case of
+**[NRD]** Hit distances should come from an importance sampling method. But if in case of
 *REBLUR*, for example, denoising of AO and a custom direct / indirect lighting is needed, AO
 can come from cos-weighted sampling and radiance can be computed by a different method
 in a tradeoff of IQ.
 
-8. **[NRD]** Low discrepancy sampling helps to have a more stable output. The sample has a macro
+**[NRD]** Low discrepancy sampling helps to have a more stable output. The sample has a macro
 switch declared in ``09_Resources.hlsl`` named ``USE_BLUE_NOISE``. You can experiment with it.
 
-9. **[NRD]** If history reset is needed set ``CommonSettings::frameIndex`` to 0 for a single frame
+**[NRD]** If history reset is needed set ``CommonSettings::frameIndex`` to 0 for a single frame. Currently NRD
+is not responsible for clearing of most important resources. If a history buffer has a NAN / INF it
+can be propagated to neighboring pixels, filling the entire texture with "bad" values forever in a few frames.
+This behavior varies per denoiser. NRD is NAN / INF free, but good initial state of history buffers should be
+provided from the application side. This might be improved in the future.
 
-10. **[NRD]** Functions ``XXX_FrontEnd_PackRadiance`` apply Reinhard-like color compression
-to the provided radiance. It assumes that the input is in HDR range (less than 1 = LDR,
-greater than 1 = HDR). The efficiency of compression is reduced if the input is in [0; 1] range.
-But if the latter is true, for *NRD* needs the input radiance can be pre-multiplied with a known
-constant and divided back after denoising.
+**[NRD]** Functions ``XXX_FrontEnd_PackRadiance`` perform optional NAN / INF clearing of the input signal.
+There is a boolean to skip this checks.
 
-11. **[REBLUR]** In case of *REBLUR* ensure that ``CommonSettings::forceReferenceAccumulation = true`` works properly
+**[NRD]** The number of accumulated frames in fast history needs to be carefully tuned to avoid introducing
+significant bias and dirt. Initial integration should be done by setting ``maxFastAccumulatedFrameNum`` to
+``maxAccumulatedFrameNum``.
 
-12. **[REBLUR]** For diffuse and specular *REBLUR* expects hit distance input in a normalized form.
+**[REBLUR]** In case of *REBLUR* ensure that ``CommonSettings::forceReferenceAccumulation = true`` works properly
+first. It's not mandatory needed, but will help to simplify debugging of potential issues by implicitly
+disabling spatial filtering entirely.
+
+**[REBLUR]** For diffuse and specular *REBLUR* expects hit distance input in a normalized form.
 To avoid mismatching ``REBLUR_FrontEnd_GetNormHitDist`` should be used for normalization. Some
 tweaking can be needed here, but in most cases normalization to the default ``HitDistanceParameters``
 works well. *REBLUR* outputs denoised normalized hit distance, which can be used by the application
-as ambient or specular occlusion (AO & SO) (see unpacking functions from ``NRD.hlsl``)
+as ambient or specular occlusion (AO & SO) (see unpacking functions from ``NRD.hlsl``).
 
-13. **[REBLUR]** *REBLUR* handles specular lobe trimming, trying to reconstruct trimmed signal.
+**[REBLUR]** *REBLUR* handles specular lobe trimming, trying to reconstruct trimmed signal.
 Similarly to hit distance normalization, *REBLUR* needs to be aware about trimming parameters.
 If this feature is used in a ray tracer, ``LobeTrimmingParameters`` must be passed into *REBLUR*.
 To avoid code duplication ``NRD_GetTrimmingFactor`` can be used in a shader code on the application side.
 
-14. **[RELAX]** Works incredibly well with signals produced by RTXDI or very clean high RPP signals.
+**[REBLUR]** Intensity antilag parameters need to be carefully tuned. Initial integration should work with
+intensity antilag turned off.
+
+**[RELAX]** Works incredibly well with signals produced by RTXDI or very clean high RPP signals.
 The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 
-15. **[SIGMA]** To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen
+**[SIGMA]** To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen.
+Additionally, ``blurRadiusScale`` can be set to 2-4 to mitigate such problems in complicated cases.
 
-16. **[SIGMA]** *SIGMA_TRANSLUCENT_SHADOW* can be used for denoising of shadows from multiple light sources:
+**[SIGMA]** *SIGMA_TRANSLUCENT_SHADOW* can be used for denoising of shadows from multiple light sources:
 
     *L[i]* - unshadowed analytical lighting from a single light source (**not noisy**)<br/>
     *S[i]* - stochastically sampled light visibility for *L[i]* (**noisy**)<br/>

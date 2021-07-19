@@ -68,18 +68,12 @@
 #include <math.h>
 #include <float.h>
 
-#if defined(__GNUC__) || defined (__clang__)
-    #if defined(__i386__) || defined(__x86_64__)
-        #include <x86intrin.h>
-    #endif
-  
-    #if defined(__arm__)
-        #include <armintr.h>
-    #endif
-  
-    #if defined(__aarch64__)
-        #include <arm64intr.h>
-    #endif
+#if defined(_M_X64) || defined(_M_X86)
+    #include <intrin.h>
+#elif defined(__i386__) || defined(__x86_64__)
+    #include <x86intrin.h>
+#elif defined(__arm__) || defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM)
+    #include "External/sse2neon/sse2neon.h"
 #else
     #include <intrin.h>
 #endif
@@ -903,15 +897,13 @@ struct sFastRand
     }
 };
 
-__declspec(selectany) sFastRand g_frand;
-
 namespace Rand
 {
     const float m1 = 1.0f / 32768.0f;
     const float m2 = 1.0f / 16384.0f;
     const float a2 = 0.5f / 16384.0f - 1.0f;
 
-    PLATFORM_INLINE void Seed(uint32_t seed)
+    PLATFORM_INLINE void Seed(uint32_t seed, sFastRand* state = PLATFORM_NULL)
     {
         #if( PLATFORM_RND_MODE == PLATFORM_RND_CRT )
 
@@ -919,7 +911,7 @@ namespace Rand
 
         #elif( PLATFORM_RND_MODE == PLATFORM_RND_FAST )
 
-            g_frand.Seed(seed);
+            state->Seed(seed);
 
         #else
 
@@ -955,7 +947,7 @@ namespace Rand
 
     // NOTE: scalar
 
-    PLATFORM_INLINE uint32_t ui1()
+    PLATFORM_INLINE uint32_t ui1(sFastRand* state = PLATFORM_NULL)
     {
         uint32_t rnd;
 
@@ -965,7 +957,7 @@ namespace Rand
 
         #elif( PLATFORM_RND_MODE == PLATFORM_RND_FAST )
 
-            rnd = g_frand.ui1();
+            rnd = state->ui1();
 
         #else
 
@@ -978,7 +970,7 @@ namespace Rand
         return rnd;
     }
 
-    PLATFORM_INLINE uint16_t us1()
+    PLATFORM_INLINE uint16_t us1(sFastRand* state = PLATFORM_NULL)
     {
         uint16_t rnd;
 
@@ -988,7 +980,7 @@ namespace Rand
 
         #elif( PLATFORM_RND_MODE == PLATFORM_RND_FAST )
 
-            uint32_t t = ui1();
+            uint32_t t = ui1(state);
             rnd = uint16_t(t >> 16);
 
         #else
@@ -1002,7 +994,7 @@ namespace Rand
         return rnd;
     }
 
-    PLATFORM_INLINE float uf1()
+    PLATFORM_INLINE float uf1(sFastRand* state = PLATFORM_NULL)
     {
         #if( PLATFORM_RND_MODE == PLATFORM_RND_CRT )
 
@@ -1010,12 +1002,12 @@ namespace Rand
 
         #else
 
-            return uf1_from_rawbits( ui1() );
+            return uf1_from_rawbits( ui1(state) );
 
         #endif
     }
 
-    PLATFORM_INLINE float sf1()
+    PLATFORM_INLINE float sf1(sFastRand* state = PLATFORM_NULL)
     {
         #if( PLATFORM_RND_MODE == PLATFORM_RND_CRT )
 
@@ -1023,14 +1015,14 @@ namespace Rand
 
         #else
 
-            return sf1_from_rawbits( ui1() );
+            return sf1_from_rawbits( ui1(state) );
 
         #endif
     }
 
     // NOTE: vector4
 
-    PLATFORM_INLINE v4i ui4()
+    PLATFORM_INLINE v4i ui4(sFastRand* state = PLATFORM_NULL)
     {
         v4i r;
 
@@ -1045,16 +1037,16 @@ namespace Rand
 
         #else
 
-            r = g_frand.ui4();
+            r = state->ui4();
 
         #endif
 
         return r;
     }
 
-    PLATFORM_INLINE float4 uf4()
+    PLATFORM_INLINE float4 uf4(sFastRand* state = PLATFORM_NULL)
     {
-        v4i rnd = ui4();
+        v4i rnd = ui4(state);
         v4f r;
 
         #if( PLATFORM_RND_MODE == PLATFORM_RND_CRT )
@@ -1074,9 +1066,9 @@ namespace Rand
         return r;
     }
 
-    PLATFORM_INLINE float4 sf4()
+    PLATFORM_INLINE float4 sf4(sFastRand* state = PLATFORM_NULL)
     {
-        v4i rnd = ui4();
+        v4i rnd = ui4(state);
         v4f r;
 
         #if( PLATFORM_RND_MODE == PLATFORM_RND_CRT )
@@ -1097,14 +1089,14 @@ namespace Rand
         return r;
     }
 
-    PLATFORM_INLINE float3 uf3()
+    PLATFORM_INLINE float3 uf3(sFastRand* state = PLATFORM_NULL)
     {
-        return uf4().xmm;
+        return uf4(state).xmm;
     }
 
-    PLATFORM_INLINE float3 sf3()
+    PLATFORM_INLINE float3 sf3(sFastRand* state = PLATFORM_NULL)
     {
-        return sf4().xmm;
+        return sf4(state).xmm;
     }
 }
 
