@@ -8,5 +8,6 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "SIGMA_ShadowTranslucency_TemporalStabilization.resources.hlsl"
-#include "SIGMA_Shadow_TemporalStabilization.cs.hlsl"
+#define SIGMA_TRANSLUCENT
+
+#include "SIGMA_Shadow_TemporalStabilization.hlsli"

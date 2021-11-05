@@ -30,6 +30,7 @@ Makefile
 *.lib
 *.exp
 *.dll
+*.ilk
 *.pdb
 *.so
 *.so.*

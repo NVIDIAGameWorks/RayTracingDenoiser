@@ -31,9 +31,9 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 2
-#define NRD_VERSION_MINOR 5
+#define NRD_VERSION_MINOR 9
 #define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "11 July 2021"
+#define NRD_VERSION_DATE "1 November 2021"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall

@@ -8,15 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "NRD.hlsl"
-#include "STL.hlsl"
-#include "RELAX_DiffuseSpecular_HistoryClamping.resources.hlsl"
+#include "NRD.hlsli"
+#include "STL.hlsli"
+#include "RELAX_DiffuseSpecular_HistoryClamping.resources.hlsli"
 
 NRD_DECLARE_CONSTANTS
 
-#include "NRD_Common.hlsl"
+#include "NRD_Common.hlsli"
 NRD_DECLARE_SAMPLERS
-#include "RELAX_Common.hlsl"
+#include "RELAX_Common.hlsli"
 
 #define THREAD_GROUP_SIZE 16
 #define SKIRT 2
@@ -25,31 +25,6 @@ NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
 
 groupshared uint3 sharedPackedSpecularDiffuse[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
-
-// Helper functions
-float3 LinearToYCoCg(float3 color)
-{
-    float Co = color.x - color.z;
-    float t = color.z + Co * 0.5;
-    float Cg = color.y - t;
-    float Y = t + Cg * 0.5;
-
-    return float3(Y, Co, Cg);
-}
-
-float3 YCoCgToLinear(float3 color)
-{
-    float t = color.x - color.z * 0.5;
-    float g = color.z + t;
-    float b = t - color.y * 0.5;
-    float r = b + color.y;
-    float3 res = float3(r, g, b);
-
-    // Ignore negative values ( minor deviations are possible )
-    res = max(res, 0);
-
-    return res;
-}
 
 uint3 pack(float3 specular, float3 diffuse)
 {
@@ -70,11 +45,10 @@ void unpack(uint3 packedData, out float3 specular, out float3 diffuse)
     diffuse.b = f16tof32(packedData.b >> 16);
 }
 
-void runHistoryClamping(int2 pixelPos, int2 sharedMemoryIndex, float3 specular, float3 diffuse, float2 historyLength, out float3 outSpecular, out float3 outDiffuse, out float2 outHistoryLength)
+void runHistoryClamping(int2 pixelPos, int2 sharedMemoryIndex, float3 specular, float3 diffuse, out float3 outSpecular, out float3 outDiffuse)
 {
-
-    float3 specularYCoCg = LinearToYCoCg(specular);
-    float3 diffuseYCoCg = LinearToYCoCg(diffuse);
+    float3 specularYCoCg = STL::Color::LinearToYCoCg(specular);
+    float3 diffuseYCoCg = STL::Color::LinearToYCoCg(diffuse);
 
     float3 specularFirstMoment = 0;
     float3 specularSecondMoment = 0;
@@ -129,38 +103,16 @@ void runHistoryClamping(int2 pixelPos, int2 sharedMemoryIndex, float3 specular, 
     diffuseColorMin = min(diffuseColorMin, diffuseCenter);
     diffuseColorMax = max(diffuseColorMax, diffuseCenter);
 
-    // Calculating color boxes for antilag
-    float3 specularColorMinForAntilag = specularFirstMoment - gSpecularAntiLagSigmaScale * specularSigma;
-    float3 specularColorMaxForAntilag = specularFirstMoment + gSpecularAntiLagSigmaScale * specularSigma;
-    float3 diffuseColorMinForAntilag = diffuseFirstMoment - gDiffuseAntiLagSigmaScale * diffuseSigma;
-    float3 diffuseColorMaxForAntilag = diffuseFirstMoment + gDiffuseAntiLagSigmaScale * diffuseSigma;
-
-    float3 specularYCoCgClampedForAntilag = clamp(specularYCoCg, specularColorMinForAntilag, specularColorMaxForAntilag);
-    float3 diffuseYCoCgClampedForAntilag = clamp(diffuseYCoCg, diffuseColorMinForAntilag, diffuseColorMaxForAntilag);
-
-    float3 specularDiffYCoCg = abs(specularYCoCgClampedForAntilag - specularYCoCg);
-    float3 specularDiffYCoCgScaled = (specularYCoCg.r != 0) ? specularDiffYCoCg / (specularYCoCg.r) : 0;
-    float specularAntilagAmount = gSpecularAntiLagPower * sqrt(dot(specularDiffYCoCgScaled, specularDiffYCoCgScaled));
-
-    float3 diffuseDiffYCoCg = abs(diffuseYCoCgClampedForAntilag - diffuseYCoCg);
-    float3 diffuseDiffYCoCgScaled = (diffuseYCoCg.r != 0) ? diffuseDiffYCoCg / (diffuseYCoCg.r) : 0;
-    float diffuseAntilagAmount = gDiffuseAntiLagPower * sqrt(dot(diffuseDiffYCoCgScaled, diffuseDiffYCoCgScaled));
-
-    outHistoryLength = historyLength;
-    outHistoryLength.x = historyLength.x / (1.0 + specularAntilagAmount);
-    outHistoryLength.y = historyLength.y / (1.0 + diffuseAntilagAmount);
-    outHistoryLength = max(outHistoryLength, 1.0);
-
     // Color clamping
     specularYCoCg = clamp(specularYCoCg, specularColorMin, specularColorMax);
-    outSpecular = YCoCgToLinear(specularYCoCg);
+    outSpecular = STL::Color::YCoCgToLinear(specularYCoCg);
 
     diffuseYCoCg = clamp(diffuseYCoCg, diffuseColorMin, diffuseColorMax);
-    outDiffuse = YCoCgToLinear(diffuseYCoCg);
+    outDiffuse = STL::Color::YCoCgToLinear(diffuseYCoCg);
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
-NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId, uint3 groupThreadId : SV_GroupThreadId, uint3 groupId : SV_GroupId)
 {
     // Populating shared memory
     uint linearThreadIndex = groupThreadId.y * THREAD_GROUP_SIZE + groupThreadId.x;
@@ -181,9 +133,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 
 
     if (xx >= 0 && yy >= 0 && xx < gResolution.x && yy < gResolution.y)
     {
-        UnpackSpecularAndDiffuseFromLogLuvUint2(specularResponsive, diffuseResponsive, gSpecularAndDiffuseResponsiveIlluminationLogLuv[int2(xx, yy)]);
+        specularResponsive = gSpecularIlluminationResponsive[int2(xx, yy)].rgb;
+        diffuseResponsive = gDiffuseIlluminationResponsive[int2(xx, yy)].rgb;
     }
-    sharedPackedSpecularDiffuse[oy][ox] = pack(LinearToYCoCg(specularResponsive), LinearToYCoCg(diffuseResponsive));
+    sharedPackedSpecularDiffuse[oy][ox] = pack(STL::Color::LinearToYCoCg(specularResponsive), STL::Color::LinearToYCoCg(diffuseResponsive));
 
     // Second stage
     linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
@@ -202,31 +155,32 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 
     {
         if (xx >= 0 && yy >= 0 && xx < (int)gResolution.x && yy < (int)gResolution.y)
         {
-            UnpackSpecularAndDiffuseFromLogLuvUint2(specularResponsive, diffuseResponsive, gSpecularAndDiffuseResponsiveIlluminationLogLuv[int2(xx, yy)]);
+            specularResponsive = gSpecularIlluminationResponsive[int2(xx, yy)].rgb;
+            diffuseResponsive = gDiffuseIlluminationResponsive[int2(xx, yy)].rgb;
         }
-        sharedPackedSpecularDiffuse[oy][ox] = pack(LinearToYCoCg(specularResponsive), LinearToYCoCg(diffuseResponsive));
+        sharedPackedSpecularDiffuse[oy][ox] = pack(STL::Color::LinearToYCoCg(specularResponsive), STL::Color::LinearToYCoCg(diffuseResponsive));
     }
 
     // Ensuring all the writes to shared memory are done by now
     GroupMemoryBarrierWithGroupSync();
     // Shared memory is populated with responsive history now and can be used for history clamping
 
-    // Reading normal history and history length
-    float3 specular;
-    float3 diffuse;
-    UnpackSpecularAndDiffuseFromLogLuvUint2(specular, diffuse, gSpecularAndDiffuseIlluminationLogLuv[dispatchThreadId.xy]);
+    // Reading normal history
+    float4 specularIlluminationAnd2ndMoment = gSpecularIllumination[dispatchThreadId.xy];
+    float4 diffuseIlluminationAnd2ndMoment = gDiffuseIllumination[dispatchThreadId.xy];
 
     // Reading history length
-    float2 historyLength = gSpecularAndDiffuseHistoryLength[dispatchThreadId.xy] * 255.0;
+    float2 historyLength = gSpecularAndDiffuseHistoryLength[dispatchThreadId.xy];
 
     // Running history clamping
     uint2 sharedMemoryIndex = groupThreadId.xy + int2(SKIRT, SKIRT);
     float3 clampedSpecular;
     float3 clampedDiffuse;
     float2 adjustedHistoryLength;
-    runHistoryClamping(dispatchThreadId.xy, sharedMemoryIndex, specular, diffuse, historyLength, clampedSpecular, clampedDiffuse, adjustedHistoryLength);
+    runHistoryClamping(dispatchThreadId.xy, sharedMemoryIndex, specularIlluminationAnd2ndMoment.rgb, diffuseIlluminationAnd2ndMoment.rgb, clampedSpecular, clampedDiffuse);
 
     // Writing out the results
-    gOutSpecularAndDiffuseIlluminationLogLuv[dispatchThreadId.xy] = PackSpecularAndDiffuseToLogLuvUint2(clampedSpecular, clampedDiffuse);
-    gOutSpecularAndDiffuseHistoryLength[dispatchThreadId.xy] = adjustedHistoryLength / 255.0;
+    gOutSpecularIllumination[dispatchThreadId.xy] =float4(clampedSpecular, specularIlluminationAnd2ndMoment.a);
+    gOutDiffuseIllumination[dispatchThreadId.xy] = float4(clampedDiffuse, diffuseIlluminationAnd2ndMoment.a);
+    gOutSpecularAndDiffuseHistoryLength[dispatchThreadId.xy] = historyLength;
 }

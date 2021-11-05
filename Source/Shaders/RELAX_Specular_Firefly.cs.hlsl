@@ -8,15 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "NRD.hlsl"
-#include "STL.hlsl"
-#include "RELAX_Specular_Firefly.resources.hlsl"
+#include "NRD.hlsli"
+#include "STL.hlsli"
+#include "RELAX_Specular_Firefly.resources.hlsli"
 
 NRD_DECLARE_CONSTANTS
 
-#include "NRD_Common.hlsl"
+#include "NRD_Common.hlsli"
 NRD_DECLARE_SAMPLERS
-#include "RELAX_Common.hlsl"
+#include "RELAX_Common.hlsli"
 
 #define THREAD_GROUP_SIZE 16
 #define SKIRT 1
@@ -24,44 +24,14 @@ NRD_DECLARE_SAMPLERS
 NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
 
-groupshared uint2 sharedPackedIllumination[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
-groupshared float4 sharedPackedZAndNormal[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
+groupshared float4 sharedSpecularIllumination[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
+groupshared float4 sharedNormalAndViewZ[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 
 // Helper functions
-uint2 repackIllumination(uint specularIlluminationLogLuv)
-{
-    float3 specularIllum = STL::Color::LogLuvToLinear(specularIlluminationLogLuv);
-    uint2 result;
-    result.r = f32tof16(specularIllum.r) | f32tof16(specularIllum.g) << 16;
-    result.g = f32tof16(specularIllum.b);
-    return result;
-}
 
-void unpackIllumination(uint2 packedData, out float3 specularIllum)
+float edgeStoppingDepth(float centerViewZ, float sampleViewZ)
 {
-    specularIllum.r = f16tof32(packedData.r);
-    specularIllum.g = f16tof32(packedData.r >> 16);
-    specularIllum.b = f16tof32(packedData.g);
-}
-
-float4 repackNormalAndDepth(uint2 packedNormalRoughnessDepth)
-{
-    float3 normal;
-    float roughnessDontCare;
-    float depth;
-    UnpackNormalRoughnessDepth(normal, roughnessDontCare, depth, packedNormalRoughnessDepth);
-    return float4(normal, depth);
-}
-
-void unpackNormalAndDepth(float4 packedData, out float3 normal, out float depth)
-{
-    normal = packedData.rgb;
-    depth = packedData.a;
-}
-
-float edgeStoppingDepth(float centerDepth, float sampleDepth)
-{
-    return (abs(centerDepth - sampleDepth) / (centerDepth + 1e-6)) < 0.1 ? 1.0 : 0.0;
+    return (abs(centerViewZ - sampleViewZ) / (centerViewZ + 1e-6)) < 0.1 ? 1.0 : 0.0;
 }
 
 void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId, uint2 groupId)
@@ -79,16 +49,18 @@ void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId,
     int xx = blockXStart + newIdxX - SKIRT;
     int yy = blockYStart + newIdxY - SKIRT;
 
-    uint2 packedIllumination = 0;
-    float4 packedNormalAndDepth = 0;
+    float4 specularIllumination = 0;
+    float3 normal = 0;
+    float viewZ = 0;
 
     if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
     {
-        packedIllumination = repackIllumination(gSpecularIlluminationLogLuv[int2(xx,yy)]);
-        packedNormalAndDepth = repackNormalAndDepth(gNormalRoughnessDepth[int2(xx,yy)]);
+        specularIllumination = gSpecularIllumination[int2(xx, yy)];
+        normal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[int2(xx, yy)]).rgb;
+        viewZ = gViewZFP16[int2(xx, yy)] / NRD_FP16_VIEWZ_SCALE;
     }
-    sharedPackedIllumination[oy][ox] = packedIllumination;
-    sharedPackedZAndNormal[oy][ox] = packedNormalAndDepth;
+    sharedSpecularIllumination[oy][ox] = specularIllumination;
+    sharedNormalAndViewZ[oy][ox] = float4(normal, viewZ);
 
     // Second stage
     linearThreadIndex += THREAD_GROUP_SIZE * THREAD_GROUP_SIZE;
@@ -100,29 +72,33 @@ void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId,
     xx = blockXStart + newIdxX - SKIRT;
     yy = blockYStart + newIdxY - SKIRT;
 
-    packedIllumination = 0;
-    packedNormalAndDepth = 0;
+    specularIllumination = 0;
+    normal = 0;
+    viewZ = 0;
 
-      if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
+    if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
     {
         if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
         {
-            packedIllumination = repackIllumination(gSpecularIlluminationLogLuv[int2(xx,yy)]);
-            packedNormalAndDepth = repackNormalAndDepth(gNormalRoughnessDepth[int2(xx,yy)]);
+            specularIllumination = gSpecularIllumination[int2(xx, yy)];
+            normal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[int2(xx, yy)]).rgb;
+            viewZ = gViewZFP16[int2(xx, yy)] / NRD_FP16_VIEWZ_SCALE;
         }
-        sharedPackedIllumination[oy][ox] = packedIllumination;
-        sharedPackedZAndNormal[oy][ox] = packedNormalAndDepth;
+        sharedSpecularIllumination[oy][ox] = specularIllumination;
+        sharedNormalAndViewZ[oy][ox] = float4(normal, viewZ);
     }
 }
 
 // Cross bilateral Rank-Conditioned Rank-Selection (RCRS) filter
-void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, float centerDepth, out float3 outSpecular)
+void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, float centerViewZ, out float4 outSpecular)
 {
     // Fetching center data
     uint2 sharedMemoryIndex = groupThreadId.xy + int2(SKIRT, SKIRT);
 
-    float3 specularIlluminationCenter;
-    unpackIllumination(sharedPackedIllumination[sharedMemoryIndex.y][sharedMemoryIndex.x], specularIlluminationCenter);
+    float4 s = sharedSpecularIllumination[sharedMemoryIndex.y][sharedMemoryIndex.x];
+
+    float3 specularIlluminationCenter = s.rgb;
+    float specular2ndMomentCenter = s.a;
 
     float specularLuminanceCenter = STL::Color::Luminance(specularIlluminationCenter);
 
@@ -132,25 +108,25 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, flo
     int2 maxSpecularLuminanceCoords = sharedMemoryIndex;
     int2 minSpecularLuminanceCoords = sharedMemoryIndex;
 
+    [unroll]
     for (int yy = -1; yy <= 1; yy++)
     {
+        [unroll]
         for (int xx = -1; xx <= 1; xx++)
         {
             int2 p = dispatchThreadId.xy + int2(xx, yy);
-            int2 sharedMemoryIndexSample = groupThreadId.xy + int2(SKIRT, SKIRT) + int2(xx,yy);
+            int2 sharedMemoryIndexSample = groupThreadId.xy + int2(SKIRT, SKIRT) + int2(xx, yy);
 
             if ((xx == 0) && (yy == 0)) continue;
             if ((p.x < 0) || (p.x >= gResolution.x)) continue;
             if ((p.y < 0) || (p.y >= gResolution.y)) continue;
 
             // Fetching sample data
-            float3 sampleNormal;
-            float sampleDepth;
-            unpackNormalAndDepth(sharedPackedZAndNormal[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x], sampleNormal, sampleDepth);
+            float4 v = sharedNormalAndViewZ[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];
+            float3 sampleNormal = v.xyz;
+            float sampleViewZ = v.w;
 
-            float3 specularIlluminationSample;
-            unpackIllumination(sharedPackedIllumination[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x], specularIlluminationSample);
-
+            float3 specularIlluminationSample = sharedSpecularIllumination[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x].rgb;
             float specularLuminanceSample = STL::Color::Luminance(specularIlluminationSample);
 
             // Applying weights
@@ -158,21 +134,20 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, flo
             float weight = dot(centerNormal, sampleNormal) > 0.99 ? 1.0 : 0.0;
 
             // ..depth weight
-            weight *= edgeStoppingDepth(centerDepth, sampleDepth);
+            weight *= edgeStoppingDepth(centerViewZ, sampleViewZ);
 
-            if(weight > 0)
+            if (weight > 0)
             {
-                if(specularLuminanceSample > maxSpecularLuminance)
+                if (specularLuminanceSample > maxSpecularLuminance)
                 {
                     maxSpecularLuminance = specularLuminanceSample;
                     maxSpecularLuminanceCoords = sharedMemoryIndexSample;
                 }
-                if(specularLuminanceSample < minSpecularLuminance)
+                if (specularLuminanceSample < minSpecularLuminance)
                 {
                     minSpecularLuminance = specularLuminanceSample;
                     minSpecularLuminanceCoords = sharedMemoryIndexSample;
                 }
-
             }
         }
     }
@@ -181,20 +156,20 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, flo
     // or leaving sample as it is if it's within the range
     int2 specularCoords = sharedMemoryIndex;
 
-    if(specularLuminanceCenter > maxSpecularLuminance)
+    if (specularLuminanceCenter > maxSpecularLuminance)
     {
         specularCoords = maxSpecularLuminanceCoords;
     }
-    if(specularLuminanceCenter < minSpecularLuminance)
+    if (specularLuminanceCenter < minSpecularLuminance)
     {
         specularCoords = minSpecularLuminanceCoords;
     }
 
-    unpackIllumination(sharedPackedIllumination[specularCoords.y][specularCoords.x], outSpecular);
+    outSpecular = float4(sharedSpecularIllumination[specularCoords.y][specularCoords.x].rgb, specular2ndMomentCenter);
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
-NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId, uint3 groupThreadId : SV_GroupThreadId, uint3 groupId : SV_GroupId)
 {
     // Populating shared memory for firefly filter
     PopulateSharedMemoryForFirefly(dispatchThreadId.xy, groupThreadId.xy, groupId.xy);
@@ -203,31 +178,22 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID, uint3 
     GroupMemoryBarrierWithGroupSync();
 
     // Shared memory is populated now and can be used for filtering
-    float3 centerNormal;
-    float centerDepth;
-    unpackNormalAndDepth(sharedPackedZAndNormal[groupThreadId.y + SKIRT][groupThreadId.x + SKIRT], centerNormal, centerDepth);
+    float4 v = sharedNormalAndViewZ[groupThreadId.y + SKIRT][groupThreadId.x + SKIRT];
+    float3 centerNormal = v.xyz;
+    float centerViewZ = v.w;
 
     // Early out if linearZ is beyond denoising range
     [branch]
-    if (centerDepth > gDenoisingRange)
+    if (centerViewZ > gDenoisingRange)
     {
         return;
     }
 
     // Running firefly filter
-    float3 outSpecularIllumination;
+    float4 outSpecularIlluminationAnd2ndMoment;
 
-    if (gFireflyEnabled > 0)
-    {
-        runRCRS(dispatchThreadId.xy, groupThreadId.xy, centerNormal, centerDepth, outSpecularIllumination);
-    }
-    else
-    {
-        // No firefly filter, passing data from shared memory without modification
-        unpackIllumination(sharedPackedIllumination[groupThreadId.y + SKIRT][groupThreadId.x + SKIRT], outSpecularIllumination);
-    }
+    runRCRS(dispatchThreadId.xy, groupThreadId.xy, centerNormal, centerViewZ, outSpecularIlluminationAnd2ndMoment);
 
-    gOutSpecularIlluminationLogLuv[dispatchThreadId.xy] = STL::Color::LinearToLogLuv(outSpecularIllumination);
-    gOutSpecularIllumination[dispatchThreadId.xy] = float4(outSpecularIllumination, 0);
+    gOutSpecularIllumination[dispatchThreadId.xy] = outSpecularIlluminationAnd2ndMoment;
 }
 

@@ -14,25 +14,26 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include <array>
 
-using namespace nrd;
-
-static const std::array<Method, 7> g_NrdSupportedMethods =
-{
-    Method::REBLUR_DIFFUSE,
-    Method::REBLUR_SPECULAR,
-    Method::REBLUR_DIFFUSE_SPECULAR,
-    Method::SIGMA_SHADOW,
-    Method::SIGMA_SHADOW_TRANSLUCENCY,
-    Method::RELAX_SPECULAR,
-    Method::RELAX_DIFFUSE_SPECULAR,
-};
-
-static_assert( g_NrdSupportedMethods.size() == (uint32_t)Method::MAX_NUM );
 static_assert( VERSION_MAJOR == NRD_VERSION_MAJOR, "VERSION_MAJOR & NRD_VERSION_MAJOR don't match!");
 static_assert( VERSION_MINOR == NRD_VERSION_MINOR, "VERSION_MINOR & NRD_VERSION_MINOR don't match!");
 static_assert( VERSION_BUILD == NRD_VERSION_BUILD, "VERSION_BUILD & NRD_VERSION_BUILD don't match!");
 
-static const LibraryDesc g_NrdLibraryDesc =
+constexpr std::array<nrd::Method, (size_t)nrd::Method::MAX_NUM> g_NrdSupportedMethods =
+{
+    nrd::Method::REBLUR_DIFFUSE,
+    nrd::Method::REBLUR_DIFFUSE_OCCLUSION,
+    nrd::Method::REBLUR_SPECULAR,
+    nrd::Method::REBLUR_SPECULAR_OCCLUSION,
+    nrd::Method::REBLUR_DIFFUSE_SPECULAR,
+    nrd::Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
+    nrd::Method::SIGMA_SHADOW,
+    nrd::Method::SIGMA_SHADOW_TRANSLUCENCY,
+    nrd::Method::RELAX_DIFFUSE,
+    nrd::Method::RELAX_SPECULAR,
+    nrd::Method::RELAX_DIFFUSE_SPECULAR,
+};
+
+constexpr nrd::LibraryDesc g_NrdLibraryDesc =
 {
     { 100, 200, 300, 400 }, // IMPORTANT: since NRD is compiled via "CompileHLSLToSPIRV" these should match the BAT file!
     g_NrdSupportedMethods.data(),
@@ -42,12 +43,12 @@ static const LibraryDesc g_NrdLibraryDesc =
     VERSION_BUILD
 };
 
-NRD_API const LibraryDesc& NRD_CALL nrd::GetLibraryDesc()
+NRD_API const nrd::LibraryDesc& NRD_CALL nrd::GetLibraryDesc()
 {
     return g_NrdLibraryDesc;
 }
 
-NRD_API Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser)
+NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser)
 {
     DenoiserCreationDesc modifiedDenoiserCreationDesc = denoiserCreationDesc;
     CheckAndSetDefaultAllocator(modifiedDenoiserCreationDesc.memoryAllocatorInterface);
@@ -67,22 +68,22 @@ NRD_API Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& denoiser
     return result;
 }
 
-NRD_API const DenoiserDesc& NRD_CALL nrd::GetDenoiserDesc(const Denoiser& denoiser)
+NRD_API const nrd::DenoiserDesc& NRD_CALL nrd::GetDenoiserDesc(const nrd::Denoiser& denoiser)
 {
     return ((const DenoiserImpl&)denoiser).GetDesc();
 }
 
-NRD_API Result NRD_CALL nrd::SetMethodSettings(Denoiser& denoiser, Method method, const void* methodSettings)
+NRD_API nrd::Result NRD_CALL nrd::SetMethodSettings(nrd::Denoiser& denoiser, nrd::Method method, const void* methodSettings)
 {
     return ((DenoiserImpl&)denoiser).SetMethodSettings(method, methodSettings);
 }
 
-NRD_API Result NRD_CALL nrd::GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
+NRD_API nrd::Result NRD_CALL nrd::GetComputeDispatches(nrd::Denoiser& denoiser, const nrd::CommonSettings& commonSettings, const nrd::DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
 {
     return ((DenoiserImpl&)denoiser).GetComputeDispatches(commonSettings, dispatchDescs, dispatchDescNum);
 }
 
-NRD_API void NRD_CALL nrd::DestroyDenoiser(Denoiser& denoiser)
+NRD_API void NRD_CALL nrd::DestroyDenoiser(nrd::Denoiser& denoiser)
 {
     StdAllocator<uint8_t> memoryAllocator = ((DenoiserImpl&)denoiser).GetStdAllocator();
     Deallocate(memoryAllocator, (DenoiserImpl*)&denoiser);

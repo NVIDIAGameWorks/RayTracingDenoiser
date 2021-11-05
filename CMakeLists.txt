@@ -53,25 +53,25 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
     set(NRD_MATHLIB_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/MathLib")
 
     # list HLSL shaders and headers
-    file(GLOB_RECURSE NRD_HLSL_FILES "Source/Shaders/*.hlsl")
-    file(GLOB_RECURSE NRD_HLSL_MATHLIB_HEADER_FILES "${NRD_MATHLIB_INCLUDE_PATH}/*.hlsl")
-    file(GLOB_RECURSE NRD_HLSL_INCLUDE "Include/*.hlsl")
+    file(GLOB_RECURSE NRD_HLSL_FILES "Source/Shaders/*.hlsl" "Source/Shaders/*.hlsli")
+    file(GLOB_RECURSE NRD_HLSL_MATHLIB_HEADER_FILES "${NRD_MATHLIB_INCLUDE_PATH}/*.hlsli")
+    file(GLOB_RECURSE NRD_HLSL_INCLUDE "Include/*.hlsli")
 
     include(ShaderCompilation.cmake)
 
     # create "build/Shaders"
     add_custom_target(CreateFolderForShaders ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory "${NRD_SHADER_OUTPUT_PATH}")
-    set_property(TARGET CreateFolderForShaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}") 
+    set_property(TARGET CreateFolderForShaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
 
     # define build rules for the shaders
     list_hlsl_headers("${NRD_HLSL_FILES}" NRD_HEADER_FILES)
     list_hlsl_headers("${NRD_HLSL_MATHLIB_HEADER_FILES}" NRD_HEADER_FILES)
     list_hlsl_headers("${NRD_HLSL_INCLUDE}" NRD_HEADER_FILES)
     list_hlsl_shaders("${NRD_HLSL_FILES}" "${NRD_HEADER_FILES}" NRD_SHADER_FILES)
-    add_custom_target(Shaders ALL DEPENDS ${NRD_SHADER_FILES} SOURCES "${NRD_HEADER_FILES}")
-    add_dependencies(Shaders CreateFolderForShaders)
-    set_property(TARGET Shaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}") 
+    add_custom_target(NrdShaders ALL DEPENDS ${NRD_SHADER_FILES} SOURCES "${NRD_HEADER_FILES}")
+    add_dependencies(NrdShaders CreateFolderForShaders)
+    set_property(TARGET NrdShaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
 endif()
 
 if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
@@ -100,10 +100,10 @@ endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${PROJECT_VERSION})
 target_include_directories(${PROJECT_NAME} PUBLIC "Include" "External")
-set_property(TARGET ${PROJECT_NAME} PROPERTY FOLDER "${NRD_PROJECT_FOLDER}") 
+set_property(TARGET ${PROJECT_NAME} PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
 
 if (NOT NRD_DISABLE_SHADER_COMPILATION)
-    add_dependencies(${PROJECT_NAME} Shaders)
+    add_dependencies(${PROJECT_NAME} NrdShaders)
 endif()
 
 if (NRD_USE_PRECOMPILED_SHADERS)

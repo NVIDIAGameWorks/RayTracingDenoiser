@@ -8,15 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "NRD.hlsl"
-#include "STL.hlsl"
-#include "SIGMA_Shadow_SmoothTiles.resources.hlsl"
+#include "NRD.hlsli"
+#include "STL.hlsli"
+#include "SIGMA_Shadow_SmoothTiles.resources.hlsli"
 
 NRD_DECLARE_CONSTANTS
 
-#include "NRD_Common.hlsl"
+#include "NRD_Common.hlsli"
 NRD_DECLARE_SAMPLERS
-#include "SIGMA_Common.hlsl"
+#include "SIGMA_Common.hlsli"
 
 NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES

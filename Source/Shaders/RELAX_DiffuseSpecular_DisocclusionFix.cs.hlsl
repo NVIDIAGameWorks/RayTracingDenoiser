@@ -8,15 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "NRD.hlsl"
-#include "STL.hlsl"
-#include "RELAX_DiffuseSpecular_DisocclusionFix.resources.hlsl"
+#include "NRD.hlsli"
+#include "STL.hlsli"
+#include "RELAX_DiffuseSpecular_DisocclusionFix.resources.hlsli"
 
 NRD_DECLARE_CONSTANTS
 
-#include "NRD_Common.hlsl"
+#include "NRD_Common.hlsli"
 NRD_DECLARE_SAMPLERS
-#include "RELAX_Common.hlsl"
+#include "RELAX_Common.hlsli"
 
 NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
@@ -36,7 +36,7 @@ float getGeometryWeight(float3 centerWorldPos, float3 centerNormal, float3 sampl
 
 float getDiffuseNormalWeight(float3 centerNormal, float3 pointNormal)
 {
-    return pow(max(0.01,dot(centerNormal, pointNormal)), max(gDisocclusionFixEdgeStoppingNormalPower, 0.01));
+    return pow(max(0.01, dot(centerNormal, pointNormal)), max(gDisocclusionFixEdgeStoppingNormalPower, 0.01));
 }
 
 float GetRadius(float numFramesInHistory)
@@ -49,13 +49,13 @@ float getSpecularLobeHalfAngle(float roughness)
     // Defines a cone angle, where micro-normals are distributed
     float r2 = roughness * roughness;
     float r3 = roughness * r2;
-    return 3.141592 * r2 / (1.0 + 0.5*r2 + r3);
+    return 3.141592 * r2 / (1.0 + 0.5 * r2 + r3);
 }
 
 float2 getNormalWeightParams(float roughness, float numFramesInHistory)
 {
     // This is the main parameter - cone angle
-    float angle = 0.33*getSpecularLobeHalfAngle(roughness);
+    float angle = 0.33 * getSpecularLobeHalfAngle(roughness);
     return float2(angle, 1.0);
 }
 
@@ -72,52 +72,48 @@ float getSpecularRWeight(float2 params0, float3 v0, float3 v)
 //
 
 [numthreads(8, 8, 1)]
-NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID)
+NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId)
 {
     const int2 ipos = int2(dispatchThreadId.xy);
 
-    // Getting data at the center
-    float3 centerNormal;
-    float centerRoughness;
-    float centerLinearZ;
-    UnpackNormalRoughnessDepth(centerNormal, centerRoughness, centerLinearZ, gNormalRoughnessDepth[ipos]);
+    float centerViewZ = gViewZFP16[ipos] / NRD_FP16_VIEWZ_SCALE;
 
     // Early out if linearZ is beyond denoising range
     [branch]
-    if (centerLinearZ > gDenoisingRange)
+    if (centerViewZ > gDenoisingRange)
     {
         return;
     }
 
     float historyLength = 255.0 * gSpecularAndDiffuseHistoryLength[ipos].g; // Using diffuse history length to control disocclusion fix
-    uint2 illuminationPacked = gSpecularAndDiffuseIlluminationLogLuv[ipos];
-    uint2 illuminationResponsivePacked = gSpecularAndDiffuseIlluminationResponsiveLogLuv[ipos];
-    float2 centerSpecularAndDiffuse2ndMoments = gSpecularAndDiffuse2ndMoments[ipos];
+    float4 specularIlluminationAnd2ndMoment = gSpecularIllumination[ipos];
+    float4 diffuseIlluminationAnd2ndMoment = gDiffuseIllumination[ipos];
+    float4 specularIlluminationResponsive = gSpecularIlluminationResponsive[ipos];
+    float4 diffuseIlluminationResponsive = gDiffuseIlluminationResponsive[ipos];
 
     // Pass through the input data if no disocclusion detected
     [branch]
     if (historyLength > gFramesToFix)
     {
-        gOutSpecularAndDiffuseIlluminationLogLuv[ipos] = illuminationPacked;
-        gOutSpecularAndDiffuseIlluminationResponsiveLogLuv[ipos] = illuminationResponsivePacked;
-        gOutSpecularAndDiffuse2ndMoments[ipos] = centerSpecularAndDiffuse2ndMoments;
+        gOutSpecularIllumination[ipos] = specularIlluminationAnd2ndMoment;
+        gOutDiffuseIllumination[ipos] = diffuseIlluminationAnd2ndMoment;
+        gOutSpecularIlluminationResponsive[ipos] = specularIlluminationResponsive;
+        gOutDiffuseIlluminationResponsive[ipos] = diffuseIlluminationResponsive;
         return;
     }
 
     // Unpacking the rest of center data
-    float3 centerSpecularIlluminationResponsive;
-    float3 centerDiffuseIlluminationResponsive;
-    UnpackSpecularAndDiffuseFromLogLuvUint2(centerSpecularIlluminationResponsive, centerDiffuseIlluminationResponsive, illuminationResponsivePacked);
-
-    float3 centerWorldPos = getCurrentWorldPos(ipos, centerLinearZ);
+    float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[ipos]);
+    float3 centerNormal = centerNormalRoughness.rgb;
+    float centerRoughness = centerNormalRoughness.a;
+    float3 centerWorldPos = getCurrentWorldPos(ipos, centerViewZ);
     float3 centerV = normalize(centerWorldPos);
     float3 centerR = reflect(centerV, centerNormal);
     float2 normalWeightParams = getNormalWeightParams(centerRoughness, historyLength);
 
     // Running sparse cross-bilateral filter
-    float3 specularIlluminationSum = centerSpecularIlluminationResponsive;
-    float3 diffuseIlluminationSum = centerDiffuseIlluminationResponsive;
-    float2 specularAndDiffuse2ndMomentsSum = centerSpecularAndDiffuse2ndMoments;
+    float4 specularIlluminationAnd2ndMomentSum = specularIlluminationAnd2ndMoment;
+    float4 diffuseIlluminationAnd2ndMomentSum = diffuseIlluminationAnd2ndMoment;
 
     float diffuseWSum = 1;
     float specularWSum = 1;
@@ -134,57 +130,53 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         int2 samplePosInt = (int2)ipos + int2(dx, dy);
 
-        if ((samplePosInt.x < 0) || (samplePosInt.x >= gResolution.x)) continue;
-        if ((samplePosInt.y < 0) || (samplePosInt.y >= gResolution.y)) continue;
+        bool isInside = all(samplePosInt >= int2(0, 0)) && all(samplePosInt < gResolution);
         if ((i == 0) && (j == 0)) continue;
 
-        // Sampling data at the sample location
-        // Since disocclusion fix works where there is no / small history, there is no / not much difference between
-        // responsive and standard illumination, so we'll blur the responsive illumination for fix disocclusions in both normal and responsive illumination
-        float3 sampleSpecularIllumination;
-        float3 sampleDiffuseIllumination;
-        UnpackSpecularAndDiffuseFromLogLuvUint2(sampleSpecularIllumination, sampleDiffuseIllumination, gSpecularAndDiffuseIlluminationResponsiveLogLuv[samplePosInt]);
+        float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[samplePosInt]).rgb;
 
-        float2 sampleSpecularAndDiffuse2ndMoments = gSpecularAndDiffuse2ndMoments[samplePosInt];
-
-        float3 sampleNormal;
-        float sampleRoughnessDontCare;
-        float sampleLinearZ;
-        UnpackNormalRoughnessDepth(sampleNormal, sampleRoughnessDontCare, sampleLinearZ, gNormalRoughnessDepth[samplePosInt]);
+        float sampleViewZ = gViewZFP16[samplePosInt] / NRD_FP16_VIEWZ_SCALE;
 
         // Edge stopping functions:
         // ..normal
         float diffuseW = getDiffuseNormalWeight(centerNormal, sampleNormal);
 
         // ..geometry
-        float3 sampleWorldPos = getCurrentWorldPos(samplePosInt, sampleLinearZ);
-        float geometryWeight = getGeometryWeight(centerWorldPos, centerNormal, sampleWorldPos, centerLinearZ);
+        float3 sampleWorldPos = getCurrentWorldPos(samplePosInt, sampleViewZ);
+        float geometryWeight = getGeometryWeight(centerWorldPos, centerNormal, sampleWorldPos, centerViewZ);
         float specularW = geometryWeight;
         diffuseW *= geometryWeight;
+        diffuseW *= isInside ? 1.0 : 0;
 
         // ..specular lobe
         float3 sampleV = normalize(sampleWorldPos);
         float3 sampleR = reflect(sampleV, sampleNormal);
         specularW *= getSpecularRWeight(normalWeightParams, sampleR, centerR);
+        specularW *= isInside ? 1.0 : 0;
 
-        // Summing up the result
-        specularIlluminationSum += sampleSpecularIllumination * specularW;
-        diffuseIlluminationSum += sampleDiffuseIllumination * diffuseW;
-        specularAndDiffuse2ndMomentsSum.x += sampleSpecularAndDiffuse2ndMoments.x * specularW;
-        specularAndDiffuse2ndMomentsSum.y += sampleSpecularAndDiffuse2ndMoments.y * diffuseW;
+        // Summing up diffuse result
+        if (diffuseW > 1e-4)
+        {
+            float4 sampleDiffuseIlluminationAnd2ndMoment = gDiffuseIllumination[samplePosInt];
+            diffuseIlluminationAnd2ndMomentSum += sampleDiffuseIlluminationAnd2ndMoment * diffuseW;
+            diffuseWSum += diffuseW;
+        }
 
-        specularWSum += specularW;
-        diffuseWSum += diffuseW;
+        // Summing up specular result
+        if (specularW > 1e-4)
+        {
+            float4 sampleSpecularIlluminationAnd2ndMoment = gSpecularIllumination[samplePosInt];
+            specularIlluminationAnd2ndMomentSum += sampleSpecularIlluminationAnd2ndMoment * specularW;
+            specularWSum += specularW;
+        }
     }
 
-    float3 outSpecularIllumination = specularIlluminationSum / specularWSum;
-    float3 outDiffuseIllumination = diffuseIlluminationSum / diffuseWSum;
-    float2 outSpecularAndDiffuse2ndMoments = specularAndDiffuse2ndMomentsSum / float2(specularWSum, diffuseWSum);
-
-    uint2 outIlluminationPacked = PackSpecularAndDiffuseToLogLuvUint2(outSpecularIllumination, outDiffuseIllumination);
+    float4 outSpecularIlluminationAnd2ndMoment = specularIlluminationAnd2ndMomentSum / specularWSum;
+    float4 outDiffuseIlluminationAnd2ndMoment = diffuseIlluminationAnd2ndMomentSum / diffuseWSum;
 
     // Writing out the results
-    gOutSpecularAndDiffuseIlluminationLogLuv[ipos] = outIlluminationPacked;
-    gOutSpecularAndDiffuseIlluminationResponsiveLogLuv[ipos] = outIlluminationPacked;
-    gOutSpecularAndDiffuse2ndMoments[ipos] = outSpecularAndDiffuse2ndMoments;
+    gOutSpecularIllumination[ipos] = outSpecularIlluminationAnd2ndMoment;
+    gOutDiffuseIllumination[ipos] = outDiffuseIlluminationAnd2ndMoment;
+    gOutSpecularIlluminationResponsive[ipos] = outSpecularIlluminationAnd2ndMoment;
+    gOutDiffuseIlluminationResponsive[ipos] = outDiffuseIlluminationAnd2ndMoment;
 }

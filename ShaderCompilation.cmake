@@ -69,14 +69,14 @@ macro(list_hlsl_headers NRD_HLSL_FILES NRD_HEADER_FILES)
             list(APPEND NRD_HEADER_FILES ${FILE_NAME})
             set_source_files_properties(${FILE_NAME} PROPERTIES VS_TOOL_OVERRIDE "None")
         endif()
-    endforeach() 
+    endforeach()
 endmacro()
 
 set (NRD_VK_S_SHIFT 100)
 set (NRD_VK_T_SHIFT 200)
 set (NRD_VK_B_SHIFT 300)
 set (NRD_VK_U_SHIFT 400)
-set (NRD_DXC_VK_SHIFTS 
+set (NRD_DXC_VK_SHIFTS
     -fvk-s-shift ${NRD_VK_S_SHIFT} 0 -fvk-s-shift ${NRD_VK_S_SHIFT} 1 -fvk-s-shift ${NRD_VK_S_SHIFT} 2
     -fvk-t-shift ${NRD_VK_T_SHIFT} 0 -fvk-t-shift ${NRD_VK_T_SHIFT} 1 -fvk-t-shift ${NRD_VK_T_SHIFT} 2
     -fvk-b-shift ${NRD_VK_B_SHIFT} 0 -fvk-b-shift ${NRD_VK_B_SHIFT} 1 -fvk-b-shift ${NRD_VK_B_SHIFT} 2
@@ -97,9 +97,10 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
         if (NOT "${FXC_PROFILE}" STREQUAL "" AND NOT "${NRD_FXC_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_DXBC} ${OUTPUT_PATH_DXBC}.h
-                    COMMAND ${NRD_FXC_PATH} /nologo -E main -DCOMPILER_FXC=1 -T ${FXC_PROFILE}
-                        -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}"
-                        ${FILE_NAME} -Vn g_${BYTECODE_ARRAY_NAME}_dxbc -Fh ${OUTPUT_PATH_DXBC}.h -Fo ${OUTPUT_PATH_DXBC}
+                    COMMAND ${NRD_FXC_PATH} /nologo /E main -DCOMPILER_FXC=1 /T ${FXC_PROFILE}
+                        /I "${NRD_HEADER_INCLUDE_PATH}" /I "${NRD_SHADER_INCLUDE_PATH}" /I "${NRD_MATHLIB_INCLUDE_PATH}" /I "Include"
+                        ${FILE_NAME} /Vn g_${BYTECODE_ARRAY_NAME}_dxbc /Fh ${OUTPUT_PATH_DXBC}.h /Fo ${OUTPUT_PATH_DXBC}
+                        /all_resources_bound /WX /O3
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"
@@ -111,9 +112,10 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
         if (NOT "${DXC_PROFILE}" STREQUAL "" AND NOT "${NRD_DXC_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_DXIL} ${OUTPUT_PATH_DXIL}.h
-                    COMMAND ${NRD_DXC_PATH} -E main -DCOMPILER_DXC=1 -T ${DXC_PROFILE} -I "${NRD_HEADER_INCLUDE_PATH}"
-                        -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" ${FILE_NAME}
-                        -Vn g_${BYTECODE_ARRAY_NAME}_dxil -Fh ${OUTPUT_PATH_DXIL}.h -Fo ${OUTPUT_PATH_DXIL}
+                    COMMAND ${NRD_DXC_PATH} -E main -DCOMPILER_DXC=1 -T ${DXC_PROFILE}
+                        -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
+                        ${FILE_NAME} -Vn g_${BYTECODE_ARRAY_NAME}_dxil -Fh ${OUTPUT_PATH_DXIL}.h -Fo ${OUTPUT_PATH_DXIL}
+                        -all_resources_bound -WX -O3
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"
@@ -126,9 +128,9 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_SPIRV} ${OUTPUT_PATH_SPIRV}.h
                     COMMAND ${NRD_DXC_SPIRV_PATH} -E main -DCOMPILER_DXC=1 -DVULKAN=1 -T ${DXC_PROFILE}
-                        -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}"
-                        ${FILE_NAME} -spirv -Vn g_${BYTECODE_ARRAY_NAME}_spirv -Fh ${OUTPUT_PATH_SPIRV}.h
-                        -Fo ${OUTPUT_PATH_SPIRV} ${NRD_DXC_VK_SHIFTS}
+                        -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
+                        ${FILE_NAME} -spirv -Vn g_${BYTECODE_ARRAY_NAME}_spirv -Fh ${OUTPUT_PATH_SPIRV}.h -Fo ${OUTPUT_PATH_SPIRV} ${NRD_DXC_VK_SHIFTS}
+                        -all_resources_bound -WX -O3
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"

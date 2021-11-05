@@ -10,57 +10,85 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-#include "../Include/NRD.h"
+// IMPORTANT: these files must be included beforehand
+//    NRD.h
+//    NRIDescs.hpp
+//    Extensions/NRIHelper.h
 
-#include <assert.h>
 #include <array>
 #include <vector>
 #include <map>
 
-struct NrdTexture
+#define NRD_INTEGRATION 1
+#define NRD_INTEGRATION_MAJOR 1
+#define NRD_INTEGRATION_MINOR 1
+#define NRD_INTEGRATION_DATE "1 September 2021"
+
+// Settings
+#ifndef NRD_INTEGRATION_ASSERT
+    #include <assert.h>
+    #define NRD_INTEGRATION_ASSERT(expr, msg) (assert(expr && msg))
+#endif
+
+#define NRD_INTEGRATION_DEBUG_LOGGING 0
+#define NRD_INTEGRATION_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_INTEGRATION_ASSERT(false, "Abort on failure!")
+
+// User inputs / outputs are not mipmapped, thus only 1 entry is needed.
+// "TextureTransitionBarrierDesc::texture" is used to store the resource.
+// "TextureTransitionBarrierDesc::next..." are used to represent current state of the subresource.
+struct NrdIntegrationTexture
 {
-    nri::Texture* texture;
-    nri::TextureTransitionBarrierDesc* states;
+    nri::TextureTransitionBarrierDesc* subresourceStates;
     nri::Format format;
 };
 
 constexpr uint32_t NRD_USER_POOL_SIZE = (uint32_t)nrd::ResourceType::MAX_NUM - 2;
-typedef std::array<NrdTexture, NRD_USER_POOL_SIZE> NrdUserPool;
+typedef std::array<NrdIntegrationTexture, NRD_USER_POOL_SIZE> NrdUserPool;
 
-#define NRD_DEBUG_LOGGING 0
-#define NRD_ASSERT(expr) (assert(expr))
-#define NRD_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_ASSERT(false)
-
-class Nrd
+class NrdIntegration
 {
 public:
-    Nrd(uint32_t bufferedFrameMaxNum) :
+    // The application must provide number of buffered frames, it's needed to guarantee that
+    // constants data and descriptor sets are not overwritten while being executed on the GPU.
+    // Usually it's 2-3 frames.
+    NrdIntegration(uint32_t bufferedFrameMaxNum) :
         m_BufferedFrameMaxNum(bufferedFrameMaxNum)
     {}
 
-    ~Nrd()
-    { NRD_ASSERT( m_NRI == nullptr ); }
+    ~NrdIntegration()
+    { NRD_INTEGRATION_ASSERT( m_NRI == nullptr, "m_NRI must be NULL at this point!" ); }
 
-    // There is not "Resize" functionallity, because NRD full recreation costs nothing. The main cost comes from render targets resizing which needs to be done in any case
-    bool Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCoreInterface, const nri::HelperInterface& nriHelperInterface, const nrd::DenoiserCreationDesc& denoiserCreationDesc);
+    // There is no "Resize" functionallity, because NRD full recreation costs nothing.
+    // The main cost comes from render targets resizing, which needs to be done in any case
+    // (call Destroy beforehand)
+    bool Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCore,
+        const nri::HelperInterface& nriHelper, const nrd::DenoiserCreationDesc& denoiserCreationDesc);
+
+    // Just calls "nrd::SetMethodSettings"
+    bool SetMethodSettings(nrd::Method method, const void* methodSettings);
+
+    // User pool must contain valid entries only for resources which required for the set of
+    // requested resources
+    void Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer,
+        const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool);
+
+    // This function assums that the device is in the IDLE state, i.e. there is no work in flight
     void Destroy();
-
-    void SetMethodSettings(nrd::Method method, const void* methodSettings);
-    void Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool);
 
     // Should not be called explicitly, unless you want to reload pipelines
     void CreatePipelines();
 
 private:
-    Nrd(const Nrd&) = delete;
+    NrdIntegration(const NrdIntegration&) = delete;
 
     void CreateResources();
     void AllocateAndBindMemory();
-    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
+    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool,
+        const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
 
 private:
+    std::vector<NrdIntegrationTexture> m_TexturePool;
     std::map<uint64_t, nri::Descriptor*> m_Descriptors;
-    std::vector<NrdTexture> m_TexturePool;
     std::vector<nri::TextureTransitionBarrierDesc> m_ResourceState;
     std::vector<nri::PipelineLayout*> m_PipelineLayouts;
     std::vector<nri::Pipeline*> m_Pipelines;

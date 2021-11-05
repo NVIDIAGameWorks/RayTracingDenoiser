@@ -26,39 +26,48 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 #ifdef NRD_USE_PRECOMPILED_SHADERS
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
         #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-            AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
 
         #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
     #else
         #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-            AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
 
         #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
     #endif
 #else
     #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-        AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {})
+        AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {})
 
     #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-        AddComputeDispatchDesc(workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {})
+        AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {})
 #endif
 
 #define PushPass(passName) _PushPass(DENOISER_NAME " - " passName)
 
-inline uint16_t DivideUp(uint16_t x, uint16_t y)
-{ return (x + y - 1) / y; }
-
-template <class T>
-inline uint16_t AsUint(T x)
-{ return (uint16_t)x; }
+// TODO: rework is needed, but still better than copy-pasting
+#define NRD_DECLARE_DIMS \
+    uint16_t screenW = methodData.desc.fullResolutionWidth; \
+    uint16_t screenH = methodData.desc.fullResolutionHeight; \
+    uint16_t rectW = uint16_t(screenW * m_CommonSettings.resolutionScale[0] + 0.5f); \
+    uint16_t rectH = uint16_t(screenH * m_CommonSettings.resolutionScale[1] + 0.5f); \
+    uint16_t rectWprev = uint16_t(screenW * m_ResolutionScalePrev.x + 0.5f); \
+    uint16_t rectHprev = uint16_t(screenH * m_ResolutionScalePrev.y + 0.5f)
 
 namespace nrd
 {
     constexpr uint32_t PERMANENT_POOL_START = 1000;
     constexpr uint32_t TRANSIENT_POOL_START = 2000;
     constexpr size_t CONSTANT_DATA_SIZE = 2 * 1024 * 2014;
+
+    inline uint16_t DivideUp(uint32_t x, uint16_t y)
+    { return uint16_t((x + y - 1) / y); }
+
+    template <class T>
+    inline uint16_t AsUint(T x)
+    { return (uint16_t)x; }
 
     union Constant
     {
@@ -73,6 +82,7 @@ namespace nrd
         ReblurSpecularSettings specularReblur;
         ReblurDiffuseSpecularSettings diffuseSpecularReblur;
         SigmaShadowSettings shadowSigma;
+        RelaxDiffuseSettings diffuseRelax;
         RelaxSpecularSettings specularRelax;
         RelaxDiffuseSpecularSettings diffuseSpecularRelax;
     };
@@ -83,11 +93,7 @@ namespace nrd
         Settings settings;
         size_t settingsSize;
         size_t dispatchOffset;
-        size_t dispatchNum;
         size_t textureOffset;
-        size_t textureNum;
-        size_t permanentPoolNum;
-        size_t transientPoolNum;
         size_t pingPongOffset;
         size_t pingPongNum;
     };
@@ -106,9 +112,10 @@ namespace nrd
         const uint8_t* constantBufferData;
         uint32_t constantBufferDataSize;
         uint16_t pipelineIndex;
-        uint16_t workgroupDim;
         uint16_t downsampleFactor;
         uint16_t maxRepeatNum; // mostly for internal use
+        uint8_t workgroupDimX;
+        uint8_t workgroupDimY;
     };
 
     class DenoiserImpl
@@ -119,13 +126,22 @@ namespace nrd
         void UpdateMethod_ReblurDiffuse(const MethodData& methodData);
         void AddSharedConstants_ReblurDiffuse(const MethodData& methodData, const ReblurDiffuseSettings& settings, Constant*& data);
 
-        size_t AddMethod_ReblurSpecular(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurSpecular(const MethodData& methodData);
-        void AddSharedConstants_ReblurSpecular(const MethodData& methodData, const ReblurSpecularSettings& settings, Constant*& data);
+        size_t AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurDiffuseOcclusion(const MethodData& methodData);
 
         size_t AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodData);
         void AddSharedConstants_ReblurDiffuseSpecular(const MethodData& methodData, const ReblurDiffuseSpecularSettings& settings, Constant*& data);
+
+        size_t AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurDiffuseSpecularOcclusion(const MethodData& methodData);
+
+        size_t AddMethod_ReblurSpecular(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurSpecular(const MethodData& methodData);
+        void AddSharedConstants_ReblurSpecular(const MethodData& methodData, const ReblurSpecularSettings& settings, Constant*& data);
+
+        size_t AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurSpecularOcclusion(const MethodData& methodData);
 
         size_t AddMethod_SigmaShadow(uint16_t w, uint16_t h);
         void UpdateMethod_SigmaShadow(const MethodData& methodData);
@@ -133,6 +149,9 @@ namespace nrd
 
         size_t AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h);
         void UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData);
+
+        size_t AddMethod_RelaxDiffuse(uint16_t w, uint16_t h);
+        void UpdateMethod_RelaxDiffuse(const MethodData& methodData);
 
         size_t AddMethod_RelaxSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxSpecular(const MethodData& methodData);
@@ -182,7 +201,7 @@ namespace nrd
     private:
         void Optimize();
         void PrepareDesc();
-        void AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv);
+        void AddComputeDispatchDesc(uint8_t workgroupDimX, uint8_t workgroupDimY, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv);
         void UpdatePingPong(const MethodData& methodData);
         void UpdateCommonSettings(const CommonSettings& commonSettings);
         void PushTexture(DescriptorType descriptorType, uint16_t index, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith = uint16_t(-1));
@@ -221,10 +240,10 @@ namespace nrd
             m_ConstantDataOffset += internalDispatchDesc.constantBufferDataSize;
 
             // Update grid size
-            uint16_t w = uint16_t( float(DivideUp(methodData.desc.fullResolutionWidth, internalDispatchDesc.downsampleFactor)) * m_CommonSettings.resolutionScale + 0.5f );
-            uint16_t h = uint16_t( float(DivideUp(methodData.desc.fullResolutionHeight, internalDispatchDesc.downsampleFactor)) * m_CommonSettings.resolutionScale + 0.5f );
-            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDim);
-            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDim);
+            uint16_t w = uint16_t( float(DivideUp(methodData.desc.fullResolutionWidth, internalDispatchDesc.downsampleFactor)) * m_CommonSettings.resolutionScale[0] + 0.5f );
+            uint16_t h = uint16_t( float(DivideUp(methodData.desc.fullResolutionHeight, internalDispatchDesc.downsampleFactor)) * m_CommonSettings.resolutionScale[1] + 0.5f );
+            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDimX);
+            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDimY);
 
             // Store
             m_ActiveDispatches.push_back(dispatchDesc);
@@ -245,6 +264,14 @@ namespace nrd
             size_t num = size_t(lastConstant - (const Constant*)dispatchDesc.constantBufferData);
             size_t bytes = num * sizeof(uint32_t);
             assert( bytes == dispatchDesc.constantBufferDataSize );
+        }
+
+        inline float GetMinResolutionScale() const
+        {
+            float a = ml::Min(m_ResolutionScalePrev.x, m_ResolutionScalePrev.y);
+            float b = ml::Min(m_CommonSettings.resolutionScale[0], m_CommonSettings.resolutionScale[1]);
+            
+            return ml::Min(a, b);
         }
 
     private:
@@ -278,13 +305,13 @@ namespace nrd
         ml::float4 m_Frustum = ml::float4(0.0f);
         ml::float4 m_FrustumPrev = ml::float4(0.0f);
         ml::float3 m_CameraDelta = ml::float3(0.0f);
-        ml::float3 m_CameraDeltaSmoothed = ml::float3(0.0f);
         ml::float2 m_JitterPrev = ml::float2(0.0f);
+        ml::float2 m_ResolutionScalePrev = ml::float2(1.0f);
         const char* m_PassName = nullptr;
         uint8_t* m_ConstantData = nullptr;
         size_t m_ConstantDataOffset = 0;
         size_t m_ResourceOffset = 0;
-        float m_ResolutionScalePrev = 1.0f;
+        size_t m_ClearDispatchOffset = 0;
         float m_IsOrtho = 0.0f;
         float m_CheckerboardResolveAccumSpeed = 0.0f;
         float m_JitterDelta = 0.0f;

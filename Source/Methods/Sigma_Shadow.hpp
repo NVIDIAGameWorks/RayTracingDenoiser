@@ -8,8 +8,10 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
+size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
 {
+    #define DENOISER_NAME "SIGMA::Shadow"
+
     enum class Transient
     {
         DATA_1 = TRANSIENT_POOL_START,
@@ -20,8 +22,6 @@ size_t DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
         TILES,
         SMOOTH_TILES,
     };
-
-    #define DENOISER_NAME "SIGMA::Shadow"
 
     m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
     m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
@@ -34,7 +34,7 @@ size_t DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
-    SetSharedConstants(1, 1, 9, 10);
+    SetSharedConstants(1, 1, 9, 14);
 
     PushPass("Classify tiles");
     {
@@ -90,7 +90,7 @@ size_t DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_Shadow_TemporalStabilization, SumConstants(2, 0, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_Shadow_TemporalStabilization, SumConstants(2, 0, 0, 1), 16, 1 );
     }
 
     PushPass("Split screen");
@@ -107,7 +107,7 @@ size_t DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     return sizeof(SigmaShadowSettings);
 }
 
-void DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
+void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
 {
     enum class Dispatch
     {
@@ -121,12 +121,21 @@ void DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
 
     const SigmaShadowSettings& settings = methodData.settings.shadowSigma;
 
-    uint16_t screenW = methodData.desc.fullResolutionWidth;
-    uint16_t screenH = methodData.desc.fullResolutionHeight;
-    uint16_t rectW = uint16_t(screenW * m_CommonSettings.resolutionScale + 0.5f);
-    uint16_t rectH = uint16_t(screenH * m_CommonSettings.resolutionScale + 0.5f);
+    NRD_DECLARE_DIMS;
+
     uint16_t tilesW = DivideUp(rectW, 16);
     uint16_t tilesH = DivideUp(rectH, 16);
+
+    // SPLIT_SCREEN (passthrough)
+    if (m_CommonSettings.splitScreen >= 1.0f)
+    {
+        Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_SigmaShadow(methodData, settings, data);
+        AddFloat(data, m_CommonSettings.splitScreen);
+        ValidateConstants(data);
+
+        return;
+    }
 
     // CLASSIFY_TILES
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::CLASSIFY_TILES));
@@ -158,6 +167,7 @@ void DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     AddSharedConstants_SigmaShadow(methodData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
+    AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
     ValidateConstants(data);
 
     // SPLIT_SCREEN
@@ -170,40 +180,47 @@ void DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     }
 }
 
-void DenoiserImpl::AddSharedConstants_SigmaShadow(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data)
+void nrd::DenoiserImpl::AddSharedConstants_SigmaShadow(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data)
 {
-    uint16_t screenW = methodData.desc.fullResolutionWidth;
-    uint16_t screenH = methodData.desc.fullResolutionHeight;
-    uint16_t rectW = uint16_t(screenW * m_CommonSettings.resolutionScale + 0.5f);
-    uint16_t rectH = uint16_t(screenH * m_CommonSettings.resolutionScale + 0.5f);
-    uint16_t rectWprev = uint16_t(screenW * m_ResolutionScalePrev + 0.5f);
-    uint16_t rectHprev = uint16_t(screenH * m_ResolutionScalePrev + 0.5f);
+    NRD_DECLARE_DIMS;
 
     // Even with DRS keep radius, it works well for shadows
     float unproject = 1.0f / (0.5f * screenH * m_ProjectY);
 
     // TODO: it's needed due to history copying in PreBlur which can copy less than needed in case of DRS
-    float historyCorrection = 1.0f / ml::Saturate(m_CommonSettings.resolutionScale / m_ResolutionScalePrev + 15.0f / float(rectW));
+    float historyCorrectionX = 1.0f / ml::Saturate(m_CommonSettings.resolutionScale[0] / m_ResolutionScalePrev.x + 15.0f / float(rectW));
+    float historyCorrectionY = 1.0f / ml::Saturate(m_CommonSettings.resolutionScale[1] / m_ResolutionScalePrev.y + 15.0f / float(rectW));
 
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4(data, m_Frustum);
+
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat2(data, historyCorrectionX, historyCorrectionY);
+
     AddFloat2(data, 1.0f / float(screenW), 1.0f / float(screenH));
     AddFloat2(data, float(screenW), float(screenH));
+
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
     AddFloat2(data, float(rectW), float(rectH));
+
     AddFloat2(data, float(rectWprev), float(rectHprev));
     AddFloat2(data, float(rectW) / float(screenW), float(rectH) / float(screenH));
-    AddFloat2(data, float(m_CommonSettings.inputDataOrigin[0]) / float(screenW), float(m_CommonSettings.inputDataOrigin[1]) / float(screenH));
-    AddUint2(data, m_CommonSettings.inputDataOrigin[0], m_CommonSettings.inputDataOrigin[1]);
-    AddFloat(data, m_CommonSettings.forceReferenceAccumulation ? 1.0f : 0.0f);
+
+    AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
+    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
+
     AddFloat(data, m_IsOrtho);
     AddFloat(data, unproject);
     AddFloat(data, m_CommonSettings.debug);
     AddFloat(data, m_CommonSettings.denoisingRange);
-    AddFloat(data, 1.0f / settings.planeDistanceSensitivity);
+
+    AddFloat(data, 1.0f / (m_CommonSettings.meterToUnitsMultiplier * settings.planeDistanceSensitivity));
     AddFloat(data, settings.blurRadiusScale);
-    AddFloat(data, historyCorrection);
-    AddUint(data, m_CommonSettings.worldSpaceMotion ? 1 : 0);
+    AddFloat(data, m_CommonSettings.meterToUnitsMultiplier);
+    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
+
     AddUint(data, m_CommonSettings.frameIndex);
+    AddUint(data, 0);
+    AddUint(data, 0);
+    AddUint(data, 0);
 }

@@ -8,8 +8,10 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
+size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
 {
+    #define DENOISER_NAME "SIGMA::ShadowTranscluency"
+
     enum class Transient
     {
         DATA_1 = TRANSIENT_POOL_START,
@@ -20,8 +22,6 @@ size_t DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
         TILES,
         SMOOTH_TILES,
     };
-
-    #define DENOISER_NAME "SIGMA::ShadowTranscluency"
 
     m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
     m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
@@ -34,7 +34,7 @@ size_t DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
-    SetSharedConstants(1, 1, 9, 10);
+    SetSharedConstants(1, 1, 9, 14);
 
     PushPass("Classify tiles");
     {
@@ -92,7 +92,7 @@ size_t DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_TemporalStabilization, SumConstants(2, 0, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_TemporalStabilization, SumConstants(2, 0, 0, 1), 16, 1 );
     }
 
     PushPass("Split screen");
@@ -110,7 +110,7 @@ size_t DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
     return sizeof(SigmaShadowSettings);
 }
 
-void DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData)
+void nrd::DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData)
 {
     enum class Dispatch
     {
@@ -124,12 +124,21 @@ void DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& method
 
     const SigmaShadowSettings& settings = methodData.settings.shadowSigma;
 
-    uint16_t screenW = methodData.desc.fullResolutionWidth;
-    uint16_t screenH = methodData.desc.fullResolutionHeight;
-    uint16_t rectW = uint16_t(screenW * m_CommonSettings.resolutionScale + 0.5f);
-    uint16_t rectH = uint16_t(screenH * m_CommonSettings.resolutionScale + 0.5f);
+    NRD_DECLARE_DIMS;
+
     uint16_t tilesW = DivideUp(rectW, 16);
     uint16_t tilesH = DivideUp(rectH, 16);
+
+    // SPLIT_SCREEN (passthrough)
+    if (m_CommonSettings.splitScreen >= 1.0f)
+    {
+        Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_SigmaShadow(methodData, settings, data);
+        AddFloat(data, m_CommonSettings.splitScreen);
+        ValidateConstants(data);
+
+        return;
+    }
 
     // CLASSIFY_TILES
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::CLASSIFY_TILES));
@@ -161,6 +170,7 @@ void DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& method
     AddSharedConstants_SigmaShadow(methodData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
+    AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
     ValidateConstants(data);
 
     // SPLIT_SCREEN

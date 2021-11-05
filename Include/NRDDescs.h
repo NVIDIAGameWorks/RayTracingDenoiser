@@ -10,6 +10,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
+#define NRD_DESCS_VERSION_MAJOR 2
+#define NRD_DESCS_VERSION_MINOR 9
+
+static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR);
+
 namespace nrd
 {
     struct Denoiser;
@@ -23,22 +28,37 @@ namespace nrd
         MAX_NUM
     };
 
-    // "Denoiser name"_"Signal type"
+    // DenoiserName_SignalType
     enum class Method : uint32_t
     {
         // REBLUR ===========================================================================================================================
 
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT
-        // OUTPUTS - OUT_DIFF_HIT
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST,
+        // OPTIONAL INPUTS - IN_DIFF_DIRECTION_PDF, IN_DIFF_CONFIDENCE
+        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
         REBLUR_DIFFUSE,
 
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_HIT
-        // OUTPUTS - OUT_SPEC_HIT
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HITDIST,
+        // OUTPUTS - OUT_DIFF_HITDIST
+        REBLUR_DIFFUSE_OCCLUSION,
+
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_RADIANCE_HITDIST,
+        // OPTIONAL INPUTS - IN_SPEC_DIRECTION_PDF, IN_SPEC_CONFIDENCE
+        // OUTPUTS - OUT_SPEC_RADIANCE_HITDIST
         REBLUR_SPECULAR,
 
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT, IN_SPEC_HIT
-        // OUTPUTS - OUT_DIFF_HIT, OUT_SPEC_HIT
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_HITDIST,
+        // OUTPUTS - OUT_SPEC_HITDIST
+        REBLUR_SPECULAR_OCCLUSION,
+
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST,
+        // OPTIONAL INPUTS - IN_DIFF_DIRECTION_PDF, IN_SPEC_DIRECTION_PDF, IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
+        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, OUT_SPEC_RADIANCE_HITDIST
         REBLUR_DIFFUSE_SPECULAR,
+
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HITDIST, IN_SPEC_HITDIST,
+        // OUTPUTS - OUT_DIFF_HITDIST, OUT_SPEC_HITDIST
+        REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
 
         // SIGMA ===========================================================================================================================
 
@@ -52,12 +72,16 @@ namespace nrd
 
         // RELAX ===========================================================================================================================
 
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_HIT
-        // OUTPUTS - OUT_SPEC
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST
+        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, 
+        RELAX_DIFFUSE,
+
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_RADIANCE_HITDIST
+        // OUTPUTS - OUT_SPEC_RADIANCE_HITDIST
         RELAX_SPECULAR,
 
-        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_HIT, IN_SPEC_HIT
-        // OUTPUTS - OUT_DIFF, OUT_SPEC
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST
+        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, OUT_SPEC_RADIANCE_HITDIST
         RELAX_DIFFUSE_SPECULAR,
 
         MAX_NUM
@@ -70,23 +94,32 @@ namespace nrd
         // 3D world space motion (RGBA16f+) or 2D screen space motion (RG16f+), MVs must be non-jittered, MV = previous - current
         IN_MV,
 
-        // See "NRD.hlsl/_NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+ or R10G10B10A2+ depending on encoding)
+        // See "NRD.hlsl/NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+ or R10G10B10A2+ depending on encoding)
         IN_NORMAL_ROUGHNESS,
 
         // Linear view depth for primary rays (R16f+)
         IN_VIEWZ,
 
-        // Data must be packed using "NRD.hlsl/XXX_PackRadiance" (RGBA16f+)
-        IN_DIFF_HIT,
+        // Data must be packed using "NRD.hlsl/XXX_PackRadianceAndHitDist" (RGBA16f+)
+        IN_DIFF_RADIANCE_HITDIST,
+        IN_SPEC_RADIANCE_HITDIST,
 
-        // Data must be packed using "NRD.hlsl/XXX_PackRadiance" (RGBA16f+)
-        IN_SPEC_HIT,
+        // Ambient (AO) and specular (SO) occlusion (R8+)
+        IN_DIFF_HITDIST,
+        IN_SPEC_HITDIST,
 
-        // Data must be packed using "NRD.hlsl/XXX_PackShadow" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
+        // (Optional) Data must be packed using "NRD.hlsl/NRD_PackRayDirectionAndPdf" (RGBA8+)
+        IN_DIFF_DIRECTION_PDF,
+        IN_SPEC_DIRECTION_PDF,
+
+        // (Optional) User-provided history confidence in range 0-1, i.e. antilag (R8+)
+        IN_DIFF_CONFIDENCE,
+        IN_SPEC_CONFIDENCE,
+
+        // Data must be packed using "NRD.hlsl/XXX_PackShadow (3 args)" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
         IN_SHADOWDATA,
 
-        // .x - shadow, .yzw - translucency (RGBA8+)
-        // Data must be packed using "NRD.hlsl/XXX_PackShadow"
+        // Data must be packed using "NRD.hlsl/XXX_PackShadow (4 args)" (RGBA8+)
         IN_SHADOW_TRANSLUCENCY,
 
         // OUTPUTS ==========================================================================================================================
@@ -98,11 +131,13 @@ namespace nrd
         // Data must be unpacked using "NRD.hlsl/XXX_UnpackShadow"
         OUT_SHADOW_TRANSLUCENCY,
 
-        // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        OUT_DIFF_HIT,
+        // .xyz - radiance, .w - normalized hit distance (in case of REBLUR) or signal variance (in case of ReLAX) (RGBA16f+)
+        OUT_DIFF_RADIANCE_HITDIST,
+        OUT_SPEC_RADIANCE_HITDIST,
 
-        // .xyz - radiance, .w - normalized hit distance (RGBA16f+)
-        OUT_SPEC_HIT,
+        // .x - normalized hit distance (R8+)
+        OUT_DIFF_HITDIST,
+        OUT_SPEC_HITDIST,
 
         // POOLS ============================================================================================================================
 
@@ -290,15 +325,20 @@ namespace nrd
         const char* shaderEntryPointName;
         const DescriptorRangeDesc* descriptorRanges;
         uint32_t descriptorRangeNum;
+
+        // if "true" all constant buffers share same "ConstantBufferDesc" description
+        // if "false" this pipeline doesn't have a constant buffer
+        bool hasConstantData;
     };
 
     struct DescriptorSetDesc
     {
-        uint32_t setNum;
-        uint32_t constantBufferNum;
-        uint32_t textureNum;
-        uint32_t storageTextureNum;
-        uint32_t maxDescriptorRangeNumPerPipeline;
+        uint32_t setMaxNum;
+        uint32_t constantBufferMaxNum;
+        uint32_t staticSamplerMaxNum;
+        uint32_t textureMaxNum;
+        uint32_t storageTextureMaxNum;
+        uint32_t descriptorRangeMaxNumPerPipeline;
     };
 
     struct ConstantBufferDesc

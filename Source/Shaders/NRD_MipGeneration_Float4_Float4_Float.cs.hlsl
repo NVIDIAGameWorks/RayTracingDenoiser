@@ -8,9 +8,9 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "NRD.hlsl"
-#include "STL.hlsl"
-#include "NRD_MipGeneration_Float4_Float4_Float.resources.hlsl"
+#include "NRD.hlsli"
+#include "STL.hlsli"
+#include "NRD_MipGeneration_Float4_Float4_Float.resources.hlsli"
 
 NRD_DECLARE_CONSTANTS
 
@@ -21,24 +21,22 @@ groupshared float4 s_TempA[ 17 ][ 17 ];
 groupshared float4 s_TempB[ 17 ][ 17 ];
 groupshared float s_TempZ[ 17 ][ 17 ];
 
-// TODO: Since specular values can be compressed it would be better to take compression into account, otherwise there is a risk to add high energy ( from
-// high roughness ) to highly compressed value ( for low roughness )... which will be later decompressed ( and will get even more energy on top )
 #define DO_REDUCTION \
 { \
     float4 w = float4( abs( float4( z00, z10, z01, z11 ) / NRD_FP16_VIEWZ_SCALE ) < gInf ); \
-    a = a00 * w.x + a10 * w.y + a01 * w.z + a11 * w.w; \
-    b = b00 * w.x + b10 * w.y + b01 * w.z + b11 * w.w; \
-    z = z00 * w.x + z10 * w.y + z01 * w.z + z11 * w.w; \
     float sum = dot( w, 1.0 ); \
     float invSum = STL::Math::PositiveRcp( sum ); \
+    a = a00 * w.x + a10 * w.y + a01 * w.z + a11 * w.w; \
     a *= invSum; \
+    b = b00 * w.x + b10 * w.y + b01 * w.z + b11 * w.w; \
     b *= invSum; \
+    z = z00 * w.x + z10 * w.y + z01 * w.z + z11 * w.w; \
     z *= invSum; \
     z = sum == 0.0 ? NRD_FP16_MAX : z; \
 }
 
 [numthreads( 16, 16, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupID, uint threadID : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupId, uint threadID : SV_GroupIndex )
 {
     uint2 localID = uint2( threadID & 15, threadID >> 4 );
     uint2 globalID = groupID * 16 + localID;
@@ -54,12 +52,23 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupID, uint threadID : SV_Grou
     float4 b01 = gIn_B.Load( coord, int2( 0, 1 ) );
     float4 b11 = gIn_B.Load( coord, int2( 1, 1 ) );
 
+    a00.xyz = STL::Color::Compress( a00.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    a10.xyz = STL::Color::Compress( a10.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    a01.xyz = STL::Color::Compress( a01.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    a11.xyz = STL::Color::Compress( a11.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+
+    b00.xyz = STL::Color::Compress( b00.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    b10.xyz = STL::Color::Compress( b10.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    b01.xyz = STL::Color::Compress( b01.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    b11.xyz = STL::Color::Compress( b11.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+
     float z00 = gIn_ScaledViewZ.Load( coord, int2( 0, 0 ) );
     float z10 = gIn_ScaledViewZ.Load( coord, int2( 1, 0 ) );
     float z01 = gIn_ScaledViewZ.Load( coord, int2( 0, 1 ) );
     float z11 = gIn_ScaledViewZ.Load( coord, int2( 1, 1 ) );
 
-    float4 a, b;
+    float4 a;
+    float4 b;
     float z;
     DO_REDUCTION;
 
@@ -68,6 +77,9 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupID, uint threadID : SV_Grou
     s_TempZ[ localID.y ][ localID.x ] = z;
 
     GroupMemoryBarrierWithGroupSync( );
+
+    a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
 
     gOut_A_x2[ globalID ] = a;
     gOut_B_x2[ globalID ] = b;
@@ -98,14 +110,17 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupID, uint threadID : SV_Grou
 
         DO_REDUCTION;
 
-        gOut_A_x4[ globalID ] = a;
-        gOut_B_x4[ globalID ] = b;
-        gOut_ScaledViewZ_x4[ globalID ] = z;
-
         localID <<= 1;
         s_TempA[ localID.y ][ localID.x ] = a;
         s_TempB[ localID.y ][ localID.x ] = b;
         s_TempZ[ localID.y ][ localID.x ] = z;
+
+        a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+        b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+
+        gOut_A_x4[ globalID ] = a;
+        gOut_B_x4[ globalID ] = b;
+        gOut_ScaledViewZ_x4[ globalID ] = z;
     }
 
     GroupMemoryBarrierWithGroupSync( );
@@ -135,14 +150,17 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupID, uint threadID : SV_Grou
 
         DO_REDUCTION;
 
-        gOut_A_x8[ globalID ] = a;
-        gOut_B_x8[ globalID ] = b;
-        gOut_ScaledViewZ_x8[ globalID ] = z;
-
         localID <<= 2;
         s_TempA[ localID.y ][ localID.x ] = a;
         s_TempB[ localID.y ][ localID.x ] = b;
         s_TempZ[ localID.y ][ localID.x ] = z;
+
+        a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+        b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+
+        gOut_A_x8[ globalID ] = a;
+        gOut_B_x8[ globalID ] = b;
+        gOut_ScaledViewZ_x8[ globalID ] = z;
     }
 
     GroupMemoryBarrier( );
@@ -171,6 +189,9 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupID, uint threadID : SV_Grou
         z11 = s_TempZ[ id1.y ][ id1.x ];
 
         DO_REDUCTION;
+
+        a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+        b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
 
         gOut_A_x16[ globalID ] = a;
         gOut_B_x16[ globalID ] = b;

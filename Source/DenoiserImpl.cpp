@@ -12,19 +12,95 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include <array>
 
-using namespace nrd;
+#ifndef BYTE
+    #define BYTE unsigned char
+#endif
 
-static const std::array<StaticSamplerDesc, (size_t)Sampler::MAX_NUM> g_StaticSamplers =
+#ifdef NRD_USE_PRECOMPILED_SHADERS
+    // NRD
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "NRD_MipGeneration_Float2.cs.dxbc.h"
+        #include "NRD_MipGeneration_Float2.cs.dxil.h"
+        #include "NRD_MipGeneration_Float2_Float2.cs.dxbc.h"
+        #include "NRD_MipGeneration_Float2_Float2.cs.dxil.h"
+        #include "NRD_MipGeneration_Float4_Float.cs.dxbc.h"
+        #include "NRD_MipGeneration_Float4_Float.cs.dxil.h"
+        #include "NRD_MipGeneration_Float4_Float4_Float.cs.dxbc.h"
+        #include "NRD_MipGeneration_Float4_Float4_Float.cs.dxil.h"
+        #include "NRD_Clear_f.cs.dxbc.h"
+        #include "NRD_Clear_f.cs.dxil.h"
+        #include "NRD_Clear_ui.cs.dxbc.h"
+        #include "NRD_Clear_ui.cs.dxil.h"
+    #endif
+
+    #include "NRD_MipGeneration_Float2.cs.spirv.h"
+    #include "NRD_MipGeneration_Float2_Float2.cs.spirv.h"
+    #include "NRD_MipGeneration_Float4_Float.cs.spirv.h"
+    #include "NRD_MipGeneration_Float4_Float4_Float.cs.spirv.h"
+    #include "NRD_Clear_f.cs.spirv.h"
+    #include "NRD_Clear_ui.cs.spirv.h"
+#endif
+
+constexpr std::array<nrd::StaticSamplerDesc, (size_t)nrd::Sampler::MAX_NUM> g_StaticSamplers =
 {{
-    {Sampler::NEAREST_CLAMP, 0},
-    {Sampler::NEAREST_MIRRORED_REPEAT, 1},
-    {Sampler::LINEAR_CLAMP, 2},
-    {Sampler::LINEAR_MIRRORED_REPEAT, 3},
+    {nrd::Sampler::NEAREST_CLAMP, 0},
+    {nrd::Sampler::NEAREST_MIRRORED_REPEAT, 1},
+    {nrd::Sampler::LINEAR_CLAMP, 2},
+    {nrd::Sampler::LINEAR_MIRRORED_REPEAT, 3},
 }};
 
-Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
+constexpr std::array<bool, (size_t)nrd::Format::MAX_NUM> g_IsIntegerFormat =
 {
-    const LibraryDesc& libraryDesc = GetLibraryDesc();
+    false,        // R8_UNORM
+    false,        // R8_SNORM
+    true,         // R8_UINT
+    false,        // R8_SINT
+    false,        // RG8_UNORM
+    false,        // RG8_SNORM
+    true,         // RG8_UINT
+    false,        // RG8_SINT
+    false,        // RGBA8_UNORM
+    false,        // RGBA8_SNORM
+    true,         // RGBA8_UINT
+    false,        // RGBA8_SINT
+    false,        // RGBA8_SRGB
+    false,        // R16_UNORM
+    false,        // R16_SNORM
+    true,         // R16_UINT
+    false,        // R16_SINT
+    false,        // R16_SFLOAT
+    false,        // RG16_UNORM
+    false,        // RG16_SNORM
+    true,         // RG16_UINT
+    false,        // RG16_SINT
+    false,        // RG16_SFLOAT
+    false,        // RGBA16_UNORM
+    false,        // RGBA16_SNORM
+    true,         // RGBA16_UINT
+    false,        // RGBA16_SINT
+    false,        // RGBA16_SFLOAT
+    true,         // R32_UINT
+    false,        // R32_SINT
+    false,        // R32_SFLOAT
+    true,         // RG32_UINT
+    false,        // RG32_SINT
+    false,        // RG32_SFLOAT
+    true,         // RGB32_UINT
+    false,        // RGB32_SINT
+    false,        // RGB32_SFLOAT
+    true,         // RGBA32_UINT
+    false,        // RGBA32_SINT
+    false,        // RGBA32_SFLOAT
+    false,        // R10_G10_B10_A2_UNORM
+    true,         // R10_G10_B10_A2_UINT
+    false,        // R11_G11_B10_UFLOAT
+    false,        // R9_G9_B9_E5_UFLOAT
+};
+
+
+nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserCreationDesc)
+{
+    const nrd::LibraryDesc& libraryDesc = nrd::GetLibraryDesc();
 
     m_EnableValidation = denoiserCreationDesc.enableValidation;
 
@@ -54,29 +130,106 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
         methodData.pingPongOffset = m_PingPongs.size();
 
         if (methodDesc.method == Method::REBLUR_DIFFUSE)
+        {
+            methodData.settings.diffuseReblur = ReblurDiffuseSettings();
             methodData.settingsSize = AddMethod_ReblurDiffuse(w, h);
+        }
+        else if (methodDesc.method == Method::REBLUR_DIFFUSE_OCCLUSION)
+        {
+            methodData.settings.diffuseReblur = ReblurDiffuseSettings();
+            methodData.settingsSize = AddMethod_ReblurDiffuseOcclusion(w, h);
+        }
         else if (methodDesc.method == Method::REBLUR_SPECULAR)
+        {
+            methodData.settings.specularReblur = ReblurSpecularSettings();
             methodData.settingsSize = AddMethod_ReblurSpecular(w, h);
+        }
+        else if (methodDesc.method == Method::REBLUR_SPECULAR_OCCLUSION)
+        {
+            methodData.settings.specularReblur = ReblurSpecularSettings();
+            methodData.settingsSize = AddMethod_ReblurSpecularOcclusion(w, h);
+        }
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR)
+        {
+            methodData.settings.diffuseSpecularReblur = ReblurDiffuseSpecularSettings();
             methodData.settingsSize = AddMethod_ReblurDiffuseSpecular(w, h);
+        }
+        else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
+        {
+            methodData.settings.diffuseSpecularReblur = ReblurDiffuseSpecularSettings();
+            methodData.settingsSize = AddMethod_ReblurDiffuseSpecularOcclusion(w, h);
+        }
         else if (methodDesc.method == Method::SIGMA_SHADOW)
+        {
+            methodData.settings.shadowSigma = SigmaShadowSettings();
             methodData.settingsSize = AddMethod_SigmaShadow(w, h);
+        }
         else if (methodDesc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
+        {
+            methodData.settings.shadowSigma = SigmaShadowSettings();
             methodData.settingsSize = AddMethod_SigmaShadowTranslucency(w, h);
+        }
+        else if (methodDesc.method == Method::RELAX_DIFFUSE)
+        {
+            methodData.settings.diffuseRelax = RelaxDiffuseSettings();
+            methodData.settingsSize = AddMethod_RelaxDiffuse(w, h);
+        }
         else if (methodDesc.method == Method::RELAX_SPECULAR)
+        {
+            methodData.settings.specularRelax = RelaxSpecularSettings();
             methodData.settingsSize = AddMethod_RelaxSpecular(w, h);
+        }
         else if (methodDesc.method == Method::RELAX_DIFFUSE_SPECULAR)
+        {
+            methodData.settings.diffuseSpecularRelax = RelaxDiffuseSpecularSettings();
             methodData.settingsSize = AddMethod_RelaxDiffuseSpecular(w, h);
+        }
         else
             return Result::INVALID_ARGUMENT;
 
-        methodData.dispatchNum = m_Dispatches.size() - methodData.dispatchOffset;
-        methodData.textureNum = m_Resources.size() - methodData.textureOffset;
-        methodData.permanentPoolNum = m_PermanentPool.size() - m_PermanentPoolOffset;
-        methodData.transientPoolNum = m_TransientPool.size() - m_TransientPoolOffset;
         methodData.pingPongNum = m_PingPongs.size() - methodData.pingPongOffset;
 
         m_MethodData.push_back(methodData);
+    }
+
+    // Clear
+    m_ClearDispatchOffset = m_Dispatches.size();
+
+    m_PermanentPoolOffset = 0;
+    for (size_t textureIndex = 0; textureIndex < m_PermanentPool.size(); textureIndex++)
+    {
+        const TextureDesc& texture = m_PermanentPool[textureIndex];
+
+        for (uint16_t mip = 0; mip < texture.mipNum; mip++)
+        {
+            _PushPass("Clear");
+            {
+                PushOutput((uint16_t)(textureIndex + PERMANENT_POOL_START), mip, 1);
+                if (g_IsIntegerFormat[(size_t)texture.format])
+                    AddDispatch(NRD_Clear_ui, 0, 16, 1);
+                else
+                    AddDispatch(NRD_Clear_f, 0, 16, 1);
+            }
+        }
+    }
+
+    m_TransientPoolOffset = 0;
+    for (size_t textureIndex = 0; textureIndex < m_TransientPool.size(); textureIndex++)
+    {
+        const TextureDesc& texture = m_TransientPool[textureIndex];
+        if (g_IsIntegerFormat[(size_t)texture.format])
+
+        for (uint16_t mip = 0; mip < texture.mipNum; mip++)
+        {
+            _PushPass("Clear");
+            {
+                PushOutput((uint16_t)(textureIndex + TRANSIENT_POOL_START), mip, 1);
+                if (g_IsIntegerFormat[(size_t)texture.format])
+                    AddDispatch(NRD_Clear_ui, 0, 16, 1);
+                else
+                    AddDispatch(NRD_Clear_f, 0, 16, 1);
+            }
+        }
     }
 
     Optimize();
@@ -85,7 +238,7 @@ Result DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreationDesc)
     return Result::SUCCESS;
 }
 
-Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
+nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const nrd::CommonSettings& commonSettings, const nrd::DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
 {
     const bool updatePingPong = commonSettings.frameIndex != m_CommonSettings.frameIndex;
 
@@ -93,21 +246,54 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
 
     m_ActiveDispatches.clear();
 
+    // Clear
+    if (m_CommonSettings.accumulationMode == AccumulationMode::CLEAR_AND_RESTART)
+    {
+        for (size_t i = m_ClearDispatchOffset; i < m_Dispatches.size(); i++)
+        {
+            const InternalDispatchDesc& internalDispatchDesc = m_Dispatches[i];
+            const Resource& resource = *internalDispatchDesc.resources;
+
+            size_t textureIndex = resource.indexInPool;
+            TextureDesc& textureDesc = resource.type == ResourceType::PERMANENT_POOL ? m_PermanentPool[textureIndex] : m_TransientPool[textureIndex];
+            uint32_t w = textureDesc.width >> resource.mipOffset;
+            uint32_t h = textureDesc.height >> resource.mipOffset;
+
+            DispatchDesc dispatchDesc = {};
+            dispatchDesc.name = internalDispatchDesc.name;
+            dispatchDesc.resources = internalDispatchDesc.resources;
+            dispatchDesc.resourceNum = internalDispatchDesc.resourceNum;
+            dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
+            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDimX);
+            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDimY);
+
+            m_ActiveDispatches.push_back(dispatchDesc);
+        }
+    }
+
     for (const MethodData& methodData : m_MethodData)
     {
         if (updatePingPong)
-            UpdatePingPong(methodData); // TODO: swap only if frameIndex has changed?
+            UpdatePingPong(methodData);
 
         if (methodData.desc.method == Method::REBLUR_DIFFUSE)
             UpdateMethod_ReblurDiffuse(methodData);
+        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_OCCLUSION)
+            UpdateMethod_ReblurDiffuseOcclusion(methodData);
         else if (methodData.desc.method == Method::REBLUR_SPECULAR)
             UpdateMethod_ReblurSpecular(methodData);
+        else if (methodData.desc.method == Method::REBLUR_SPECULAR_OCCLUSION)
+            UpdateMethod_ReblurSpecularOcclusion(methodData);
         else if (methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR)
             UpdateMethod_ReblurDiffuseSpecular(methodData);
+        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
+            UpdateMethod_ReblurDiffuseSpecularOcclusion(methodData);
         else if (methodData.desc.method == Method::SIGMA_SHADOW)
             UpdateMethod_SigmaShadow(methodData);
         else if (methodData.desc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
             UpdateMethod_SigmaShadowTranslucency(methodData);
+        else if (methodData.desc.method == Method::RELAX_DIFFUSE)
+            UpdateMethod_RelaxDiffuse(methodData);
         else if (methodData.desc.method == Method::RELAX_SPECULAR)
             UpdateMethod_RelaxSpecular(methodData);
         else if (methodData.desc.method == Method::RELAX_DIFFUSE_SPECULAR)
@@ -120,7 +306,7 @@ Result DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, 
     return Result::SUCCESS;
 }
 
-Result DenoiserImpl::SetMethodSettings(Method method, const void* methodSettings)
+nrd::Result nrd::DenoiserImpl::SetMethodSettings(nrd::Method method, const void* methodSettings)
 {
     for( MethodData& methodData : m_MethodData )
     {
@@ -135,7 +321,7 @@ Result DenoiserImpl::SetMethodSettings(Method method, const void* methodSettings
     return Result::INVALID_ARGUMENT;
 }
 
-void DenoiserImpl::Optimize()
+void nrd::DenoiserImpl::Optimize()
 {
     /*
     TODO:
@@ -145,8 +331,10 @@ void DenoiserImpl::Optimize()
     */
 }
 
-void DenoiserImpl::PrepareDesc()
+void nrd::DenoiserImpl::PrepareDesc()
 {
+    m_Desc = {};
+
     m_Desc.pipelines = m_Pipelines.data();
     m_Desc.pipelineNum = (uint32_t)m_Pipelines.size();
 
@@ -159,10 +347,8 @@ void DenoiserImpl::PrepareDesc()
     m_Desc.transientPool = m_TransientPool.data();
     m_Desc.transientPoolSize = (uint32_t)m_TransientPool.size();
 
-    m_Desc.descriptorSetDesc.textureNum = 0;
-    m_Desc.descriptorSetDesc.storageTextureNum = 0;
     m_Desc.constantBufferDesc.registerIndex = 0;
-    m_Desc.constantBufferDesc.maxDataSize = 0;
+
     for (InternalDispatchDesc& dispatchDesc : m_Dispatches)
     {
         size_t textureOffset = (size_t)dispatchDesc.resources;
@@ -172,85 +358,95 @@ void DenoiserImpl::PrepareDesc()
         {
             const Resource& resource = dispatchDesc.resources[i];
             if (resource.stateNeeded == DescriptorType::TEXTURE)
-                m_Desc.descriptorSetDesc.textureNum += dispatchDesc.maxRepeatNum;
+                m_Desc.descriptorSetDesc.textureMaxNum += dispatchDesc.maxRepeatNum;
             else if (resource.stateNeeded == DescriptorType::STORAGE_TEXTURE)
-                m_Desc.descriptorSetDesc.storageTextureNum += dispatchDesc.maxRepeatNum;
+                m_Desc.descriptorSetDesc.storageTextureMaxNum += dispatchDesc.maxRepeatNum;
         }
 
-        m_Desc.descriptorSetDesc.setNum += dispatchDesc.maxRepeatNum;
-        m_Desc.descriptorSetDesc.constantBufferNum += dispatchDesc.maxRepeatNum;
+        m_Desc.descriptorSetDesc.setMaxNum += dispatchDesc.maxRepeatNum;
+        m_Desc.descriptorSetDesc.staticSamplerMaxNum += dispatchDesc.maxRepeatNum * m_Desc.staticSamplerNum;
 
-        m_Desc.constantBufferDesc.maxDataSize = std::max(dispatchDesc.constantBufferDataSize, m_Desc.constantBufferDesc.maxDataSize);
+        if (dispatchDesc.constantBufferDataSize != 0)
+        {
+            m_Desc.descriptorSetDesc.constantBufferMaxNum += dispatchDesc.maxRepeatNum;
+            m_Desc.constantBufferDesc.maxDataSize = std::max(dispatchDesc.constantBufferDataSize, m_Desc.constantBufferDesc.maxDataSize);
+        }
     }
 
-    m_Desc.descriptorSetDesc.maxDescriptorRangeNumPerPipeline = 0;
+    m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline = 0;
     for (PipelineDesc& pipelineDesc : m_Pipelines)
     {
         size_t descriptorRangeffset = (size_t)pipelineDesc.descriptorRanges;
         pipelineDesc.descriptorRanges = &m_DescriptorRanges[descriptorRangeffset];
 
-        m_Desc.descriptorSetDesc.maxDescriptorRangeNumPerPipeline = std::max(pipelineDesc.descriptorRangeNum, m_Desc.descriptorSetDesc.maxDescriptorRangeNumPerPipeline);
+        m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline = std::max(pipelineDesc.descriptorRangeNum, m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline);
     }
 
     // Since now all std::vectors become "locked" (no reallocations)
 }
 
-void DenoiserImpl::AddComputeDispatchDesc(uint16_t workgroupDim, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv)
+void nrd::DenoiserImpl::AddComputeDispatchDesc(uint8_t workgroupDimX, uint8_t workgroupDimY, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const nrd::ComputeShader& dxbc, const nrd::ComputeShader& dxil, const nrd::ComputeShader& spirv)
 {
-    // Resource binding
-    DescriptorRangeDesc descriptorRanges[2] =
+    // Pipeline
+    size_t pipelineIndex = 0;
+    for (; pipelineIndex < m_Pipelines.size(); pipelineIndex++)
     {
-        { DescriptorType::TEXTURE, 0, 0 },
-        { DescriptorType::STORAGE_TEXTURE, 0, 0 },
-    };
+        const PipelineDesc& pipeline = m_Pipelines[pipelineIndex];
 
-    for (size_t i = m_ResourceOffset; i < m_Resources.size(); i++ )
-    {
-        const Resource& resource = m_Resources[i];
-        if (resource.stateNeeded == descriptorRanges[0].descriptorType)
-            descriptorRanges[0].descriptorNum++;
-        else if (resource.stateNeeded == descriptorRanges[1].descriptorType)
-            descriptorRanges[1].descriptorNum++;
+        if (!strcmp(pipeline.shaderFileName, shaderFileName))
+            break;
     }
 
-    const size_t rangeOffset = m_DescriptorRanges.size();
-    m_DescriptorRanges.push_back(descriptorRanges[0]);
-    m_DescriptorRanges.push_back(descriptorRanges[1]);
+    if (pipelineIndex == m_Pipelines.size())
+    {
+        PipelineDesc pipelineDesc = {};
+        pipelineDesc.shaderFileName = shaderFileName;
+        pipelineDesc.shaderEntryPointName = NRD_CS_MAIN;
+        pipelineDesc.computeShaderDXBC = dxbc;
+        pipelineDesc.computeShaderDXIL = dxil;
+        pipelineDesc.computeShaderSPIRV = spirv;
+        pipelineDesc.descriptorRanges = (DescriptorRangeDesc*)m_DescriptorRanges.size();
+        pipelineDesc.hasConstantData = constantBufferDataSize != 0;
 
-    // Pipeline
-    PipelineDesc pipelineDesc = {};
-    pipelineDesc.descriptorRangeNum = GetCountOf(descriptorRanges);
-    pipelineDesc.descriptorRanges = (DescriptorRangeDesc*)rangeOffset;
-    pipelineDesc.shaderFileName = shaderFileName;
-    pipelineDesc.shaderEntryPointName = NRD_CS_MAIN;
-    pipelineDesc.computeShaderDXBC = dxbc;
-    pipelineDesc.computeShaderDXIL = dxil;
-    pipelineDesc.computeShaderSPIRV = spirv;
+        for (size_t r = 0; r < 2; r++)
+        {
+            DescriptorRangeDesc descriptorRange = {};
+            descriptorRange.descriptorType = r == 0 ? DescriptorType::TEXTURE : DescriptorType::STORAGE_TEXTURE;
 
-    const uint32_t pipelineIndex = (uint32_t)m_Pipelines.size();
-    m_Pipelines.push_back( pipelineDesc );
+            for (size_t i = m_ResourceOffset; i < m_Resources.size(); i++ )
+            {
+                const Resource& resource = m_Resources[i];
+                if (descriptorRange.descriptorType == resource.stateNeeded)
+                    descriptorRange.descriptorNum++;
+            }
 
+            if (descriptorRange.descriptorNum != 0)
+            {
+                m_DescriptorRanges.push_back(descriptorRange);
+                pipelineDesc.descriptorRangeNum++;
+            }
+        }
+
+        m_Pipelines.push_back( pipelineDesc );
+    }
+
+    // Dispatch
     InternalDispatchDesc computeDispatchDesc = {};
     computeDispatchDesc.pipelineIndex = (uint16_t)pipelineIndex;
     computeDispatchDesc.maxRepeatNum = (uint16_t)maxRepeatNum;
-
-    // Constants
     computeDispatchDesc.constantBufferDataSize = constantBufferDataSize;
-
-    // Resources
     computeDispatchDesc.resourceNum = uint32_t(m_Resources.size() - m_ResourceOffset);
     computeDispatchDesc.resources = (Resource*)m_ResourceOffset;
-
-    // Dispatch
     computeDispatchDesc.name = m_PassName;
-    computeDispatchDesc.workgroupDim = workgroupDim;
+    computeDispatchDesc.workgroupDimX = workgroupDimX;
+    computeDispatchDesc.workgroupDimY = workgroupDimY;
     computeDispatchDesc.downsampleFactor = downsampleFactor;
 
     m_Dispatches.push_back(computeDispatchDesc);
 }
 
 
-void DenoiserImpl::PushTexture(DescriptorType descriptorType, uint16_t index, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith)
+void nrd::DenoiserImpl::PushTexture(nrd::DescriptorType descriptorType, uint16_t index, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith)
 {
     ResourceType resourceType = (ResourceType)index;
 
@@ -282,7 +478,7 @@ void DenoiserImpl::PushTexture(DescriptorType descriptorType, uint16_t index, ui
     m_Resources.push_back( {descriptorType, resourceType, index, mipOffset, mipNum} );
 }
 
-void DenoiserImpl::UpdatePingPong(const MethodData& methodData)
+void nrd::DenoiserImpl::UpdatePingPong(const nrd::MethodData& methodData)
 {
     for (uint32_t i = 0; i < methodData.pingPongNum; i++)
     {
@@ -295,20 +491,13 @@ void DenoiserImpl::UpdatePingPong(const MethodData& methodData)
     }
 }
 
-void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
+void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSettings)
 {
     // TODO: add to CommonSettings?
     m_JitterPrev = ml::float2(m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
-    m_ResolutionScalePrev = m_CommonSettings.resolutionScale;
+    m_ResolutionScalePrev = ml::float2(m_CommonSettings.resolutionScale[0], m_CommonSettings.resolutionScale[1]);
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
-
-    // There are many cases, where history buffers contain garbage - handle at least one of them internally
-    if (m_IsFirstUse)
-    {
-        m_CommonSettings.frameIndex = 0;
-        m_IsFirstUse = false;
-    }
 
     // Rotators
     float whiteNoise = ml::Rand::uf1(&m_FastRandState) * ml::DegToRad(360.0f);
@@ -341,61 +530,49 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
     m_WorldToView = ml::float4x4
     (
-        ml::float4(m_CommonSettings.worldToViewRotationMatrix[0], m_CommonSettings.worldToViewRotationMatrix[1], m_CommonSettings.worldToViewRotationMatrix[2], 0.0f),
-        ml::float4(m_CommonSettings.worldToViewRotationMatrix[4], m_CommonSettings.worldToViewRotationMatrix[5], m_CommonSettings.worldToViewRotationMatrix[6], 0.0f),
-        ml::float4(m_CommonSettings.worldToViewRotationMatrix[8], m_CommonSettings.worldToViewRotationMatrix[9], m_CommonSettings.worldToViewRotationMatrix[10], 0.0f),
-        ml::float4(0.0f, 0.0f, 0.0f, 1.0f)
+        ml::float4(m_CommonSettings.worldToViewMatrix),
+        ml::float4(m_CommonSettings.worldToViewMatrix + 4),
+        ml::float4(m_CommonSettings.worldToViewMatrix + 8),
+        ml::float4(m_CommonSettings.worldToViewMatrix + 12)
     );
 
     m_WorldToViewPrev = ml::float4x4
     (
-        ml::float4(m_CommonSettings.worldToViewRotationMatrixPrev[0], m_CommonSettings.worldToViewRotationMatrixPrev[1], m_CommonSettings.worldToViewRotationMatrixPrev[2], 0.0f),
-        ml::float4(m_CommonSettings.worldToViewRotationMatrixPrev[4], m_CommonSettings.worldToViewRotationMatrixPrev[5], m_CommonSettings.worldToViewRotationMatrixPrev[6], 0.0f),
-        ml::float4(m_CommonSettings.worldToViewRotationMatrixPrev[8], m_CommonSettings.worldToViewRotationMatrixPrev[9], m_CommonSettings.worldToViewRotationMatrixPrev[10], 0.0f),
-        ml::float4(0.0f, 0.0f, 0.0f, 1.0f)
+        ml::float4(m_CommonSettings.worldToViewMatrixPrev),
+        ml::float4(m_CommonSettings.worldToViewMatrixPrev + 4),
+        ml::float4(m_CommonSettings.worldToViewMatrixPrev + 8),
+        ml::float4(m_CommonSettings.worldToViewMatrixPrev + 12)
     );
 
-    m_CameraDelta = ml::float3(m_CommonSettings.cameraMotion);
+    // Convert meters to units
+    m_CommonSettings.denoisingRange *= m_CommonSettings.meterToUnitsMultiplier;
 
-    // Convert projection matrix to LH
+    // There are many cases, where history buffers contain garbage - handle at least one of them internally
+    if (m_IsFirstUse)
+    {
+        m_CommonSettings.accumulationMode = AccumulationMode::CLEAR_AND_RESTART;
+        m_WorldToViewPrev = m_WorldToView;
+        m_ViewToClipPrev = m_ViewToClip;
+        m_IsFirstUse = false;
+    }
+
+    // Convert to LH
     uint32_t flags = 0;
     ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
 
-    bool isProjMatrixLH = (flags & ml::PROJ_LEFT_HANDED) != 0;
-    if (!isProjMatrixLH)
+    if ( !(flags & ml::PROJ_LEFT_HANDED) )
     {
-        m_ViewToClip.col2 = (-ml::float4(m_ViewToClip.col2)).xmm;
-        m_ViewToClipPrev.col2 = (-ml::float4(m_ViewToClipPrev.col2)).xmm;
+        m_ViewToClip.col2 = (-m_ViewToClip.GetCol2()).xmm;
+        m_ViewToClipPrev.col2 = (-m_ViewToClipPrev.GetCol2()).xmm;
+
+        m_WorldToView.Transpose();
+        m_WorldToView.col2 = (-m_WorldToView.GetCol2()).xmm;
+        m_WorldToView.Transpose();
+
+        m_WorldToViewPrev.Transpose();
+        m_WorldToViewPrev.col2 = (-m_WorldToViewPrev.GetCol2()).xmm;
+        m_WorldToViewPrev.Transpose();
     }
-
-    // Convert view matrices to LH (the code below assumes that projection matrix and view matrix Z-axises are same in any case, other axises will be flipped accordingly)
-    bool isViewMatrixLH = m_WorldToView.IsLeftHanded();
-
-    bool flip[3] = { false, false, false };
-    if (!isViewMatrixLH)
-        flip[ isProjMatrixLH ? 0 : 2 ] = true;
-    else if (!isProjMatrixLH)
-    {
-        flip[0] = true;
-        flip[1] = true;
-    }
-
-    m_WorldToView.Transpose();
-    m_WorldToViewPrev.Transpose();
-
-    ml::v4f* c = &m_WorldToView.col0;
-    ml::v4f* cp = &m_WorldToViewPrev.col0;
-    for (uint32_t i = 0; i < 3; i++ )
-    {
-        if (flip[i])
-        {
-            c[i] = (-ml::float4(c[i])).xmm;
-            cp[i] = (-ml::float4(cp[i])).xmm;
-        }
-    }
-
-    m_WorldToView.Transpose();
-    m_WorldToViewPrev.Transpose();
 
     // Compute other matrices
     m_ViewToWorld = m_WorldToView;
@@ -404,19 +581,9 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     m_ViewToWorldPrev = m_WorldToViewPrev;
     m_ViewToWorldPrev.InvertOrtho();
 
-    if( m_CommonSettings.frameIndex == 0 )
-        m_CameraDeltaSmoothed = m_CameraDelta;
-    else
-    {
-        float l1 = Length(m_CameraDeltaSmoothed);
-        float l2 = Length(m_CameraDelta);
-
-        float relativeDelta = ml::Abs(l1 - l2) / (ml::Min(l1, l2) + 1e-7f);
-        float f = relativeDelta / (1.0f + relativeDelta);
-        f = ml::Max(f, 0.1f);
-
-        m_CameraDeltaSmoothed = ml::Lerp(m_CameraDeltaSmoothed, m_CameraDelta, ml::float3(f));
-    }
+    const ml::float3& cameraPosition = m_ViewToWorld.GetCol3().To3d();
+    const ml::float3& cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
+    m_CameraDelta = cameraPositionPrev - cameraPosition;
 
     // IMPORTANT: this part is mandatory needed to preserve precision by making matrices camera relative
     m_ViewToWorld.SetTranslation( ml::float3::Zero() );
@@ -464,31 +631,20 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
 
 // SHADERS =================================================================================
 
-#ifndef BYTE
-    #define BYTE unsigned char
-#endif
-
 #ifdef NRD_USE_PRECOMPILED_SHADERS
-    // NRD
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "NRD_MipGeneration_Float4_Float.cs.dxbc.h"
-        #include "NRD_MipGeneration_Float4_Float.cs.dxil.h"
-        #include "NRD_MipGeneration_Float4_Float4_Float.cs.dxbc.h"
-        #include "NRD_MipGeneration_Float4_Float4_Float.cs.dxil.h"
-    #endif
-
-    #include "NRD_MipGeneration_Float4_Float4_Float.cs.spirv.h"
-    #include "NRD_MipGeneration_Float4_Float.cs.spirv.h"
-
 
     // REBLUR_DIFFUSE
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_CopyViewZ.cs.dxbc.h"
-        #include "REBLUR_CopyViewZ.cs.dxil.h"
         #include "REBLUR_Diffuse_PreBlur.cs.dxbc.h"
         #include "REBLUR_Diffuse_PreBlur.cs.dxil.h"
+        #include "REBLUR_Diffuse_PreBlurAdvanced.cs.dxbc.h"
+        #include "REBLUR_Diffuse_PreBlurAdvanced.cs.dxil.h"
         #include "REBLUR_Diffuse_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Diffuse_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Diffuse_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Diffuse_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Diffuse_AntiFirefly.cs.dxbc.h"
+        #include "REBLUR_Diffuse_AntiFirefly.cs.dxil.h"
         #include "REBLUR_Diffuse_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Diffuse_HistoryFix.cs.dxil.h"
         #include "REBLUR_Diffuse_Blur.cs.dxbc.h"
@@ -501,49 +657,52 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
         #include "REBLUR_Diffuse_SplitScreen.cs.dxil.h"
     #endif
 
-    #include "REBLUR_CopyViewZ.cs.spirv.h"
     #include "REBLUR_Diffuse_PreBlur.cs.spirv.h"
+    #include "REBLUR_Diffuse_PreBlurAdvanced.cs.spirv.h"
     #include "REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Diffuse_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Diffuse_AntiFirefly.cs.spirv.h"
     #include "REBLUR_Diffuse_HistoryFix.cs.spirv.h"
     #include "REBLUR_Diffuse_Blur.cs.spirv.h"
     #include "REBLUR_Diffuse_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_Diffuse_PostBlur.cs.spirv.h"
     #include "REBLUR_Diffuse_SplitScreen.cs.spirv.h"
 
-
-    // REBLUR_SPECULAR
+    // REBLUR_DIFFUSE_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_Specular_PreBlur.cs.dxbc.h"
-        #include "REBLUR_Specular_PreBlur.cs.dxil.h"
-        #include "REBLUR_Specular_TemporalAccumulation.cs.dxbc.h"
-        #include "REBLUR_Specular_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Specular_HistoryFix.cs.dxbc.h"
-        #include "REBLUR_Specular_HistoryFix.cs.dxil.h"
-        #include "REBLUR_Specular_Blur.cs.dxbc.h"
-        #include "REBLUR_Specular_Blur.cs.dxil.h"
-        #include "REBLUR_Specular_PostBlur.cs.dxbc.h"
-        #include "REBLUR_Specular_PostBlur.cs.dxil.h"
-        #include "REBLUR_Specular_TemporalStabilization.cs.dxbc.h"
-        #include "REBLUR_Specular_TemporalStabilization.cs.dxil.h"
-        #include "REBLUR_Specular_SplitScreen.cs.dxbc.h"
-        #include "REBLUR_Specular_SplitScreen.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_PostBlur.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxil.h"
     #endif
 
-    #include "REBLUR_Specular_PreBlur.cs.spirv.h"
-    #include "REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Specular_HistoryFix.cs.spirv.h"
-    #include "REBLUR_Specular_Blur.cs.spirv.h"
-    #include "REBLUR_Specular_PostBlur.cs.spirv.h"
-    #include "REBLUR_Specular_TemporalStabilization.cs.spirv.h"
-    #include "REBLUR_Specular_SplitScreen.cs.spirv.h"
-
+    #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_DiffuseOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_DiffuseOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_DiffuseOcclusion_PostBlur.cs.spirv.h"
+    #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.spirv.h"
 
     // REBLUR_DIFFUSE_SPECULAR
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
         #include "REBLUR_DiffuseSpecular_PreBlur.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_PreBlur.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecular_PreBlurAdvanced.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecular_PreBlurAdvanced.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecular_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecular_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecular_AntiFirefly.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecular_AntiFirefly.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_HistoryFix.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_HistoryFix.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_Blur.cs.dxbc.h"
@@ -557,13 +716,192 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     #endif
 
     #include "REBLUR_DiffuseSpecular_PreBlur.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecular_PreBlurAdvanced.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecular_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecular_AntiFirefly.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_SplitScreen.cs.spirv.h"
 
+    // REBLUR_DIFFUSE_SPECULAR_OCCLUSION
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_PostBlur.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxil.h"
+    #endif
+
+    #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecularOcclusion_PostBlur.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.spirv.h"
+
+    // REBLUR_SPECULAR
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "REBLUR_Specular_PreBlur.cs.dxbc.h"
+        #include "REBLUR_Specular_PreBlur.cs.dxil.h"
+        #include "REBLUR_Specular_PreBlurAdvanced.cs.dxbc.h"
+        #include "REBLUR_Specular_PreBlurAdvanced.cs.dxil.h"
+        #include "REBLUR_Specular_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Specular_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Specular_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Specular_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Specular_AntiFirefly.cs.dxbc.h"
+        #include "REBLUR_Specular_AntiFirefly.cs.dxil.h"
+        #include "REBLUR_Specular_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Specular_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Specular_Blur.cs.dxbc.h"
+        #include "REBLUR_Specular_Blur.cs.dxil.h"
+        #include "REBLUR_Specular_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Specular_PostBlur.cs.dxil.h"
+        #include "REBLUR_Specular_TemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_Specular_TemporalStabilization.cs.dxil.h"
+        #include "REBLUR_Specular_SplitScreen.cs.dxbc.h"
+        #include "REBLUR_Specular_SplitScreen.cs.dxil.h"
+    #endif
+
+    #include "REBLUR_Specular_PreBlur.cs.spirv.h"
+    #include "REBLUR_Specular_PreBlurAdvanced.cs.spirv.h"
+    #include "REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Specular_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Specular_AntiFirefly.cs.spirv.h"
+    #include "REBLUR_Specular_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Specular_Blur.cs.spirv.h"
+    #include "REBLUR_Specular_PostBlur.cs.spirv.h"
+    #include "REBLUR_Specular_TemporalStabilization.cs.spirv.h"
+    #include "REBLUR_Specular_SplitScreen.cs.spirv.h"
+
+    // REBLUR_SPECULAR_OCCLUSION
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_SpecularOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_SpecularOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_SpecularOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_PostBlur.cs.dxil.h"
+        #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxil.h"
+    #endif
+
+    #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_SpecularOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_SpecularOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_SpecularOcclusion_PostBlur.cs.spirv.h"
+    #include "REBLUR_SpecularOcclusion_SplitScreen.cs.spirv.h"
+
+    // RELAX_DIFFUSE
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "RELAX_Diffuse_Prepass.cs.dxbc.h"
+        #include "RELAX_Diffuse_Prepass.cs.dxil.h"
+        #include "RELAX_Diffuse_Reproject.cs.dxbc.h"
+        #include "RELAX_Diffuse_Reproject.cs.dxil.h"
+        #include "RELAX_Diffuse_DisocclusionFix.cs.dxbc.h"
+        #include "RELAX_Diffuse_DisocclusionFix.cs.dxil.h"
+        #include "RELAX_Diffuse_HistoryClamping.cs.dxbc.h"
+        #include "RELAX_Diffuse_HistoryClamping.cs.dxil.h"
+        #include "RELAX_Diffuse_Firefly.cs.dxbc.h"
+        #include "RELAX_Diffuse_Firefly.cs.dxil.h"
+        #include "RELAX_Diffuse_SpatialVarianceEstimation.cs.dxbc.h"
+        #include "RELAX_Diffuse_SpatialVarianceEstimation.cs.dxil.h"
+        #include "RELAX_Diffuse_ATrousShmem.cs.dxbc.h"
+        #include "RELAX_Diffuse_ATrousShmem.cs.dxil.h"
+        #include "RELAX_Diffuse_ATrousStandard.cs.dxbc.h"
+        #include "RELAX_Diffuse_ATrousStandard.cs.dxil.h"
+        #include "RELAX_Diffuse_SplitScreen.cs.dxbc.h"
+        #include "RELAX_Diffuse_SplitScreen.cs.dxil.h"
+    #endif
+
+    #include "RELAX_Diffuse_Prepass.cs.spirv.h"
+    #include "RELAX_Diffuse_Reproject.cs.spirv.h"
+    #include "RELAX_Diffuse_DisocclusionFix.cs.spirv.h"
+    #include "RELAX_Diffuse_HistoryClamping.cs.spirv.h"
+    #include "RELAX_Diffuse_Firefly.cs.spirv.h"
+    #include "RELAX_Diffuse_SpatialVarianceEstimation.cs.spirv.h"
+    #include "RELAX_Diffuse_ATrousShmem.cs.spirv.h"
+    #include "RELAX_Diffuse_ATrousStandard.cs.spirv.h"
+    #include "RELAX_Diffuse_SplitScreen.cs.spirv.h"
+
+    // RELAX_DIFFUSE_SPECULAR
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "RELAX_DiffuseSpecular_Prepass.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_Prepass.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_Reproject.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_Reproject.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_DisocclusionFix.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_DisocclusionFix.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_Firefly.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_Firefly.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_ATrousShmem.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_ATrousShmem.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_ATrousStandard.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_ATrousStandard.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxil.h"
+    #endif
+
+    #include "RELAX_DiffuseSpecular_Prepass.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_Reproject.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_DisocclusionFix.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_HistoryClamping.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_Firefly.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_ATrousShmem.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_ATrousStandard.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_SplitScreen.cs.spirv.h"
+
+    // RELAX_SPECULAR
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "RELAX_Specular_Prepass.cs.dxbc.h"
+        #include "RELAX_Specular_Prepass.cs.dxil.h"
+        #include "RELAX_Specular_Reproject.cs.dxbc.h"
+        #include "RELAX_Specular_Reproject.cs.dxil.h"
+        #include "RELAX_Specular_DisocclusionFix.cs.dxbc.h"
+        #include "RELAX_Specular_DisocclusionFix.cs.dxil.h"
+        #include "RELAX_Specular_HistoryClamping.cs.dxbc.h"
+        #include "RELAX_Specular_HistoryClamping.cs.dxil.h"
+        #include "RELAX_Specular_Firefly.cs.dxbc.h"
+        #include "RELAX_Specular_Firefly.cs.dxil.h"
+        #include "RELAX_Specular_SpatialVarianceEstimation.cs.dxbc.h"
+        #include "RELAX_Specular_SpatialVarianceEstimation.cs.dxil.h"
+        #include "RELAX_Specular_ATrousShmem.cs.dxbc.h"
+        #include "RELAX_Specular_ATrousShmem.cs.dxil.h"
+        #include "RELAX_Specular_ATrousStandard.cs.dxbc.h"
+        #include "RELAX_Specular_ATrousStandard.cs.dxil.h"
+        #include "RELAX_Specular_SplitScreen.cs.dxbc.h"
+        #include "RELAX_Specular_SplitScreen.cs.dxil.h"
+    #endif
+
+    #include "RELAX_Specular_Prepass.cs.spirv.h"
+    #include "RELAX_Specular_Reproject.cs.spirv.h"
+    #include "RELAX_Specular_DisocclusionFix.cs.spirv.h"
+    #include "RELAX_Specular_HistoryClamping.cs.spirv.h"
+    #include "RELAX_Specular_Firefly.cs.spirv.h"
+    #include "RELAX_Specular_SpatialVarianceEstimation.cs.spirv.h"
+    #include "RELAX_Specular_ATrousShmem.cs.spirv.h"
+    #include "RELAX_Specular_ATrousStandard.cs.spirv.h"
+    #include "RELAX_Specular_SplitScreen.cs.spirv.h"
 
     // SIGMA_SHADOW
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -588,7 +926,6 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     #include "SIGMA_Shadow_TemporalStabilization.cs.spirv.h"
     #include "SIGMA_Shadow_SplitScreen.cs.spirv.h"
 
-
     // SIGMA_SHADOW_TRANSLUCENCY
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
         #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxbc.h"
@@ -608,76 +945,18 @@ void DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSettings)
     #include "SIGMA_ShadowTranslucency_Blur.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_SplitScreen.cs.spirv.h"
-
-
-    // RELAX_SPECULAR
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_PackInputData.cs.dxbc.h"
-        #include "RELAX_PackInputData.cs.dxil.h"
-        #include "RELAX_Specular_Reproject.cs.dxbc.h"
-        #include "RELAX_Specular_Reproject.cs.dxil.h"
-        #include "RELAX_Specular_DisocclusionFix.cs.dxbc.h"
-        #include "RELAX_Specular_DisocclusionFix.cs.dxil.h"
-        #include "RELAX_Specular_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_Specular_HistoryClamping.cs.dxil.h"
-        #include "RELAX_Specular_Firefly.cs.dxbc.h"
-        #include "RELAX_Specular_Firefly.cs.dxil.h"
-        #include "RELAX_Specular_SpatialVarianceEstimation.cs.dxbc.h"
-        #include "RELAX_Specular_SpatialVarianceEstimation.cs.dxil.h"
-        #include "RELAX_Specular_ATrousShmem.cs.dxbc.h"
-        #include "RELAX_Specular_ATrousShmem.cs.dxil.h"
-        #include "RELAX_Specular_ATrousStandard.cs.dxbc.h"
-        #include "RELAX_Specular_ATrousStandard.cs.dxil.h"
-        #include "RELAX_Specular_SplitScreen.cs.dxbc.h"
-        #include "RELAX_Specular_SplitScreen.cs.dxil.h"
-    #endif
-
-    #include "RELAX_PackInputData.cs.spirv.h"
-    #include "RELAX_Specular_Reproject.cs.spirv.h"
-    #include "RELAX_Specular_DisocclusionFix.cs.spirv.h"
-    #include "RELAX_Specular_HistoryClamping.cs.spirv.h"
-    #include "RELAX_Specular_Firefly.cs.spirv.h"
-    #include "RELAX_Specular_SpatialVarianceEstimation.cs.spirv.h"
-    #include "RELAX_Specular_ATrousShmem.cs.spirv.h"
-    #include "RELAX_Specular_ATrousStandard.cs.spirv.h"
-    #include "RELAX_Specular_SplitScreen.cs.spirv.h"
-
-    // RELAX_DIFFUSE_SPECULAR
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_DiffuseSpecular_Reproject.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_Reproject.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_DisocclusionFix.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_DisocclusionFix.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_Firefly.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_Firefly.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_ATrousShmem.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_ATrousShmem.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_ATrousStandard.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_ATrousStandard.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxil.h"
-    #endif
-
-    #include "RELAX_DiffuseSpecular_Reproject.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_DisocclusionFix.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_HistoryClamping.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_Firefly.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_ATrousShmem.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_ATrousStandard.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_SplitScreen.cs.spirv.h"
 #endif
 
 // METHODS =================================================================================
 
 #include "Methods/Reblur_Diffuse.hpp"
-#include "Methods/Reblur_Specular.hpp"
+#include "Methods/Reblur_DiffuseOcclusion.hpp"
 #include "Methods/Reblur_DiffuseSpecular.hpp"
+#include "Methods/Reblur_DiffuseSpecularOcclusion.hpp"
+#include "Methods/Reblur_Specular.hpp"
+#include "Methods/Reblur_SpecularOcclusion.hpp"
+#include "Methods/Relax_Diffuse.hpp"
+#include "Methods/Relax_DiffuseSpecular.hpp"
+#include "Methods/Relax_Specular.hpp"
 #include "Methods/Sigma_Shadow.hpp"
 #include "Methods/Sigma_ShadowTranslucency.hpp"
-#include "Methods/Relax_Specular.hpp"
-#include "Methods/Relax_DiffuseSpecular.hpp"
