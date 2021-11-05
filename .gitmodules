@@ -1,5 +1,0 @@
-[submodule "External/MathLib/External/sse2neon"]
-    path = External/MathLib/External/sse2neon
-    url = https://github.com/DLTcollab/sse2neon.git
-    branch = master
-    update = merge
