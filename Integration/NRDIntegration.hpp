@@ -71,14 +71,14 @@ static inline nri::Format NRD_GetNriFormat(nrd::Format format)
     return g_NriFormat[(uint32_t)format];
 }
 
-static inline uint64_t NRD_CreateDescriptorKey(bool isStorage, uint8_t poolIndex, uint16_t indexInPool, uint8_t mipOffset, uint8_t mipNum)
+static inline uint64_t NRD_CreateDescriptorKey(bool isStorage, uint8_t poolIndex, uint16_t indexInPool, uint8_t mipOffset, uint8_t mipNum, uint32_t bufferedFrameIndex)
 {
     uint64_t key = isStorage ? 1 : 0;
     key |= uint64_t(poolIndex) << 1ull;
     key |= uint64_t(indexInPool) << 9ull;
     key |= uint64_t(mipOffset) << 25ull;
     key |= uint64_t(mipNum) << 33ull;
-
+    key |= uint64_t(bufferedFrameIndex) << 41ull;
     return key;
 }
 
@@ -380,13 +380,13 @@ void NrdIntegration::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer&
         const nrd::DispatchDesc& dispatchDesc = dispatchDescs[i];
         m_NRI->CmdBeginAnnotation(commandBuffer, dispatchDesc.name);
 
-        Dispatch(commandBuffer, *descriptorPool, dispatchDesc, userPool);
+        Dispatch(bufferedFrameIndex, commandBuffer, *descriptorPool, dispatchDesc, userPool);
 
         m_NRI->CmdEndAnnotation(commandBuffer);
     }
 }
 
-void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool)
+void NrdIntegration::Dispatch(uint32_t bufferedFrameIndex, nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool)
 {
     const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_Denoiser);
     const nrd::PipelineDesc& pipelineDesc = denoiserDesc.pipelines[dispatchDesc.pipelineIndex];
@@ -444,7 +444,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
             }
 
             const bool isStorage = descriptorRangeDesc.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE;
-            uint64_t key = NRD_CreateDescriptorKey(isStorage, (uint8_t)nrdResource.type, nrdResource.indexInPool, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum);
+            uint64_t key = NRD_CreateDescriptorKey(isStorage, (uint8_t)nrdResource.type, nrdResource.indexInPool, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum, bufferedFrameIndex);
             const auto& entry = m_Descriptors.find(key);
 
             nri::Descriptor* descriptor = nullptr;

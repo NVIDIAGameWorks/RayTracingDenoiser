@@ -83,7 +83,7 @@ private:
 
     void CreateResources();
     void AllocateAndBindMemory();
-    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool,
+    void Dispatch(uint32_t bufferedFrameIndex, nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool,
         const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
 
 private:
