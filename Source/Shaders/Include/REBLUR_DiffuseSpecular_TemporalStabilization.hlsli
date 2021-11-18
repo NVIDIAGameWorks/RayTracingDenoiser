@@ -71,8 +71,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     // Position
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );
     float3 X = STL::Geometry::AffineTransform( gViewToWorld, Xv );
-    float invDistToPoint = STL::Math::Rsqrt( STL::Math::LengthSquared( Xv ) );
-    float3 V = -X * invDistToPoint;
 
     // Local variance
     float viewZnearest = viewZ;
@@ -155,39 +153,53 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     float3 Xprev = X + motionVector * float( gWorldSpaceMotion != 0 );
 
     // Compute parallax
-    float parallax = ComputeParallax( X, Xprev, gCameraDelta.xyz );
+    float parallax = ComputeParallax( X, Xprev, gCameraDelta );
 
     // Internal data
-    float curvature, virtualHistoryAmount;
-    #if( defined REBLUR_SPECULAR )
-        float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], curvature, virtualHistoryAmount );
-        float2 diffInternalData = internalData.xy;
-        float2 specInternalData = internalData.zw;
-    #else
-        float2 diffInternalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ], curvature );
-    #endif
+    float curvature;
+    uint bits;
+    float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], curvature, bits );
+    float2 diffInternalData = internalData.xy;
+    float2 specInternalData = internalData.zw;
 
     float4 error = gIn_Error[ pixelPos ];
-    uint bits = uint( error.y * 255.0 + 0.5 );
-    float2 occlusionAvg = float2( ( bits & uint2( 1, 2 ) ) != 0 );
+    float virtualHistoryAmount = error.y;
+    float2 occlusionAvg = float2( ( bits & uint2( 8, 16 ) ) != 0 );
 
     STL::Filtering::Bilinear bilinearFilterAtPrevPos = STL::Filtering::GetBilinearFilter( saturate( pixelUvPrev ), gRectSizePrev );
     float4 bilinearWeightsWithOcclusion = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevPos, 1.0 );
 
-    // Main
-    #if( defined REBLUR_DIFFUSE )
-        // Sample history
+    // Sample history ( surface motion )
+    #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
+        float4 specHistorySurface;
+        float4 diffHistory = BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+            gIn_HistoryStabilized_Diff, gIn_HistoryStabilized_Spec, gLinearClamp,
+            saturate( pixelUvPrev ) * gRectSizePrev, gInvScreenSize,
+            bilinearWeightsWithOcclusion, occlusionAvg.x == 1.0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS,
+            specHistorySurface
+        );
+    #elif( defined REBLUR_DIFFUSE )
         float4 diffHistory = BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             gIn_HistoryStabilized_Diff, gLinearClamp,
             saturate( pixelUvPrev ) * gRectSizePrev, gInvScreenSize,
             bilinearWeightsWithOcclusion, occlusionAvg.x == 1.0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS
         );
+    #else
+        float4 specHistorySurface = BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+            gIn_HistoryStabilized_Spec, gLinearClamp,
+            saturate( pixelUvPrev ) * gRectSizePrev, gInvScreenSize,
+            bilinearWeightsWithOcclusion, occlusionAvg.x == 1.0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS
+        );
+    #endif
 
+    #if( defined REBLUR_DIFFUSE )
         // Antilag
-        ComputeAntilagScale( diffInternalData.y, diffHistory, diff, diffM1, diffSigma, gDiffAntilag1, gDiffAntilag2, gDiffMaxFastAccumulatedFrameNum, curvature );
+        float diffAntilag = ComputeAntilagScale( diffInternalData.y, diffHistory, diff, diffM1, diffSigma, gDiffAntilag1, gDiffAntilag2, curvature );
+        diffInternalData.y *= diffAntilag;
 
         // Clamp history and combine with the current frame
         float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffInternalData.y, parallax );
+        diffTemporalAccumulationParams.x *= diffAntilag;
 
         diffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, diffHistory );
         float diffHistoryWeight = 1.0 - REBLUR_TS_MAX_HISTORY_WEIGHT * diffTemporalAccumulationParams.x;
@@ -245,15 +257,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
                 diffResult.w = err;
             }
 
-            diffResult.xyz = STL::Color::ColorizeZucconi( diffResult.w );
+            diffResult.xyz = STL::Color::ColorizeZucconi( diffResult.w ); // TODO: write to output
         #endif
-
-        gOut_Diff_Copy[ pixelPos ] = diffResult;
     #endif
 
     #if( defined REBLUR_SPECULAR )
         // Sample history ( virtual motion )
         float hitDist = GetHitDist( spec.w, viewZ, gSpecHitDistParams, roughness );
+
+        float3 V = GetViewVector( X );
         float NoV = abs( dot( N, V ) );
         float4 Xvirtual = GetXvirtual( X, V, NoV, roughness, hitDist, viewZ, curvature );
         float2 pixelUvVirtualPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual.xyz );
@@ -290,27 +302,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
         specHistoryVirtual = lerp( specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount );
 
         // Adjust accumulation speed for virtual motion if confidence is low
-        float specMinAccumSpeed = min( specInternalData.y, GetMipLevel( roughness, gSpecMaxFastAccumulatedFrameNum ) );
+        float specMinAccumSpeed = min( specInternalData.y, GetMipLevel( roughness ) );
         float specAccumSpeedScale = lerp( 1.0, virtualHistoryHitDistConfidence.x, virtualHistoryAmount );
         specInternalData.y = InterpolateAccumSpeeds( specMinAccumSpeed, specInternalData.y, specAccumSpeedScale );
 
-        // Sample history ( surface motion )
-        float4 specHistorySurface = BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-            gIn_HistoryStabilized_Spec, gLinearClamp,
-            saturate( pixelUvPrev ) * gRectSizePrev, gInvScreenSize,
-            bilinearWeightsWithOcclusion, occlusionAvg.x == 1.0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS
-        );
-
         // Combine surface and virtual motion
-        float hitDistToSurfaceRatio = saturate( hitDist * invDistToPoint );
-        float4 specHistory = InterpolateSurfaceAndVirtualMotion( specHistorySurface, specHistoryVirtual, virtualHistoryAmount, hitDistToSurfaceRatio );
+        float invDistToPoint = STL::Math::Rsqrt( STL::Math::LengthSquared( Xv ) );
+        float hitDistFactor = gIsOrtho == 0 ? saturate( hitDist * invDistToPoint ) : 1.0;
+        float4 specHistory = InterpolateSurfaceAndVirtualMotion( specHistorySurface, specHistoryVirtual, virtualHistoryAmount, hitDistFactor );
 
         // Antilag
-        ComputeAntilagScale( specInternalData.y, specHistory, spec, specM1, specSigma, gSpecAntilag1, gSpecAntilag2, gSpecMaxFastAccumulatedFrameNum, curvature, roughness );
+        float specAntilag = ComputeAntilagScale( specInternalData.y, specHistory, spec, specM1, specSigma, gSpecAntilag1, gSpecAntilag2, curvature, roughness );
+        specInternalData.y *= specAntilag;
 
         // Clamp history and combine with the current frame
         float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specInternalData.y, parallax, roughness, roughness, virtualHistoryAmount );
         specTemporalAccumulationParams.x *= lerp( 1.0, virtualHistoryConfidence, SaturateParallax( parallax * ( 1.0 - virtualHistoryAmount ) * REBLUR_TS_SIGMA_AMPLITUDE ) ); // TODO: is there a better solution?
+        specTemporalAccumulationParams.x *= specAntilag;
 
         specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
         float specHistoryWeight = 1.0 - REBLUR_TS_MAX_HISTORY_WEIGHT * specTemporalAccumulationParams.x;
@@ -384,10 +392,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
             }
 
             // Show how colorization represents 0-1 range on the bottom
-            specResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.95 ? pixelUv.x : specResult.w );
+            specResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.95 ? pixelUv.x : specResult.w ); // TODO: write to output
         #endif
-
-        gOut_Spec_Copy[ pixelPos ] = specResult;
     #endif
 
     // Output

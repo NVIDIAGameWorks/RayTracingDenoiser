@@ -124,7 +124,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
             // Calculating geometry weight for diffuse and specular
             float geometryW = exp_approx(-GetGeometryWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, phiDepth));
 
-#if RELAX_USE_HAIR_AWARE_FILTERING
+#if NRD_USE_MATERIAL_ID_AWARE_FILTERING
             geometryW *= (sampleMaterialType == centerMaterialType) ? 1.0 : 0.0;
 #endif
 

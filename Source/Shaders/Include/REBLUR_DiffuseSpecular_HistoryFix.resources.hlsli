@@ -12,55 +12,56 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
     #define NRD_DECLARE_INPUT_TEXTURES \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 1 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 2 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 3 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Fast_Diff, t, 4 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 5 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Fast_Spec, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 0 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 1 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 2 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 3 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 4 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Spec, t, 5 )
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 0 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 1 )
+        NRD_INPUT_TEXTURE( RWTexture2D<float4>, gOut_HistoryStabilized_Diff, u, 1 ) \
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 2 ) \
+        NRD_INPUT_TEXTURE( RWTexture2D<float4>, gOut_HistoryStabilized_Spec, u, 3 )
 
     #define NRD_DECLARE_CONSTANTS \
         NRD_CONSTANTS_START \
             REBLUR_DIFF_SPEC_SHARED_CB_DATA \
-            NRD_CONSTANT( float, gDiffFastHistoryClampingColorBoxSigmaScale ) \
-            NRD_CONSTANT( float, gSpecFastHistoryClampingColorBoxSigmaScale ) \
+            NRD_CONSTANT( float, gDiffHistoryFixStrength ) \
+            NRD_CONSTANT( float, gSpecHistoryFixStrength ) \
         NRD_CONSTANTS_END
 #elif( defined REBLUR_DIFFUSE )
     #define NRD_DECLARE_INPUT_TEXTURES \
-        NRD_INPUT_TEXTURE( Texture2D<float2>, gIn_InternalData, t, 0 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 0 ) \
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 1 ) \
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 2 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Fast_Diff, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 3 )
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 0 ) \
+        NRD_INPUT_TEXTURE( RWTexture2D<float4>, gOut_HistoryStabilized_Diff, u, 1 )
 
     #define NRD_DECLARE_CONSTANTS \
         NRD_CONSTANTS_START \
             REBLUR_DIFF_SHARED_CB_DATA \
-            NRD_CONSTANT( float, gDiffFastHistoryClampingColorBoxSigmaScale ) \
+            NRD_CONSTANT( float, gDiffHistoryFixStrength ) \
         NRD_CONSTANTS_END
 #else
     #define NRD_DECLARE_INPUT_TEXTURES \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 1 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 2 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 3 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Fast_Spec, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 0 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 1 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 2 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Spec, t, 3 )
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 0 ) \
+        NRD_INPUT_TEXTURE( RWTexture2D<float4>, gOut_HistoryStabilized_Spec, u, 1 )
 
     #define NRD_DECLARE_CONSTANTS \
         NRD_CONSTANTS_START \
             REBLUR_SPEC_SHARED_CB_DATA \
-            NRD_CONSTANT( float, gSpecFastHistoryClampingColorBoxSigmaScale ) \
-            NRD_CONSTANT( uint, gSpecAntiFirefly ) \
+            NRD_CONSTANT( float, gSpecHistoryFixStrength ) \
         NRD_CONSTANTS_END
 #endif
 

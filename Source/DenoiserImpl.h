@@ -304,7 +304,8 @@ namespace nrd
         ml::float4 m_Rotator[3] = {};
         ml::float4 m_Frustum = ml::float4(0.0f);
         ml::float4 m_FrustumPrev = ml::float4(0.0f);
-        ml::float3 m_CameraDelta = ml::float3(0.0f);
+        ml::float4 m_CameraDelta = ml::float4(0.0f);
+        ml::float3 m_ViewDirection = ml::float3(0.0f);
         ml::float2 m_JitterPrev = ml::float2(0.0f);
         ml::float2 m_ResolutionScalePrev = ml::float2(1.0f);
         const char* m_PassName = nullptr;

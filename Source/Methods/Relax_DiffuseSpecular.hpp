@@ -443,7 +443,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     AddUint(data, m_CommonSettings.frameIndex);
     AddFloat(data, m_CommonSettings.denoisingRange); 
     AddFloat(data, m_CommonSettings.disocclusionThreshold);
-    AddUint(data, (uint32_t)RELAX_IsCameraStatic(m_CameraDelta, frustumRight, frustumUp, frustumForward, prevFrustumRight, prevFrustumUp, prevFrustumForward));
+    AddUint(data, (uint32_t)RELAX_IsCameraStatic(ml::float3(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z), frustumRight, frustumUp, frustumForward, prevFrustumRight, prevFrustumUp, prevFrustumForward));
     AddUint(data, settings.enableSkipReprojectionTestWithoutMotion);
     AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);

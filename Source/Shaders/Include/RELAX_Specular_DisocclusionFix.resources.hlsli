@@ -14,12 +14,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 0 ) \
     NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationResponsive, t, 1 ) \
     NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularHistoryLength, t, 2 ) \
-    NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
+    NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 ) \
     NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 4)
 
 #define NRD_DECLARE_OUTPUT_TEXTURES \
     NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 ) \
-    NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIlluminationResponsive, u, 1 ) \
+    NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIlluminationResponsive, u, 1 )
 
 #define NRD_DECLARE_CONSTANTS \
     NRD_CONSTANTS_START \

@@ -16,28 +16,24 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
     enum class Permanent
     {
         PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS = PERMANENT_POOL_START,
-        SPEC_HISTORY_FAST_1,
-        SPEC_HISTORY_FAST_2,
     };
 
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R8_UNORM, w, h, 1} );
 
     enum class Transient
     {
         INTERNAL_DATA = TRANSIENT_POOL_START,
+        ESTIMATED_ERROR,
         SPEC_ACCUMULATED,
         SPEC_TEMP,
-        ESTIMATED_ERROR,
     };
 
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, MIP_NUM} );
     m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
 
-    SetSharedConstants(1, 2, 8, 20);
+    SetSharedConstants(1, 3, 8, 16);
 
     PushPass("Temporal accumulation");
     {
@@ -47,12 +43,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushInput( AsUint(ResourceType::IN_SPEC_HITDIST) );
         PushInput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_FAST_2), 0, 1, AsUint(Permanent::SPEC_HISTORY_FAST_1) );
 
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
-        PushOutput( AsUint(Permanent::SPEC_HISTORY_FAST_1), 0, 1, AsUint(Permanent::SPEC_HISTORY_FAST_2) );
 
         AddDispatch( REBLUR_SpecularOcclusion_TemporalAccumulation, SumConstants(4, 2, 1, 3), 8, 1 );
     }
@@ -65,13 +59,11 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushInput( AsUint(ResourceType::IN_SPEC_HITDIST) );
         PushInput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_FAST_2), 0, 1, AsUint(Permanent::SPEC_HISTORY_FAST_1) );
         PushInput( AsUint(ResourceType::IN_SPEC_CONFIDENCE) );
 
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
-        PushOutput( AsUint(Permanent::SPEC_HISTORY_FAST_1), 0, 1, AsUint(Permanent::SPEC_HISTORY_FAST_2) );
 
         AddDispatch( REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence, SumConstants(4, 2, 1, 3), 8, 1 );
     }
@@ -89,10 +81,9 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
     PushPass("History fix");
     {
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_ACCUMULATED), 0, MIP_NUM );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_FAST_1), 0, 1, AsUint(Permanent::SPEC_HISTORY_FAST_2) );
+        PushInput( AsUint(Transient::SPEC_ACCUMULATED), 1, MIP_NUM - 1 );
 
-        PushOutput( AsUint(Transient::SPEC_TEMP) );
+        PushOutput( AsUint(Transient::SPEC_ACCUMULATED), 0, 1 );
 
         AddDispatch( REBLUR_SpecularOcclusion_HistoryFix, SumConstants(0, 0, 0, 1), 16, 1 );
     }
@@ -101,10 +92,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_TEMP) );
+        PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
 
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
-        PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
+        PushOutput( AsUint(Transient::SPEC_TEMP) );
 
         AddDispatch( REBLUR_SpecularOcclusion_Blur, SumConstants(1, 2, 0, 2), 16, 1 );
     }
@@ -113,7 +104,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
+        PushInput( AsUint(Transient::SPEC_TEMP) );
 
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
@@ -192,7 +183,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurSpecularOcclusion(const MethodData& m
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
     AddFloat4(data, m_FrustumPrev);
-    AddFloat4(data, ml::float4(m_CameraDelta));
+    AddFloat4(data, m_CameraDelta);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, settings.enableReferenceAccumulation ? 0.005f : m_CommonSettings.disocclusionThreshold);
@@ -208,7 +199,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurSpecularOcclusion(const MethodData& m
     // HISTORY_FIX
     data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX));
     AddSharedConstants_ReblurSpecular(methodData, settings, data);
-    AddFloat(data, settings.historyClampingColorBoxSigmaScale);
+    AddFloat(data, settings.historyFixStrength);
     ValidateConstants(data);
 
     // BLUR

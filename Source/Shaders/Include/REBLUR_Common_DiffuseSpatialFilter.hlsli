@@ -33,7 +33,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 diffInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
         radius *= REBLUR_PRE_BLUR_RADIUS_SCALE( 1.0 );
     #else
-        float minAccumSpeed = GetMipLevel( 1.0, gDiffMaxFastAccumulatedFrameNum ) + 0.001;
+        float minAccumSpeed = GetMipLevel( 1.0 ) + 0.001;
         float boost = saturate( 1.0 - diffInternalData.y / minAccumSpeed );
         radius *= ( 1.0 + 2.0 * boost ) / 3.0;
     #endif
@@ -57,14 +57,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
-    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius );
+    float3 Vv = GetViewVector( Xv, true );
+    float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
     float normalWeightParams = GetNormalWeightParams( diffInternalData.x, curvature, viewZ, 1.0, gNormalWeightStrictness * strictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, diffInternalData.x );
     float2 sum = 1.0;
 
     #ifdef REBLUR_SPATIAL_REUSE
-        blurRadius = REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE * gDiffBlurRadius * hitDist / ( hitDist + viewZ );
+        blurRadius = REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE * gDiffBlurRadius * hitDist / ( hitDist + PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ ) );
 
         float2 geometryWeightParamsReuse = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE );
 
@@ -128,7 +129,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float NoL = saturate( dot( L, N.xyz ) );
 
             float2 ww = w;
-            ww.x *= NoL / dirPdf.w;
+            ww.x *= NoL / ( dirPdf.w + 0.001 );
             ww.x *= GetGeometryWeight( geometryWeightParamsReuse, Nv, Xvs );
             ww.x *= GetNormalWeight( normalWeightParamsReuse, N, Ns.xyz );
 

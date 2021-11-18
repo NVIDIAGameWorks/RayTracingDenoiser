@@ -19,7 +19,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float center = diff;
 
     float radius = gDiffBlurRadius;
-    float minAccumSpeed = GetMipLevel( 1.0, gDiffMaxFastAccumulatedFrameNum ) + 0.001;
+    float minAccumSpeed = GetMipLevel( 1.0 ) + 0.001;
     float boost = saturate( 1.0 - diffInternalData.y / minAccumSpeed );
     radius *= ( 1.0 + 2.0 * boost ) / 3.0;
 
@@ -42,7 +42,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
-    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius );
+    float3 Vv = GetViewVector( Xv, true );
+    float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
     float normalWeightParams = GetNormalWeightParams( diffInternalData.x, curvature, viewZ, 1.0, gNormalWeightStrictness * strictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center, diffInternalData.x );

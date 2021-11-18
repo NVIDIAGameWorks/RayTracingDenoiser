@@ -678,7 +678,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
     // Only needed to mitigate banding
     curvature = STL::Math::LinearStep(NRD_ENCODING_ERRORS.y, 1.0, curvature);
 
-    float4 specSigma = specSigma = GetStdDev(specM1, specM2);
+    float4 specSigma = GetStdDev(specM1, specM2);
 
     // Calculating modified roughness that takes normal variation in account
     float currentRoughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance(currentRoughness, currentNormalAveraged);

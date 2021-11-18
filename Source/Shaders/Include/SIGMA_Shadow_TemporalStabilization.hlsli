@@ -123,7 +123,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, motionVector, gWorldSpaceMotion );
     pixelUvPrev -= offset;
 
-    float isInScreen = IsInScreen( pixelUvPrev * gHistoryCorrection ); // TODO: multiplier is needed to prevent reading history which was not copied in "PreBlur" pass if DRS is shrinking the image significantly
+    float isInScreen = IsInScreen( pixelUvPrev );
 
     // Clamp UV to prevent sampling from "invalid" regions
     pixelUvPrev = clamp( pixelUvPrev, 1.5 / gRectSizePrev, 1.0 - 1.5 / gRectSizePrev );

@@ -53,13 +53,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
 
     // Internal data
     float curvature;
-    #if( defined REBLUR_SPECULAR )
-        float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], curvature );
-        float2 diffInternalData = internalData.xy;
-        float2 specInternalData = internalData.zw;
-    #else
-        float2 diffInternalData = UnpackDiffInternalData( gIn_InternalData[ pixelPos ].xy, curvature );
-    #endif
+    float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], curvature );
+    float2 diffInternalData = internalData.xy;
+    float2 specInternalData = internalData.zw;
 
     // Shared data
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );

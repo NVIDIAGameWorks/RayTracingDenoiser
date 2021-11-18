@@ -54,7 +54,27 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
 {
     // Copy history
     #ifdef SIGMA_FIRST_PASS
-        gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
+        int2 prevHalfRectSize = int2( gRectSizePrev * 0.5 + 0.5 );
+
+        if( all( gRectSize >= gRectSizePrev ) )
+            gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
+        else if( pixelPos.x < prevHalfRectSize.x && pixelPos.y < prevHalfRectSize.y )
+        {
+            if( pixelPos.x < prevHalfRectSize.x && pixelPos.y < prevHalfRectSize.y )
+            {
+                [unroll]
+                for( int i = 0; i < 2; i++ )
+                {
+                    [unroll]
+                    for( int j = 0; j < 2; j++ )
+                    {
+                        int2 p = pixelPos * 2 + int2( i, j );
+
+                        gOut_History[ p ] = gIn_History[ p ];
+                    }
+                }
+            }
+        }
     #endif
 
     // Populate shared memory

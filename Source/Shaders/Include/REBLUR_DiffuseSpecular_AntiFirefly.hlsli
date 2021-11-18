@@ -15,6 +15,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 NRD_DECLARE_CONSTANTS
 
 #include "NRD_Common.hlsli"
+
 NRD_DECLARE_SAMPLERS
 
 #include "REBLUR_Common.hlsli"
@@ -83,14 +84,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
 
     #if( defined REBLUR_DIFFUSE )
         float4 diff = s_Diff[ threadId.y + BORDER ][ threadId.x + BORDER ];
-        diff.xyz = clamp( diff.xyz, diffMinInput, diffMaxInput );
+
+        float3 diffClamped = clamp( diff.xyz, diffMinInput, diffMaxInput );
+        diff.xyz = diffClamped;
 
         gOut_Diff[ pixelPos ] = diff;
     #endif
 
     #if( defined REBLUR_SPECULAR )
+        uint2 pixelPosUser = gRectOrigin + pixelPos;
+        float roughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] ).w;
+
         float4 spec = s_Spec[ threadId.y + BORDER ][ threadId.x + BORDER ];
-        spec.xyz = clamp( spec.xyz, specMinInput, specMaxInput );
+
+        float3 specClamped = clamp( spec.xyz, specMinInput, specMaxInput );
+        spec.xyz = lerp( spec.xyz, specClamped, GetSpecMagicCurve( roughness ) );
 
         gOut_Spec[ pixelPos ] = spec;
     #endif

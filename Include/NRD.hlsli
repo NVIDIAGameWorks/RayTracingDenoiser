@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v2.9
+// NRD v2.10
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -54,6 +54,8 @@ float normHitDist:
     - SO can be used to adjust IBL lighting
     - ".w" channel of diffuse / specular output is AO / SO
     - if you don't know which normalization function to choose use default values of "nrd::HitDistanceParameters"
+
+NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : roughness"
 */
 
  // IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
@@ -289,8 +291,8 @@ float4 REBLUR_FrontEnd_PackRadianceAndHitDist( float3 radiance, float normHitDis
 {
     if( sanitize )
     {
-        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : radiance;
-        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : normHitDist;
+        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
+        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
     }
 
     return float4( radiance, normHitDist );
@@ -304,8 +306,8 @@ float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bo
 {
     if( sanitize )
     {
-        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : radiance;
-        hitDist = ( isnan( hitDist ) | isinf( hitDist ) ) ? 0 : hitDist;
+        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
+        hitDist = ( isnan( hitDist ) | isinf( hitDist ) ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
     }
 
     return float4( radiance, hitDist );
@@ -408,16 +410,23 @@ float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE mult
 // MISC
 //=================================================================================================================================
 
-// This can be a start, but works badly in some cases:
-//     hitDist = hitDist1 + hitDist2 + ... ;
+// This can be a start, but works badly in many cases:
+//      hitDist = hitDist1 + hitDist2 + ... ;
 // Proper solution:
-//     hitDist = NRD_GetCorrectedHitDist( hitDist1 );
-//     hitDist += NRD_GetCorrectedHitDist( hitDist2, importance2 );
+//      hitDist = NRD_GetCorrectedHitDist( hitDist1, 1, roughness0 );
+//      hitDist += NRD_GetCorrectedHitDist( hitDist2, 2, roughness0, importance2 );
 // where "importance" shows how much energy a new hit brings compared with the previous state (see NRD sample for more details)
+// Notes:
+//      0  - primary hit
+//      1+ - bounces
 
-float NRD_GetCorrectedHitDist( float hitDist1, float importance1 = 1.0 )
+float NRD_GetCorrectedHitDist( float hitDist, float bounceIndex, float roughness0 = 1.0, float importance = 1.0 )
 {
-    return importance1 * hitDist1;
+    // TODO: currently works well only with sane distances, if a huge value is passed (like, 1e32) the effectivness of "fade" will be destroyed...
+    // A "miss" must be last in the chain. How to better handle it?
+    float fade = lerp( 1.0, bounceIndex, roughness0 );
+
+    return hitDist * importance / ( fade * fade );
 }
 
 // We loose G-term if trimming is high, return it back in pre-integrated form

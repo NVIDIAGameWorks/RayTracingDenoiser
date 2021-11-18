@@ -583,14 +583,14 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     const ml::float3& cameraPosition = m_ViewToWorld.GetCol3().To3d();
     const ml::float3& cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
-    m_CameraDelta = cameraPositionPrev - cameraPosition;
+    ml::float3 translationDelta = cameraPositionPrev - cameraPosition;
 
     // IMPORTANT: this part is mandatory needed to preserve precision by making matrices camera relative
     m_ViewToWorld.SetTranslation( ml::float3::Zero() );
     m_WorldToView = m_ViewToWorld;
     m_WorldToView.InvertOrtho();
 
-    m_ViewToWorldPrev.SetTranslation( m_CameraDelta );
+    m_ViewToWorldPrev.SetTranslation( translationDelta );
     m_WorldToViewPrev = m_ViewToWorldPrev;
     m_WorldToViewPrev.InvertOrtho();
 
@@ -609,12 +609,24 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     m_ClipToWorld = m_WorldToClip;
     m_ClipToWorld.Invert();
 
+    ml::float3 viewDirCurr = m_ViewToWorld.GetCol2().xmm;
+    ml::float3 viewDirPrev = m_ViewToWorldPrev.GetCol2().xmm;
+    float cosa = ml::Dot33(viewDirCurr, viewDirPrev);
+    cosa = ml::Saturate(cosa / 0.9999999f);
+    cosa = ml::Max(cosa, 0.001f);
+    float angularDelta = ml::RadToDeg( ml::Acos(cosa) );
+    angularDelta = ml::Saturate(angularDelta * angularDelta * 0.1f);
+
+    m_CameraDelta.w = ml::Lerp(m_CameraDelta.w, angularDelta, 0.5f);
+    m_CameraDelta = ml::float4(translationDelta.x, translationDelta.y, translationDelta.z, m_CameraDelta.w);
+    m_ViewDirection = viewDirCurr;
+
     float project[3];
     float settings[ml::PROJ_NUM];
     ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
     m_ProjectY = project[1];
-    m_IsOrtho = (flags & ml::PROJ_ORTHO) == 0 ? 0.0f : 1.0f;
-
+    m_IsOrtho = (flags & ml::PROJ_ORTHO) ? -1.0f : 0.0f;
+        
     ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
 
     float dx = ml::Abs(m_CommonSettings.cameraJitter[0] - m_JitterPrev.x);

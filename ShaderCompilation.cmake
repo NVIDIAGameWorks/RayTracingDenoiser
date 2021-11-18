@@ -115,7 +115,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     COMMAND ${NRD_DXC_PATH} -E main -DCOMPILER_DXC=1 -T ${DXC_PROFILE}
                         -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
                         ${FILE_NAME} -Vn g_${BYTECODE_ARRAY_NAME}_dxil -Fh ${OUTPUT_PATH_DXIL}.h -Fo ${OUTPUT_PATH_DXIL}
-                        -all_resources_bound -WX -O3
+                        -all_resources_bound -enable-16bit-types -WX -O3
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"
@@ -130,7 +130,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     COMMAND ${NRD_DXC_SPIRV_PATH} -E main -DCOMPILER_DXC=1 -DVULKAN=1 -T ${DXC_PROFILE}
                         -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
                         ${FILE_NAME} -spirv -Vn g_${BYTECODE_ARRAY_NAME}_spirv -Fh ${OUTPUT_PATH_SPIRV}.h -Fo ${OUTPUT_PATH_SPIRV} ${NRD_DXC_VK_SHIFTS}
-                        -all_resources_bound -WX -O3
+                        -all_resources_bound -enable-16bit-types -WX -O3
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"

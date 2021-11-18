@@ -30,7 +30,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float4x4, gViewToClip ) \
     NRD_CONSTANT( float4, gFrustum ) \
     NRD_CONSTANT( float2, gMotionVectorScale ) \
-    NRD_CONSTANT( float2, gHistoryCorrection ) \
     NRD_CONSTANT( float2, gInvScreenSize ) \
     NRD_CONSTANT( float2, gScreenSize ) \
     NRD_CONSTANT( float2, gInvRectSize ) \
@@ -48,6 +47,4 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gMeterToUnitsMultiplier ) \
     NRD_CONSTANT( uint, gWorldSpaceMotion ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
-    NRD_CONSTANT( uint, gUnused1 ) \
-    NRD_CONSTANT( uint, gUnused2 ) \
-    NRD_CONSTANT( uint, gUnused3 )
+    NRD_CONSTANT( uint, gUnused1 )

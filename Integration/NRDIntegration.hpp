@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRDIntegration.h"
 
-static_assert(NRD_VERSION_MAJOR >= 2 && NRD_VERSION_MINOR >= 6, "Unsupported NRD version!");
+static_assert(NRD_VERSION_MAJOR >= 2 && NRD_VERSION_MINOR >= 10, "Unsupported NRD version!");
 
 #if _WIN32
     #define NRD_INTEGRATION_ALLOCA _alloca
@@ -18,7 +18,7 @@ static_assert(NRD_VERSION_MAJOR >= 2 && NRD_VERSION_MINOR >= 6, "Unsupported NRD
     #define NRD_INTEGRATION_ALLOCA alloca
 #endif
 
-constexpr std::array<nri::Format, (size_t)nrd::Format::MAX_NUM> g_NriFormat =
+constexpr std::array<nri::Format, (size_t)nrd::Format::MAX_NUM> g_NRD_NrdToNriFormat =
 {
     nri::Format::R8_UNORM,
     nri::Format::R8_SNORM,
@@ -66,9 +66,32 @@ constexpr std::array<nri::Format, (size_t)nrd::Format::MAX_NUM> g_NriFormat =
     nri::Format::R9_G9_B9_E5_UFLOAT,
 };
 
+constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM - 2> g_NRD_PermanentPoolNames =
+{
+    "IN_MV ",
+    "IN_NORMAL_ROUGHNESS ",
+    "IN_VIEWZ ",
+    "IN_DIFF_RADIANCE_HITDIST ",
+    "IN_SPEC_RADIANCE_HITDIST ",
+    "IN_DIFF_HITDIST ",
+    "IN_SPEC_HITDIST ",
+    "IN_DIFF_DIRECTION_PDF ",
+    "IN_SPEC_DIRECTION_PDF ",
+    "IN_DIFF_CONFIDENCE ",
+    "IN_SPEC_CONFIDENCE ",
+    "IN_SHADOWDATA ",
+    "IN_SHADOW_TRANSLUCENCY ",
+
+    "OUT_SHADOW_TRANSLUCENCY ",
+    "OUT_DIFF_RADIANCE_HITDIST ",
+    "OUT_SPEC_RADIANCE_HITDIST ",
+    "OUT_DIFF_HITDIST ",
+    "OUT_SPEC_HITDIST ",
+};
+
 static inline nri::Format NRD_GetNriFormat(nrd::Format format)
 {
-    return g_NriFormat[(uint32_t)format];
+    return g_NRD_NrdToNriFormat[(uint32_t)format];
 }
 
 static inline uint64_t NRD_CreateDescriptorKey(bool isStorage, uint8_t poolIndex, uint16_t indexInPool, uint8_t mipOffset, uint8_t mipNum)
@@ -284,6 +307,13 @@ void NrdIntegration::CreateResources()
         nri::Texture* texture = nullptr;
         NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->CreateTexture(*m_Device, textureDesc, texture));
 
+        char name[128];
+        if (i < denoiserDesc.permanentPoolSize)
+            snprintf(name, sizeof(name), "NRD::PermamentPool(%u)", i);
+        else
+            snprintf(name, sizeof(name), "NRD::TransientPool(%u)", i - denoiserDesc.permanentPoolSize);
+        m_NRI->SetTextureDebugName(*texture, name);
+
         NrdIntegrationTexture nrdTexture = {};
         nrdTexture.subresourceStates = &m_ResourceState[resourceStateNum];
         nrdTexture.format = format;
@@ -495,29 +525,6 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
 
     // Debug logging
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        static constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM - 2> names =
-        {
-            "IN_MV ",
-            "IN_NORMAL_ROUGHNESS ",
-            "IN_VIEWZ ",
-            "IN_DIFF_RADIANCE_HITDIST ",
-            "IN_SPEC_RADIANCE_HITDIST ",
-            "IN_DIFF_HITDIST ",
-            "IN_SPEC_HITDIST ",
-            "IN_DIFF_DIRECTION_PDF ",
-            "IN_SPEC_DIRECTION_PDF ",
-            "IN_DIFF_CONFIDENCE ",
-            "IN_SPEC_CONFIDENCE ",
-            "IN_SHADOWDATA ",
-            "IN_SHADOW_TRANSLUCENCY ",
-
-            "OUT_SHADOW_TRANSLUCENCY ",
-            "OUT_DIFF_RADIANCE_HITDIST ",
-            "OUT_SPEC_RADIANCE_HITDIST ",
-            "OUT_DIFF_HITDIST ",
-            "OUT_SPEC_HITDIST ",
-        };
-
         printf("Pipeline #%u : %s\n\t", dispatchDesc.pipelineIndex, dispatchDesc.name);
         for( uint32_t i = 0; i < dispatchDesc.resourceNum; i++ )
         {
@@ -533,7 +540,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
                     printf("T(%u) ", r.indexInPool);
             }
             else
-                printf(names[(uint32_t)r.type]);
+                printf(g_NRD_PermanentPoolNames[(uint32_t)r.type]);
         }
         printf("\n\n");
     #endif

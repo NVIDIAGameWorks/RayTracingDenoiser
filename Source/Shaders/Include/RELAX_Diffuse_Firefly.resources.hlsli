@@ -12,7 +12,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define NRD_DECLARE_INPUT_TEXTURES \
     NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 0 ) \
-    NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 1 )
+    NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 1 ) \
     NRD_INPUT_TEXTURE(Texture2D<float>, gViewZFP16, t, 2)
 
 #define NRD_DECLARE_OUTPUT_TEXTURES \

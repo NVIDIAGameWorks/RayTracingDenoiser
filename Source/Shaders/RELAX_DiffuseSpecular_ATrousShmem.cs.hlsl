@@ -28,7 +28,7 @@ groupshared float4 sharedDiffuseIlluminationAndVariance[THREAD_GROUP_SIZE + SKIR
 groupshared float4 sharedSpecularIlluminationAndVariance[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 groupshared float4 sharedNormalRoughness[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 groupshared float4 sharedWorldPos[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
-#if RELAX_USE_HAIR_AWARE_FILTERING
+#if NRD_USE_MATERIAL_ID_AWARE_FILTERING
 groupshared float sharedMaterialType[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 #endif
 
@@ -209,7 +209,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
 
     float2 normalWeightParams = GetNormalWeightParams_ATrous(centerRoughness, 255.0*gHistoryLength[ipos].y, specularReprojectionConfidence, gNormalEdgeStoppingRelaxation, gSpecularLobeAngleFraction);
 
-#if RELAX_USE_HAIR_AWARE_FILTERING
+#if NRD_USE_MATERIAL_ID_AWARE_FILTERING
     float centerMaterialType = sharedMaterialType[sharedMemoryIndex.y][sharedMemoryIndex.x];
 #endif
 
@@ -248,7 +248,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
             float sampleRoughness = sampleNormalRoughness.a;
             float3 sampleWorldPos = sharedWorldPos[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].rgb;
 
-#if RELAX_USE_HAIR_AWARE_FILTERING
+#if NRD_USE_MATERIAL_ID_AWARE_FILTERING
             float sampleMaterialType = sharedMaterialType[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x];
 #endif
 
@@ -261,7 +261,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
             // Calculating geometry and normal weights
             float geometryW = exp_approx(-GetGeometryWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, phiDepth));
 
-#if RELAX_USE_HAIR_AWARE_FILTERING
+#if NRD_USE_MATERIAL_ID_AWARE_FILTERING
             geometryW *= (sampleMaterialType == centerMaterialType) ? 1.0 : 0.0;
 #endif
 

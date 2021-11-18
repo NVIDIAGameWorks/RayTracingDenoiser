@@ -19,7 +19,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float center = spec;
 
     float radius = gSpecBlurRadius;
-    float minAccumSpeed = GetMipLevel( roughness, gSpecMaxFastAccumulatedFrameNum ) + 0.001;
+    float minAccumSpeed = GetMipLevel( roughness ) + 0.001;
     float boost = saturate( 1.0 - specInternalData.y / minAccumSpeed );
     radius *= ( 1.0 + 2.0 * boost ) / 3.0;
     radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams.xyz );
@@ -44,7 +44,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     // Denoising
     float anisoFade = lerp( curvature, 1.0, specInternalData.x );
-    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, roughness, anisoFade );
+    float3 Vv = GetViewVector( Xv, true );
+    float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius, roughness, anisoFade );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
     float normalWeightParams = GetNormalWeightParams( specInternalData.x, curvature, viewZ, roughness, gNormalWeightStrictness * strictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center, specInternalData.x, roughness );

@@ -12,40 +12,34 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
 {
     #define DENOISER_NAME "REBLUR::Diffuse"
     #define MIP_NUM 5
-    #define DIFF_TEMP1 AsUint(Permanent::DIFF_HISTORY_STABILIZED_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_STABILIZED_2)
-    #define DIFF_TEMP2 AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST)
+    #define DIFF_TEMP1 AsUint(Transient::DIFF_HISTORY_STABILIZED) // valid before HistoryFix
+    #define DIFF_TEMP2 AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) // valid after HistoryFix
 
     enum class Permanent
     {
         PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS = PERMANENT_POOL_START,
         DIFF_HISTORY,
-        DIFF_HISTORY_FAST_1,
-        DIFF_HISTORY_FAST_2,
-        DIFF_HISTORY_STABILIZED_1,
-        DIFF_HISTORY_STABILIZED_2,
     };
 
     m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
 
     enum class Transient
     {
         INTERNAL_DATA = TRANSIENT_POOL_START,
+        ESTIMATED_ERROR,
         SCALED_VIEWZ,
         DIFF_ACCUMULATED,
-        ESTIMATED_ERROR,
+        DIFF_HISTORY_STABILIZED,
     };
 
-    m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::R8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, MIP_NUM} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, MIP_NUM} );
-    m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
 
-    SetSharedConstants(1, 2, 8, 20);
+    SetSharedConstants(1, 3, 8, 16);
 
     PushPass("Pre-blur");
     {
@@ -78,15 +72,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
         PushInput( AsUint(Permanent::DIFF_HISTORY) );
-        PushInput( AsUint(Permanent::DIFF_HISTORY_FAST_2), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_1) );
 
         PushOutput( AsUint(Transient::SCALED_VIEWZ) );
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
-        PushOutput( AsUint(Permanent::DIFF_HISTORY_FAST_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_2) );
 
-        AddDispatch( REBLUR_Diffuse_TemporalAccumulation, SumConstants(3, 2, 1, 3), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_TemporalAccumulation, SumConstants(3, 2, 1, 4), 16, 1 );
     }
 
     PushPass("Temporal accumulation"); // after Pre-blur
@@ -97,15 +89,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushInput( DIFF_TEMP1 );
         PushInput( AsUint(Permanent::DIFF_HISTORY) );
-        PushInput( AsUint(Permanent::DIFF_HISTORY_FAST_2), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_1) );
 
         PushOutput( AsUint(Transient::SCALED_VIEWZ) );
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
-        PushOutput( AsUint(Permanent::DIFF_HISTORY_FAST_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_2) );
 
-        AddDispatch( REBLUR_Diffuse_TemporalAccumulation, SumConstants(3, 2, 1, 3), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_TemporalAccumulation, SumConstants(3, 2, 1, 4), 16, 1 );
     }
 
     PushPass("Temporal accumulation"); // with confidence
@@ -116,16 +106,14 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
         PushInput( AsUint(Permanent::DIFF_HISTORY) );
-        PushInput( AsUint(Permanent::DIFF_HISTORY_FAST_2), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_1) );
         PushInput( AsUint(ResourceType::IN_DIFF_CONFIDENCE) );
 
         PushOutput( AsUint(Transient::SCALED_VIEWZ) );
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
-        PushOutput( AsUint(Permanent::DIFF_HISTORY_FAST_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_2) );
 
-        AddDispatch( REBLUR_Diffuse_TemporalAccumulationWithConfidence, SumConstants(3, 2, 1, 3), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_TemporalAccumulationWithConfidence, SumConstants(3, 2, 1, 4), 16, 1 );
     }
 
     PushPass("Temporal accumulation"); // with confidence, after Pre-blur
@@ -136,16 +124,14 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushInput( DIFF_TEMP1 );
         PushInput( AsUint(Permanent::DIFF_HISTORY) );
-        PushInput( AsUint(Permanent::DIFF_HISTORY_FAST_2), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_1) );
         PushInput( AsUint(ResourceType::IN_DIFF_CONFIDENCE) );
 
         PushOutput( AsUint(Transient::SCALED_VIEWZ) );
         PushOutput( AsUint(Transient::INTERNAL_DATA) );
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
-        PushOutput( AsUint(Permanent::DIFF_HISTORY_FAST_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_2) );
 
-        AddDispatch( REBLUR_Diffuse_TemporalAccumulationWithConfidence, SumConstants(3, 2, 1, 3), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_TemporalAccumulationWithConfidence, SumConstants(3, 2, 1, 4), 16, 1 );
     }
 
     PushPass("Mip generation");
@@ -166,34 +152,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ), 0, MIP_NUM );
-        PushInput( AsUint(Transient::DIFF_ACCUMULATED), 0, MIP_NUM );
-        PushInput( AsUint(Permanent::DIFF_HISTORY_FAST_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_2) );
+        PushInput( AsUint(Transient::DIFF_ACCUMULATED), 1, MIP_NUM - 1 );
+        PushInput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
 
-        PushOutput( DIFF_TEMP1 );
-
-        AddDispatch( REBLUR_Diffuse_HistoryFix, SumConstants(0, 0, 0, 1), 16, 1 );
-    }
-
-    PushPass("History fix"); // Anti-firefly enabled
-    {
-        PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SCALED_VIEWZ), 0, MIP_NUM );
-        PushInput( AsUint(Transient::DIFF_ACCUMULATED), 0, MIP_NUM );
-        PushInput( AsUint(Permanent::DIFF_HISTORY_FAST_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_FAST_2) );
-
-        PushOutput( DIFF_TEMP2 );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED), 0, 1 );
+        PushOutput( AsUint(Transient::DIFF_HISTORY_STABILIZED) );
 
         AddDispatch( REBLUR_Diffuse_HistoryFix, SumConstants(0, 0, 0, 1), 16, 1 );
-    }
-
-    PushPass("Anti-firefly");
-    {
-        PushInput( AsUint(Transient::SCALED_VIEWZ) );
-        PushInput( DIFF_TEMP2 );
-
-        PushOutput( DIFF_TEMP1 );
-
-        AddDispatch( REBLUR_Diffuse_AntiFirefly, SumConstants(0, 0, 0, 0), 16, 1 );
     }
 
     PushPass("Blur");
@@ -201,10 +166,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
-        PushInput( DIFF_TEMP1 );
+        PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
 
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
-        PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
+        PushOutput( DIFF_TEMP2 );
 
         AddDispatch( REBLUR_Diffuse_Blur, SumConstants(1, 1, 0, 2), 16, 1 );
     }
@@ -214,12 +179,36 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
         PushInput( AsUint(Transient::SCALED_VIEWZ) );
-        PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
+        PushInput( DIFF_TEMP2 );
 
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Permanent::DIFF_HISTORY) );
 
         AddDispatch( REBLUR_Diffuse_PostBlur, SumConstants(1, 1, 0, 2), 16, 1 );
+    }
+
+    PushPass("Post-blur"); // before Anti-Firefly
+    {
+        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+        PushInput( AsUint(Transient::INTERNAL_DATA) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        PushInput( DIFF_TEMP2 );
+
+        PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
+        PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
+
+        AddDispatch( REBLUR_Diffuse_PostBlur, SumConstants(1, 1, 0, 2), 16, 1 );
+    }
+
+    PushPass("Anti-firefly");
+    {
+        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+        PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
+
+        PushOutput( AsUint(Permanent::DIFF_HISTORY) );
+
+        AddDispatch( REBLUR_Diffuse_AntiFirefly, SumConstants(0, 0, 0, 0), 16, 1 );
     }
 
     PushPass("Temporal stabilization");
@@ -228,12 +217,11 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Permanent::DIFF_HISTORY_STABILIZED_2), 0, 1, AsUint(Permanent::DIFF_HISTORY_STABILIZED_1) );
-        PushInput( AsUint(Permanent::DIFF_HISTORY) );
         PushInput( AsUint(Transient::ESTIMATED_ERROR) );
+        PushInput( AsUint(Transient::DIFF_HISTORY_STABILIZED) );
+        PushInput( AsUint(Permanent::DIFF_HISTORY) );
 
         PushOutput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
-        PushOutput( AsUint(Permanent::DIFF_HISTORY_STABILIZED_1), 0, 1, AsUint(Permanent::DIFF_HISTORY_STABILIZED_2) );
         PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
 
         AddDispatch( REBLUR_Diffuse_TemporalStabilization, SumConstants(2, 3, 1, 0), 16, 1 );
@@ -269,10 +257,10 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
         TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_AFTER_PRE_BLUR,
         MIP_GENERATION,
         HISTORY_FIX,
-        HISTORY_FIX_ANTI_FIREFLY_ENABLED,
-        ANTI_FIREFLY,
         BLUR,
         POST_BLUR,
+        POST_BLUR_BEFORE_ANTI_FIRELY,
+        ANTI_FIREFLY,
         TEMPORAL_STABILIZATION,
         SPLIT_SCREEN,
     };
@@ -331,11 +319,12 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4(data, m_FrustumPrev);
-    AddFloat4(data, ml::float4(m_CameraDelta));
+    AddFloat4(data, m_CameraDelta);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, settings.enableReferenceAccumulation ? 0.005f : m_CommonSettings.disocclusionThreshold );
     AddUint(data, diffCheckerboard);
+    AddUint(data, skipPrePass ? 0 : 1);
     ValidateConstants(data);
 
     // MIP_GENERATION
@@ -345,18 +334,10 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     ValidateConstants(data);
 
     // HISTORY_FIX
-    data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX) + (settings.enableAntiFirefly ? 1 : 0));
+    data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX));
     AddSharedConstants_ReblurDiffuse(methodData, settings, data);
-    AddFloat(data, settings.historyClampingColorBoxSigmaScale);
+    AddFloat(data, settings.historyFixStrength);
     ValidateConstants(data);
-
-    // ANTI_FIREFLY
-    if (settings.enableAntiFirefly)
-    {
-        data = PushDispatch(methodData, AsUint(Dispatch::ANTI_FIREFLY));
-        AddSharedConstants_ReblurDiffuse(methodData, settings, data);
-        ValidateConstants(data);
-    }
 
     // BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
@@ -368,7 +349,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     ValidateConstants(data);
 
     // POST_BLUR
-    data = PushDispatch(methodData, AsUint(Dispatch::POST_BLUR));
+    data = PushDispatch(methodData, AsUint( settings.enableAntiFirefly ? Dispatch::POST_BLUR_BEFORE_ANTI_FIRELY : Dispatch::POST_BLUR));
     AddSharedConstants_ReblurDiffuse(methodData, settings, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[2]);
@@ -376,12 +357,20 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddFloat(data, normalWeightStrictness);
     ValidateConstants(data);
 
+    // ANTI_FIREFLY
+    if (settings.enableAntiFirefly)
+    {
+        data = PushDispatch(methodData, AsUint(Dispatch::ANTI_FIREFLY));
+        AddSharedConstants_ReblurDiffuse(methodData, settings, data);
+        ValidateConstants(data);
+    }
+
     // TEMPORAL_STABILIZATION
     data = PushDispatch(methodData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
     AddSharedConstants_ReblurDiffuse(methodData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
-    AddFloat4(data, ml::float4(m_CameraDelta));
+    AddFloat4(data, m_CameraDelta);
     AddFloat4(data, diffAntilag1 );
     AddFloat4(data, diffAntilag2 );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
@@ -412,8 +401,10 @@ void nrd::DenoiserImpl::AddSharedConstants_ReblurDiffuse(const MethodData& metho
     float unproject = 1.0f / (0.5f * rectH * m_ProjectY);
 
     AddFloat4x4(data, m_ViewToClip);
+
     AddFloat4(data, m_Frustum);
     AddFloat4(data, diffHitDistParams);
+    AddFloat4(data, ml::float4(m_ViewDirection.x, m_ViewDirection.y, m_ViewDirection.z, 0.0f));
 
     AddFloat2(data, 1.0f / float(screenW), 1.0f / float(screenH));
     AddFloat2(data, float(screenW), float(screenH));
@@ -438,17 +429,12 @@ void nrd::DenoiserImpl::AddSharedConstants_ReblurDiffuse(const MethodData& metho
     AddFloat(data, blurRadius);
 
     AddFloat(data, float( settings.enableReferenceAccumulation ? REBLUR_MAX_HISTORY_FRAME_NUM : maxAccumulatedFrameNum ));
-    AddFloat(data, float( settings.enableReferenceAccumulation ? REBLUR_MAX_HISTORY_FRAME_NUM : settings.maxFastAccumulatedFrameNum ));
     AddFloat(data, settings.residualNoiseLevel);
     AddFloat(data, m_JitterDelta);
-
     AddFloat(data, m_CommonSettings.meterToUnitsMultiplier);
+
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
     AddUint(data, m_CommonSettings.frameIndex);
     AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
-
     AddUint(data, m_CommonSettings.isRadianceMultipliedByExposure ? 1 : 0);
-    AddUint(data, 0);
-    AddUint(data, 0);
-    AddUint(data, 0);
 }

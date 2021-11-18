@@ -11,11 +11,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "REBLUR_Config.hlsli"
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
-    #define EXTRA_INPUTS \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 1 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 2 )
+    #define NRD_DECLARE_INPUT_TEXTURES \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 1 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 2 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 3 )
 
-    #define EXTRA_OUTPUTS \
+    #define NRD_DECLARE_OUTPUT_TEXTURES \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 0 ) \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 1 )
 
@@ -24,10 +26,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             REBLUR_DIFF_SPEC_SHARED_CB_DATA \
         NRD_CONSTANTS_END
 #elif( defined REBLUR_DIFFUSE )
-    #define EXTRA_INPUTS \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 1 )
+    #define NRD_DECLARE_INPUT_TEXTURES \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 1 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 2 )
 
-    #define EXTRA_OUTPUTS \
+    #define NRD_DECLARE_OUTPUT_TEXTURES \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 0 )
 
     #define NRD_DECLARE_CONSTANTS \
@@ -35,10 +39,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             REBLUR_DIFF_SHARED_CB_DATA \
         NRD_CONSTANTS_END
 #else
-    #define EXTRA_INPUTS \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 1 )
+    #define NRD_DECLARE_INPUT_TEXTURES \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 1 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 2 )
 
-    #define EXTRA_OUTPUTS \
+    #define NRD_DECLARE_OUTPUT_TEXTURES \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 0 )
 
     #define NRD_DECLARE_CONSTANTS \
@@ -46,13 +52,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             REBLUR_SPEC_SHARED_CB_DATA \
         NRD_CONSTANTS_END
 #endif
-
-#define NRD_DECLARE_INPUT_TEXTURES \
-    NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 0 ) \
-    EXTRA_INPUTS
-
-#define NRD_DECLARE_OUTPUT_TEXTURES \
-    EXTRA_OUTPUTS
 
 #define NRD_DECLARE_SAMPLERS \
     NRD_COMMON_SAMPLERS

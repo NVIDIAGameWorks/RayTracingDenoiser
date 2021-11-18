@@ -34,7 +34,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
-    SetSharedConstants(1, 1, 9, 14);
+    SetSharedConstants(1, 1, 9, 10);
 
     PushPass("Classify tiles");
     {
@@ -187,40 +187,32 @@ void nrd::DenoiserImpl::AddSharedConstants_SigmaShadow(const MethodData& methodD
     // Even with DRS keep radius, it works well for shadows
     float unproject = 1.0f / (0.5f * screenH * m_ProjectY);
 
-    // TODO: it's needed due to history copying in PreBlur which can copy less than needed in case of DRS
-    float historyCorrectionX = 1.0f / ml::Saturate(m_CommonSettings.resolutionScale[0] / m_ResolutionScalePrev.x + 15.0f / float(rectW));
-    float historyCorrectionY = 1.0f / ml::Saturate(m_CommonSettings.resolutionScale[1] / m_ResolutionScalePrev.y + 15.0f / float(rectW));
-
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4(data, m_Frustum);
 
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
-    AddFloat2(data, historyCorrectionX, historyCorrectionY);
-
     AddFloat2(data, 1.0f / float(screenW), 1.0f / float(screenH));
+
     AddFloat2(data, float(screenW), float(screenH));
-
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
+
     AddFloat2(data, float(rectW), float(rectH));
-
     AddFloat2(data, float(rectWprev), float(rectHprev));
+
     AddFloat2(data, float(rectW) / float(screenW), float(rectH) / float(screenH));
-
     AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
-    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
 
+    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
     AddFloat(data, m_IsOrtho);
     AddFloat(data, unproject);
+
     AddFloat(data, m_CommonSettings.debug);
     AddFloat(data, m_CommonSettings.denoisingRange);
-
     AddFloat(data, 1.0f / (m_CommonSettings.meterToUnitsMultiplier * settings.planeDistanceSensitivity));
     AddFloat(data, settings.blurRadiusScale);
+
     AddFloat(data, m_CommonSettings.meterToUnitsMultiplier);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
-
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, 0);
-    AddUint(data, 0);
     AddUint(data, 0);
 }

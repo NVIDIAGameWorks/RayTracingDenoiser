@@ -16,7 +16,7 @@ CREDITS:
 
         ReLAX denoiser:
             Tim Cheblokov (ttcheblokov@nvidia.com)
-            Pawel Kozlowski (pkozlowski@nvidia.com) 
+            Pawel Kozlowski (pkozlowski@nvidia.com)
 
     Special thanks:
         Evgeny Makarov (NVIDIA) - denoising ideas
@@ -31,16 +31,16 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 2
-#define NRD_VERSION_MINOR 9
+#define NRD_VERSION_MINOR 10
 #define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "1 November 2021"
+#define NRD_VERSION_DATE "18 November 2021"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall
 #elif !defined(__aarch64__) && !defined(__x86_64) && (defined(__GNUC__)  || defined (__clang__))
     #define NRD_CALL __attribute__((fastcall))
 #else
-    #define NRD_CALL 
+    #define NRD_CALL
 #endif
 
 #ifndef NRD_API

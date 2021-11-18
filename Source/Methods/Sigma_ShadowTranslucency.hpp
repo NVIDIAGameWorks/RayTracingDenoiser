@@ -34,7 +34,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
-    SetSharedConstants(1, 1, 9, 14);
+    SetSharedConstants(1, 1, 9, 10);
 
     PushPass("Classify tiles");
     {

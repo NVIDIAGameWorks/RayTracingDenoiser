@@ -11,9 +11,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 2
-#define NRD_SETTINGS_VERSION_MINOR 9
+#define NRD_SETTINGS_VERSION_MINOR 10
 
-static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR);
+static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
 namespace nrd
 {
@@ -217,9 +217,6 @@ namespace nrd
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM]
         uint32_t maxAccumulatedFrameNum = 31;
 
-        // [0; REBLUR_MAX_HISTORY_FRAME_NUM]
-        uint32_t maxFastAccumulatedFrameNum = 8;
-
         // (pixels) - base (worst case) denoising radius
         float blurRadius = 30.0f;
 
@@ -232,11 +229,11 @@ namespace nrd
         // [0; 1] - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
         float stabilizationStrength = 1.0f;
 
+        // [0; 1] - aggresiveness of history reconstruction in disoccluded regions (0 - no reconstruction)
+        float historyFixStrength = 1.0f;
+
         // (m) > 0 - viewZ 1m => only 2 mm deviations from surface plane are allowed
         float planeDistanceSensitivity = 0.002f;
-
-        // [1; 3] - standard deviation scale of color box for clamping main "slow" history to responsive "fast" history
-        float historyClampingColorBoxSigmaScale = 2.0f;
 
         // [0.01; 0.1] - default is tuned for 0.5rpp for the worst case
         float residualNoiseLevel = 0.03f;
@@ -263,13 +260,12 @@ namespace nrd
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
         uint32_t maxAccumulatedFrameNum = 31;
-        uint32_t maxFastAccumulatedFrameNum = 8;
         float blurRadius = 30.0f;
         float maxAdaptiveRadiusScale = 5.0f;
         float normalWeightStrictness = 1.0f;
         float stabilizationStrength = 1.0f;
+        float historyFixStrength = 1.0f;
         float planeDistanceSensitivity = 0.002f;
-        float historyClampingColorBoxSigmaScale = 2.0f;
         float residualNoiseLevel = 0.03f;
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         PrePassMode prePassMode = PrePassMode::SIMPLE;

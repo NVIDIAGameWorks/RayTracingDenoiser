@@ -16,18 +16,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 ) \
         NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 ) \
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 3 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 4 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Spec, t, 6 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 7 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 4 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 5 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 6 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Spec, t, 7 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 8 )
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
         NRD_OUTPUT_TEXTURE( RWTexture2D<uint2>, gOut_ViewZ_Normal_Roughness_AccumSpeeds, u, 0 ) \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 1 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff_Copy, u, 2 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 3 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec_Copy, u, 4 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 2 )
 
     #define NRD_DECLARE_CONSTANTS \
         NRD_CONSTANTS_START \
@@ -47,15 +45,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 ) \
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 ) \
         NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float2>, gIn_InternalData, t, 3 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 4 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 3 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 4 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 5 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 6 )
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
         NRD_OUTPUT_TEXTURE( RWTexture2D<uint2>, gOut_ViewZ_Normal_Roughness_AccumSpeeds, u, 0 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 1 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff_Copy, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 1 )
 
     #define NRD_DECLARE_CONSTANTS \
         NRD_CONSTANTS_START \
@@ -74,14 +71,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 ) \
         NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 ) \
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 3 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Spec, t, 4 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 5 ) \
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 4 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Spec, t, 5 ) \
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
         NRD_OUTPUT_TEXTURE( RWTexture2D<uint2>, gOut_ViewZ_Normal_Roughness_AccumSpeeds, u, 0 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 1 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec_Copy, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 1 )
 
     #define NRD_DECLARE_CONSTANTS \
         NRD_CONSTANTS_START \

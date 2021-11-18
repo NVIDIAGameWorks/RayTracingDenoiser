@@ -1,4 +1,4 @@
-# NVIDIA Real-time (Ray tracing) Denoisers v2.9.0
+# NVIDIA Real-time (Ray tracing) Denoisers v2.10.0
 
 ## SAMPLE APP
 
@@ -310,6 +310,18 @@ NOTE: In some denoisers these textures can potentially be used as history buffer
   float3 finalShadowMoreExotic = shadowData.yzw;
   ```
 
+## INTERACTION WITH PATH TRACERS
+
+Notes:
+- read *INTEGRATION GUIDE, RECOMMENDATIONS AND GOOD PRACTICES* section (below)
+- path length MUST be separated into diffuse path and specular path. To familiarize yourself with required data, run the NRD sample and look at ambient / specular occlusion outputs (it's denoised hit distance)
+- do not pass *sum of lengths of all segments* as *hit distance*. Use `NRD_GetCorrectedHitDist` instead (for diffuse signal only hit distance of the first bounce is needed for *REBLUR*)
+- hit distance (path length) MUST not include primary hit distance
+- accumulation in NRD is driven by roughness. Zero roughness means "less accumulation". It implicitly means that stochastically sampled smooth dielectrics (getting very low probability of specular sampling) are a problematic case (at least for classic path tracers)
+- for *REBLUR* normalized hit distances should be averaged in case of many paths sampling (not real distances)
+- noisy radiance inputs MUST not include material information at primary hits, i.e. radiance (not irradiance) is needed
+- Probabilistic sampling for 2nd+ bounces is absolutely acceptable, but when casting rays from the primary hit position it's better cast 2 paths - one for diffuse and another one for specular (it also solves the problem of hit distance separation)
+
 ## INTEGRATION GUIDE, RECOMMENDATIONS AND GOOD PRACTICES
 
 Denoising is not a panacea or miracle. Denoising works best with ray tracing results produced by a suitable form of importance sampling. Additionally, *NRD* has its own restrictions. The following suggestions should help to achieve best image quality:
@@ -378,8 +390,6 @@ If passing radiance is impossible, "de-modulation" trick should be used instead.
 
 **[REBLUR]** Intensity antilag parameters need to be carefully tuned. Initial integration should work with intensity antilag turned off.
 
-**[REBLUR]** Internal antilag will never drop the number of accumulated frames to 0. Accumulation can be dropped only to the ``min( maxFastAccumulatedFrameNum, F( roughness) )``, where ``F( roughness )`` returns 0-4 frames.
-
 **[RELAX]** *RELAX* works incredibly well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 
 **[SIGMA]** To avoid shadow shimmering blue noise can be used, it works best if the pattern is static on the screen. Additionally, ``blurRadiusScale`` can be set to 2-4 to mitigate such problems in complicated cases.
@@ -436,9 +446,11 @@ In this case, it's better to process the sun and other bright light sources sepa
 ## HOW TO REPORT ISSUES
 
 NRD sample has *TESTS* section in the bottom of the UI (``--testMode`` required), a new test can be added if needed. The following procedure is recommended:
-- Try to reproduce in the NRD sample first
+- Try to reproduce a problem in the NRD sample first
   - if reproducible
+    - add a test (by pressing `Add` button)
     - describe the issue and steps to reproduce
+    - attach depending on selected scene `.bin` file from `_Data\Tests` folder
   - if not
     - verify the integration
 - If nothing helps

@@ -31,7 +31,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 specInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
         radius *= REBLUR_PRE_BLUR_RADIUS_SCALE( roughness );
     #else
-        float minAccumSpeed = GetMipLevel( roughness, gSpecMaxFastAccumulatedFrameNum ) + 0.001;
+        float minAccumSpeed = GetMipLevel( roughness ) + 0.001;
         float boost = saturate( 1.0 - specInternalData.y / minAccumSpeed );
         radius *= ( 1.0 + 2.0 * boost ) / 3.0;
     #endif
@@ -57,7 +57,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     // Denoising
     float anisoFade = lerp( curvature, 1.0, specInternalData.x );
-    float2x3 TvBv = GetKernelBasis( Xv, Nv, worldBlurRadius, roughness, anisoFade );
+    float3 Vv = GetViewVector( Xv, true );
+    float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius, roughness, anisoFade );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
     float normalWeightParams = GetNormalWeightParams( specInternalData.x, curvature, viewZ, roughness, gNormalWeightStrictness * strictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, specInternalData.x, roughness );
@@ -65,15 +66,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float2 sum = 1.0;
 
     #ifdef REBLUR_SPATIAL_REUSE
-        blurRadius = REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE * gSpecBlurRadius * GetSpecMagicCurve( roughness ) * hitDist / ( hitDist + viewZ );
+        blurRadius = REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE * gSpecBlurRadius * GetSpecMagicCurve( roughness ) * hitDist / ( hitDist + PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ ) );
 
         float2 geometryWeightParamsReuse = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE );
 
         float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
         float normalWeightParamsReuse = rcp( max( angle, NRD_ENCODING_ERRORS.x ) );
 
-        float3 V = STL::Geometry::RotateVectorInverse( gWorldToView, -normalize( Xv ) );
-        float NoV = abs( dot( N, V ) );
+        float3 V = STL::Geometry::RotateVectorInverse( gWorldToView, Vv );
+        float NoV = abs( dot( Nv, Vv ) );
     #endif
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
@@ -140,7 +141,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             w *= GetRoughnessWeight( roughnessWeightParams, Ns.w );
 
             float2 ww = w;
-            ww.x *= D * G * NoL / dirPdf.w;
+            ww.x *= D * G * NoL / ( dirPdf.w + 0.001 );
             ww.x *= GetGeometryWeight( geometryWeightParamsReuse, Nv, Xvs );
             ww.x *= GetNormalWeight( normalWeightParamsReuse, N, Ns.xyz );
 

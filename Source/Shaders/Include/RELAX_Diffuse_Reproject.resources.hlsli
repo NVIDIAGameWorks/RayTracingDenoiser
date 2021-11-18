@@ -20,12 +20,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevNormalRoughness, t, 6 ) \
     NRD_INPUT_TEXTURE( Texture2D<float>, gPrevViewZ, t, 7 ) \
     NRD_INPUT_TEXTURE( Texture2D<float>, gPrevDiffuseHistoryLength, t, 8) \
-    NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 9) \
+    NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 9)
 
 #define NRD_DECLARE_OUTPUT_TEXTURES \
     NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 0 ) \
     NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIlluminationResponsive, u, 1 ) \
-    NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutDiffuseHistoryLength, u, 2 ) \
+    NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutDiffuseHistoryLength, u, 2 )
 
 
 #define NRD_DECLARE_CONSTANTS \
