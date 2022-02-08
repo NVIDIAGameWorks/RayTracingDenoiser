@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -44,7 +44,7 @@ void runHistoryClamping(int2 pixelPos, int2 sharedMemoryIndex, float3 specular, 
         {
             uint2 sharedMemoryIndexP = sharedMemoryIndex + int2(dx, dy);
             int2 p = pixelPos + int2(dx, dy);
-            if (p.x <= 0 || p.y <= 0 || p.x >= gResolution.x || p.y >= gResolution.y) sharedMemoryIndexP = sharedMemoryIndex;
+            if (any(p <= int2(0,0)) || any(p >= int2(gRectSize))) sharedMemoryIndexP = sharedMemoryIndex;
 
             float3 specularP = sharedSpecular[sharedMemoryIndexP.y][sharedMemoryIndexP.x];
 
@@ -92,7 +92,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId, uint3 
 
     float3 specularResponsive = 0;
 
-    if (xx >= 0 && yy >= 0 && xx < gResolution.x && yy < gResolution.y)
+    if ((xx >= 0) && (yy >= 0) && (xx < (int)gRectSize.x) && (yy < (int)gRectSize.y))
     {
         specularResponsive = gSpecularResponsiveIllumination[int2(xx, yy)].rgb;
     }
@@ -112,7 +112,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId, uint3 
 
     if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
     {
-        if (xx >= 0 && yy >= 0 && xx < (int)gResolution.x && yy < (int)gResolution.y)
+        if (xx >= 0 && yy >= 0 && xx < (int)gRectSize.x && yy < (int)gRectSize.y)
         {
             specularResponsive = gSpecularResponsiveIllumination[int2(xx, yy)].rgb;
         }

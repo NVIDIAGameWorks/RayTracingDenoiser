@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -10,13 +10,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRD.h"
 #include "DenoiserImpl.h"
-#include "Version.h"
+#include "..\Resources\Version.h"
 
 #include <array>
 
-static_assert( VERSION_MAJOR == NRD_VERSION_MAJOR, "VERSION_MAJOR & NRD_VERSION_MAJOR don't match!");
-static_assert( VERSION_MINOR == NRD_VERSION_MINOR, "VERSION_MINOR & NRD_VERSION_MINOR don't match!");
-static_assert( VERSION_BUILD == NRD_VERSION_BUILD, "VERSION_BUILD & NRD_VERSION_BUILD don't match!");
+static_assert(VERSION_MAJOR == NRD_VERSION_MAJOR, "VERSION_MAJOR & NRD_VERSION_MAJOR don't match!");
+static_assert(VERSION_MINOR == NRD_VERSION_MINOR, "VERSION_MINOR & NRD_VERSION_MINOR don't match!");
+static_assert(VERSION_BUILD == NRD_VERSION_BUILD, "VERSION_BUILD & NRD_VERSION_BUILD don't match!");
 
 constexpr std::array<nrd::Method, (size_t)nrd::Method::MAX_NUM> g_NrdSupportedMethods =
 {
@@ -26,11 +26,13 @@ constexpr std::array<nrd::Method, (size_t)nrd::Method::MAX_NUM> g_NrdSupportedMe
     nrd::Method::REBLUR_SPECULAR_OCCLUSION,
     nrd::Method::REBLUR_DIFFUSE_SPECULAR,
     nrd::Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
+    nrd::Method::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
     nrd::Method::SIGMA_SHADOW,
     nrd::Method::SIGMA_SHADOW_TRANSLUCENCY,
     nrd::Method::RELAX_DIFFUSE,
     nrd::Method::RELAX_SPECULAR,
     nrd::Method::RELAX_DIFFUSE_SPECULAR,
+    nrd::Method::REFERENCE
 };
 
 constexpr nrd::LibraryDesc g_NrdLibraryDesc =

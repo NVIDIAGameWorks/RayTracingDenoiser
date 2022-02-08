@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -22,7 +22,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_INTEGRATION 1
 #define NRD_INTEGRATION_MAJOR 1
 #define NRD_INTEGRATION_MINOR 2
-#define NRD_INTEGRATION_DATE "18 November 2021"
+#define NRD_INTEGRATION_DATE "7 February 2022"
 
 // Settings
 #ifndef NRD_INTEGRATION_ASSERT
@@ -42,6 +42,7 @@ struct NrdIntegrationTexture
     nri::Format format;
 };
 
+// Ensure to fill all slots even unused ones because the order is predefined
 constexpr uint32_t NRD_USER_POOL_SIZE = (uint32_t)nrd::ResourceType::MAX_NUM - 2;
 typedef std::array<NrdIntegrationTexture, NRD_USER_POOL_SIZE> NrdUserPool;
 

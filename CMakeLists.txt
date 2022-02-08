@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.10)
 
-# NRD_DXC_CUSTOM_PATH="custom/path/to/dxc"
-# NRD_SHADER_OUTPUT_PATH="custom/path/to/shaders"
-# NRD_PROJECT_FOLDER="External/NRD"
+# This DXC will be used if Vulkan SDK is not installed
+set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc")
+
+# Shader output path override
+# set(NRD_SHADER_OUTPUT_PATH "")
+
+# Project folder override
+# set(NRD_PROJECT_FOLDER "External/NRD")
+
+# Settings
 option(NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION "disable interprocedural optimization" OFF)
 option(NRD_DISABLE_SHADER_COMPILATION "disable compilation of shaders" OFF)
 option(NRD_USE_PRECOMPILED_SHADERS "use precompiled shaders" ON)
@@ -38,6 +45,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_POSITION_INDEPENDENT_BINARIES ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+
 if (NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 endif()
@@ -81,16 +91,17 @@ else()
 endif()
 
 # list C/C++ files and add them to NRD project
-file(GLOB NRD_SOURCE "Source/*.cpp" "Source/*.h" "Source/*.hpp")
-source_group("Sources" FILES ${NRD_SOURCE})
-file(GLOB NRD_SOURCE_METHODS "Source/Methods/*.cpp" "Source/Methods/*.h" "Source/Methods/*.hpp")
-source_group("Methods" FILES ${NRD_SOURCE_METHODS})
-file(GLOB NRD_MATHLIB_HEADERS "External/MathLib/*.h" "External/MathLib/*.hpp")
-source_group("MathLib" FILES ${NRD_MATHLIB_HEADERS})
-file(GLOB NRD_RESOURCE "Source/*.rc")
-source_group("Sources" FILES ${NRD_RESOURCE})
 file(GLOB NRD_HEADERS "Include/*")
+file(GLOB NRD_SOURCE "Source/*.cpp" "Source/*.h" "Source/*.hpp")
+file(GLOB NRD_SOURCE_METHODS "Source/Methods/*.cpp" "Source/Methods/*.h" "Source/Methods/*.hpp")
+file(GLOB NRD_MATHLIB_HEADERS "External/MathLib/*.h" "External/MathLib/*.hpp")
+file(GLOB NRD_RESOURCE "Resources/*")
+
 source_group("Include" FILES ${NRD_HEADERS})
+source_group("Sources" FILES ${NRD_SOURCE})
+source_group("Methods" FILES ${NRD_SOURCE_METHODS})
+source_group("MathLib" FILES ${NRD_MATHLIB_HEADERS})
+source_group("Resources" FILES ${NRD_RESOURCE})
 
 if (NRD_STATIC_LIBRARY)
     add_library(${PROJECT_NAME} STATIC ${NRD_SOURCE} ${NRD_SOURCE_METHODS} ${NRD_MATHLIB_HEADERS} ${NRD_RESOURCE} ${NRD_HEADERS})
@@ -119,7 +130,7 @@ else()
 endif()
 
 if (NRD_STATIC_LIBRARY)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "NRD_API=")
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "NRD_API=extern \"C\"")
 else()
     if(WIN32)
         target_compile_definitions(${PROJECT_NAME} PRIVATE "NRD_API=extern \"C\" __declspec(dllexport)")
@@ -148,4 +159,3 @@ if (NOT ${NRD_OUTPUT_BIN_PATH} STREQUAL "")
     set_target_properties(${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${NRD_OUTPUT_BIN_PATH}/$<CONFIG>")
     set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${NRD_OUTPUT_BIN_PATH}/$<CONFIG>")
 endif()
-

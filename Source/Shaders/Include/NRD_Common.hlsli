@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -24,6 +24,20 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define NRD_INF                                                 1e6
 
+// FP16
+
+#ifdef COMPILER_DXC
+    #define half_float float16_t
+    #define half_float2 float16_t2
+    #define half_float3 float16_t3
+    #define half_float4 float16_t4
+#else
+    #define half_float float
+    #define half_float2 float2
+    #define half_float3 float3
+    #define half_float4 float4
+#endif
+
 //==================================================================================================================
 // DEFAULT SETTINGS (can be modified)
 //==================================================================================================================
@@ -41,7 +55,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 #ifndef NRD_BILATERAL_WEIGHT_CUTOFF
-    #define NRD_BILATERAL_WEIGHT_CUTOFF                         0.03 // normalized % // TODO: was 0.05, should it be 1-2%?
+    #define NRD_BILATERAL_WEIGHT_CUTOFF                         0.03 // normalized % // TODO: 1-2%?
 #endif
 
 #ifndef NRD_CATROM_SHARPNESS
@@ -57,8 +71,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 //==================================================================================================================
-
 // CTA & preloading
+//==================================================================================================================
 
 #ifdef NRD_CTA_8X8
     #define GROUP_X                                             8
@@ -76,31 +90,27 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define BUFFER_X                                                ( GROUP_X + BORDER * 2 )
 #define BUFFER_Y                                                ( GROUP_Y + BORDER * 2 )
-#define RENAMED_GROUP_Y                                         ( ( GROUP_X * GROUP_Y ) / BUFFER_X )
 
-// TODO: ignore out-of-screen texels or use "NearestClamp"
 #define PRELOAD_INTO_SMEM \
-    float linearId = ( threadIndex + 0.5 ) / BUFFER_X; \
-    int2 newId = int2( frac( linearId ) * BUFFER_X, linearId ); \
-    int2 groupBase = pixelPos - threadId - BORDER; \
-    if( newId.y < RENAMED_GROUP_Y ) \
-        Preload( newId, groupBase + newId ); \
-    newId.y += RENAMED_GROUP_Y; \
-    if( newId.y < BUFFER_Y ) \
-        Preload( newId, groupBase + newId ); \
+    int2 groupBase = pixelPos - threadPos - BORDER; \
+    uint stageNum = ( BUFFER_X * BUFFER_Y + GROUP_X * GROUP_Y - 1 ) / ( GROUP_X * GROUP_Y ); \
+    [unroll] \
+    for( uint stage = 0; stage < stageNum; stage++ ) \
+    { \
+        uint virtualIndex = threadIndex + stage * GROUP_X * GROUP_Y; \
+        uint2 newId = uint2( virtualIndex % BUFFER_X, virtualIndex / BUFFER_Y ); \
+        if( stage == 0 || virtualIndex < BUFFER_X * BUFFER_Y ) \
+            Preload( newId, groupBase + newId ); \
+    } \
     GroupMemoryBarrierWithGroupSync( )
+
+//==================================================================================================================
+// SHARED FUNCTIONS
+//==================================================================================================================
 
 // Misc
 
-float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
-{
-    float unused;
-    return NRD_FrontEnd_UnpackNormalAndRoughness( p, unused );
-}
-
 #if( NRD_USE_SANITIZATION == 1 )
-    // ignore NAN / INF in history buffers (the algorithm is NAN / INF free, but not cleared resources can have them)
-
     float4 Sanitize( float4 x, float4 replacer )
     {
         uint4 u = asuint( x );
@@ -178,6 +188,11 @@ float2 ApplyCheckerboard( inout float2 uv, uint mode, uint counter, float2 scree
     return float2( uv.x * 0.5, uv.y );
 }
 
+bool CompareMaterials( uint m0, uint m, uint mask )
+{
+    return ( m0 & mask ) == ( m & mask );
+}
+
 // Kernel
 
 float2 GetKernelSampleCoordinates( float4x4 mViewToClip, float3 offset, float3 Xv, float3 Tv, float3 Bv, float4 rotator = float4( 1, 0, 0, 1 ) )
@@ -200,9 +215,9 @@ float2 GetKernelSampleCoordinates( float4x4 mViewToClip, float3 offset, float3 X
 
 // Weight parameters
 
-float2 GetGeometryWeightParams( float planeDistSensitivity, float meterToUnitsMultiplier, float3 Xv, float3 Nv, float scale = 1.0 )
+float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight, float3 Xv, float3 Nv, float scale = 1.0 )
 {
-    float a = scale * planeDistSensitivity / ( Xv.z + meterToUnitsMultiplier );
+    float a = scale / ( planeDistSensitivity * frustumHeight + 1e-6 );
     float b = -dot( Nv, Xv ) * a;
 
     return float2( a, b );
@@ -237,47 +252,45 @@ float4 GetBilateralWeight( float4 z, float zc )
 // TODO: uv4 can be used to get vanilla bilinear filter to be used for hit distance only sampling
 #define _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init \
     /* Catmul-Rom with 12 taps ( excluding corners ) */ \
-    float2 bilinearOrigin = floor( samplePos - 0.5 ); \
-    float2 centerPos = bilinearOrigin + 0.5; \
-    float2 f = samplePos - centerPos; \
+    float2 centerPos = floor( samplePos - 0.5 ) + 0.5; \
+    float2 f = saturate( samplePos - centerPos ); \
     float2 f2 = f * f; \
     float2 f3 = f * f2; \
     float2 w0 = -NRD_CATROM_SHARPNESS * f3 + 2.0 * NRD_CATROM_SHARPNESS * f2 - NRD_CATROM_SHARPNESS * f; \
     float2 w1 = ( 2.0 - NRD_CATROM_SHARPNESS ) * f3 - ( 3.0 - NRD_CATROM_SHARPNESS ) * f2 + 1.0; \
     float2 w2 = -( 2.0 - NRD_CATROM_SHARPNESS ) * f3 + ( 3.0 - 2.0 * NRD_CATROM_SHARPNESS ) * f2 + NRD_CATROM_SHARPNESS * f; \
     float2 w3 = NRD_CATROM_SHARPNESS * f3 - NRD_CATROM_SHARPNESS * f2; \
-    float2 wl2 = w1 + w2; \
-    float2 tc2 = w2 * STL::Math::PositiveRcp( wl2 ); \
+    float2 w12 = w1 + w2; \
     float2 tc0 = -1.0; \
+    float2 tc2 = w2 / w12; \
     float2 tc3 = 2.0; \
     float4 w; \
-    w.x = wl2.x * w0.y; \
-    w.y = w0.x  * wl2.y; \
-    w.z = wl2.x * wl2.y; \
-    w.w = w3.x  * wl2.y; \
-    float w4 = wl2.x * w3.y; \
+    w.x = w12.x * w0.y; \
+    w.y = w0.x * w12.y; \
+    w.z = w12.x * w12.y; \
+    w.w = w3.x * w12.y; \
+    float w4 = w12.x * w3.y; \
     /* Fallback to custom bilinear */ \
-    w = lerp( bilinearCustomWeights, w, useBicubic ); \
-    w4 *= float( useBicubic ); \
-    /* Sampling */ \
+    w = useBicubic ? w : bilinearCustomWeights; \
+    w4 = useBicubic ? w4 : 0.0001; \
+    float invSum = 1.0 / ( dot( w, 1.0 ) + w4 ); \
+    /* Texture coordinates */ \
     float2 uv0 = centerPos + ( useBicubic ? float2( tc2.x, tc0.y ) : float2( 0, 0 ) ); \
     float2 uv1 = centerPos + ( useBicubic ? float2( tc0.x, tc2.y ) : float2( 1, 0 ) ); \
     float2 uv2 = centerPos + ( useBicubic ? float2( tc2.x, tc2.y ) : float2( 0, 1 ) ); \
     float2 uv3 = centerPos + ( useBicubic ? float2( tc3.x, tc2.y ) : float2( 1, 1 ) ); \
-    float2 uv4 = centerPos + ( useBicubic ? float2( tc2.x, tc3.y ) : float2( 0, 0 ) ); \
-    float sum = dot( w, 1.0 ); \
-    sum += w4; \
-    sum = STL::Math::PositiveRcp( sum )
+    float2 uv4 = centerPos + ( useBicubic ? float2( tc2.x, tc3.y ) : float2( 0, 0 ) );
 
 #define _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( color, tex ) \
+    /* Sampling */ \
     color = tex.SampleLevel( linearSampler, uv0 * invTextureSize, 0 ) * w.x; \
     color += tex.SampleLevel( linearSampler, uv1 * invTextureSize, 0 ) * w.y; \
     color += tex.SampleLevel( linearSampler, uv2 * invTextureSize, 0 ) * w.z; \
     color += tex.SampleLevel( linearSampler, uv3 * invTextureSize, 0 ) * w.w; \
     color += tex.SampleLevel( linearSampler, uv4 * invTextureSize, 0 ) * w4; \
-    color *= sum; \
-    /* Need to avoid negative values from CatRom, but doesn't suit for YCoCg or negative input */ \
-    color = max( color, 0.0 )
+    color *= invSum; \
+    /* Avoid negative values from CatRom, but doesn't suit for YCoCg or negative input */ \
+    color = max( color, 0 )
 
 float4 BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights( Texture2D<float4> tex0, SamplerState linearSampler, float2 samplePos, float2 invTextureSize, float4 bilinearCustomWeights, bool useBicubic )
 {
@@ -321,94 +334,30 @@ float BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights( Textu
     return color0;
 }
 
-float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const bool enable = true )
+float4 BicubicFilterNoCorners( Texture2D<float4> tex, SamplerState linearSampler, float2 samplePos, float2 invTextureSize, compiletime const bool useBicubic = true )
 {
-    if( enable )
-    {
-        float sharpness = NRD_CATROM_SHARPNESS;
-        float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
-        float2 f = samplePos - centerPos;
-        float2 f2 = f * f;
-        float2 f3 = f * f2;
-        float2 w0 = -sharpness * f3 + 2.0 * sharpness * f2 - sharpness * f;
-        float2 w1 = ( 2.0 - sharpness ) * f3 - ( 3.0 - sharpness ) * f2 + 1.0;
-        float2 w2 = -( 2.0 - sharpness ) * f3 + ( 3.0 - 2.0 * sharpness ) * f2 + sharpness * f;
-        float2 w3 = sharpness * f3 - sharpness * f2;
-        float2 wl2 = w1 + w2;
-        float2 tc2 = invTextureSize * ( centerPos + w2 * STL::Math::PositiveRcp( wl2 ) );
-        float2 tc0 = invTextureSize * ( centerPos - 1.0 );
-        float2 tc3 = invTextureSize * ( centerPos + 2.0 );
+    if( !useBicubic )
+        return tex.SampleLevel( linearSampler, samplePos * invTextureSize, 0 );
 
-        float w = wl2.x * w0.y;
-        float4 color = tex.SampleLevel( samp, float2( tc2.x, tc0.y ), 0 ) * w;
-        float sum = w;
+    float4 color;
+    float4 bilinearCustomWeights = 0;
 
-        w = w0.x  * wl2.y;
-        color += tex.SampleLevel( samp, float2( tc0.x, tc2.y ), 0 ) * w;
-        sum += w;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( color, tex );
 
-        w = wl2.x * wl2.y;
-        color += tex.SampleLevel( samp, float2( tc2.x, tc2.y ), 0 ) * w;
-        sum += w;
-
-        w = w3.x  * wl2.y;
-        color += tex.SampleLevel( samp, float2( tc3.x, tc2.y ), 0 ) * w;
-        sum += w;
-
-        w = wl2.x * w3.y;
-        color += tex.SampleLevel( samp, float2( tc2.x, tc3.y ), 0 ) * w;
-        sum += w;
-
-        color *= STL::Math::PositiveRcp( sum );
-
-        return max( color, 0.0 ); // Won't work for YCoCg
-    }
-    else
-        return tex.SampleLevel( samp, samplePos * invTextureSize, 0 );
+    return color;
 }
 
-float BicubicFilterNoCorners( Texture2D<float> tex, SamplerState samp, float2 samplePos, float2 invTextureSize, compiletime const float enable = true )
+float BicubicFilterNoCorners( Texture2D<float> tex, SamplerState linearSampler, float2 samplePos, float2 invTextureSize, compiletime const float useBicubic = true )
 {
-    if( enable )
-    {
-        float sharpness = NRD_CATROM_SHARPNESS;
-        float2 centerPos = floor( samplePos - 0.5 ) + 0.5;
-        float2 f = samplePos - centerPos;
-        float2 f2 = f * f;
-        float2 f3 = f * f2;
-        float2 w0 = -sharpness * f3 + 2.0 * sharpness * f2 - sharpness * f;
-        float2 w1 = ( 2.0 - sharpness ) * f3 - ( 3.0 - sharpness ) * f2 + 1.0;
-        float2 w2 = -( 2.0 - sharpness ) * f3 + ( 3.0 - 2.0 * sharpness ) * f2 + sharpness * f;
-        float2 w3 = sharpness * f3 - sharpness * f2;
-        float2 wl2 = w1 + w2;
-        float2 tc2 = invTextureSize * ( centerPos + w2 * STL::Math::PositiveRcp( wl2 ) );
-        float2 tc0 = invTextureSize * ( centerPos - 1.0 );
-        float2 tc3 = invTextureSize * ( centerPos + 2.0 );
+    if( !useBicubic )
+        return tex.SampleLevel( linearSampler, samplePos * invTextureSize, 0 );
 
-        float w = wl2.x * w0.y;
-        float color = tex.SampleLevel( samp, float2( tc2.x, tc0.y ), 0 ) * w;
-        float sum = w;
+    float color;
+    float4 bilinearCustomWeights = 0;
 
-        w = w0.x  * wl2.y;
-        color += tex.SampleLevel( samp, float2( tc0.x, tc2.y ), 0 ) * w;
-        sum += w;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( color, tex );
 
-        w = wl2.x * wl2.y;
-        color += tex.SampleLevel( samp, float2( tc2.x, tc2.y ), 0 ) * w;
-        sum += w;
-
-        w = w3.x  * wl2.y;
-        color += tex.SampleLevel( samp, float2( tc3.x, tc2.y ), 0 ) * w;
-        sum += w;
-
-        w = wl2.x * w3.y;
-        color += tex.SampleLevel( samp, float2( tc2.x, tc3.y ), 0 ) * w;
-        sum += w;
-
-        color *= STL::Math::PositiveRcp( sum );
-
-        return max( color, 0.0 );
-    }
-    else
-        return tex.SampleLevel( samp, samplePos * invTextureSize, 0 );
+    return color;
 }

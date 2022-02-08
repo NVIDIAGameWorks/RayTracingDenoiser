@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -40,10 +40,10 @@ float getRoughnessWeight(float2 params0, float roughness)
     return saturate(1.0 - abs(params0.y - roughness * params0.x));
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(16, 16, 1)]
 NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
 {
-    float centerMaterialType;
+    uint centerMaterialType;
     float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[ipos], centerMaterialType);
     float3 centerNormal = centerNormalRoughness.rgb;
     float centerRoughness = centerNormalRoughness.a;
@@ -80,7 +80,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
     float3 centerV = normalize(centerWorldPos);
 
     float specularPhiLIllumination = 1.0e-4 + gSpecularPhiLuminance * sqrt(max(0.0, centerSpecularVar));
-    float phiDepth = gPhiDepth;
+    float depthThreshold = gDepthThreshold;
 
     static const float kernelWeightGaussian3x3[2] = { 0.44198, 0.27901 };
 
@@ -102,7 +102,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
         for (int xx = -1; xx <= 1; xx++)
         {
             int2 p = ipos + offset + int2(xx, yy) * gStepSize;
-            bool isInside = all(p >= int2(0, 0)) && all(p < gResolution);
+            bool isInside = all(p >= int2(0, 0)) && all(p < int2(gRectSize));
             bool isCenter = ((xx == 0) && (yy == 0));
             if (isCenter) continue;
 
@@ -112,7 +112,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
             float wSpecular = isInside ? kernel : 0.0;
 
             // Fetching normal, roughness, linear Z
-            float sampleMaterialType;
+            uint sampleMaterialType;
             float4 sampleNormalRoughnes = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[p], sampleMaterialType);
             float3 sampleNormal = sampleNormalRoughnes.rgb;
             float sampleRoughness = sampleNormalRoughnes.a;
@@ -122,7 +122,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
             float3 sampleWorldPos = getCurrentWorldPos(p, sampleViewZ);
 
             // Calculating geometry weight for diffuse and specular
-            float geometryW = exp_approx(-GetGeometryWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, phiDepth));
+            float geometryW = GetPlaneDistanceWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, depthThreshold);
 
 #if NRD_USE_MATERIAL_ID_AWARE_FILTERING
             geometryW *= (sampleMaterialType == centerMaterialType) ? 1.0 : 0.0;

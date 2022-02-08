@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -28,17 +28,12 @@ groupshared float4 sharedDiffuseIlluminationAndVariance[THREAD_GROUP_SIZE + SKIR
 groupshared float4 sharedNormalRoughness[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 groupshared float4 sharedWorldPos[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 #if NRD_USE_MATERIAL_ID_AWARE_FILTERING
-groupshared float sharedMaterialType[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
+groupshared uint sharedMaterialType[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 #endif
 
 // Helper functions
-float3 getCurrentWorldPos(int2 pixelPos, float depth)
-{
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
-    return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
-}
 
-// computes a 3x3 gaussian blur of the variance, centered around
+// Computes a 3x3 gaussian blur of the variance, centered around
 // the current pixel
 void computeVariance(int2 groupThreadId, out float diffuseVariance)
 {
@@ -94,16 +89,16 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
     float roughness = 1.0;
     float4 worldPos = 0;
     float viewZ = 0.0;
-    float materialType = 1.0;
+    uint materialType = 0;
 
-    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+    if ((xx >= 0) && (yy >= 0) && (xx < (int)gResourceSize.x) && (yy < (int)gResourceSize.y))
     {
         diffuseIlluminationAndVariance = gDiffuseIlluminationAndVariance[int2(xx, yy)];
         float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[int2(xx, yy)], materialType);
         normal = normalRoughness.rgb;
         roughness = normalRoughness.a;
         viewZ = gViewZFP16[int2(xx, yy)] / NRD_FP16_VIEWZ_SCALE;
-        worldPos = float4(getCurrentWorldPos(int2(xx, yy), viewZ), viewZ);
+        worldPos = float4(GetCurrentWorldPos(int2(xx, yy), viewZ), viewZ);
     }
     sharedDiffuseIlluminationAndVariance[oy][ox] = diffuseIlluminationAndVariance;
     sharedNormalRoughness[oy][ox] = float4(normal, roughness);
@@ -127,18 +122,18 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
     roughness = 1.0;
     worldPos = 0;
     viewZ = 0.0;
-    materialType = 1.0;
+    materialType = 0;
 
     if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
     {
-        if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+        if ((xx >= 0) && (yy >= 0) && (xx < (int)gResourceSize.x) && (yy < (int)gResourceSize.y))
         {
             diffuseIlluminationAndVariance = gDiffuseIlluminationAndVariance[int2(xx, yy)];
             float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[int2(xx, yy)], materialType);
             normal = normalRoughness.rgb;
             roughness = normalRoughness.a;
             viewZ = gViewZFP16[int2(xx, yy)] / NRD_FP16_VIEWZ_SCALE;
-            worldPos = float4(getCurrentWorldPos(int2(xx, yy), viewZ), viewZ);
+            worldPos = float4(GetCurrentWorldPos(int2(xx, yy), viewZ), viewZ);
         }
         sharedDiffuseIlluminationAndVariance[oy][ox] = diffuseIlluminationAndVariance;
         sharedNormalRoughness[oy][ox] = float4(normal, roughness);
@@ -178,7 +173,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
     float centerDiffuseLuminance = STL::Color::Luminance(centerDiffuseIlluminationAndVariance.rgb);
 
 #if NRD_USE_MATERIAL_ID_AWARE_FILTERING
-    float centerMaterialType = sharedMaterialType[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    uint centerMaterialType = sharedMaterialType[sharedMemoryIndex.y][sharedMemoryIndex.x];
 #endif
 
     // Calculating variance, filtered using 3x3 gaussin blur
@@ -186,7 +181,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
     computeVariance(groupThreadId.xy, centerDiffuseVar);
 
     float diffusePhiLIllumination = 1.0e-4 + gDiffusePhiLuminance * sqrt(max(0.0, centerDiffuseVar));
-    float phiDepth = gPhiDepth;
+    float depthThreshold = gDepthThreshold;
 
     float sumWDiffuse = 0;
     float4 sumDiffuseIlluminationAndVariance = 0;
@@ -201,7 +196,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
         {
             const float kernel = kernelWeightGaussian3x3[abs(cx)] * kernelWeightGaussian3x3[abs(cy)];
             const int2 p = ipos + int2(cx, cy);
-            const bool isInside = all(p >= int2(0, 0)) && all(p < gResolution);
+            const bool isInside = all(p >= int2(0, 0)) && all(p < (int2)gResourceSize);
             const bool isCenter = ((cx == 0) && (cy == 0));
 
             int2 sampleSharedMemoryIndex = groupThreadId.xy + int2(SKIRT + cx, SKIRT + cy);
@@ -210,7 +205,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
             float3 sampleWorldPos = sharedWorldPos[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x].rgb;
 
 #if NRD_USE_MATERIAL_ID_AWARE_FILTERING
-            float sampleMaterialType = sharedMaterialType[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x];
+            uint sampleMaterialType = sharedMaterialType[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x];
 #endif
 
             float4 sampleDiffuseIlluminationAndVariance = sharedDiffuseIlluminationAndVariance[sampleSharedMemoryIndex.y][sampleSharedMemoryIndex.x];
@@ -218,7 +213,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
             float sampleDiffuseLuminance = STL::Color::Luminance(sampleDiffuseIlluminationAndVariance.rgb);
 
             // Calculating geometry and normal weights
-            float geometryW = exp_approx(-GetGeometryWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, phiDepth));
+            float geometryW = GetPlaneDistanceWeight(
+                                centerWorldPos,
+                                centerNormal,
+                                gIsOrtho == 0 ? centerViewZ : 1.0,
+                                sampleWorldPos,
+                                depthThreshold);
 
 #if NRD_USE_MATERIAL_ID_AWARE_FILTERING
             geometryW *= (sampleMaterialType == centerMaterialType) ? 1.0 : 0.0;
@@ -234,7 +234,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
             if (!isCenter)
             {
                 // Calculating bilateral weight for diffuse
-                wDiffuse = kernel * max(1e-6, normalWDiffuse * exp_approx(-geometryW - diffuseLuminanceW));
+                wDiffuse = kernel * max(1e-6, normalWDiffuse * geometryW * exp_approx(-diffuseLuminanceW));
             }
 
             // Discarding out of screen samples

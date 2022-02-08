@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -24,7 +24,7 @@ NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
@@ -71,9 +71,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
         return;
 
     // Internal data
-    float curvature;
+    float unused;
     uint bits;
-    float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], curvature, bits );
+    float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ], unused, bits );
     float2 diffInternalData = internalData.xy;
     float2 specInternalData = internalData.zw;
 

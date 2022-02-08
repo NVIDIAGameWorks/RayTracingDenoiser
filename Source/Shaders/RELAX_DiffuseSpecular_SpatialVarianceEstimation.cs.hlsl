@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -28,7 +28,7 @@ groupshared float4 sharedSpecularAnd2ndMoment[THREAD_GROUP_SIZE + SKIRT * 2][THR
 groupshared float4 sharedDiffuseAnd2ndMoment[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 groupshared float4 sharedNormalViewZ[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 
-float computeDepthWeight(float depthCenter, float depthP, float phiDepth)
+float computeDepthWeight(float depthCenter, float depthP, float depthThreshold)
 {
     return 1;
 }
@@ -62,7 +62,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId, uint3 
     float3 normal = 0;
     float viewZ = 0;
 
-    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+    if ((xx >= 0) && (yy >= 0) && (xx < (int)gRectSize.x) && (yy < (int)gRectSize.y))
     {
         specular = gSpecularIllumination[int2(xx, yy)];
         diffuse = gDiffuseIllumination[int2(xx, yy)];
@@ -90,7 +90,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId, uint3 
 
     if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
     {
-        if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+        if ((xx >= 0) && (yy >= 0) && (xx < (int)gRectSize.x) && (yy < (int)gRectSize.y))
         {
             specular = gSpecularIllumination[int2(xx, yy)];
             diffuse = gDiffuseIllumination[int2(xx, yy)];

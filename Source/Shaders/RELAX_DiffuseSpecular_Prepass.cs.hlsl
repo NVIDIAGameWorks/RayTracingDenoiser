@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -24,11 +24,11 @@ NRD_DECLARE_OUTPUT_TEXTURES
 #define POISSON_SAMPLE_NUM                      8
 #define POISSON_SAMPLES                         g_Poisson8
 
-#define THREAD_GROUP_SIZE 8
+#define THREAD_GROUP_SIZE 16
 
 float GetNormHitDist(float hitDist, float viewZ, float4 hitDistParams = float4(3.0, 0.1, 10.0, -25.0), float linearRoughness = 1.0)
 {
-    float f = _REBLUR_GetHitDistanceNormalization(viewZ, hitDistParams, gMeterToUnitsMultiplier, linearRoughness);
+    float f = _REBLUR_GetHitDistanceNormalization(viewZ, hitDistParams, linearRoughness);
     return saturate(hitDist / f);
 }
 
@@ -130,7 +130,7 @@ float GetNormalWeightParams(float nonLinearAccumSpeed, float edge, float error, 
 int2 DiffCheckerboard(int2 pos)
 {
     int2 result = pos;
-    if (gDiffCheckerboard != 2)
+    if (gDiffuseCheckerboard != 2)
     {
         result.x >>= 1;
     }
@@ -140,23 +140,11 @@ int2 DiffCheckerboard(int2 pos)
 int2 SpecCheckerboard(int2 pos)
 {
     int2 result = pos;
-    if (gSpecCheckerboard != 2)
+    if (gSpecularCheckerboard != 2)
     {
         result.x >>= 1;
     }
     return result;
-}
-
-float3 getCurrentWorldPos(int2 pixelPos, float depth)
-{
-    float2 clipSpaceXY = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
-    return depth * (gFrustumForward.xyz + gFrustumRight.xyz * clipSpaceXY.x - gFrustumUp.xyz * clipSpaceXY.y);
-}
-
-float3 getCurrentWorldPos(float2 uv, float depth)
-{
-    float2 clipSpaceXY = uv * 2.0 - 1.0;
-    return depth * (gFrustumForward.xyz + gFrustumRight.xyz * clipSpaceXY.x - gFrustumUp.xyz * clipSpaceXY.y);
 }
 
 float GetGaussianWeight(float r)
@@ -189,30 +177,33 @@ float GetRoughnessWeight(float2 params0, float roughness)
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
-NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID)
+NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId : SV_GroupThreadId, uint3 groupId : SV_GroupId)
 {
+
     // Calculating checkerboard fields
     bool diffHasData = true;
     bool specHasData = true;
     uint checkerboard = STL::Sequence::CheckerBoard(ipos, gFrameIndex);
 
-    if (gDiffCheckerboard != 2)
+    if (gDiffuseCheckerboard != 2)
     {
-        diffHasData = checkerboard == gDiffCheckerboard;
+        diffHasData = (checkerboard == gDiffuseCheckerboard);
     }
 
-    if (gSpecCheckerboard != 2)
+    if (gSpecularCheckerboard != 2)
     {
-        specHasData = checkerboard == gSpecCheckerboard;
+        specHasData = (checkerboard == gSpecularCheckerboard);
     }
 
     // Reading center GBuffer data
-    float centerViewZ = gViewZ[ipos + gRectOrigin];
+    // Applying abs() to viewZ so it is positive down the denoising pipeline.
+    // This ensures correct denoiser operation with different camera handedness.
+    float centerViewZ = abs(gViewZ[ipos + gRectOrigin]);
     float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[ipos + gRectOrigin]);
     float3 centerNormal = centerNormalRoughness.xyz;
     float centerRoughness = centerNormalRoughness.w;
 
-    // Outputting ViewZ and scaled ViewZ
+    // Outputting ViewZ and scaled ViewZ to be used down the denoising pipeline
     gOutViewZ[ipos] = centerViewZ;
     gOutScaledViewZ[ipos] = min(centerViewZ * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX);
 
@@ -223,15 +214,16 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
         return;
     }
 
-    float3 centerWorldPos = getCurrentWorldPos(ipos, centerViewZ);
+    float2 uv = ((float2)ipos + float2(0.5, 0.5)) * gInvRectSize;
+    float3 centerWorldPos = GetCurrentWorldPos(uv * 2.0 - 1.0, centerViewZ);
     float4 rotator = GetBlurKernelRotation(NRD_FRAME, ipos, gRotator, gFrameIndex);
 
     // Checkerboard resolve weights
     float2 checkerboardResolveWeights = 1.0;
-    if ((gSpecCheckerboard != 2) || (gDiffCheckerboard != 2))
+    if ((gSpecularCheckerboard != 2) || (gDiffuseCheckerboard != 2))
     {
-        float viewZ0 = gViewZ[ipos + int2(-1, 0) + gRectOrigin];
-        float viewZ1 = gViewZ[ipos + int2(1, 0) + gRectOrigin];
+        float viewZ0 = abs(gViewZ[ipos + int2(-1, 0) + gRectOrigin]);
+        float viewZ1 = abs(gViewZ[ipos + int2(1, 0) + gRectOrigin]);
 
         checkerboardResolveWeights = GetBilateralWeight(float2(viewZ0, viewZ1), centerViewZ);
         checkerboardResolveWeights *= STL::Math::PositiveRcp(checkerboardResolveWeights.x + checkerboardResolveWeights.y);
@@ -255,7 +247,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
         float hitDist = GetNormHitDist(diffuseIllumination.w, centerViewZ);
         float blurRadius = GetBlurRadius(gDiffuseBlurRadius, 1.0, diffuseIllumination.w, centerViewZ, 1.0 / 9.0, 1.0, 1.0, 0, 1.0);
 
-        float worldBlurRadius = PixelRadiusToWorld(gUnproject, gIsOrtho, blurRadius, centerViewZ);
+        float worldBlurRadius = PixelRadiusToWorld(gUnproject, gIsOrtho, blurRadius, centerViewZ) *
+                                min(gResolutionScale.x, gResolutionScale.y);
 
         float2x3 TvBv = GetKernelBasis(centerWorldPos, centerNormal, worldBlurRadius);
         float normalWeightParams = GetNormalWeightParams(1.0 / 9.0, 0.0, 1.0, 1.0, 1.0);
@@ -273,9 +266,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
 
             // Handle half res input in the checkerboard mode
             float2 checkerboardUv = uv;
-            if (gDiffCheckerboard != 2)
+            if (gDiffuseCheckerboard != 2)
             {
-                checkerboardUv = ApplyCheckerboard(uv, gDiffCheckerboard, i, gResolution, gInvRectSize, gFrameIndex);
+                checkerboardUv = ApplyCheckerboard(uv, gDiffuseCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
             }
 
             // Fetch data
@@ -286,7 +279,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
             float4 sampleDiffuseIllumination = gDiffuseIllumination.SampleLevel(gNearestMirror, checkerboardUvScaled, 0);
             float sampleViewZ = abs(gViewZ.SampleLevel(gNearestMirror, uvScaled + gRectOffset, 0));
 
-            float3 sampleWorldPos = getCurrentWorldPos(uv, sampleViewZ);
+            float3 sampleWorldPos = GetCurrentWorldPos(uv * 2.0 - 1.0, sampleViewZ);
 
             // Sample weight
             float sampleWeight = IsInScreen(uv);
@@ -296,8 +289,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
 
             float minHitDistanceWeight = 0.2;
             float hitDistanceWeight = GetHitDistanceWeight(hitDistanceWeightParams, sampleNormalizedHitDist);
-
-            sampleWeight *= exp_approx(-GetGeometryWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, 0.001));
+            sampleWeight *= GetPlaneDistanceWeight(
+                                centerWorldPos,
+                                centerNormal,
+                                gIsOrtho == 0 ? centerViewZ : 1.0,
+                                sampleWorldPos,
+                                gDepthThreshold);
             sampleWeight *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
             sampleWeight *= lerp(minHitDistanceWeight, 1.0, hitDistanceWeight);
 
@@ -306,7 +303,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
         }
         diffuseIllumination /= weightSum;
     }
-    gOutDiffuseIllumination[ipos] = diffuseIllumination;
+    gOutDiffuseIllumination[ipos] = clamp(diffuseIllumination, 0, NRD_FP16_MAX);
 
     // Reading specular & resolving specular checkerboard
     float4 specularIllumination = gSpecularIllumination[SpecCheckerboard(ipos + gRectOrigin)];
@@ -333,7 +330,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
         float hitDist = GetNormHitDist(specularIllumination.w, centerViewZ, float4(3.0, 0.1, 10.0, -25.0), centerRoughness);
         float blurRadius = GetBlurRadius(gSpecularBlurRadius, centerRoughness, specularIllumination.w, centerViewZ, 1.0 / 9.0, 1.0, 1.0, 0, 1.0);
 
-        float worldBlurRadius = PixelRadiusToWorld(gUnproject, gIsOrtho, blurRadius, centerViewZ);
+        float worldBlurRadius = PixelRadiusToWorld(gUnproject, gIsOrtho, blurRadius, centerViewZ) *
+                                min(gResolutionScale.x, gResolutionScale.y);
 
         float anisoFade = 1.0 / 9.0;
         float2x3 TvBv = GetKernelBasis(centerWorldPos, centerNormal, worldBlurRadius, centerRoughness, anisoFade);
@@ -353,9 +351,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
 
             // Handle half res input in the checkerboard mode
             float2 checkerboardUv = uv;
-            if (gSpecCheckerboard != 2)
+            if (gSpecularCheckerboard != 2)
             {
-                checkerboardUv = ApplyCheckerboard(uv, gSpecCheckerboard, i, gResolution, gInvRectSize, gFrameIndex);
+                checkerboardUv = ApplyCheckerboard(uv, gSpecularCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
             }
 
             // Fetch data
@@ -369,7 +367,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
             sampleSpecularIllumination.rgb = STL::Color::Compress(sampleSpecularIllumination.rgb, exposure);
             float sampleViewZ = abs(gViewZ.SampleLevel(gNearestMirror, uvScaled + gRectOffset, 0));
 
-            float3 sampleWorldPos = getCurrentWorldPos(uv, sampleViewZ);
+            float3 sampleWorldPos = GetCurrentWorldPos(uv * 2.0 - 1.0, sampleViewZ);
 
             // Sample weight
             float sampleWeight = IsInScreen(uv);
@@ -381,7 +379,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
             float minHitDistanceWeight = 0.2;
             float hitDistanceWeight = GetHitDistanceWeight(hitDistanceWeightParams, sampleNormalizedHitDist);
 
-            sampleWeight *= exp_approx(-GetGeometryWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, 0.01));
+            sampleWeight *= GetPlaneDistanceWeight(
+                                centerWorldPos,
+                                centerNormal,
+                                gIsOrtho == 0 ? centerViewZ : 1.0,
+                                sampleWorldPos,
+                                gDepthThreshold);
             sampleWeight *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
             sampleWeight *= lerp(minHitDistanceWeight, 1.0, hitDistanceWeight);
 
@@ -393,6 +396,6 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadID, uint3 groupThreadId
         specularIllumination.rgb = STL::Color::Decompress(specularIllumination.rgb, exposure);
         specularIllumination.a = specularHitT; // No, we don't preblur specular HitT!
     }
-    gOutSpecularIllumination[ipos] = specularIllumination;
+    gOutSpecularIllumination[ipos] = clamp(specularIllumination, 0, NRD_FP16_MAX);
 
 }

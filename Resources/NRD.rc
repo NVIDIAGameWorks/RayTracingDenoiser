@@ -43,8 +43,8 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "NVIDIA"
             VALUE "FileVersion", VERSION_STRING
-            VALUE "LegalCopyright", "Copyright © 2020"
-            VALUE "ProductName", "NVIDIA Ray tracing Denoising"
+            VALUE "LegalCopyright", "Copyright © 2021"
+            VALUE "ProductName", "NVIDIA Real-time Denoising"
             VALUE "ProductVersion", VERSION_STRING
         END
     END

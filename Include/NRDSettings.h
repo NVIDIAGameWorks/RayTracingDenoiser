@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -11,15 +11,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 2
-#define NRD_SETTINGS_VERSION_MINOR 10
+#define NRD_SETTINGS_VERSION_MINOR 12
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
 namespace nrd
 {
-    // IMPORTANT: default values assume that "meter" is the primary measurement unit. If other units are used,
-    // values marked as "m" need to be adjusted. NRD inputs (viewZ, hit distance) can be scaled instead of input settings.
-
     // Internally, NRD uses the following sequence based on "CommonSettings::frameIndex":
     //     Even frame (0)  Odd frame (1)   ...
     //         B W             W B
@@ -93,13 +90,10 @@ namespace nrd
         // (0; 1] - dynamic resolution scaling
         float resolutionScale[2] = {1.0f, 1.0f};
 
-        // Units-to-meter multiplier
-        float meterToUnitsMultiplier = 1.0f; // 100 for UE (1 m = 100 cm)
-
         // (ms) - user provided if > 0, otherwise - tracked internally
         float timeDeltaBetweenFrames = 0.0f;
 
-        // (m) > 0 - use TLAS or tracing range
+        // (units) > 0 - use TLAS or tracing range
         float denoisingRange = 1e7f;
 
         // (normalized %)
@@ -126,24 +120,21 @@ namespace nrd
 
         // If "true" IN_DIFF_CONFIDENCE and IN_SPEC_CONFIDENCE are provided
         bool isHistoryConfidenceInputsAvailable = false;
-
-        // If "true" RADIANCE from inputs is multiplied by exposure, i.e. "radiance * exposure" gets passed.
-        // It helps to estimate visual error in perceptual color space (recommended value = true)
-        bool isRadianceMultipliedByExposure = false;
     };
 
     // "Normalized hit distance" = saturate( "hit distance" / f ), where:
     // f = ( A + viewZ * B ) * lerp( 1.0, C, exp2( D * roughness ^ 2 ) ), see "NRD.hlsl/REBLUR_FrontEnd_GetNormHitDist"
     struct HitDistanceParameters
     {
-        // (m) - constant value
+        // (units) - constant value
+        // IMPORTANT: if your unit is not "meter", you must convert it from "meters" to "units" manually!
         float A = 3.0f;
 
         // (> 0) - viewZ based linear scale (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
         float B = 0.1f;
 
         // (>= 1) - roughness based scale, use values > 1 to get bigger hit distance for low roughness
-        float C = 10.0f;
+        float C = 20.0f;
 
         // (<= 0) - absolute value should be big enough to collapse "exp2( D * roughness ^ 2 )" to "~0" for roughness = 1
         float D = -25.0f;
@@ -171,16 +162,16 @@ namespace nrd
     struct AntilagIntensitySettings
     {
         // (normalized %) - must be big enough to almost ignore residual noise (boiling), default is tuned for 0.5rpp in general
-        float thresholdMin = 0.04f;
+        float thresholdMin = 0.03f;
 
         // (normalized %) - max > min, usually 3-5x times greater than min
-        float thresholdMax = 0.20f;
+        float thresholdMax = 0.2f;
 
         // (> 0) - real delta is reduced by local variance multiplied by this value
         float sigmaScale = 1.0f;
 
-        // (intensity units * exposure) - the default is tuned for inputs multiplied by exposure without over-exposuring
-        float sensitivityToDarkness = 0.75f;
+        // (intensity units) - bigger values make antilag less sensitive to lightness fluctuations in dark places
+        float sensitivityToDarkness = 0.0f; // IMPORTANT: 0 is a bad default
 
         // Ideally, must be enabled, but since "sensitivityToDarkness" requires fine tuning from the app side it is disabled by default
         bool enable = false;
@@ -189,22 +180,22 @@ namespace nrd
     struct AntilagHitDistanceSettings
     {
         // (normalized %) - must almost ignore residual noise (boiling), default is tuned for 0.5rpp for the worst case
-        float thresholdMin = 0.02f;
+        float thresholdMin = 0.015f;
 
         // (normalized %) - max > min, usually 2-4x times greater than min
-        float thresholdMax = 0.10f;
+        float thresholdMax = 0.15f;
 
         // (> 0) - real delta is reduced by local variance multiplied by this value
         float sigmaScale = 1.0f;
 
         // (0; 1] - hit distances are normalized
-        float sensitivityToDarkness = 0.5f;
+        float sensitivityToDarkness = 0.1f;
 
         // Enabled by default
         bool enable = true;
     };
 
-    // REBLUR_DIFFUSE and REBLUR_DIFFUSE_OCCLUSION
+    // REBLUR_DIFFUSE, REBLUR_DIFFUSE_OCCLUSION and REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
 
     const uint32_t REBLUR_MAX_HISTORY_FRAME_NUM = 63;
 
@@ -213,6 +204,9 @@ namespace nrd
         HitDistanceParameters hitDistanceParameters = {};
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
+
+        // Spatial passes do optional material index comparison as: ( material[ center ] & materialMask ) == ( material[ sample ] & materialMask )
+        uint32_t materialMask = 0;
 
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM]
         uint32_t maxAccumulatedFrameNum = 31;
@@ -232,8 +226,8 @@ namespace nrd
         // [0; 1] - aggresiveness of history reconstruction in disoccluded regions (0 - no reconstruction)
         float historyFixStrength = 1.0f;
 
-        // (m) > 0 - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        float planeDistanceSensitivity = 0.002f;
+        // (normalized %) - represents maximum allowed deviation from local tangent plane
+        float planeDistanceSensitivity = 0.005f;
 
         // [0.01; 0.1] - default is tuned for 0.5rpp for the worst case
         float residualNoiseLevel = 0.03f;
@@ -259,13 +253,14 @@ namespace nrd
         LobeTrimmingParameters lobeTrimmingParameters = {};
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
+        uint32_t materialMask = 0;
         uint32_t maxAccumulatedFrameNum = 31;
         float blurRadius = 30.0f;
         float maxAdaptiveRadiusScale = 5.0f;
         float normalWeightStrictness = 1.0f;
         float stabilizationStrength = 1.0f;
         float historyFixStrength = 1.0f;
-        float planeDistanceSensitivity = 0.002f;
+        float planeDistanceSensitivity = 0.005f;
         float residualNoiseLevel = 0.03f;
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         PrePassMode prePassMode = PrePassMode::SIMPLE;
@@ -285,16 +280,16 @@ namespace nrd
         // enableAntiFirefly            = min( diffuse, specular )
         // enableReferenceAccumulation  = min( diffuse, specular )
 
-        ReblurDiffuseSettings diffuseSettings;
-        ReblurSpecularSettings specularSettings;
+        ReblurDiffuseSettings diffuse;
+        ReblurSpecularSettings specular;
     };
 
     // SIGMA_SHADOW and SIGMA_SHADOW_TRANSLUCENCY
 
     struct SigmaShadowSettings
     {
-        // (m) - viewZ 1m => only 2 mm deviations from surface plane are allowed
-        float planeDistanceSensitivity = 0.002f;
+        // (normalized %) - represents maximum allowed deviation from local tangent plane
+        float planeDistanceSensitivity = 0.005f;
 
         // [1; 3] - adds bias and stability if > 1
         float blurRadiusScale = 2.0f;
@@ -360,8 +355,8 @@ namespace nrd
         // A-trous edge stopping normal sensitivity for diffuse, spatial variance estimation normal sensitivity
         float phiNormal = 64.0f;
 
-        // A-trous edge stopping depth sensitivity
-        float phiDepth = 0.05f;
+        // A-trous edge stopping depth threshold
+        float depthThreshold = 0.01f;
 
         // Base fraction of the specular lobe angle used in normal based rejection of specular during A-Trous passes; 0.333 works well perceptually
         float specularLobeAngleFraction = 0.333f;
@@ -386,9 +381,6 @@ namespace nrd
 
         // Clamp specular virtual history to the current frame neighborhood
         bool enableSpecularVirtualHistoryClamping = true;
-
-        // Limit specular accumulation based on roughness
-        bool enableRoughnessBasedSpecularAccumulation = true;
 
         // Roughness based rejection
         bool enableRoughnessEdgeStopping = true;
@@ -422,7 +414,7 @@ namespace nrd
         float diffusePhiLuminance = 2.0f;
         float minLuminanceWeight = 0.0f;
         float phiNormal = 64.0f;
-        float phiDepth = 0.05f;
+        float depthThreshold = 0.01f;
 
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         bool enableSkipReprojectionTestWithoutMotion = false;
@@ -450,7 +442,7 @@ namespace nrd
         float specularPhiLuminance = 2.0f;
         float minLuminanceWeight = 0.0f;
         float phiNormal = 64.0f;
-        float phiDepth = 0.05f;
+        float depthThreshold = 0.01f;
         float specularLobeAngleFraction = 0.333f;
         float specularLobeAngleSlack = 0.3f;
         float roughnessEdgeStoppingRelaxation = 0.3f;
@@ -460,8 +452,15 @@ namespace nrd
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         bool enableSkipReprojectionTestWithoutMotion = false;
         bool enableSpecularVirtualHistoryClamping = true;
-        bool enableRoughnessBasedSpecularAccumulation = true;
         bool enableRoughnessEdgeStopping = true;
         bool enableAntiFirefly = false;
+    };
+
+    // REFERENCE
+
+    struct ReferenceSettings
+    {
+        // (> 0) - Maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
+        uint32_t maxAccumulatedFrameNum = 3600;
     };
 }

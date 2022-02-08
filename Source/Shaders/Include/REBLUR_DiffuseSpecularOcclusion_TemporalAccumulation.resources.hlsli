@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -31,8 +31,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         EXTRA_INPUTS
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<unorm float4>, gOut_InternalData, u, 0 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<unorm float4>, gOut_Error, u, 1 ) \
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 0 ) \
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Error, u, 1 ) \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float2>, gOut_Diff, u, 2 ) \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float2>, gOut_Spec, u, 3 )
 
@@ -70,8 +70,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         EXTRA_INPUTS
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<unorm float4>, gOut_InternalData, u, 0 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<unorm float4>, gOut_Error, u, 1 ) \
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 0 ) \
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Error, u, 1 ) \
        NRD_OUTPUT_TEXTURE( RWTexture2D<float2>, gOut_Diff, u, 2 )
 
     #define NRD_DECLARE_CONSTANTS \
@@ -105,8 +105,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         EXTRA_INPUTS
 
     #define NRD_DECLARE_OUTPUT_TEXTURES \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<unorm float4>, gOut_InternalData, u, 0 ) \
-        NRD_OUTPUT_TEXTURE( RWTexture2D<unorm float4>, gOut_Error, u, 1 ) \
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 0 ) \
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Error, u, 1 ) \
         NRD_OUTPUT_TEXTURE( RWTexture2D<float2>, gOut_Spec, u, 2 )
 
     #define NRD_DECLARE_CONSTANTS \

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -24,28 +24,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define NRD_DECLARE_CONSTANTS \
     NRD_CONSTANTS_START \
-        NRD_CONSTANT( float4x4, gWorldToClip ) \
-        NRD_CONSTANT( float4x4, gWorldToView ) \
-        NRD_CONSTANT( float4x4, gViewToClip ) \
+        RELAX_SHARED_CB_DATA \
         NRD_CONSTANT( float4, gRotator) \
-        NRD_CONSTANT( float4, gFrustumRight ) \
-        NRD_CONSTANT( float4, gFrustumUp ) \
-        NRD_CONSTANT( float4, gFrustumForward ) \
-        NRD_CONSTANT( uint2, gRectOrigin ) \
-        NRD_CONSTANT( float2, gRectOffset) \
-        NRD_CONSTANT( uint2, gResolution ) \
-        NRD_CONSTANT( float2, gInvViewSize ) \
-        NRD_CONSTANT( float2, gInvRectSize ) \
-        NRD_CONSTANT( float2, gResolutionScale ) \
-        NRD_CONSTANT( float, gIsOrtho ) \
-        NRD_CONSTANT( float, gUnproject ) \
-        NRD_CONSTANT( uint, gFrameIndex ) \
-        NRD_CONSTANT( float, gDenoisingRange ) \
-        NRD_CONSTANT( uint, gDiffCheckerboard ) \
-        NRD_CONSTANT( uint, gSpecCheckerboard ) \
+        NRD_CONSTANT( uint, gDiffuseCheckerboard ) \
+        NRD_CONSTANT( uint, gSpecularCheckerboard ) \
         NRD_CONSTANT( float, gDiffuseBlurRadius ) \
         NRD_CONSTANT( float, gSpecularBlurRadius ) \
         NRD_CONSTANT( float, gMeterToUnitsMultiplier ) \
+        NRD_CONSTANT( float, gDepthThreshold ) \
     NRD_CONSTANTS_END
 
 #define NRD_DECLARE_SAMPLERS \

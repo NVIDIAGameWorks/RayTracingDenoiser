@@ -5,7 +5,7 @@ set NRD_DIR=.
 rd /q /s "_NRD_SDK"
 
 mkdir "_NRD_SDK"
-cd "_NRD_SDK"
+pushd "_NRD_SDK"
 
 copy "..\%NRD_DIR%\LICENSE.txt" "."
 copy "..\%NRD_DIR%\README.md" "."
@@ -36,4 +36,6 @@ copy "..\%NRD_DIR%\External\MathLib\*.hlsli" "Shaders"
 copy "..\%NRD_DIR%\Include\*.hlsli" "Shaders"
 
 :END
+popd
+
 exit /b 0

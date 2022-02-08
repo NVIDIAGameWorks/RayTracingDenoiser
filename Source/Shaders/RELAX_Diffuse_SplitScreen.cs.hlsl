@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -33,8 +33,8 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId)
     float viewZ = gIn_ViewZ[ pixelPosUser ];
 
     uint2 checkerboardPos = pixelPos;
-    checkerboardPos.x = pixelPos.x >> (gDiffCheckerboard != 2 ? 1 : 0);
+    checkerboardPos.x = pixelPos.x >> (gDiffuseCheckerboard != 2 ? 1 : 0);
     float3 diffResult = gIn_Diff[gRectOrigin + checkerboardPos];
-    gOut_Diff[pixelPos] = diffResult * float(viewZ < gInf);
+    gOut_Diff[pixelPos] = diffResult * float(viewZ < gDenoisingRange);
 
 }

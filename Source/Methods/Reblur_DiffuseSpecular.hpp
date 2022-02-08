@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -174,7 +174,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h
             PushOutput( AsUint(Transient::SCALED_VIEWZ), i, 1 );
         }
 
-        AddDispatch( NRD_MipGeneration_Float4_Float4_Float, SumConstants(0, 0, 0, 2, false), 16, 2 );
+        AddDispatch( NRD_MipGeneration_Float4_Float4_Float, SumConstants(0, 0, 1, 2, false), 16, 2 );
     }
 
     PushPass("History fix");
@@ -268,7 +268,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h
         PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
         PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
 
-        AddDispatch( REBLUR_DiffuseSpecular_TemporalStabilization, SumConstants(2, 5, 1, 0), 8, 1 );
+        AddDispatch( REBLUR_DiffuseSpecular_TemporalStabilization, SumConstants(2, 5, 1, 2), 8, 1 );
     }
 
     PushPass("Split screen");
@@ -314,8 +314,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& met
     };
 
     const ReblurDiffuseSpecularSettings& settings = methodData.settings.diffuseSpecularReblur;
-    const ReblurDiffuseSettings& diffSettings = settings.diffuseSettings;
-    const ReblurSpecularSettings& specSettings = settings.specularSettings;
+    const ReblurDiffuseSettings& diffSettings = settings.diffuse;
+    const ReblurSpecularSettings& specSettings = settings.specular;
 
     bool enableReferenceAccumulation = diffSettings.enableReferenceAccumulation && specSettings.enableReferenceAccumulation;
     bool enablePrePass = diffSettings.prePassMode != PrePassMode::OFF && specSettings.prePassMode != PrePassMode::OFF;
@@ -356,6 +356,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& met
         specAntilag2.y = 99998.0f;
         specAntilag2.w = 99999.0f;
     }
+
+    NRD_DECLARE_DIMS;
 
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
@@ -407,6 +409,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& met
 
     // MIP_GENERATION
     data = PushDispatch(methodData, AsUint(Dispatch::MIP_GENERATION));
+    AddUint2(data, rectW, rectH);
     AddFloat(data, m_CommonSettings.denoisingRange);
     AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
@@ -461,6 +464,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuseSpecular(const MethodData& met
     AddFloat4(data, specAntilag1 );
     AddFloat4(data, specAntilag2 );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat(data, settings.diffuse.stabilizationStrength);
+    AddFloat(data, settings.specular.stabilizationStrength);
     ValidateConstants(data);
 
     // SPLIT_SCREEN
@@ -479,15 +484,13 @@ void nrd::DenoiserImpl::AddSharedConstants_ReblurDiffuseSpecular(const MethodDat
 {
     NRD_DECLARE_DIMS;
 
-    bool enableReferenceAccumulation = settings.diffuseSettings.enableReferenceAccumulation && settings.specularSettings.enableReferenceAccumulation;
-    uint32_t diffMaxAccumulatedFrameNum = ml::Min(settings.diffuseSettings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM);
-    uint32_t specMaxAccumulatedFrameNum = ml::Min(settings.specularSettings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM);
-    float planeDistanceSensitivity = ml::Min( settings.diffuseSettings.planeDistanceSensitivity, settings.specularSettings.planeDistanceSensitivity );
-    float residualNoiseLevel = ml::Min( settings.diffuseSettings.residualNoiseLevel, settings.specularSettings.residualNoiseLevel );
-    float amount = enableReferenceAccumulation ? 4.0f : ml::Saturate( ml::Min( settings.diffuseSettings.stabilizationStrength, settings.specularSettings.stabilizationStrength ) );
-    float frameRateScale = ml::Max( m_FrameRateScale * amount, 2.0f / 16.0f );
-    ml::float4 diffHitDistParams = ml::float4(settings.diffuseSettings.hitDistanceParameters.A * m_CommonSettings.meterToUnitsMultiplier, settings.diffuseSettings.hitDistanceParameters.B, settings.diffuseSettings.hitDistanceParameters.C, settings.diffuseSettings.hitDistanceParameters.D);
-    ml::float4 specHitDistParams = ml::float4(settings.specularSettings.hitDistanceParameters.A * m_CommonSettings.meterToUnitsMultiplier, settings.specularSettings.hitDistanceParameters.B, settings.specularSettings.hitDistanceParameters.C, settings.specularSettings.hitDistanceParameters.D);
+    bool enableReferenceAccumulation = settings.diffuse.enableReferenceAccumulation && settings.specular.enableReferenceAccumulation;
+    uint32_t diffMaxAccumulatedFrameNum = ml::Min(settings.diffuse.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM);
+    uint32_t specMaxAccumulatedFrameNum = ml::Min(settings.specular.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM);
+    float planeDistanceSensitivity = ml::Min( settings.diffuse.planeDistanceSensitivity, settings.specular.planeDistanceSensitivity );
+    float residualNoiseLevel = ml::Min( settings.diffuse.residualNoiseLevel, settings.specular.residualNoiseLevel );
+    ml::float4 diffHitDistParams = ml::float4(settings.diffuse.hitDistanceParameters.A, settings.diffuse.hitDistanceParameters.B, settings.diffuse.hitDistanceParameters.C, settings.diffuse.hitDistanceParameters.D);
+    ml::float4 specHitDistParams = ml::float4(settings.specular.hitDistanceParameters.A, settings.specular.hitDistanceParameters.B, settings.specular.hitDistanceParameters.C, settings.specular.hitDistanceParameters.D);
 
     // DRS will increase reprojected values, needed for stability, compensated by blur radius adjustment
     float unproject = 1.0f / (0.5f * rectH * m_ProjectY);
@@ -517,17 +520,17 @@ void nrd::DenoiserImpl::AddSharedConstants_ReblurDiffuseSpecular(const MethodDat
     AddFloat(data, m_CommonSettings.debug);
 
     AddFloat(data, m_CommonSettings.denoisingRange);
-    AddFloat(data, 1.0f / (m_CommonSettings.meterToUnitsMultiplier * planeDistanceSensitivity));
-    AddFloat(data, frameRateScale);
+    AddFloat(data, planeDistanceSensitivity);
+    AddFloat(data, m_FrameRateScale);
     AddFloat(data, residualNoiseLevel);
 
     AddFloat(data, float( enableReferenceAccumulation ? REBLUR_MAX_HISTORY_FRAME_NUM : diffMaxAccumulatedFrameNum ) );
     AddFloat(data, float( enableReferenceAccumulation ? REBLUR_MAX_HISTORY_FRAME_NUM : specMaxAccumulatedFrameNum) );
-    AddFloat(data, m_CommonSettings.meterToUnitsMultiplier);
+    AddFloat(data, 0.0f);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
 
     AddUint(data, m_CommonSettings.frameIndex);
     AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
-    AddUint(data, m_CommonSettings.isRadianceMultipliedByExposure ? 1 : 0);
-    AddUint(data, 0);
+    AddUint(data, settings.diffuse.materialMask);
+    AddUint(data, settings.specular.materialMask);
 }

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -51,10 +51,10 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 #define NRD_DECLARE_DIMS \
     uint16_t screenW = methodData.desc.fullResolutionWidth; \
     uint16_t screenH = methodData.desc.fullResolutionHeight; \
-    uint16_t rectW = uint16_t(screenW * m_CommonSettings.resolutionScale[0] + 0.5f); \
-    uint16_t rectH = uint16_t(screenH * m_CommonSettings.resolutionScale[1] + 0.5f); \
-    uint16_t rectWprev = uint16_t(screenW * m_ResolutionScalePrev.x + 0.5f); \
-    uint16_t rectHprev = uint16_t(screenH * m_ResolutionScalePrev.y + 0.5f)
+    [[maybe_unused]] uint16_t rectW = uint16_t(screenW * m_CommonSettings.resolutionScale[0] + 0.5f); \
+    [[maybe_unused]] uint16_t rectH = uint16_t(screenH * m_CommonSettings.resolutionScale[1] + 0.5f); \
+    [[maybe_unused]] uint16_t rectWprev = uint16_t(screenW * m_ResolutionScalePrev.x + 0.5f); \
+    [[maybe_unused]] uint16_t rectHprev = uint16_t(screenH * m_ResolutionScalePrev.y + 0.5f)
 
 namespace nrd
 {
@@ -85,6 +85,7 @@ namespace nrd
         RelaxDiffuseSettings diffuseRelax;
         RelaxSpecularSettings specularRelax;
         RelaxDiffuseSpecularSettings diffuseSpecularRelax;
+        ReferenceSettings reference;
     };
 
     struct MethodData
@@ -129,13 +130,6 @@ namespace nrd
         size_t AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t h);
         void UpdateMethod_ReblurDiffuseOcclusion(const MethodData& methodData);
 
-        size_t AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodData);
-        void AddSharedConstants_ReblurDiffuseSpecular(const MethodData& methodData, const ReblurDiffuseSpecularSettings& settings, Constant*& data);
-
-        size_t AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurDiffuseSpecularOcclusion(const MethodData& methodData);
-
         size_t AddMethod_ReblurSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_ReblurSpecular(const MethodData& methodData);
         void AddSharedConstants_ReblurSpecular(const MethodData& methodData, const ReblurSpecularSettings& settings, Constant*& data);
@@ -143,12 +137,24 @@ namespace nrd
         size_t AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t h);
         void UpdateMethod_ReblurSpecularOcclusion(const MethodData& methodData);
 
+        size_t AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodData);
+        void AddSharedConstants_ReblurDiffuseSpecular(const MethodData& methodData, const ReblurDiffuseSpecularSettings& settings, Constant*& data);
+
+        size_t AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurDiffuseSpecularOcclusion(const MethodData& methodData);
+
+        size_t AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w, uint16_t h);
+        void UpdateMethod_ReblurDiffuseDirectionalOcclusion(const MethodData& methodData);
+
         size_t AddMethod_SigmaShadow(uint16_t w, uint16_t h);
         void UpdateMethod_SigmaShadow(const MethodData& methodData);
         void AddSharedConstants_SigmaShadow(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data);
 
         size_t AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h);
         void UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData);
+
+        void AddSharedConstants_Relax(const MethodData& methodData, Constant*& data);
 
         size_t AddMethod_RelaxDiffuse(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxDiffuse(const MethodData& methodData);
@@ -158,6 +164,9 @@ namespace nrd
 
         size_t AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodData);
+
+        size_t AddMethod_Reference(uint16_t w, uint16_t h);
+        void UpdateMethod_Reference(const MethodData& methodData);
 
     // Internal
     public:
@@ -199,9 +208,21 @@ namespace nrd
         Result SetMethodSettings(Method method, const void* methodSettings);
 
     private:
+        void AddComputeDispatchDesc
+        (
+            uint8_t workgroupDimX,
+            uint8_t workgroupDimY,
+            uint16_t downsampleFactor,
+            uint32_t constantBufferDataSize,
+            uint32_t maxRepeatNum,
+            const char* shaderFileName,
+            const ComputeShader& dxbc,
+            const ComputeShader& dxil,
+            const ComputeShader& spirv
+        );
+
         void Optimize();
         void PrepareDesc();
-        void AddComputeDispatchDesc(uint8_t workgroupDimX, uint8_t workgroupDimY, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const ComputeShader& dxbc, const ComputeShader& dxil, const ComputeShader& spirv);
         void UpdatePingPong(const MethodData& methodData);
         void UpdateCommonSettings(const CommonSettings& commonSettings);
         void PushTexture(DescriptorType descriptorType, uint16_t index, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith = uint16_t(-1));
@@ -261,8 +282,8 @@ namespace nrd
         {
             const DispatchDesc& dispatchDesc = m_ActiveDispatches.back();
 
-            size_t num = size_t(lastConstant - (const Constant*)dispatchDesc.constantBufferData);
-            size_t bytes = num * sizeof(uint32_t);
+            [[maybe_unused]] size_t num = size_t(lastConstant - (const Constant*)dispatchDesc.constantBufferData);
+            [[maybe_unused]] size_t bytes = num * sizeof(uint32_t);
             assert( bytes == dispatchDesc.constantBufferDataSize );
         }
 
@@ -270,7 +291,7 @@ namespace nrd
         {
             float a = ml::Min(m_ResolutionScalePrev.x, m_ResolutionScalePrev.y);
             float b = ml::Min(m_CommonSettings.resolutionScale[0], m_CommonSettings.resolutionScale[1]);
-            
+
             return ml::Min(a, b);
         }
 
@@ -319,6 +340,7 @@ namespace nrd
         float m_TimeDelta = 0.0f;
         float m_FrameRateScale = 0.0f;
         uint32_t m_SharedConstantNum = 0;
+        uint32_t m_AccumulatedFrameNum = 0;
         uint16_t m_TransientPoolOffset = 0;
         uint16_t m_PermanentPoolOffset = 0;
         float m_ProjectY = 0.0f; // TODO: NRD assumes that there are no checkerboard "tricks" in Y direction, so no a separate m_ProjectX

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -145,7 +145,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
             PushOutput( AsUint(Transient::SCALED_VIEWZ), i, 1 );
         }
 
-        AddDispatch( NRD_MipGeneration_Float4_Float, SumConstants(0, 0, 0, 2, false), 16, 2 );
+        AddDispatch( NRD_MipGeneration_Float4_Float, SumConstants(0, 0, 1, 2, false), 16, 2 );
     }
 
     PushPass("History fix");
@@ -224,7 +224,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
         PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
 
-        AddDispatch( REBLUR_Diffuse_TemporalStabilization, SumConstants(2, 3, 1, 0), 16, 1 );
+        AddDispatch( REBLUR_Diffuse_TemporalStabilization, SumConstants(2, 3, 1, 1), 16, 1 );
     }
 
     PushPass("Split screen");
@@ -286,6 +286,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
         diffAntilag2.w = 99999.0f;
     }
 
+    NRD_DECLARE_DIMS;
+
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
@@ -329,6 +331,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
 
     // MIP_GENERATION
     data = PushDispatch(methodData, AsUint(Dispatch::MIP_GENERATION));
+    AddUint2(data, rectW, rectH);
     AddFloat(data, m_CommonSettings.denoisingRange);
     AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
@@ -374,6 +377,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuse(const MethodData& methodData)
     AddFloat4(data, diffAntilag1 );
     AddFloat4(data, diffAntilag2 );
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat(data, settings.stabilizationStrength);
     ValidateConstants(data);
 
     // SPLIT_SCREEN
@@ -393,9 +397,7 @@ void nrd::DenoiserImpl::AddSharedConstants_ReblurDiffuse(const MethodData& metho
 
     uint32_t maxAccumulatedFrameNum = ml::Min(settings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM);
     float blurRadius = settings.enableReferenceAccumulation ? 0.0f : (settings.blurRadius * GetMinResolutionScale());
-    float amount = settings.enableReferenceAccumulation ? 4.0f : ml::Saturate( settings.stabilizationStrength );
-    float frameRateScale = ml::Max( m_FrameRateScale * amount, 2.0f / 16.0f );
-    ml::float4 diffHitDistParams = ml::float4(settings.hitDistanceParameters.A * m_CommonSettings.meterToUnitsMultiplier, settings.hitDistanceParameters.B, settings.hitDistanceParameters.C, settings.hitDistanceParameters.D);
+    ml::float4 diffHitDistParams = ml::float4(settings.hitDistanceParameters.A, settings.hitDistanceParameters.B, settings.hitDistanceParameters.C, settings.hitDistanceParameters.D);
 
     // DRS will increase reprojected values, needed for stability, compensated by blur radius adjustment
     float unproject = 1.0f / (0.5f * rectH * m_ProjectY);
@@ -424,17 +426,17 @@ void nrd::DenoiserImpl::AddSharedConstants_ReblurDiffuse(const MethodData& metho
     AddFloat(data, m_CommonSettings.debug);
 
     AddFloat(data, m_CommonSettings.denoisingRange);
-    AddFloat(data, 1.0f / (m_CommonSettings.meterToUnitsMultiplier * settings.planeDistanceSensitivity));
-    AddFloat(data, frameRateScale);
+    AddFloat(data, settings.planeDistanceSensitivity);
+    AddFloat(data, m_FrameRateScale);
     AddFloat(data, blurRadius);
 
     AddFloat(data, float( settings.enableReferenceAccumulation ? REBLUR_MAX_HISTORY_FRAME_NUM : maxAccumulatedFrameNum ));
     AddFloat(data, settings.residualNoiseLevel);
     AddFloat(data, m_JitterDelta);
-    AddFloat(data, m_CommonSettings.meterToUnitsMultiplier);
+    AddFloat(data, 0.0f);
 
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
     AddUint(data, m_CommonSettings.frameIndex);
     AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
-    AddUint(data, m_CommonSettings.isRadianceMultipliedByExposure ? 1 : 0);
+    AddUint(data, settings.materialMask);
 }

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -25,7 +25,7 @@ groupshared uint s_Mask;
 groupshared uint s_Radius;
 
 [numthreads( 8, 4, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( uint2 threadId : SV_GroupThreadId, uint2 tilePos : SV_GroupId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos : SV_GroupId, uint threadIndex : SV_GroupIndex )
 {
     if( threadIndex == 0 )
     {
@@ -35,7 +35,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadId : SV_GroupThreadId, uint2 tilePos : 
 
     GroupMemoryBarrier();
 
-    uint2 pixelPos = tilePos * 16 + threadId * uint2( 2, 4 );
+    uint2 pixelPos = tilePos * 16 + threadPos * uint2( 2, 4 );
 
     uint mask = 0;
     float maxRadius = 0.0;

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -53,6 +53,43 @@ float4 BicubicFloat4(Texture2D<float4> tex, SamplerState samp, float2 samplePos,
     return result / ((w0.x * w12.y) + (w12.x * w0.y) + (w12.x * w12.y) + (w12.x * w3.y) + (w3.x * w12.y));
 }
 
+void BicubicFloat4x2(out float4 result1, out float4 result2, Texture2D<float4> tex1, Texture2D<float4> tex2, SamplerState samp, float2 samplePos, float2 invViewSize)
+{
+    float2 tc = floor(samplePos - 0.5) + 0.5;
+    float2 f = saturate(samplePos - tc);
+
+    float2 f2 = f * f;
+    float2 f3 = f2 * f;
+
+    float c = 0.5; // Sharpness: 0.5 is standard for Catmull-Rom
+    float2 w0 = -c * f3 + 2.0 * c * f2 - c * f;
+    float2 w1 = (2.0 - c) * f3 - (3.0 - c) * f2 + 1.0;
+    float2 w2 = -(2.0 - c) * f3 + (3.0 - 2.0 * c) * f2 + c * f;
+    float2 w3 = c * f3 - c * f2;
+    float2 w12 = w1 + w2;
+
+    float2 tc0 = (tc - 1.0) * invViewSize;
+    float2 tc12 = (tc + w2 / w12) * invViewSize;
+    float2 tc3 = (tc + 2.0) * invViewSize;
+
+    result1 =
+        tex1.SampleLevel(samp, float2(tc0.x, tc12.y), 0).rgba * (w0.x * w12.y) +
+        tex1.SampleLevel(samp, float2(tc12.x, tc0.y), 0).rgba * (w12.x * w0.y) +
+        tex1.SampleLevel(samp, float2(tc12.x, tc12.y), 0).rgba * (w12.x * w12.y) +
+        tex1.SampleLevel(samp, float2(tc12.x, tc3.y), 0).rgba * (w12.x * w3.y) +
+        tex1.SampleLevel(samp, float2(tc3.x, tc12.y), 0).rgba * (w3.x * w12.y);
+
+    result2 =
+        tex2.SampleLevel(samp, float2(tc0.x, tc12.y), 0).rgba * (w0.x * w12.y) +
+        tex2.SampleLevel(samp, float2(tc12.x, tc0.y), 0).rgba * (w12.x * w0.y) +
+        tex2.SampleLevel(samp, float2(tc12.x, tc12.y), 0).rgba * (w12.x * w12.y) +
+        tex2.SampleLevel(samp, float2(tc12.x, tc3.y), 0).rgba * (w12.x * w3.y) +
+        tex2.SampleLevel(samp, float2(tc3.x, tc12.y), 0).rgba * (w3.x * w12.y);
+    float norm = 1.0 / ((w0.x * w12.y) + (w12.x * w0.y) + (w12.x * w12.y) + (w12.x * w3.y) + (w3.x * w12.y));
+
+    result1 *= norm;
+    result2 *= norm;
+}
 
 float BilinearWithBinaryWeightsFloat(Texture2D<float> tex, int2 bilinearOrigin, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
 {
@@ -156,16 +193,40 @@ float4 BilinearWithBinaryWeightsImmediateFloat4(float4 s00, float4 s10, float4 s
     return r;
 }
 
-float GetPlaneDistanceWeight(float planeDistance, float linearZ, float relativeThreshold)
+float3 GetCurrentWorldPos(int2 pixelPos, float depth)
 {
-    float relativeDistance = planeDistance / linearZ;
-    return relativeDistance / relativeThreshold;
+    float2 clipSpaceXY = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
+    return (gIsOrtho == 0) ?
+        depth * (gFrustumForward.xyz + gFrustumRight.xyz * clipSpaceXY.x - gFrustumUp.xyz * clipSpaceXY.y) :
+        depth * gFrustumForward.xyz + gFrustumRight.xyz * clipSpaceXY.x - gFrustumUp.xyz * clipSpaceXY.y;
 }
 
-float GetGeometryWeight(float3 centerWorldPos, float3 centerNormal, float centerLinearZ, float3 sampleWorldPos, float phiDepth)
+float3 GetCurrentWorldPos(float2 clipSpaceXY, float depth)
+{
+    return (gIsOrtho == 0) ?
+        depth * (gFrustumForward.xyz + gFrustumRight.xyz * clipSpaceXY.x - gFrustumUp.xyz * clipSpaceXY.y) :
+        depth * gFrustumForward.xyz + gFrustumRight.xyz * clipSpaceXY.x - gFrustumUp.xyz * clipSpaceXY.y;
+}
+
+float3 GetPreviousWorldPos(int2 pixelPos, float depth)
+{
+    float2 clipSpaceXY = ((float2)pixelPos + float2(0.5, 0.5)) * (1.0 / gRectSizePrev) * 2.0 - 1.0;
+    return (gIsOrtho == 0) ?
+        depth * (gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * clipSpaceXY.x - gPrevFrustumUp.xyz * clipSpaceXY.y) :
+        depth * gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * clipSpaceXY.x - gPrevFrustumUp.xyz * clipSpaceXY.y;
+}
+
+float3 GetPreviousWorldPos(float2 clipSpaceXY, float depth)
+{
+    return (gIsOrtho == 0) ?
+        depth * (gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * clipSpaceXY.x - gPrevFrustumUp.xyz * clipSpaceXY.y) :
+        depth * gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * clipSpaceXY.x - gPrevFrustumUp.xyz * clipSpaceXY.y;
+}
+
+float GetPlaneDistanceWeight(float3 centerWorldPos, float3 centerNormal, float centerViewZ, float3 sampleWorldPos, float threshold)
 {
     float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
-    return GetPlaneDistanceWeight(distanceToCenterPointPlane, centerLinearZ, phiDepth);
+    return 1.0 - STL::Math::SmoothStep(threshold, threshold * 2.0, distanceToCenterPointPlane / centerViewZ);
 }
 
 float GetDiffuseNormalWeight_ATrous(float3 centerNormal, float3 sampleNormal, float phiNormal)

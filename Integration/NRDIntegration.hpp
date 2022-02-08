@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -75,6 +75,7 @@ constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM - 2> g_NRD_
     "IN_SPEC_RADIANCE_HITDIST ",
     "IN_DIFF_HITDIST ",
     "IN_SPEC_HITDIST ",
+    "IN_DIFF_DIRECTION_HITDIST ",
     "IN_DIFF_DIRECTION_PDF ",
     "IN_SPEC_DIRECTION_PDF ",
     "IN_DIFF_CONFIDENCE ",
@@ -94,13 +95,12 @@ static inline nri::Format NRD_GetNriFormat(nrd::Format format)
     return g_NRD_NrdToNriFormat[(uint32_t)format];
 }
 
-static inline uint64_t NRD_CreateDescriptorKey(bool isStorage, uint8_t poolIndex, uint16_t indexInPool, uint8_t mipOffset, uint8_t mipNum)
+static inline uint64_t NRD_CreateDescriptorKey(const nri::Texture* texture, bool isStorage, uint8_t mipOffset, uint8_t mipNum)
 {
-    uint64_t key = isStorage ? 1 : 0;
-    key |= uint64_t(poolIndex) << 1ull;
-    key |= uint64_t(indexInPool) << 9ull;
-    key |= uint64_t(mipOffset) << 25ull;
-    key |= uint64_t(mipNum) << 33ull;
+    uint64_t key = uint64_t(isStorage ? 1 : 0) << 48ull;
+    key |= uint64_t(mipOffset & 127) << 49ull;
+    key |= uint64_t(mipNum) << 56ull;
+    key |= uint64_t(texture);
 
     return key;
 }
@@ -474,7 +474,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
             }
 
             const bool isStorage = descriptorRangeDesc.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE;
-            uint64_t key = NRD_CreateDescriptorKey(isStorage, (uint8_t)nrdResource.type, nrdResource.indexInPool, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum);
+            uint64_t key = NRD_CreateDescriptorKey(nrdTexture->subresourceStates->texture, isStorage, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum);
             const auto& entry = m_Descriptors.find(key);
 
             nri::Descriptor* descriptor = nullptr;

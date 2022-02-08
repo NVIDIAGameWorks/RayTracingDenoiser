@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -37,22 +37,25 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
     // Blur radius
-    float hitDist = GetHitDist( center, viewZ, gDiffHitDistParams, 1.0 );
+    float hitDist = REBLUR_GetHitDist( center, viewZ, gDiffHitDistParams, 1.0 );
     float blurRadius = GetBlurRadius( radius, hitDist, viewZ, diffInternalData.x, radiusBias, radiusScale );
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
+    float hitDistFactor = hitDist / ( hitDist + frustumHeight );
+
     float3 Vv = GetViewVector( Xv, true );
     float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams( diffInternalData.x, curvature, viewZ, 1.0, gNormalWeightStrictness * strictness );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
+    float normalWeightParams = GetNormalWeightParams( diffInternalData.x, viewZ, 1.0, gNormalWeightStrictness * strictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center, diffInternalData.x );
     float sum = 1.0;
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
+        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
     #else
-        float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
+        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
     #endif
 
     [unroll]
@@ -76,15 +79,22 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gIsOrtho );
 
-        float materialIDs;
+        uint materialIDs;
         Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
         // Sample weight
         float w = IsInScreen( uv );
-        w *= float( materialIDs == materialID );
+        w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
         w *= GetGaussianWeight( offset.z );
 
-        float ww = GetCombinedWeight( w, geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, hitDistanceWeightParams, s.x, minwh ).y;
+        float ww = GetCombinedWeight( w, geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, hitDistanceWeightParams, s.x, minHitDistWeight ).y;
+
+        #if( REBLUR_DEBUG_SPATIAL_DENSITY_CHECK == 1 )
+            ww = IsInScreen( uv );
+        #endif
+
+        // Get rid of potentially bad values outside of the screen
+        s = w ? s : 0;
 
         diff += s.x * ww;
         sum += ww;
@@ -93,7 +103,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     diff *= STL::Math::PositiveRcp( sum );
 
     // Estimate error
-    error.x = GetColorErrorForAdaptiveRadiusScale( diff.xxxx, center.xxxx, diffInternalData.x, 1.0, true );
+    error.x = GetColorErrorForAdaptiveRadiusScale( diff, center, diffInternalData.x, 1.0, REBLUR_SPATIAL_MODE );
 
     // Input mix
     diff = lerp( diff, center, REBLUR_INPUT_MIX.y );

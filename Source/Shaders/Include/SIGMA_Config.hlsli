@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -44,7 +44,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gInf ) \
     NRD_CONSTANT( float, gPlaneDistSensitivity ) \
     NRD_CONSTANT( float, gBlurRadiusScale ) \
-    NRD_CONSTANT( float, gMeterToUnitsMultiplier ) \
+    NRD_CONSTANT( float, gUnused2 ) \
     NRD_CONSTANT( uint, gWorldSpaceMotion ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gUnused1 )

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -75,7 +75,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         for( uint16_t i = 1; i < MIP_NUM; i++ )
             PushOutput( AsUint(Transient::SPEC_ACCUMULATED), i, 1 );
 
-        AddDispatch( NRD_MipGeneration_Float2, SumConstants(0, 0, 0, 2, false), 16, 2 );
+        AddDispatch( NRD_MipGeneration_Float2, SumConstants(0, 0, 1, 2, false), 16, 2 );
     }
 
     PushPass("History fix");
@@ -163,6 +163,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurSpecularOcclusion(const MethodData& m
         specAntilag2.w = 99999.0f;
     }
 
+    NRD_DECLARE_DIMS;
+
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
@@ -192,6 +194,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurSpecularOcclusion(const MethodData& m
 
     // MIP_GENERATION
     data = PushDispatch(methodData, AsUint(Dispatch::MIP_GENERATION));
+    AddUint2(data, rectW, rectH);
     AddFloat(data, m_CommonSettings.denoisingRange);
     AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);

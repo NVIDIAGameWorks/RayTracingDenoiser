@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -34,12 +34,14 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupId, uint threadID : SV_Grou
 {
     uint2 localID = uint2( threadID & 15, threadID >> 4 );
     uint2 globalID = groupID * 16 + localID;
-    uint3 coord = uint3( globalID << 1, 0 );
 
-    float2 a00 = gIn_A.Load( coord, int2( 0, 0 ) );
-    float2 a10 = gIn_A.Load( coord, int2( 1, 0 ) );
-    float2 a01 = gIn_A.Load( coord, int2( 0, 1 ) );
-    float2 a11 = gIn_A.Load( coord, int2( 1, 1 ) );
+    uint2 coord = globalID << 1;
+    uint4 coords = min( coord.xyxy + uint4( 0, 0, 1, 1 ), gRectSize.xyxy - 1 );
+
+    float2 a00 = gIn_A[ coords.xy ];
+    float2 a10 = gIn_A[ coords.zy ];
+    float2 a01 = gIn_A[ coords.xw ];
+    float2 a11 = gIn_A[ coords.zw ];
 
     float2 a;
     DO_REDUCTION;

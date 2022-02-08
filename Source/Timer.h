@@ -28,8 +28,8 @@ namespace nrd
     private:
         uint64_t m_Time = 0;
         double m_InvTicksPerMs = 0.0;
-        float m_Delta = 0.0f;
-        float m_SmoothedDelta = 0.0f;
-        float m_VerySmoothedDelta = 0.0f;
+        float m_Delta = 1.0f;
+        float m_SmoothedDelta = 1.0f;
+        float m_VerySmoothedDelta = 1.0f;
     };
 }

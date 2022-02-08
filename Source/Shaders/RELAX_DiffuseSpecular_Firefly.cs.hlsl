@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -55,7 +55,7 @@ void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId,
     float3 normal = 0;
     float viewZ = 0;
 
-    if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+    if ((xx >= 0) && (yy >= 0) && (xx < (int)gRectSize.x) && (yy < (int)gRectSize.y))
     {
         specularIllumination = gSpecularIllumination[int2(xx, yy)];
         diffuseIllumination = gDiffuseIllumination[int2(xx, yy)];
@@ -83,7 +83,7 @@ void PopulateSharedMemoryForFirefly(uint2 dispatchThreadId, uint2 groupThreadId,
 
     if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
     {
-        if ((xx >= 0) && (yy >= 0) && (xx < gResolution.x) && (yy < gResolution.y))
+        if ((xx >= 0) && (yy >= 0) && (xx < (int)gRectSize.x) && (yy < (int)gRectSize.y))
         {
             specularIllumination = gSpecularIllumination[int2(xx, yy)];
             diffuseIllumination = gDiffuseIllumination[int2(xx, yy)];
@@ -134,8 +134,7 @@ void runRCRS(int2 dispatchThreadId, int2 groupThreadId, float3 centerNormal, flo
             int2 sharedMemoryIndexSample = groupThreadId.xy + int2(SKIRT, SKIRT) + int2(xx,yy);
 
             if ((xx == 0) && (yy == 0)) continue;
-            if ((p.x < 0) || (p.x >= gResolution.x)) continue;
-            if ((p.y < 0) || (p.y >= gResolution.y)) continue;
+            if (any(p < int2(0, 0)) || any(p >= (int2)gRectSize)) continue;
 
             // Fetching sample data
             float4 v = sharedNormalAndViewZ[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];

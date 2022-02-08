@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -22,18 +22,6 @@ NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
 
 // Helper functions
-float3 getCurrentWorldPos(int2 pixelPos, float depth)
-{
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
-    return depth * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
-}
-
-float getGeometryWeight(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float centerLinearZ)
-{
-    float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
-    return (distanceToCenterPointPlane / (centerLinearZ + 1e-6) > gDisocclusionThreshold) ? 0.0 : 1.0;
-}
-
 float GetRadius(float numFramesInHistory)
 {
     return gMaxRadius / (numFramesInHistory + 1.0);
@@ -97,7 +85,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId)
     float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[ipos]);
     float3 centerNormal = centerNormalRoughness.rgb;
     float centerRoughness = centerNormalRoughness.a;
-    float3 centerWorldPos = getCurrentWorldPos(ipos, centerViewZ);
+    float3 centerWorldPos = GetCurrentWorldPos(ipos, centerViewZ);
     float3 centerV = normalize(centerWorldPos);
     float3 centerR = reflect(centerV, centerNormal);
     float2 normalWeightParams = getNormalWeightParams(centerRoughness, historyLength);
@@ -119,7 +107,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId)
 
         int2 samplePosInt = (int2)ipos + int2(dx, dy);
 
-        bool isInside = all(samplePosInt >= int2(0, 0)) && all(samplePosInt < gResolution);
+        bool isInside = all(samplePosInt >= int2(0, 0)) && all(samplePosInt < int2(gRectSize));
         if ((i == 0) && (j == 0)) continue;
 
         float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[samplePosInt]).rgb;
@@ -128,8 +116,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint3 dispatchThreadId : SV_DispatchThreadId)
 
         // Edge stopping functions:
         // ..geometry
-        float3 sampleWorldPos = getCurrentWorldPos(samplePosInt, sampleViewZ);
-        float geometryWeight = getGeometryWeight(centerWorldPos, centerNormal, sampleWorldPos, centerViewZ);
+        float3 sampleWorldPos = GetCurrentWorldPos(samplePosInt, sampleViewZ);
+        float geometryWeight = GetPlaneDistanceWeight(
+                                    centerWorldPos,
+                                    centerNormal,
+                                    gIsOrtho == 0 ? centerViewZ : 1.0,
+                                    sampleWorldPos,
+                                    gDepthThreshold);
+
         float specularW = geometryWeight;
 
         // ..specular lobe

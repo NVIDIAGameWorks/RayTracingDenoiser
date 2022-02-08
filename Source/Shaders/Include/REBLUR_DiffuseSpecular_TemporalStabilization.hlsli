@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -29,23 +29,24 @@ NRD_DECLARE_OUTPUT_TEXTURES
 groupshared float4 s_Diff[ BUFFER_Y ][ BUFFER_X ];
 groupshared float4 s_Spec[ BUFFER_Y ][ BUFFER_X ];
 
-void Preload( int2 sharedId, int2 globalId )
+void Preload( uint2 sharedPos, int2 globalPos )
 {
-    uint2 globalIdUser = gRectOrigin + globalId;
+    globalPos = clamp( globalPos, 0, gRectSize - 1.0 );
+    uint2 globalIdUser = gRectOrigin + globalPos;
 
-    s_ViewZ[ sharedId.y ][ sharedId.x ] = abs( gIn_ViewZ[ globalIdUser ] );
+    s_ViewZ[ sharedPos.y ][ sharedPos.x ] = abs( gIn_ViewZ[ globalIdUser ] );
 
     #if( defined REBLUR_DIFFUSE )
-        s_Diff[ sharedId.y ][ sharedId.x ] = gIn_Diff[ globalId ];
+        s_Diff[ sharedPos.y ][ sharedPos.x ] = gIn_Diff[ globalPos ];
     #endif
 
     #if( defined REBLUR_SPECULAR )
-        s_Spec[ sharedId.y ][ sharedId.x ] = gIn_Spec[ globalId ];
+        s_Spec[ sharedPos.y ][ sharedPos.x ] = gIn_Spec[ globalPos ];
     #endif
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
@@ -53,7 +54,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     PRELOAD_INTO_SMEM;
 
     // Early out
-    int2 smemPos = threadId + BORDER;
+    int2 smemPos = threadPos + BORDER;
     float viewZ = s_ViewZ[ smemPos.y ][ smemPos.x ];
 
     [branch]
@@ -71,6 +72,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     // Position
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gIsOrtho );
     float3 X = STL::Geometry::AffineTransform( gViewToWorld, Xv );
+
+    // Anti-firefly ( not needed for hit distance )
+    float3 diffMaxInput = -NRD_INF;
+    float3 diffMinInput = NRD_INF;
+
+    float3 specMaxInput = -NRD_INF;
+    float3 specMinInput = NRD_INF;
 
     // Local variance
     float viewZnearest = viewZ;
@@ -98,7 +106,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
             if( dx == BORDER && dy == BORDER )
                 continue;
 
-            int2 pos = threadId + int2( dx, dy );
+            int2 pos = threadPos + int2( dx, dy );
             float z = s_ViewZ[ pos.y ][ pos.x ];
 
             int2 t1 = int2( dx, dy ) - BORDER;
@@ -116,12 +124,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
                 float4 d = s_Diff[ pos.y ][ pos.x ];
                 diffM1 += d * w;
                 diffM2 += d * d * w;
+                diffMaxInput = max( diffMaxInput, d.xyz );
+                diffMinInput = min( diffMinInput, d.xyz );
             #endif
 
             #if( defined REBLUR_SPECULAR )
                 float4 s = s_Spec[ pos.y ][ pos.x ];
                 specM1 += s * w;
                 specM2 += s * s * w;
+                specMaxInput = max( specMaxInput, s.xyz );
+                specMinInput = min( specMinInput, s.xyz );
             #endif
         }
     }
@@ -132,12 +144,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
         diffM1 *= invSum;
         diffM2 *= invSum;
         float4 diffSigma = GetStdDev( diffM1, diffM2 );
+
+        float3 diffClamped = clamp( diff.xyz, diffMinInput, diffMaxInput );
+        diff.xyz = diffClamped;
     #endif
 
     #if( defined REBLUR_SPECULAR )
         specM1 *= invSum;
         specM2 *= invSum;
         float4 specSigma = GetStdDev( specM1, specM2 );
+
+        float3 specClamped = clamp( spec.xyz, specMinInput, specMaxInput );
+        spec.xyz = lerp( spec.xyz, specClamped, GetSpecMagicCurve( roughness ) );
     #endif
 
     // Compute previous pixel position
@@ -195,80 +213,62 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     #if( defined REBLUR_DIFFUSE )
         // Antilag
         float diffAntilag = ComputeAntilagScale( diffInternalData.y, diffHistory, diff, diffM1, diffSigma, gDiffAntilag1, gDiffAntilag2, curvature );
-        diffInternalData.y *= diffAntilag;
+
+        float diffMipScale = lerp( 0.0, 1.0, REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
+        float diffMinAccumSpeed = min( diffInternalData.y, GetMipLevel( 1.0 ) * diffMipScale );
+        diffInternalData.y = lerp( diffMinAccumSpeed, diffInternalData.y, diffAntilag );
 
         // Clamp history and combine with the current frame
-        float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffInternalData.y, parallax );
+        float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffInternalData.y );
         diffTemporalAccumulationParams.x *= diffAntilag;
 
         diffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, diffHistory );
-        float diffHistoryWeight = 1.0 - REBLUR_TS_MAX_HISTORY_WEIGHT * diffTemporalAccumulationParams.x;
 
-        float4 diffResult;
-        diffResult.xyz = lerp( diffHistory.xyz, diff.xyz, diffHistoryWeight );
-        diffResult.w = lerp( diffHistory.w, diff.w, max( diffHistoryWeight, REBLUR_HIT_DIST_MIN_ACCUM_SPEED( 1.0 ) ) );
+        float diffHistoryWeight = ( gFramerateScale * REBLUR_TS_ACCUM_TIME ) / ( 1.0 + gFramerateScale * REBLUR_TS_ACCUM_TIME );
+        diffHistoryWeight *= diffTemporalAccumulationParams.x;
+        diffHistoryWeight *= gDiffStabilizationStrength;
+        diffHistoryWeight = 1.0 - diffHistoryWeight;
+        #if( REBLUR_DEBUG_SPATIAL_DENSITY_CHECK == 1 )
+            diffHistoryWeight = 1.0;
+        #endif
+
+        float4 diffResult = MixHistoryAndCurrent( diffHistory, diff, diffHistoryWeight );
         diffResult = Sanitize( diffResult, diff );
-
-        // Output
-        gOut_Diff[ pixelPos ] = diffResult;
 
         // User-visible debug output
         #if( REBLUR_DEBUG != 0 )
             uint diffMode = REBLUR_DEBUG;
-            if( diffMode == 1 )
-            {
-                // Accumulated frame num
+            if( diffMode == 1 ) // Accumulated frame num
                 diffResult.w = saturate( diffInternalData.y / ( gDiffMaxAccumulatedFrameNum + 1.0 ) );
-            }
-            else if( diffMode == 2 )
-            {
-                // Curvature
-                diffResult.w = curvature;
-            }
-            else if( diffMode == 3 )
-            {
-                // Error
+            else if( diffMode == 2 ) // Curvature magnitude
+                diffResult.w = abs( curvature );
+            else if( diffMode == 3 ) // Curvature sign
+                diffResult.w = curvature < 0 ? 1 : 0;
+            else if( diffMode == 4 ) // Error
                 diffResult.w = error.x;
-            }
-            else if( diffMode == 4 )
-            {
-                // Real vs Stabilized history difference ( color )
-                float l0 = STL::Color::Luminance( diffHistory.xyz );
-                float l1 = STL::Color::Luminance( lerp( diffM1.xyz, diff.xyz, curvature ) );
-                float s = STL::Color::Luminance( diffSigma.xyz ) * lerp( 1.0, 2.0, curvature );
 
-                float err = abs( l0 - l1 ) - s;
-                err /= max( l0, l1 ) + s + 0.00001;
-                err = STL::Math::LinearStep( 0.0, REBLUR_DEBUG_ERROR_NORMALIZATION, err );
-
-                diffResult.w = err;
-            }
-            else if( diffMode == 5 )
-            {
-                // Real vs Stabilized history difference ( hit distance )
-                float l0 = diffHistory.w;
-                float l1 = lerp( diffM1.w, diff.w, curvature );
-                float s = diffSigma.w * lerp( 1.0, 2.0, curvature );
-
-                float err = abs( l0 - l1 ) - s;
-                err /= max( l0, l1 ) + s + 0.00001;
-                err = STL::Math::LinearStep( 0.0, REBLUR_DEBUG_ERROR_NORMALIZATION, err );
-
-                diffResult.w = err;
-            }
-
-            diffResult.xyz = STL::Color::ColorizeZucconi( diffResult.w ); // TODO: write to output
+            diffResult.xyz = STL::Color::ColorizeZucconi( diffResult.w );
         #endif
+
+        // Output
+        gOut_Diff[ pixelPos ] = diffResult;
     #endif
 
     #if( defined REBLUR_SPECULAR )
-        // Sample history ( virtual motion )
-        float hitDist = GetHitDist( spec.w, viewZ, gSpecHitDistParams, roughness );
+        // Current hit distance
+        float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gSpecHitDistParams, roughness );
+        float hitDist = spec.w * hitDistScale;
 
+        // Parallax correction
+        float invFrustumHeight = STL::Math::PositiveRcp( PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ ) );
+        float hitDistFactor = saturate( hitDist * invFrustumHeight );
+        parallax *= hitDistFactor;
+
+        // Sample virtual history
         float3 V = GetViewVector( X );
         float NoV = abs( dot( N, V ) );
         float4 Xvirtual = GetXvirtual( X, V, NoV, roughness, hitDist, viewZ, curvature );
-        float2 pixelUvVirtualPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual.xyz );
+        float2 pixelUvVirtualPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual.xyz, false );
 
         STL::Filtering::Bilinear bilinearFilterAtPrevVirtualPos = STL::Filtering::GetBilinearFilter( saturate( pixelUvVirtualPrev ), gRectSizePrev );
         float4 bilinearWeightsWithOcclusionVirtual = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevVirtualPos, 1.0 );
@@ -279,121 +279,75 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
             bilinearWeightsWithOcclusionVirtual, occlusionAvg.y == 1.0 && REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS
         );
 
-        // Hit distance based disocclusion for virtual motion
-        // TODO: parallax at first hit is needed in case of two bounces or not?
-        float hitDistVirtual = GetHitDist( specHistoryVirtual.w, viewZ, gSpecHitDistParams, roughness ); // TODO: not virtually sampled viewZ is used
-        float hitDistDelta = abs( hitDistVirtual - hitDist ); // TODO: no sigma subtraction, but subtracting at least 10-50% can be helpful
+        // Virtual motion - hit distance similarity
+        float hitDistVirtual = specHistoryVirtual.w * hitDistScale;
+        float hitDistDelta = abs( hitDistVirtual - hitDist ); // TODO: sigma can worsen! useful for high roughness only?
         float hitDistMax = max( hitDistVirtual, hitDist );
         hitDistDelta *= STL::Math::PositiveRcp( hitDistMax + viewZ );
-
-        float thresholdMin = 0.0; //0.02 * roughnessModified * roughnessModified;
-        float thresholdMax = 0.2 * roughness + thresholdMin;
-        float2 virtualHistoryHitDistConfidence = 1.0 - STL::Math::SmoothStep( thresholdMin, thresholdMax, hitDistDelta * parallax * REBLUR_TS_SIGMA_AMPLITUDE * float2( 0.5, 2.0 ) );
-
+        float virtualHistoryHitDistConfidence = 1.0 - STL::Math::SmoothStep( 0.0, 0.25, STL::Math::Sqrt01( hitDistDelta ) * SaturateParallax( parallax * REBLUR_TS_SIGMA_AMPLITUDE ) );
         virtualHistoryHitDistConfidence = lerp( 1.0, virtualHistoryHitDistConfidence, Xvirtual.w );
 
-        // Clamp virtual history
-        float smc = GetSpecMagicCurve( roughness );
         float virtualHistoryConfidence = error.w;
-        float sigmaScale = lerp( 1.0, 3.0, smc ) + smc * gFramerateScale * virtualHistoryConfidence * virtualHistoryHitDistConfidence.x;
+        virtualHistoryConfidence *= virtualHistoryHitDistConfidence;
+
+        // Virtual history clamping
+        float smc = GetSpecMagicCurve( roughness );
+        float sigmaScale = lerp( 1.0, 3.0, smc ) + smc * gFramerateScale * virtualHistoryConfidence;
         float4 specHistoryVirtualClamped = STL::Color::Clamp( specM1, specSigma * sigmaScale, specHistoryVirtual );
-
-        float virtualUnclampedAmount = lerp( virtualHistoryConfidence * virtualHistoryHitDistConfidence.y, 1.0, roughness * roughness );
-        specHistoryVirtual = lerp( specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount );
-
-        // Adjust accumulation speed for virtual motion if confidence is low
-        float specMinAccumSpeed = min( specInternalData.y, GetMipLevel( roughness ) );
-        float specAccumSpeedScale = lerp( 1.0, virtualHistoryHitDistConfidence.x, virtualHistoryAmount );
-        specInternalData.y = InterpolateAccumSpeeds( specMinAccumSpeed, specInternalData.y, specAccumSpeedScale );
+        float unclampedVirtualHistoryAmount = lerp( virtualHistoryConfidence, 1.0, smc * STL::Math::SmoothStep( 0.2, 0.4, roughness ) );
+        float4 specHistoryVirtualMixed = lerp( specHistoryVirtualClamped, specHistoryVirtual, unclampedVirtualHistoryAmount );
 
         // Combine surface and virtual motion
-        float invDistToPoint = STL::Math::Rsqrt( STL::Math::LengthSquared( Xv ) );
-        float hitDistFactor = gIsOrtho == 0 ? saturate( hitDist * invDistToPoint ) : 1.0;
-        float4 specHistory = InterpolateSurfaceAndVirtualMotion( specHistorySurface, specHistoryVirtual, virtualHistoryAmount, hitDistFactor );
+        float4 specHistory = MixSurfaceAndVirtualMotion( specHistorySurface, specHistoryVirtualMixed, virtualHistoryAmount, hitDistFactor );
 
         // Antilag
         float specAntilag = ComputeAntilagScale( specInternalData.y, specHistory, spec, specM1, specSigma, gSpecAntilag1, gSpecAntilag2, curvature, roughness );
-        specInternalData.y *= specAntilag;
+
+        float specMipScale = lerp( 1.0 - virtualHistoryConfidence, 1.0, REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
+        float specMinAccumSpeed = min( specInternalData.y, GetMipLevel( roughness ) * specMipScale );
+        specInternalData.y = lerp( specMinAccumSpeed, specInternalData.y, specAntilag );
 
         // Clamp history and combine with the current frame
-        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specInternalData.y, parallax, roughness, roughness, virtualHistoryAmount );
-        specTemporalAccumulationParams.x *= lerp( 1.0, virtualHistoryConfidence, SaturateParallax( parallax * ( 1.0 - virtualHistoryAmount ) * REBLUR_TS_SIGMA_AMPLITUDE ) ); // TODO: is there a better solution?
+        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specInternalData.y, parallax, roughness, virtualHistoryAmount );
         specTemporalAccumulationParams.x *= specAntilag;
 
         specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
-        float specHistoryWeight = 1.0 - REBLUR_TS_MAX_HISTORY_WEIGHT * specTemporalAccumulationParams.x;
 
-        float4 specResult;
-        specResult.xyz = lerp( specHistory.xyz, spec.xyz, specHistoryWeight );
-        specResult.w = lerp( specHistory.w, spec.w, max( specHistoryWeight, REBLUR_HIT_DIST_MIN_ACCUM_SPEED( roughness ) ) );
+        float specHistoryWeight = ( gFramerateScale * REBLUR_TS_ACCUM_TIME ) / ( 1.0 + gFramerateScale * REBLUR_TS_ACCUM_TIME );
+        specHistoryWeight *= specTemporalAccumulationParams.x;
+        specHistoryWeight *= gSpecStabilizationStrength;
+        specHistoryWeight = 1.0 - specHistoryWeight;
+        #if( REBLUR_DEBUG_SPATIAL_DENSITY_CHECK == 1 )
+            specHistoryWeight = 1.0;
+        #endif
+
+        float4 specResult = MixHistoryAndCurrent( specHistory, spec, specHistoryWeight, roughness );
         specResult = Sanitize( specResult, spec );
-
-        // Output
-        gOut_Spec[ pixelPos ] = specResult;
 
         // User-visible debug output
         #if( REBLUR_DEBUG != 0 )
             uint specMode = REBLUR_DEBUG;
-            if( specMode == 1 )
-            {
-                // Accumulated frame num
+            if( specMode == 1 ) // Accumulated frame num
                 specResult.w = saturate( specInternalData.y / ( gSpecMaxAccumulatedFrameNum + 1.0 ) );
-            }
-            else if( specMode == 2 )
-            {
-                // Curvature
-                specResult.w = curvature;
-            }
-            else if( specMode == 3 )
-            {
-                // Error
+            else if( specMode == 2 ) // Curvature magnitude
+                specResult.w = abs( curvature );
+            else if( specMode == 3 ) // Curvature sign
+                specResult.w = curvature < 0 ? 1 : 0;
+            else if( specMode == 4 ) // Error
                 specResult.w = error.z;
-            }
-            else if( specMode == 4 )
-            {
-                // Real vs Stabilized history difference ( color )
-                float l0 = STL::Color::Luminance( specHistory.xyz );
-                float l1 = STL::Color::Luminance( lerp( specM1.xyz, spec.xyz, curvature ) );
-                float s = STL::Color::Luminance( specSigma.xyz ) * lerp( 1.0, 2.0, curvature );
-
-                float err = abs( l0 - l1 ) - s;
-                err /= max( l0, l1 ) + s + 0.00001;
-                err = STL::Math::LinearStep( 0.0, REBLUR_DEBUG_ERROR_NORMALIZATION, err );
-
-                specResult.w = err;
-            }
-            else if( specMode == 5 )
-            {
-                // Real vs Stabilized history difference ( hit distance )
-                float l0 = specHistory.w;
-                float l1 = lerp( specM1.w, spec.w, curvature );
-                float s = specSigma.w * lerp( 1.0, 2.0, curvature );
-
-                float err = abs( l0 - l1 ) - s;
-                err /= max( l0, l1 ) + s + 0.00001;
-                err = STL::Math::LinearStep( 0.0, REBLUR_DEBUG_ERROR_NORMALIZATION, err );
-
-                specResult.w = err;
-            }
-            else if( specMode == 6 )
-            {
-                // Virtual history amount
+            else if( specMode == 5 ) // Virtual history amount
                 specResult.w = virtualHistoryAmount;
-            }
-            else if( specMode == 7 )
-            {
-                // Virtual history confidence
-                specResult.w = virtualHistoryConfidence;
-            }
-            else if( specMode == 8 )
-            {
-                // Parallax
+            else if( specMode == 6 ) // Virtual history confidence
+                specResult.w = 1.0 - error.w;
+            else if( specMode == 7 ) // Parallax
                 specResult.w = parallax;
-            }
 
             // Show how colorization represents 0-1 range on the bottom
-            specResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.95 ? pixelUv.x : specResult.w ); // TODO: write to output
+            specResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.95 ? pixelUv.x : specResult.w );
         #endif
+
+        // Output
+        gOut_Spec[ pixelPos ] = specResult;
     #endif
 
     // Output

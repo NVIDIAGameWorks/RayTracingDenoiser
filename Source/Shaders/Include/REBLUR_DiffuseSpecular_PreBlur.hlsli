@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -22,7 +22,7 @@ NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
     int2 pixelPosUser = gRectOrigin + pixelPos;
@@ -63,7 +63,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
 
     int3 checkerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
     checkerboardPos.xz >>= 1;
-    checkerboardPos += gRectOrigin.xyx;
+    checkerboardPos += int3(gRectOrigin.xyx);
 
     #if( defined REBLUR_DIFFUSE )
         float4 diff = gIn_Diff[ gRectOrigin + uint2( checkerboardPixelPos.x, pixelPos.y ) ];
@@ -101,7 +101,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     }
 
     // Normal and roughness
-    float materialID;
+    uint materialID;
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ], materialID );
     float3 N = normalAndRoughness.xyz;
     float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );

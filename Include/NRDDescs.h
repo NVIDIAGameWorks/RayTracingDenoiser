@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 2
-#define NRD_DESCS_VERSION_MINOR 10
+#define NRD_DESCS_VERSION_MINOR 12
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -31,7 +31,9 @@ namespace nrd
     // DenoiserName_SignalType
     enum class Method : uint32_t
     {
-        // REBLUR ===========================================================================================================================
+        // =============================================================================================================================
+        // REBLUR
+        // =============================================================================================================================
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST,
         // OPTIONAL INPUTS - IN_DIFF_DIRECTION_PDF, IN_DIFF_CONFIDENCE
@@ -60,7 +62,14 @@ namespace nrd
         // OUTPUTS - OUT_DIFF_HITDIST, OUT_SPEC_HITDIST
         REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
 
-        // SIGMA ===========================================================================================================================
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_DIRECTION_HITDIST,
+        // OPTIONAL INPUTS - IN_DIFF_DIRECTION_PDF, IN_DIFF_CONFIDENCE
+        // OUTPUTS - OUT_DIFF_DIRECTION_HITDIST
+        REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
+
+        // =============================================================================================================================
+        // SIGMA
+        // =============================================================================================================================
 
         // INPUTS - IN_NORMAL_ROUGHNESS, IN_SHADOWDATA, OUT_SHADOW_TRANSLUCENCY (used as history)
         // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
@@ -70,10 +79,12 @@ namespace nrd
         // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
         SIGMA_SHADOW_TRANSLUCENCY,
 
-        // RELAX ===========================================================================================================================
+        // =============================================================================================================================
+        // RELAX
+        // =============================================================================================================================
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST
-        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, 
+        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
         RELAX_DIFFUSE,
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_RADIANCE_HITDIST
@@ -84,31 +95,46 @@ namespace nrd
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, OUT_SPEC_RADIANCE_HITDIST
         RELAX_DIFFUSE_SPECULAR,
 
+        // =============================================================================================================================
+        // REFERENCE
+        // =============================================================================================================================
+
+        // INPUTS - IN_DIFF_RADIANCE_HITDIST
+        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
+        REFERENCE,
+
         MAX_NUM
     };
 
+    // See NRD.hlsli for more details
     enum class ResourceType : uint32_t
     {
-        // INPUTS ===========================================================================================================================
+        //=============================================================================================================================
+        // INPUTS
+        //=============================================================================================================================
 
         // 3D world space motion (RGBA16f+) or 2D screen space motion (RG16f+), MVs must be non-jittered, MV = previous - current
         IN_MV,
 
-        // See "NRD.hlsl/NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+ or R10G10B10A2+ depending on encoding)
+        // Data must match encoding / decoding in "NRD_FrontEnd_PackNormalAndRoughness" / "NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+ or R10G10B10A2+)
         IN_NORMAL_ROUGHNESS,
 
         // Linear view depth for primary rays (R16f+)
         IN_VIEWZ,
 
-        // Data must be packed using "NRD.hlsl/XXX_PackRadianceAndHitDist" (RGBA16f+)
+        // REBLUR: Data must be packed using "REBLUR_FrontEnd_PackRadianceAndHitDist" (and "REBLUR_FrontEnd_GetNormHitDist" for hit distance) (RGBA16f+)
+        // RELAX: Data must be packed using "RELAX_FrontEnd_PackRadianceAndHitDist"
         IN_DIFF_RADIANCE_HITDIST,
         IN_SPEC_RADIANCE_HITDIST,
 
-        // Ambient (AO) and specular (SO) occlusion (R8+)
+        // REBLUR: Data must be packed using "REBLUR_FrontEnd_GetNormHitDist" (R8+)
         IN_DIFF_HITDIST,
         IN_SPEC_HITDIST,
 
-        // (Optional) Data must be packed using "NRD.hlsl/NRD_PackRayDirectionAndPdf" (RGBA8+)
+        // REBLUR: Data must be packed using "REBLUR_FrontEnd_PackDirectionAndHitDist" (RGBA8+)
+        IN_DIFF_DIRECTION_HITDIST,
+
+        // (Optional) Data must be packed using "NRD_FrontEnd_PackDirectionAndPdf" (RGBA8+)
         IN_DIFF_DIRECTION_PDF,
         IN_SPEC_DIRECTION_PDF,
 
@@ -116,30 +142,40 @@ namespace nrd
         IN_DIFF_CONFIDENCE,
         IN_SPEC_CONFIDENCE,
 
-        // Data must be packed using "NRD.hlsl/XXX_PackShadow (3 args)" (RG16f+). INF pixels must be cleared with NRD_INF_SHADOW macro
+        // SIGMA: Data must be packed using "SIGMA_FrontEnd_PackShadow" (3-args) (RG16+)
         IN_SHADOWDATA,
 
-        // Data must be packed using "NRD.hlsl/XXX_PackShadow (4 args)" (RGBA8+)
+        // SIGMA: Data must be packed using "SIGMA_FrontEnd_PackShadow" (5-args) (RGBA8+)
         IN_SHADOW_TRANSLUCENCY,
 
-        // OUTPUTS ==========================================================================================================================
+        //=============================================================================================================================
+        // OUTPUTS
+        //=============================================================================================================================
 
         // IMPORTANT: These textures can potentially be used as history buffers
 
-        // SIGMA_SHADOW_TRANSLUCENCY - .x - shadow, .yzw - translucency (RGBA8+)
-        // SIGMA_SHADOW - .x - shadow (R8+)
-        // Data must be unpacked using "NRD.hlsl/XXX_UnpackShadow"
+        // SIGMA: Data must be unpacked using "SIGMA_BackEnd_UnpackShadow"
+        // .x - shadow, .yzw - translucency (RGBA8+)
+        // .x - shadow (R8+)
         OUT_SHADOW_TRANSLUCENCY,
 
-        // .xyz - radiance, .w - normalized hit distance (in case of REBLUR) or signal variance (in case of ReLAX) (RGBA16f+)
+        // REBLUR: Data must be unpacked using "REBLUR_BackEnd_UnpackRadianceAndHitDist"
+        //  .xyz - radiance, .w - normalized hit distance (RGBA16f+)
+        // RELAX: Data must be unpacked using "RELAX_BackEnd_UnpackRadianceAndHitDist"
+        //  .xyz - radiance (R11G11B10f+)
         OUT_DIFF_RADIANCE_HITDIST,
         OUT_SPEC_RADIANCE_HITDIST,
 
-        // .x - normalized hit distance (R8+)
+        // REBLUR: .x - normalized hit distance (R8+)
         OUT_DIFF_HITDIST,
         OUT_SPEC_HITDIST,
 
-        // POOLS ============================================================================================================================
+        // REBLUR: .xyz - direction, .w - normalized hit distance (RGBA8+)
+        OUT_DIFF_DIRECTION_HITDIST,
+
+        //=============================================================================================================================
+        // POOLS
+        //=============================================================================================================================
 
         // Can be reused after denoising
         TRANSIENT_POOL,

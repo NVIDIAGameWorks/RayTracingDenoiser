@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -24,13 +24,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 groupshared float4 s_Normal_Roughness[ BUFFER_Y ][ BUFFER_X ];
 groupshared float s_ViewZ[ BUFFER_Y ][ BUFFER_X ];
-
-float GetHitDist( float normHitDist, float viewZ, float4 hitDistParams, float roughness )
-{
-    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, 1.0, roughness ); // hitDistParams already scaled by "meterToUnitsMultiplier"
-
-    return normHitDist * f;
-}
 
 // Data packing for the next frame
 
@@ -66,7 +59,7 @@ float4 UnpackNormalRoughness( uint p )
     float4 t = STL::Packing::UintToRgba( p, REBLUR_NORMAL_ROUGHNESS_ACCUMSPEED_BITS );
     float3 N = STL::Packing::DecodeUnitVector( t.xy );
 
-    return float4( N, t.z );
+    return float4( p ? N : 0, t.z );
 }
 
 float4 UnpackRoughness( uint4 p )
@@ -89,30 +82,44 @@ float4 UnpackNormalRoughnessSpecAccumSpeed( uint p, out float accumSpeed )
 
 // Internal data
 
-// Curvature = 1 / R = length( N - Ni ) / length( X - Xi ) = localCurvature / edgeLength
-// To fit into 8-bits only localCurvature is encoded
+/*
+Based on:
+https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
 
-float EncodeCurvature( float curvature )
+curvature = 1 / R = localCurvature / edgeLength
+localCurvature ( unsigned ) = length( N[i] - N )
+localCurvature ( signed ) = dot( N[i] - N, X[i] - X ) / length( X[i] - X )
+edgeLength = length( X[i] - X )
+To fit into 8-bits only local curvature is encoded
+*/
+
+float EstimateCurvature( float3 Ni, float3 Vi, float3 N, float3 X )
 {
-    curvature = STL::Math::Sqrt01( curvature );
+    float3 Xi = 0 + Vi * dot( X - 0, N ) / dot( Vi, N );
+    float3 edge = Xi - X;
+    float curvature = dot( Ni - N, edge ) * rsqrt( STL::Math::LengthSquared( edge ) );
+
+    // TODO: potentially imprecision mitigation is needed here...
 
     return curvature;
 }
 
-float DecodeCurvature( float curvature )
+float4 PackDiffSpecInternalData( float diffAccumSpeed, float specAccumSpeed, float curvature, float fbits )
 {
-    curvature *= curvature;
+    // BITS:
+    // 0-2  - specular mip level
+    // 3    - surface occlusion
+    // 4    - virtual occlusion
+    // 5    - curvatrue sign
+    // 6-7  - free
 
-    return curvature;
-}
+    fbits += 32.0 * ( curvature < 0.0 ? 1 : 0 );
 
-float4 PackDiffSpecInternalData( float diffAccumSpeed, float specAccumSpeed, float curvature, float bits )
-{
     float4 r;
     r.x = saturate( diffAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.y = EncodeCurvature( curvature );
+    r.y = STL::Math::Sqrt01( abs( curvature ) );
     r.z = saturate( specAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.w = saturate( bits / 255.0 );
+    r.w = saturate( ( fbits + 0.5 ) / 255.0 );
 
     return r;
 }
@@ -125,8 +132,8 @@ float4 UnpackDiffSpecInternalData( float4 p, out float curvature, out uint bits 
     r.xz = 1.0 / ( 1.0 + accumSpeed );
     r.yw = accumSpeed;
 
-    curvature = DecodeCurvature( p.y );
     bits = uint( p.w * 255.0 + 0.5 );
+    curvature = p.y * p.y * ( ( bits & 32 ) != 0 ? -1.0 : 1.0 );
 
     return r;
 }
@@ -146,13 +153,9 @@ float4 UnpackDiffSpecInternalData( float4 p )
     return UnpackDiffSpecInternalData( p, unused1, unused2 );
 }
 
-// Misc
+// Accumulation speed
 
-// A smooth version of saturate()
-// http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJtaW4oeCwxKSIsImNvbG9yIjoiI0YyMDkwOSJ9LHsidHlwZSI6MCwiZXEiOiIxLTJeKC0zLjUqeCp4KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIyIiwiMCIsIjEuMSJdfV0-
-#define SaturateParallax( parallax )    saturate( 1.0 - exp2( -3.5 * ( parallax ) * ( parallax ) ) )
-
-float GetSpecMagicCurve( float roughness, float power = 0.25 )
+float GetSpecMagicCurve( float roughness, float power = 0.25 ) // TODO: REBLUR_SPEC_ACCUM_BASE_POWER?
 {
     // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLjAtMl4oLTE1LjAqeCkiLCJjb2xvciI6IiNGMjE4MTgifSx7InR5cGUiOjAsImVxIjoiKDEtMl4oLTIwMCp4KngpKSooeF4wLjI1KSIsImNvbG9yIjoiIzIyRUQxNyJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiMxNzE2MTYifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxLjEiXSwic2l6ZSI6WzEwMDAsNTAwXX1d
 
@@ -164,10 +167,42 @@ float GetSpecMagicCurve( float roughness, float power = 0.25 )
 
 float GetSpecAccumulatedFrameNum( float roughness, float powerScale )
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIzMSooeF4wLjY2KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIzMSooMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiNGQTBEMEQifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIzMSJdfV0-
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiI2MyooeF4wLjUpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IjYzKigxLTJeKC0yMDAqeCp4KSkqKHheMC41KSIsImNvbG9yIjoiIzIyRkYwMCJ9LHsidHlwZSI6MCwiZXEiOiI2MyooMS0yXigtMjAwKngqeCkpKih4XjAuNjYpIiwiY29sb3IiOiIjRkMwMzAzIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNjMiXX1d
 
     return REBLUR_MAX_ACCUM_FRAME_NUM * GetSpecMagicCurve( roughness, REBLUR_SPEC_ACCUM_BASE_POWER * powerScale );
 }
+
+float AdvanceAccumSpeed( float4 prevAccumSpeed, float4 weights )
+{
+    float4 accumSpeeds = prevAccumSpeed + 1.0;
+    float accumSpeed = STL::Filtering::ApplyBilinearCustomWeights( accumSpeeds.x, accumSpeeds.y, accumSpeeds.z, accumSpeeds.w, weights );
+
+    return min( accumSpeed, REBLUR_MAX_ACCUM_FRAME_NUM );
+}
+
+float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float parallax )
+{
+    float acos01sq = saturate( 1.0 - NoV ); // see AcosApprox()
+
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS4wNSsoeCp4KV4xLjApLygxLjA1LSh4KngpXjEuMCkiLCJjb2xvciI6IiM1MkExMDgifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC42NikvKDEuMDUtKHgqeCleMC42NikiLCJjb2xvciI6IiNFM0Q4MDkifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC41KS8oMS4wNS0oeCp4KV4wLjUpIiwiY29sb3IiOiIjRjUwQTMxIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNDIiXSwic2l6ZSI6WzE5MDAsNzAwXX1d
+    float a = STL::Math::Pow01( acos01sq, REBLUR_SPEC_ACCUM_CURVE );
+    float b = 1.1 + roughness * roughness;
+    float parallaxSensitivity = ( b + a ) / ( b - a );
+
+    float powerScale = 1.0 + gFramerateScale * parallax * parallaxSensitivity;
+    float accumSpeed = GetSpecAccumulatedFrameNum( roughness, powerScale );
+
+    // TODO: high parallax => accumSpeed = 0 => history fix. Should be the same trick as for confidence applied here?
+    accumSpeed = min( accumSpeed, maxAccumSpeed );
+
+    return accumSpeed * float( gResetHistory == 0 );
+}
+
+// Misc
+
+// A smooth version of "saturate"
+// http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJtaW4oeCwxKSIsImNvbG9yIjoiI0YyMDkwOSJ9LHsidHlwZSI6MCwiZXEiOiIxLTJeKC0zLjUqeCp4KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIyIiwiMCIsIjEuMSJdfV0-
+#define SaturateParallax( parallax )    saturate( 1.0 - exp2( -3.5 * ( parallax ) * ( parallax ) ) )
 
 float GetDisocclusionThreshold( float disocclusionThreshold, float jitterDeltaInPixels, float viewZ, float3 Nflat, float3 V )
 {
@@ -180,32 +215,19 @@ float GetDisocclusionThreshold( float disocclusionThreshold, float jitterDeltaIn
 
 float3 GetViewVector( float3 X, bool isViewSpace = false )
 {
-    return gIsOrtho == 0.0 ? normalize( -X ) : ( isViewSpace ? float3( 0, 0, 1 ) : gViewVectorWorld.xyz );
+    return gIsOrtho == 0.0 ? normalize( -X ) : ( isViewSpace ? float3( 0, 0, -1 ) : gViewVectorWorld.xyz );
 }
 
 float ComputeParallax( float3 X, float3 Xprev, float4 cameraDelta )
 {
     float3 Xt = Xprev - cameraDelta.xyz;
-
-    float p = STL::Math::PositiveRcp( dot( X, Xt ) );
-    float t = STL::Math::LengthSquared( X ) * p;
-    t *= STL::Math::LengthSquared( Xt ) * p;
-    float parallax = STL::Math::Sqrt01( t - 1.0 );
+    float p = dot( X, Xt );
+    float parallax = sqrt( max( dot( X, X ) * dot( Xt, Xt ) - p * p, 0.0 ) ) / p;
 
     // Special case for ortho projection, where translation doesn't introduce parallax
     parallax = gIsOrtho != 0 ? cameraDelta.w : parallax; // TODO: do it better!
 
-    parallax *= STL::Math::LinearStep( 0.0006, 0.0012, parallax ); // TODO: fix numerical instabilities
-    parallax *= REBLUR_PARALLAX_NORMALIZATION;
-
-    return parallax;
-}
-
-float GetParallaxInPixels( float parallax )
-{
-    float parallaxInPixels = parallax / ( REBLUR_PARALLAX_NORMALIZATION * gUnproject );
-
-    return parallaxInPixels;
+    return parallax * REBLUR_PARALLAX_NORMALIZATION;
 }
 
 float4 GetXvirtual( float3 X, float3 V, float NoV, float roughness, float hitDist, float viewZ, float c )
@@ -238,26 +260,21 @@ float4 GetXvirtual( float3 X, float3 V, float NoV, float roughness, float hitDis
     Reverse sign because I is negative:
         I = 0.5 * O / ( 0.5 + C * O )
 
-    But distance != height:
-        cosa = NoV
-        sina = sqrt( 1 - NoV * NoV )
-        distance = I / sina
-
-    All in one:
-        distance = 0.5 * hitDist * sina / ( ( 0.5 + C * hitDist * sina ) * sina )
-        distance = 0.5 * hitDist / ( 0.5 + C * hitDist * sina )
-
     Real curvature from local curvature:
         edgeLength = pixelSize / NoV
         C = c * NoV / pixelSize
     */
 
+    // TODO: better use "edge" from EstimateCurvature?
     float pixelSize = PixelRadiusToWorld( gUnproject, gIsOrtho, 1.0, viewZ );
     c *= NoV / pixelSize;
 
-    float sina = STL::Math::Sqrt01( 1.0 - NoV * NoV );
-    float hitDistFocused = 0.5 * hitDist / ( 0.5 + c * sina * hitDist );
-    float compressionRatio = saturate( ( hitDistFocused + 0.001 ) / ( hitDist + 0.001 ) );
+    float denom = 0.5 + c * hitDist;
+    denom = abs( denom ) < 1e-6 ? 0.5 : denom; // fixing imprecision problems
+    float hitDistFocused = 0.5 * hitDist / denom;
+
+    // "saturate" is needed to clamp values > 1 if curvature is negative
+    float compressionRatio = saturate( ( abs( hitDistFocused ) + 1e-6 ) / ( hitDist + 1e-6 ) );
 
     // TODO: more complicated method is needed, because if elongation is very small X should become Xprev (signal starts to follow with surface motion)
     float f = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, REBLUR_SPEC_DOMINANT_DIRECTION );
@@ -266,31 +283,20 @@ float4 GetXvirtual( float3 X, float3 V, float NoV, float roughness, float hitDis
     return float4( Xvirtual, compressionRatio );
 }
 
-float MixVirtualNormalWeight( float4 weights, float fresnelFactor, float renorm )
+float GetMax( float3 c )
 {
-    float2 tempMin = min( weights.xy, weights.zw );
-    float2 tempMax = max( weights.xy, weights.zw );
-    float weightMin = min( tempMin.x, tempMin.y );
-    float weightMax = max( tempMax.x, tempMax.y );
-    float weight = lerp( weightMin, weightMax, fresnelFactor );
-
-    return saturate( weight / renorm );
+    return max( c.x, max( c.y, c.z ) );
 }
 
-float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float nonLinearAccumSpeed, float roughness, bool ignoreColor = false )
+float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float nonLinearAccumSpeed, float roughness, float scale )
 {
-    if( gIsRadianceMultipliedByExposure )
-    {
-        prev.xyz = STL::Color::HdrToLinear( prev.xyz );
-        curr.xyz = STL::Color::HdrToLinear( curr.xyz );
-    }
+    float2 p = float2( GetMax( prev.xyz ), prev.w );
+    float2 c = float2( GetMax( curr.xyz ), curr.w );
+    float2 f = abs( c - p ) / ( max( c, p ) + 0.001 );
+    float s = 3.0 - scale;
 
-    float2 p = float2( STL::Color::Luminance( prev.xyz ), prev.w );
-    float2 c = float2( STL::Color::Luminance( curr.xyz ), curr.w );
-    float2 f = abs( c - p ) / ( max( c, p ) + float2( 0.01, 0.1 ) ); // TODO: addition needs to be improved
-
-    float error = ignoreColor ? f.y : max( f.x, f.y ); // TODO: store this value and normalize before use? can be helpful for normal weight
-    error = STL::Math::SmoothStep( 0.0, gResidualNoiseLevel, error );
+    float error = max( f.x, f.y ); // TODO: store this value and normalize before use? can be helpful for normal weight
+    error = STL::Math::SmoothStep( 0.0, gResidualNoiseLevel * s, error );
     error *= STL::Math::Pow01( roughness, 0.33333 );
     error *= float( nonLinearAccumSpeed != 1.0 );
     error *= 1.0 - gReference;
@@ -298,13 +304,22 @@ float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float nonLi
     return error;
 }
 
-float4 InterpolateSurfaceAndVirtualMotion( float4 s, float4 v, float virtualHistoryAmount, float hitDistToSurfaceRatio )
+float4 MixSurfaceAndVirtualMotion( float4 s, float4 v, float virtualHistoryAmount, float hitDistToSurfaceRatio )
 {
     float2 f;
     f.x = virtualHistoryAmount;
-    f.y = virtualHistoryAmount * hitDistToSurfaceRatio;
+    f.y = virtualHistoryAmount * hitDistToSurfaceRatio; // TODO: needed?
 
     return lerp( s, v, f.xxxy );
+}
+
+float4 MixHistoryAndCurrent( float4 history, float4 current, float nonLinearAccumSpeed, float roughness = 1.0 )
+{
+    float4 r;
+    r.xyz = lerp( history.xyz, current.xyz, nonLinearAccumSpeed );
+    r.w = lerp( history.w, current.w, max( nonLinearAccumSpeed, REBLUR_HIT_DIST_MIN_ACCUM_SPEED( roughness ) ) );
+
+    return r;
 }
 
 float InterpolateAccumSpeeds( float a, float b, float f )
@@ -320,27 +335,6 @@ float InterpolateAccumSpeeds( float a, float b, float f )
     return 1.0 / f - 1.0;
 }
 
-float GetMipLevel( float roughness )
-{
-    return REBLUR_MIP_NUM * GetSpecMagicCurve( roughness );
-}
-
-float GetFastHistoryFactor( float a, float b, float scale = 3.0 )
-{
-    // TODO: needed to avoid artefacts due to bad interaction of history, fast history and antilag
-    // better "1.0 / ( 1.0 + scale * max( a - b, 0.0 ) )" ?
-    return 1.0 / ( 1.0 + a );
-}
-
-float3 AntilagOptionalCompression( float3 color, float roughness )
-{
-    //return color;
-    //return STL::Color::HdrToLinear( color );
-    //return STL::Color::HdrToGamma( color );
-    //return STL::Color::Compress( color, 0.1 );
-    return STL::Color::Compress( color, _NRD_GetColorCompressionExposureForSpatialPasses( roughness ) );
-}
-
 float ComputeAntilagScale
 (
     inout float accumSpeed,
@@ -350,23 +344,25 @@ float ComputeAntilagScale
     float curvature, float roughness = 1.0
 )
 {
-    // Artificially increase sensitivity to darkness for low roughness, because specular can be very hot
-    float sensitivityToDarknessScale = lerp( 3.0, 1.0, roughness );
+    // TODO: if roughness is close to 0, hit dists can be very divergent, antilag potentially can break accumulation
+    // on bumpy surfaces, "sensitivityToDarknessScale" can be increased in this case based on curvature
 
-    // On-edge relaxation
-    sigma *= lerp( 1.0, 2.0, curvature );
-    m1 = lerp( m1, signal, curvature );
+    // Artificially increase sensitivity to darkness for low roughness, because specular can be very hot
+    float2 sensitivityToDarknessScale = lerp( 3.0, 1.0, roughness );
+
+    // On-edge strictness
+    m1 = lerp( m1, signal, abs( curvature ) );
 
     // Antilag
-    float2 h = float2( STL::Color::Luminance( AntilagOptionalCompression( history.xyz, roughness ) ), history.w );
-    float2 m = float2( STL::Color::Luminance( AntilagOptionalCompression( m1.xyz, roughness ) ), m1.w );
+    float2 h = float2( GetMax( history.xyz ), history.w );
+    float2 m = float2( GetMax( m1.xyz ), m1.w );
 
-    float2 ma = float2( STL::Color::Luminance( AntilagOptionalCompression( m1.xyz - sigma.xyz, roughness ) ), m1.w - sigma.w );
-    float2 mb = float2( STL::Color::Luminance( AntilagOptionalCompression( m1.xyz + sigma.xyz, roughness ) ), m1.w + sigma.w );
+    float2 ma = float2( GetMax( m1.xyz - sigma.xyz ), m1.w - sigma.w );
+    float2 mb = float2( GetMax( m1.xyz + sigma.xyz ), m1.w + sigma.w );
     float2 s = 0.5 * ( mb - ma );
 
     float2 delta = abs( h - m ) - s * antilag1.xy;
-    delta /= max( m, h ) + antilag1.zw * sensitivityToDarknessScale + 0.00001;
+    delta /= max( m, h ) + antilag1.zw * sensitivityToDarknessScale + 1e-6;
     delta = STL::Math::SmoothStep( antilag2.zw, antilag2.xy, delta );
 
     float antilag = min( delta.x, delta.y );
@@ -375,50 +371,26 @@ float ComputeAntilagScale
     return antilag;
 }
 
-// Accumulation speed
-
-float GetAccumSpeed( float4 prevAccumSpeed, float4 weights, float maxAccumulatedFrameNum )
-{
-    float4 accumSpeeds = prevAccumSpeed + 1.0;
-    float accumSpeedUnclamped = STL::Filtering::ApplyBilinearCustomWeights( accumSpeeds.x, accumSpeeds.y, accumSpeeds.z, accumSpeeds.w, weights );
-    float accumSpeed = min( accumSpeedUnclamped, maxAccumulatedFrameNum );
-
-    return accumSpeed;
-}
-
-float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float parallax )
-{
-    float acos01sq = saturate( 1.0 - NoV ); // see AcosApprox()
-
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS4wNSsoeCp4KV4xLjApLygxLjA1LSh4KngpXjEuMCkiLCJjb2xvciI6IiM1MkExMDgifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC42NikvKDEuMDUtKHgqeCleMC42NikiLCJjb2xvciI6IiNFM0Q4MDkifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC41KS8oMS4wNS0oeCp4KV4wLjUpIiwiY29sb3IiOiIjRjUwQTMxIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNDIiXSwic2l6ZSI6WzE5MDAsNzAwXX1d
-    float a = STL::Math::Pow01( acos01sq, REBLUR_SPEC_ACCUM_CURVE );
-    float b = 1.1 + roughness * roughness;
-    float parallaxSensitivity = ( b + a ) / ( b - a );
-
-    float powerScale = 1.0 + parallax * parallaxSensitivity;
-    float accumSpeed = GetSpecAccumulatedFrameNum( roughness, powerScale );
-
-    accumSpeed = min( accumSpeed, maxAccumSpeed );
-
-    return accumSpeed * float( gResetHistory == 0 );
-}
-
 // Kernel
 
 float GetBlurRadius( float radius, float hitDist, float viewZ, float nonLinearAccumSpeed, float radiusBias, float radiusScale, float roughness = 1.0 )
 {
     // Scale down if accumulation goes well, keeping some non-zero scale to avoid under-blurring
-    float r = lerp( 0.25, 1.0, nonLinearAccumSpeed );
+    float r = lerp( REBLUR_MIN_RADIUS_SCALE_AT_CONVERGED_STATE, 1.0, nonLinearAccumSpeed );
 
     // Modify by hit distance
-    float hitDistFactor = hitDist / ( hitDist + PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ ) );
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
+    float hitDistFactor = hitDist / ( hitDist + frustumHeight );
     r *= hitDistFactor;
 
     // Avoid over-blurring on contact
-    radiusBias *= lerp( roughness, 1.0, hitDistFactor );
+    radiusBias *= lerp( roughness * roughness, 1.0, hitDistFactor );
 
     // Final
-    r = radius * r * ( radiusScale + radiusBias ) + radiusBias;
+    float pixelRadiusNorm = frustumHeight / ( 1.0 + frustumHeight ); // TODO: replace voodoo magic with physically based math
+    pixelRadiusNorm = lerp( 1.0, pixelRadiusNorm, roughness * roughness );
+
+    r = radius * r * ( radiusScale + radiusBias * pixelRadiusNorm ) + max( radiusBias, 2.0 * roughness ) * radiusScale;
 
     // Post final scales
     r *= GetSpecMagicCurve( roughness );
@@ -471,84 +443,62 @@ float2x3 GetKernelBasis( float3 V, float3 N, float worldRadius, float roughness 
 
 // Weight parameters
 
-float GetNormalWeightParamsRoughEstimate( float roughness )
-{
-    float ang01 = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness ) / STL::Math::DegToRad( 90.0 );
-    float angle = STL::Math::DegToRad( lerp( 45.0, 89.0, saturate( ang01 ) ) ); // Yes, very relaxed angles here to not ruin accumulation with enabled jittering. Definitely min angle can't be < 25 deg
-
-    return rcp( angle );
-}
-
-float GetNormalWeightParams( float nonLinearAccumSpeed, float curvature, float viewZ, float roughness = 1.0, float strictness = 1.0 )
+float GetNormalWeightParams( float nonLinearAccumSpeed, float viewZ, float roughness = 1.0, float strictness = 1.0 )
 {
     // Estimate how many samples from a potentially bumpy normal map fit in the pixel
-    float pixelRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, gScreenSize.y, viewZ ); // TODO: for the entire screen to unlock compression in the next line (no fancy solid angle math)
-    float pixelRadiusNorm = pixelRadius / ( 1.0 + pixelRadius );
-    float pixelAreaNorm = pixelRadiusNorm * pixelRadiusNorm;
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
+    float pixelRadiusNorm = frustumHeight / ( 1.0 + frustumHeight ); // TODO: replace voodoo magic with physically based math
 
-    float s = lerp( 0.01, 0.15, pixelAreaNorm );
-    s = lerp( s, 1.0, nonLinearAccumSpeed ) * strictness;
+    float s = lerp( 0.03, 0.16, pixelRadiusNorm );
+    s = lerp( s, 1.0, nonLinearAccumSpeed );
+    s = saturate( s * strictness );
 
-    float params = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, lerp( 0.75, 0.95, curvature ) );
-    params *= saturate( s );
+    float params = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
+    params *= s;
     params = 1.0 / max( params, NRD_ENCODING_ERRORS.x );
 
     return params;
 }
 
-float2 GetRoughnessWeightParamsRoughEstimate( float roughness0, bool strictness = 0.0 )
+float2 GetRoughnessWeightParams( float roughness, float percentOfRoughness = 0.03 )
 {
-    float a = rcp( roughness0 * 0.2 * 0.99 + 0.01 );
-    float b = roughness0 * a;
+    // IMPORTANT: too small values of "percentOfRoughness" can ruin contact shadowing even if neighboring roughness is absolutely same due to re-packing imprecision problems.
+    float a = 1.0 / ( roughness * percentOfRoughness * 0.99 + 0.01 );
+    float b = roughness * a;
 
     return float2( a, -b );
 }
 
-float2 GetRoughnessWeightParams( float roughness0 )
+float2 GetHitDistanceWeightParams( float normHitDist, float nonLinearAccumSpeed )
 {
-    float a = rcp( roughness0 * 0.05 * 0.99 + 0.01 );
-    float b = roughness0 * a;
-
-    return float2( a, -b );
-}
-
-float2 GetHitDistanceWeightParams( float normHitDist, float nonLinearAccumSpeed, float roughness = 1.0 )
-{
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIyXigtMTcuMCp4KngpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMSJdfV0-
-    float threshold = exp2( -17.0 * roughness * roughness );
-    float scale = lerp( threshold, 1.0, nonLinearAccumSpeed );
-
-    float a = rcp( normHitDist * scale * 0.99 + 0.01 );
+    float a = 1.0 / nonLinearAccumSpeed; // TODO: previously was "1.0 / ( normHitDist * F( roughness) * 0.99 + 0.01 )"
     float b = normHitDist * a;
 
     return float2( a, -b );
 }
 
-float2 GetTemporalAccumulationParams( float isInScreen, float accumSpeed, float parallax, float modifiedRoughness = 1.0, float roughness = 1.0, float virtualHistoryAmount = 0.0 )
+float2 GetTemporalAccumulationParams( float isInScreen, float accumSpeed, float parallax = 0.0, float roughness = 1.0, float virtualHistoryAmount = 0.0 )
 {
-    // Accum speed in full-range is needed to see number of tracked frames, because accum speed is roughness dependent
-    float accumSpeedRescaled = accumSpeed * REBLUR_MAX_ACCUM_FRAME_NUM / ( GetSpecAccumulatedFrameNum( roughness, 1.0 ) + 0.001 );
-
     // Normalization depends on FPS
-    float norm1 = gFramerateScale * 2.0; // TODO: 1.0? but probably too agressive
-    float normAccumSpeed = saturate( accumSpeedRescaled / norm1 );
+    float nonLinearAccumSpeed = accumSpeed / ( 1.0 + accumSpeed );
+    float norm1 = gFramerateScale * 30.0 * 0.25 / ( 1.0 + gFramerateScale * 30.0 * 0.25 );
+    float normAccumSpeed = saturate( nonLinearAccumSpeed / norm1 );
 
     // Correct parallax (not needed if virtual motion is confident)
     float correctedParallax = parallax * ( 1.0 - virtualHistoryAmount );
 
     // Allow bigger sigma scale if motion is close to 0
-    float norm2 = 0.5 / REBLUR_PARALLAX_NORMALIZATION;
-    float fastMotionAmount = saturate( GetParallaxInPixels( correctedParallax ) / norm2 );
+    float f = SaturateParallax( correctedParallax );
 
     // TODO: should weight depend on "sigma / signal" ratio to avoid stabilization where it's not needed?
     float w = normAccumSpeed;
     w *= isInScreen;
-    w *= lerp( 1.0 - SaturateParallax( correctedParallax ), 1.0, modifiedRoughness * modifiedRoughness );
+    w *= lerp( 1.0 - f, 1.0, roughness * roughness );
     w *= float( gResetHistory == 0 );
 
     // TODO: disocclusion regions on stable bumpy surfaces with super low roughness look better with s = 0
     float s = normAccumSpeed;
-    s *= lerp( 1.0, GetSpecMagicCurve( modifiedRoughness ), fastMotionAmount );
+    s *= lerp( 1.0, GetSpecMagicCurve( roughness ), f );
     s *= 1.0 - gReference;
 
     return float2( w, 1.0 + REBLUR_TS_SIGMA_AMPLITUDE * s );
@@ -585,7 +535,7 @@ float2 GetCombinedWeight
     float baseWeight,
     float2 geometryWeightParams, float3 Nv, float3 Xvs,
     float normalWeightParams, float3 N, float4 Ns,
-    float2 hitDistanceWeightParams, float hitDist, float2 minwh,
+    float2 hitDistanceWeightParams, float normHitDist, float2 minHitDistWeight,
     float2 roughnessWeightParams = 0
 )
 {
@@ -595,14 +545,13 @@ float2 GetCombinedWeight
     float4 t;
     t.x = dot( Nv, Xvs );
     t.y = STL::Math::AcosApprox( saturate( dot( N, Ns.xyz ) ) );
-    t.z = hitDist;
+    t.z = normHitDist;
     t.w = Ns.w;
 
     t = STL::Math::SmoothStep01( 1.0 - abs( t * a + b ) );
-
     baseWeight *= t.x * t.y * t.w;
 
-    return baseWeight * lerp( minwh, 1.0, t.z );
+    return baseWeight * lerp( minHitDistWeight, 1.0, t.z );
 }
 
 float GetGaussianWeight( float r )
@@ -612,6 +561,11 @@ float GetGaussianWeight( float r )
 }
 
 // Upsampling
+
+float GetMipLevel( float roughness )
+{
+    return REBLUR_MIP_NUM * GetSpecMagicCurve( roughness, 0.5 );
+}
 
 void ReconstructHistory( float z0, float accumSpeed, float mipLevel, uint2 pixelPos, float2 pixelUv, RWTexture2D<float4> texOut, Texture2D<float4> texIn, Texture2D<float> texScaledViewZ )
 {
@@ -653,7 +607,7 @@ void ReconstructHistory( float z0, float accumSpeed, float mipLevel, uint2 pixel
                     float2 offset = float2( i, j );
                 #endif
 
-                float2 uv = mipUvFootprint00 + offset * invMipSize;
+                float2 uv = saturate( mipUvFootprint00 + offset * invMipSize );
                 float2 uvScaled = uv * gResolutionScale;
 
                 float4 z;
@@ -664,7 +618,6 @@ void ReconstructHistory( float z0, float accumSpeed, float mipLevel, uint2 pixel
 
                 float4 bilateralWeights = GetBilateralWeight( z, z0 );
                 float4 w = bilinearWeights * bilateralWeights;
-                w *= IsInScreen( uv );
 
                 float4 s00 = texIn.SampleLevel( gNearestClamp, uvScaled, mipLevel - 1 );
                 float4 s10 = texIn.SampleLevel( gNearestClamp, uvScaled, mipLevel - 1, int2( 1, 0 ) );
@@ -729,7 +682,7 @@ void ReconstructHistory( float c0, float z0, float accumSpeed, float mipLevel, u
                     float2 offset = float2( i, j );
                 #endif
 
-                float2 uv = mipUvFootprint00 + offset * invMipSize;
+                float2 uv = saturate( mipUvFootprint00 + offset * invMipSize );
                 float2 uvScaled = uv * gResolutionScale;
 
                 float2 s00 = texIn.SampleLevel( gNearestClamp, uvScaled, mipLevel - 1 );
@@ -740,7 +693,6 @@ void ReconstructHistory( float c0, float z0, float accumSpeed, float mipLevel, u
                 float4 z = float4( s00.y, s10.y, s01.y, s11.y );
                 float4 bilateralWeights = GetBilateralWeight( z, z0 );
                 float4 w = bilinearWeights * bilateralWeights;
-                w *= IsInScreen( uv );
 
                 blurry += STL::Filtering::ApplyBilinearCustomWeights( s00.x, s10.x, s01.x, s11.x, w, false );
                 sum += dot( w, 1.0 );

@@ -24,17 +24,22 @@ if (WIN32)
     # on Windows, FXC and DXC are part of WindowsSDK and there's also DXC in VulkanSDK which supports SPIR-V
     find_program(NRD_FXC_PATH "${NRD_WINDOWS_SDK_BIN}/fxc")
     if (NOT NRD_FXC_PATH)
-        message(FATAL_ERROR "Can't find FXC. '${NRD_WINDOWS_SDK_BIN}/fxc'")
+        message(FATAL_ERROR "Can't find FXC: '${NRD_WINDOWS_SDK_BIN}/fxc'")
     endif()
 
     find_program(NRD_DXC_PATH "${NRD_WINDOWS_SDK_BIN}/dxc")
     if (NOT NRD_DXC_PATH)
-        message(FATAL_ERROR "Can't find DXC. '${NRD_WINDOWS_SDK_BIN}/dxc'")
+        message(FATAL_ERROR "Can't find DXC: '${NRD_WINDOWS_SDK_BIN}/dxc'")
     endif()
 
     find_program(NRD_DXC_SPIRV_PATH "$ENV{VULKAN_SDK}/Bin/dxc")
     if (NOT NRD_DXC_SPIRV_PATH)
-        message(FATAL_ERROR "Can't find VulkanSDK DXC. '$ENV{VULKAN_SDK}/Bin/dxc'")
+        message("Can't find VulkanSDK DXC: '$ENV{VULKAN_SDK}/Bin/dxc'")
+        find_program(NRD_DXC_SPIRV_PATH "dxc" "${NRD_DXC_CUSTOM_PATH}")
+        message("Using custom DXC path: '${NRD_DXC_SPIRV_PATH}'")
+        if (NOT NRD_DXC_SPIRV_PATH)
+            message(FATAL_ERROR "Can't find DXC. Specify custom path using 'DXC_CUSTOM_PATH' parameter or install VulkanSDK")
+        endif()
     endif()
 else()
     if (NOT NRD_DXC_CUSTOM_PATH)
@@ -47,7 +52,7 @@ else()
         find_program(NRD_DXC_SPIRV_PATH "${NRD_DXC_CUSTOM_PATH}")
         message("Using custom DXC path: '${NRD_DXC_CUSTOM_PATH}'")
         if (NOT NRD_DXC_SPIRV_PATH)
-            message(FATAL_ERROR "Can't find DXC. (Custom path: '${NRD_DXC_CUSTOM_PATH}')")
+            message(FATAL_ERROR "Can't find DXC: '${NRD_DXC_CUSTOM_PATH}'")
         endif()
     endif()
 endif()
@@ -100,7 +105,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     COMMAND ${NRD_FXC_PATH} /nologo /E main -DCOMPILER_FXC=1 /T ${FXC_PROFILE}
                         /I "${NRD_HEADER_INCLUDE_PATH}" /I "${NRD_SHADER_INCLUDE_PATH}" /I "${NRD_MATHLIB_INCLUDE_PATH}" /I "Include"
                         ${FILE_NAME} /Vn g_${BYTECODE_ARRAY_NAME}_dxbc /Fh ${OUTPUT_PATH_DXBC}.h /Fo ${OUTPUT_PATH_DXBC}
-                        /all_resources_bound /WX /O3
+                        /WX /O3 /all_resources_bound
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"
@@ -115,7 +120,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     COMMAND ${NRD_DXC_PATH} -E main -DCOMPILER_DXC=1 -T ${DXC_PROFILE}
                         -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
                         ${FILE_NAME} -Vn g_${BYTECODE_ARRAY_NAME}_dxil -Fh ${OUTPUT_PATH_DXIL}.h -Fo ${OUTPUT_PATH_DXIL}
-                        -all_resources_bound -enable-16bit-types -WX -O3
+                        -WX -O3 -enable-16bit-types -all_resources_bound
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"
@@ -130,7 +135,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     COMMAND ${NRD_DXC_SPIRV_PATH} -E main -DCOMPILER_DXC=1 -DVULKAN=1 -T ${DXC_PROFILE}
                         -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
                         ${FILE_NAME} -spirv -Vn g_${BYTECODE_ARRAY_NAME}_spirv -Fh ${OUTPUT_PATH_SPIRV}.h -Fo ${OUTPUT_PATH_SPIRV} ${NRD_DXC_VK_SHIFTS}
-                        -all_resources_bound -enable-16bit-types -WX -O3
+                        -WX -O3 -enable-16bit-types -all_resources_bound
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders"

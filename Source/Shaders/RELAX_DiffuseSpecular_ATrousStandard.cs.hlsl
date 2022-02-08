@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -22,12 +22,6 @@ NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
 
 // Helper functions
-float3 getCurrentWorldPos(int2 pixelPos, float viewZ)
-{
-    float2 uv = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
-    return viewZ * (gFrustumForward.xyz + gFrustumRight.xyz * uv.x - gFrustumUp.xyz * uv.y);
-}
-
 float2 getRoughnessWeightParams(float roughness0, float specularReprojectionConfidence)
 {
     float a = 1.0 / (0.001 + 0.999 * roughness0 * (0.333 + gRoughnessEdgeStoppingRelaxation * (1.0 - specularReprojectionConfidence)));
@@ -40,10 +34,10 @@ float getRoughnessWeight(float2 params0, float roughness)
     return saturate(1.0 - abs(params0.y - roughness * params0.x));
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(16, 16, 1)]
 NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
 {
-    float centerMaterialType;
+    uint centerMaterialType;
     float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[ipos], centerMaterialType);
     float3 centerNormal = centerNormalRoughness.rgb;
     float centerRoughness = centerNormalRoughness.a;
@@ -81,12 +75,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
     float2 roughnessWeightParams = getRoughnessWeightParams(centerRoughness, specularReprojectionConfidence);
     float2 normalWeightParams = GetNormalWeightParams_ATrous(centerRoughness, 255.0 * gHistoryLength[ipos].y, specularReprojectionConfidence, gNormalEdgeStoppingRelaxation, gSpecularLobeAngleFraction);
 
-    float3 centerWorldPos = getCurrentWorldPos(ipos, centerViewZ);
+    float3 centerWorldPos = GetCurrentWorldPos(ipos, centerViewZ);
     float3 centerV = normalize(centerWorldPos);
 
     float specularPhiLIllumination = 1.0e-4 + gSpecularPhiLuminance * sqrt(max(0.0, centerSpecularVar));
     float diffusePhiLIllumination = 1.0e-4 + gDiffusePhiLuminance * sqrt(max(0.0, centerDiffuseVar));
-    float phiDepth = gPhiDepth;
+    float depthThreshold = gDepthThreshold;
 
     static const float kernelWeightGaussian3x3[2] = { 0.44198, 0.27901 };
 
@@ -111,7 +105,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
         for (int xx = -1; xx <= 1; xx++)
         {
             int2 p = ipos + offset + int2(xx, yy) * gStepSize;
-            bool isInside = all(p >= int2(0, 0)) && all(p < gResolution);
+            bool isInside = all(p >= int2(0, 0)) && all(p < int2(gRectSize));
             bool isCenter = ((xx == 0) && (yy == 0));
             if (isCenter) continue;
 
@@ -122,17 +116,22 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId)
             float wDiffuse = isInside ? kernel : 0.0;
 
             // Fetching normal, roughness, linear Z
-            float sampleMaterialType;
+            uint sampleMaterialType;
             float4 sampleNormalRoughnes = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[p], sampleMaterialType);
             float3 sampleNormal = sampleNormalRoughnes.rgb;
             float sampleRoughness = sampleNormalRoughnes.a;
             float sampleViewZ = gViewZFP16[p] / NRD_FP16_VIEWZ_SCALE;
 
             // Calculating sample world position
-            float3 sampleWorldPos = getCurrentWorldPos(p, sampleViewZ);
+            float3 sampleWorldPos = GetCurrentWorldPos(p, sampleViewZ);
 
             // Calculating geometry weight for diffuse and specular
-            float geometryW = exp_approx(-GetGeometryWeight(centerWorldPos, centerNormal, centerViewZ, sampleWorldPos, phiDepth));
+            float geometryW = GetPlaneDistanceWeight(
+                               centerWorldPos,
+                               centerNormal,
+                               gIsOrtho == 0 ? centerViewZ : 1.0,
+                               sampleWorldPos,
+                               depthThreshold);
 
 #if NRD_USE_MATERIAL_ID_AWARE_FILTERING
             geometryW *= (sampleMaterialType == centerMaterialType) ? 1.0 : 0.0;

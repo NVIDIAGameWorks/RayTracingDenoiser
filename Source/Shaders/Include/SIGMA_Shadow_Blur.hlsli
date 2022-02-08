@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -24,20 +24,21 @@ NRD_DECLARE_OUTPUT_TEXTURES
 groupshared float2 s_Data[ BUFFER_Y ][ BUFFER_X ];
 groupshared SIGMA_TYPE s_Shadow_Translucency[ BUFFER_Y ][ BUFFER_X ];
 
-void Preload( int2 sharedId, int2 globalId )
+void Preload( uint2 sharedPos, int2 globalPos )
 {
+    globalPos = clamp( globalPos, 0, gRectSize - 1.0 );
     #ifdef SIGMA_FIRST_PASS
-        globalId += gRectOrigin;
+        globalPos += gRectOrigin;
     #endif
 
-    float2 data = gIn_Hit_ViewZ[ globalId ];
+    float2 data = gIn_Hit_ViewZ[ globalPos ];
     data.y = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
 
-    s_Data[ sharedId.y ][ sharedId.x ] = data;
+    s_Data[ sharedPos.y ][ sharedPos.x ] = data;
 
     SIGMA_TYPE s;
     #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
-        s = gIn_Shadow_Translucency[ globalId ];
+        s = gIn_Shadow_Translucency[ globalPos ];
     #else
         s = float( data.x == NRD_FP16_MAX );
     #endif
@@ -46,11 +47,11 @@ void Preload( int2 sharedId, int2 globalId )
         s = UnpackShadowSpecial( s );
     #endif
 
-    s_Shadow_Translucency[ sharedId.y ][ sharedId.x ] = s;
+    s_Shadow_Translucency[ sharedPos.y ][ sharedPos.x ] = s;
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     // Copy history
     #ifdef SIGMA_FIRST_PASS
@@ -84,7 +85,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     PRELOAD_INTO_SMEM;
 
     // Center data
-    int2 smemPos = threadId + BORDER;
+    int2 smemPos = threadPos + BORDER;
     float2 centerData = s_Data[ smemPos.y ][ smemPos.x ];
     float centerHitDist = centerData.x;
     float centerSignNoL = float( centerData.x != 0.0 );
@@ -132,7 +133,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
         [unroll]
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
-            int2 pos = threadId + int2( dx, dy );
+            int2 pos = threadPos + int2( dx, dy );
             float2 data = s_Data[ pos.y ][ pos.x ];
 
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
@@ -182,7 +183,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     // Denoising
     sum = 1.0;
 
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, SIGMA_PLANE_DISTANCE_SCALE );
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, SIGMA_PLANE_DISTANCE_SCALE );
 
     [unroll]
     for( uint i = 0; i < SIGMA_POISSON_SAMPLE_NUM; i++ )

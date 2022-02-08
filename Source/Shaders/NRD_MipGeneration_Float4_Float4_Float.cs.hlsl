@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -40,32 +40,24 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupId, uint threadID : SV_Grou
 {
     uint2 localID = uint2( threadID & 15, threadID >> 4 );
     uint2 globalID = groupID * 16 + localID;
-    uint3 coord = uint3( globalID << 1, 0 );
 
-    float4 a00 = gIn_A.Load( coord, int2( 0, 0 ) );
-    float4 a10 = gIn_A.Load( coord, int2( 1, 0 ) );
-    float4 a01 = gIn_A.Load( coord, int2( 0, 1 ) );
-    float4 a11 = gIn_A.Load( coord, int2( 1, 1 ) );
+    uint2 coord = globalID << 1;
+    uint4 coords = min( coord.xyxy + uint4( 0, 0, 1, 1 ), gRectSize.xyxy - 1 );
 
-    float4 b00 = gIn_B.Load( coord, int2( 0, 0 ) );
-    float4 b10 = gIn_B.Load( coord, int2( 1, 0 ) );
-    float4 b01 = gIn_B.Load( coord, int2( 0, 1 ) );
-    float4 b11 = gIn_B.Load( coord, int2( 1, 1 ) );
+    float4 a00 = gIn_A[ coords.xy ];
+    float4 a10 = gIn_A[ coords.zy ];
+    float4 a01 = gIn_A[ coords.xw ];
+    float4 a11 = gIn_A[ coords.zw ];
 
-    a00.xyz = STL::Color::Compress( a00.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-    a10.xyz = STL::Color::Compress( a10.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-    a01.xyz = STL::Color::Compress( a01.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-    a11.xyz = STL::Color::Compress( a11.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
+    float4 b00 = gIn_B[ coords.xy ];
+    float4 b10 = gIn_B[ coords.zy ];
+    float4 b01 = gIn_B[ coords.xw ];
+    float4 b11 = gIn_B[ coords.zw ];
 
-    b00.xyz = STL::Color::Compress( b00.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-    b10.xyz = STL::Color::Compress( b10.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-    b01.xyz = STL::Color::Compress( b01.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-    b11.xyz = STL::Color::Compress( b11.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-
-    float z00 = gIn_ScaledViewZ.Load( coord, int2( 0, 0 ) );
-    float z10 = gIn_ScaledViewZ.Load( coord, int2( 1, 0 ) );
-    float z01 = gIn_ScaledViewZ.Load( coord, int2( 0, 1 ) );
-    float z11 = gIn_ScaledViewZ.Load( coord, int2( 1, 1 ) );
+    float z00 = gIn_ScaledViewZ[ coords.xy ];
+    float z10 = gIn_ScaledViewZ[ coords.zy ];
+    float z01 = gIn_ScaledViewZ[ coords.xw ];
+    float z11 = gIn_ScaledViewZ[ coords.zw ];
 
     float4 a;
     float4 b;
@@ -77,9 +69,6 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupId, uint threadID : SV_Grou
     s_TempZ[ localID.y ][ localID.x ] = z;
 
     GroupMemoryBarrierWithGroupSync( );
-
-    a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-    b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
 
     gOut_A_x2[ globalID ] = a;
     gOut_B_x2[ globalID ] = b;
@@ -114,9 +103,6 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupId, uint threadID : SV_Grou
         s_TempA[ localID.y ][ localID.x ] = a;
         s_TempB[ localID.y ][ localID.x ] = b;
         s_TempZ[ localID.y ][ localID.x ] = z;
-
-        a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-        b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
 
         gOut_A_x4[ globalID ] = a;
         gOut_B_x4[ globalID ] = b;
@@ -155,9 +141,6 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupId, uint threadID : SV_Grou
         s_TempB[ localID.y ][ localID.x ] = b;
         s_TempZ[ localID.y ][ localID.x ] = z;
 
-        a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-        b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-
         gOut_A_x8[ globalID ] = a;
         gOut_B_x8[ globalID ] = b;
         gOut_ScaledViewZ_x8[ globalID ] = z;
@@ -189,9 +172,6 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 groupID : SV_GroupId, uint threadID : SV_Grou
         z11 = s_TempZ[ id1.y ][ id1.x ];
 
         DO_REDUCTION;
-
-        a.xyz = STL::Color::Decompress( a.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
-        b.xyz = STL::Color::Decompress( b.xyz, NRD_MIP_COLOR_COMPRESSION_AMOUNT );
 
         gOut_A_x16[ globalID ] = a;
         gOut_B_x16[ globalID ] = b;

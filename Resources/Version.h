@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -11,8 +11,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
+/*
+Versioning rules:
+- give version to someone - increment version before and after for tracking
+- BUILD - preserves binary compatibility
+- MINOR - settings & descs change
+- MAJOR - major feature update, API change
+- don't forget to update NRD.hlsli & README
+*/
+
 #define VERSION_MAJOR                   2
-#define VERSION_MINOR                   10
+#define VERSION_MINOR                   12
 #define VERSION_BUILD                   0
 #define VERSION_REVISION                0
 

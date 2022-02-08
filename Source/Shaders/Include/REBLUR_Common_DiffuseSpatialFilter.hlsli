@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -52,33 +52,48 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
     // Blur radius
-    float hitDist = GetHitDist( center.w, viewZ, gDiffHitDistParams, 1.0 );
+    float hitDist = REBLUR_GetHitDist( center.w, viewZ, gDiffHitDistParams, 1.0 );
     float blurRadius = GetBlurRadius( radius, hitDist, viewZ, diffInternalData.x, radiusBias, radiusScale );
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
+    float hitDistFactor = hitDist / ( hitDist + frustumHeight );
+
     float3 Vv = GetViewVector( Xv, true );
     float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams( diffInternalData.x, curvature, viewZ, 1.0, gNormalWeightStrictness * strictness );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
+    float normalWeightParams = GetNormalWeightParams( diffInternalData.x, viewZ, 1.0, gNormalWeightStrictness * strictness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, diffInternalData.x );
     float2 sum = 1.0;
 
     #ifdef REBLUR_SPATIAL_REUSE
-        blurRadius = REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE * gDiffBlurRadius * hitDist / ( hitDist + PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ ) );
-
-        float2 geometryWeightParamsReuse = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE );
+        blurRadius *= REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE;
 
         float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( 1.0 );
         float normalWeightParamsReuse = rcp( max( angle, NRD_ENCODING_ERRORS.x ) );
+
+        uint2 p = pixelPos;
+        if( gDiffCheckerboard != 2 )
+            p.x >>= 1;
+
+        float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_DiffDirectionPdf[ gRectOrigin + p ] );
+        float3 L = dirPdf.xyz;
+        float NoL = saturate( dot( N, L ) );
+
+        sum = NoL / ( dirPdf.w + REBLUR_MIN_PDF );
+        #if( REBLUR_USE_SPATIAL_REUSE_FOR_HIT_DIST == 1 )
+            sum.y = sum.x;
+        #endif
+        diff *= sum.xxxy;
     #endif
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        float2 minwh = REBLUR_HIT_DIST_MIN_WEIGHT * 2.0;
+        float2 minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * 2.0;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
+        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
     #else
-        float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
+        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
     #endif
 
     [unroll]
@@ -87,7 +102,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float3 offset = POISSON_SAMPLES( i );
 
         // Sample coordinates
-        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || defined( REBLUR_SPATIAL_REUSE ) )
+        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             float2 uv = pixelUv + STL::Geometry::RotateVector( rotator, offset.xy ) * gInvScreenSize * blurRadius;
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
@@ -115,38 +130,45 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gIsOrtho );
 
-        float materialIDs;
+        uint materialIDs;
         Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
         // Sample weight
         float w = IsInScreen( uv );
-        w *= float( materialIDs == materialID );
+        w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
         w *= GetGaussianWeight( offset.z );
 
         #ifdef REBLUR_SPATIAL_REUSE
             float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_DiffDirectionPdf.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 ) );
             float3 L = dirPdf.xyz;
-            float NoL = saturate( dot( L, N.xyz ) );
+            float NoL = saturate( dot( N, L ) );
+
+            w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
 
             float2 ww = w;
-            ww.x *= NoL / ( dirPdf.w + 0.001 );
-            ww.x *= GetGeometryWeight( geometryWeightParamsReuse, Nv, Xvs );
+            ww.x *= NoL / ( dirPdf.w + REBLUR_MIN_PDF );
             ww.x *= GetNormalWeight( normalWeightParamsReuse, N, Ns.xyz );
 
             #if( REBLUR_USE_SPATIAL_REUSE_FOR_HIT_DIST == 1 )
                 ww.y = ww.x;
             #else
-                ww.y *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
                 ww.y *= GetNormalWeight( normalWeightParams, N, Ns.xyz );
-                ww.y *= lerp( minwh.y, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, s.w ) );
+                ww.y *= lerp( minHitDistWeight.y, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, s.w ) );
             #endif
         #else
-            float2 ww = GetCombinedWeight( w, geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, hitDistanceWeightParams, s.w, minwh );
+            float2 ww = GetCombinedWeight( w, geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, hitDistanceWeightParams, s.w, minHitDistWeight );
+        #endif
+
+        #if( REBLUR_DEBUG_SPATIAL_DENSITY_CHECK == 1 )
+            ww = IsInScreen( uv );
         #endif
 
         #if( REBLUR_USE_COMPRESSION_FOR_DIFFUSE == 1 )
             s.xyz = STL::Color::Compress( s.xyz, exposure );
         #endif
+
+        // Get rid of potentially bad values outside of the screen
+        s = w ? s : 0;
 
         diff += s * ww.xxxy;
         sum += ww;
@@ -159,7 +181,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
     // Estimate error
-    error.x = GetColorErrorForAdaptiveRadiusScale( diff, center, diffInternalData.x, 1.0 );
+    error.x = GetColorErrorForAdaptiveRadiusScale( diff, center, diffInternalData.x, 1.0, REBLUR_SPATIAL_MODE );
 
     // Input mix
     diff = lerp( diff, center, REBLUR_INPUT_MIX.xxxy );

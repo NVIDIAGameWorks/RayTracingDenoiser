@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -28,21 +28,23 @@ NRD_DECLARE_OUTPUT_TEXTURES
 groupshared float2 s_Data[ BUFFER_Y ][ BUFFER_X ];
 groupshared SIGMA_TYPE s_Shadow_Translucency[ BUFFER_Y ][ BUFFER_X ];
 
-void Preload( int2 sharedId, int2 globalId )
+void Preload( uint2 sharedPos, int2 globalPos )
 {
-    float2 data = gIn_Hit_ViewZ[ globalId ];
+    globalPos = clamp( globalPos, 0, gRectSize - 1.0 );
+
+    float2 data = gIn_Hit_ViewZ[ globalPos ];
     data.y = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
 
-    s_Data[ sharedId.y ][ sharedId.x ] = data;
+    s_Data[ sharedPos.y ][ sharedPos.x ] = data;
 
-    SIGMA_TYPE s = gIn_Shadow_Translucency[ globalId ];
+    SIGMA_TYPE s = gIn_Shadow_Translucency[ globalPos ];
     s = UnpackShadow( s );
 
-    s_Shadow_Translucency[ sharedId.y ][ sharedId.x ] = s;
+    s_Shadow_Translucency[ sharedPos.y ][ sharedPos.x ] = s;
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
     uint2 pixelPosUser = pixelPos + gRectOrigin;
     float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvRectSize;
@@ -50,7 +52,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
     PRELOAD_INTO_SMEM;
 
     // Center data
-    int2 smemPos = threadId + BORDER;
+    int2 smemPos = threadPos + BORDER;
     float2 centerData = s_Data[ smemPos.y ][ smemPos.x ];
     float centerHitDist = centerData.x;
     float centerSignNoL = float( centerData.x != 0.0 );
@@ -79,7 +81,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadId : SV_GroupThreadId, int2 pixelPos : S
         [unroll]
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
-            int2 pos = threadId + int2( dx, dy );
+            int2 pos = threadPos + int2( dx, dy );
             float2 data = s_Data[ pos.y ][ pos.x ];
 
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];

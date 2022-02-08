@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -38,26 +38,30 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
     // Blur radius
-    float hitDist = GetHitDist( center, viewZ, gSpecHitDistParams, roughness );
+    float hitDist = REBLUR_GetHitDist( center, viewZ, gSpecHitDistParams, roughness );
     float blurRadius = GetBlurRadius( radius, hitDist, viewZ, specInternalData.x, radiusBias, radiusScale, roughness );
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
 
     // Denoising
-    float anisoFade = lerp( curvature, 1.0, specInternalData.x );
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
+    float hitDistFactor = hitDist / ( hitDist + frustumHeight );
+    float anisoFade = lerp( abs( curvature ), 1.0, specInternalData.x );
+
     float3 Vv = GetViewVector( Xv, true );
     float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius, roughness, anisoFade );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, gMeterToUnitsMultiplier, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams( specInternalData.x, curvature, viewZ, roughness, gNormalWeightStrictness * strictness );
-    float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center, specInternalData.x, roughness );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
+    float normalWeightParams = GetNormalWeightParams( specInternalData.x, viewZ, roughness, gNormalWeightStrictness * strictness );
+    float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center, specInternalData.x );
     float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
     float sum = 1.0;
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
+        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
     #else
-        float2 minwh = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
+        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
     #endif
-    minwh = lerp( 1.0, minwh, error.w );
+    float2 minHitDistWeightLowConfidence = lerp( minHitDistWeight, 1.0, hitDistFactor );
+    minHitDistWeight = lerp( minHitDistWeightLowConfidence, minHitDistWeight, error.w );
 
     [unroll]
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
@@ -80,16 +84,22 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gIsOrtho );
 
-        float materialIDs;
+        uint materialIDs;
         Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
         // Sample weight
         float w = IsInScreen( uv );
-        w *= float( materialIDs == materialID );
+        w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
         w *= GetGaussianWeight( offset.z );
-        w *= GetRoughnessWeight( roughnessWeightParams, Ns.w );
 
-        float ww = GetCombinedWeight( w, geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, hitDistanceWeightParams, s.x, minwh ).y;
+        float ww = GetCombinedWeight( w, geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, hitDistanceWeightParams, s.x, minHitDistWeight, roughnessWeightParams ).y;
+
+        #if( REBLUR_DEBUG_SPATIAL_DENSITY_CHECK == 1 )
+            ww = IsInScreen( uv );
+        #endif
+
+        // Get rid of potentially bad values outside of the screen
+        s = w ? s : 0;
 
         spec += s.x * ww;
         sum += ww;
@@ -98,7 +108,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     spec *= STL::Math::PositiveRcp( sum );
 
     // Estimate error
-    error.z = GetColorErrorForAdaptiveRadiusScale( spec.xxxx, center.xxxx, specInternalData.x, roughness, true );
+    error.z = GetColorErrorForAdaptiveRadiusScale( spec, center, specInternalData.x, roughness, REBLUR_SPATIAL_MODE );
 
     // Input mix
     spec = lerp( spec, center, REBLUR_INPUT_MIX.y );

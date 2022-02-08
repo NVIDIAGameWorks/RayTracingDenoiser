@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -208,10 +208,10 @@ void nrd::DenoiserImpl::AddSharedConstants_SigmaShadow(const MethodData& methodD
 
     AddFloat(data, m_CommonSettings.debug);
     AddFloat(data, m_CommonSettings.denoisingRange);
-    AddFloat(data, 1.0f / (m_CommonSettings.meterToUnitsMultiplier * settings.planeDistanceSensitivity));
+    AddFloat(data, settings.planeDistanceSensitivity);
     AddFloat(data, settings.blurRadiusScale);
 
-    AddFloat(data, m_CommonSettings.meterToUnitsMultiplier);
+    AddFloat(data, 0.0f);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
     AddUint(data, m_CommonSettings.frameIndex);
     AddUint(data, 0);

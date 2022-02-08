@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -21,64 +21,29 @@ NRD_DECLARE_SAMPLERS
 NRD_DECLARE_INPUT_TEXTURES
 NRD_DECLARE_OUTPUT_TEXTURES
 
-#define THREAD_GROUP_SIZE 8
+#define THREAD_GROUP_SIZE 16
 #define SKIRT 1
 
 groupshared float4 sharedNormalRoughness[THREAD_GROUP_SIZE + SKIRT * 2][THREAD_GROUP_SIZE + SKIRT * 2];
 
 // Helper functions
-float InterpolateAccumSpeeds(float a, float b, float f)
-{
-#if( RELAX_USE_ACCUM_SPEED_NONLINEAR_INTERPOLATION == 0 )
-    return lerp(a, b, f);
-#endif
-
-    a = 1.0 / (1.0 + a);
-    b = 1.0 / (1.0 + b);
-    f = lerp(a, b, f);
-
-    return 1.0 / f - 1.0;
-}
-
 float getJitterRadius(float jitterDelta, float linearZ)
 {
-    return jitterDelta * gUnproject * (gIsOrtho > 0 ? 1.0 : linearZ);
+    return jitterDelta * gUnproject * (gIsOrtho == 0 ? linearZ : 1.0);
 }
 
-float3 getCurrentWorldPos(int2 pixelPos, float depth)
+
+float isReprojectionTapValid(float3 currentWorldPos, float3 previousWorldPos, float3 currentNormal, float disocclusionThreshold)
 {
-    float2 clipSpaceXY = ((float2)pixelPos + float2(0.5, 0.5)) * gInvRectSize * 2.0 - 1.0;
-    return depth * (gFrustumForward.xyz + gFrustumRight.xyz * clipSpaceXY.x - gFrustumUp.xyz * clipSpaceXY.y);
-}
-
-float3 getPreviousWorldPos(int2 pixelPos, float depth)
-{
-    float2 clipSpaceXY = ((float2)pixelPos + float2(0.5, 0.5)) * (1.0 / gRectSizePrev) * 2.0 - 1.0;
-    return depth * (gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * clipSpaceXY.x - gPrevFrustumUp.xyz * clipSpaceXY.y);
-}
-
-float3 getPreviousWorldPos(float2 clipSpaceXY, float depth)
-{
-    return depth * (gPrevFrustumForward.xyz + gPrevFrustumRight.xyz * clipSpaceXY.x - gPrevFrustumUp.xyz * clipSpaceXY.y);
-}
-
-float isReprojectionTapValid(int2 pixelCoord, float currentLinearZ, float3 currentWorldPos, float3 previousWorldPos, float3 currentNormal, float3 previousNormal, float jitterRadius)
-{
-    // Check whether reprojected pixel is inside of the screen
-    if (any(pixelCoord < int2(0, 0)) || any(pixelCoord >= int2(gResolution))) return 0;
-
-    // Reject backfacing history: if angle between current normal and previous normal is larger than 90 deg
-    if (dot(currentNormal, previousNormal) < 0.0) return 0;
-
     // Check if plane distance is acceptable
     float3 posDiff = currentWorldPos - previousWorldPos;
-    float maxPlaneDistance = max(abs(dot(posDiff, previousNormal)), abs(dot(posDiff, currentNormal)));
-    return GetPlaneDistanceWeight(maxPlaneDistance, currentLinearZ, gDisocclusionThreshold + jitterRadius) > 1.0 ? 0.0 : 1.0;
+    float maxPlaneDistance = abs(dot(posDiff, currentNormal));
+    return maxPlaneDistance > disocclusionThreshold ? 0.0 : 1.0;
 }
 
 // Returns reprojection search result based on surface motion:
 // 2 - reprojection found, bicubic footprint was used
-// 1 - reprojection found, bilinear footprint was used 
+// 1 - reprojection found, bilinear footprint was used
 // 0 - reprojection not found
 //
 // Also returns reprojected data from previous frame calculated using filtering based on filters above.
@@ -96,11 +61,12 @@ float loadSurfaceMotionBasedPrevData(
     out float footprintQuality)
 {
     // Calculating jitter margin radius in world space
-    float jitterRadius = getJitterRadius(gJitterDelta, currentLinearZ);
+    float jitterRadius = getJitterRadius(gPrevCameraPositionAndJitterDelta.w, currentLinearZ);
+    float disocclusionThreshold = (gDisocclusionDepthThreshold + jitterRadius) * (gIsOrtho == 0 ? currentLinearZ : 1.0);
 
     // Calculating previous pixel position and UV
     float2 pixelUV = (pixelPosOnScreen + 0.5) * gInvRectSize;
-    float2 prevUV = STL::Geometry::GetPrevUvFromMotion(pixelUV, currentWorldPos, gPrevWorldToClip, motionVector, gWorldSpaceMotion);
+    float2 prevUV = STL::Geometry::GetPrevUvFromMotion(pixelUV, currentWorldPos, gPrevWorldToClip, motionVector, gIsWorldSpaceMotion);
     float2 prevPixelPosOnScreen = prevUV * gRectSizePrev;
 
     // Consider reprojection to the same pixel index a small motion.
@@ -142,10 +108,10 @@ float loadSurfaceMotionBasedPrevData(
 
     // Adjusting worldspace position:
     // Applying worldspace motion first,
-    motionVector *= gWorldSpaceMotion > 0 ? 1.0 : 0.0;
+    motionVector *= gIsWorldSpaceMotion > 0 ? 1.0 : 0.0;
 
     // Then taking care of camera motion, because world space is always centered at camera position in NRD
-    currentWorldPos += motionVector - gPrevCameraPosition;
+    currentWorldPos += motionVector - gPrevCameraPositionAndJitterDelta.xyz;
 
     // Transforming bilinearOrigin to clip space coords to simplify previous world pos calculation
     float2 prevClipSpaceXY = ((float2)bilinearOrigin + float2(0.5, 0.5)) * (1.0 / gRectSizePrev) * 2.0 - 1.0;
@@ -154,84 +120,106 @@ float loadSurfaceMotionBasedPrevData(
     // 1st row
     tapPos = bilinearOrigin + int2(0, -1);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, -1.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, -1.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(1, -1);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, -1.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, -1.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     // 2nd row
     tapPos = bilinearOrigin + int2(-1, 0);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(-1.0, 0.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(-1.0, 0.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(0, 0);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, 0.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, 0.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.x = reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(1, 0);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, 0.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, 0.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.y = reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(2, 0);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(2.0, 0.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(2.0, 0.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     // 3rd row
     tapPos = bilinearOrigin + int2(-1, 1);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(-1.0, 1.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(-1.0, 1.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(0, 1);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, 1.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, 1.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.z = reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(1, 1);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, 1.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, 1.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
     bilinearTapsValid.w = reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(2, 1);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(2.0, 1.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(2.0, 1.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     // 4th row
     tapPos = bilinearOrigin + int2(0, 2);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, 2.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(0.0, 2.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     tapPos = bilinearOrigin + int2(1, 2);
     prevViewZInTap = gPrevViewZ[tapPos];
-    prevWorldPosInTap = getPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, 2.0), prevViewZInTap);
-    reprojectionTapValid = isReprojectionTapValid(tapPos, currentLinearZ, currentWorldPos, prevWorldPosInTap, currentNormal, prevNormalFlat, jitterRadius);
+    prevWorldPosInTap = GetPreviousWorldPos(prevClipSpaceXY + dXY * float2(1.0, 2.0), prevViewZInTap);
+    reprojectionTapValid = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
     bicubicFootprintValid *= reprojectionTapValid;
 
     bilinearTapsValid = skipReprojectionTest ? float4(1.0, 1.0, 1.0, 1.0) : bilinearTapsValid;
+
+    // Reject backfacing history: if angle between current normal and previous normal is larger than 90 deg
+    if (dot(currentNormal, prevNormalFlat) < 0.0)
+    {
+        bilinearTapsValid = 0;
+        bicubicFootprintValid = 0;
+    }
+
+    // Checking bicubic footprint validity for being in rect
+    if (any(bilinearOrigin < int2(1, 1)) || any(bilinearOrigin >= int2(gRectSizePrev)-int2(2, 2)))
+    {
+        bicubicFootprintValid = 0;
+    }
+
+    // Checking bilinear footprint validity for being in rect
+    // Bilinear footprint:
+    // x y
+    // z w
+    if (bilinearOrigin.x < 0) bilinearTapsValid.xz = 0;
+    if (bilinearOrigin.x >= gRectSizePrev.x) bilinearTapsValid.yw = 0;
+    if (bilinearOrigin.y < 0) bilinearTapsValid.xy = 0;
+    if (bilinearOrigin.y >= gRectSizePrev.y) bilinearTapsValid.zw = 0;
 
     // Calculating interpolated binary weight for bilinear taps in advance
     STL::Filtering::Bilinear bilinear;
@@ -254,9 +242,9 @@ float loadSurfaceMotionBasedPrevData(
         {
             // Bicubic for illumination and 2nd moments
             prevDiffuseIllumAnd2ndMoment =
-                max(0, BicubicFloat4(gPrevDiffuseIllumination, gLinearClamp, prevPixelPosOnScreen, gInvViewSize));
+                max(0, BicubicFloat4(gPrevDiffuseIllumination, gLinearClamp, prevPixelPosOnScreen, gInvResourceSize));
 #if( RELAX_USE_BICUBIC_FOR_FAST_HISTORY == 1 )
-            prevDiffuseResponsiveIllum = max(0, BicubicFloat4(gPrevDiffuseIlluminationResponsive, gLinearClamp, prevPixelPosOnScreen, gInvViewSize)).rgb;
+            prevDiffuseResponsiveIllum = max(0, BicubicFloat4(gPrevDiffuseIlluminationResponsive, gLinearClamp, prevPixelPosOnScreen, gInvResourceSize)).rgb;
 #else
             prevDiffuseResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevDiffuseIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
 #endif
@@ -269,7 +257,7 @@ float loadSurfaceMotionBasedPrevData(
             prevDiffuseIllumAnd2ndMoment =
                 BilinearWithBinaryWeightsFloat4(gPrevDiffuseIllumination, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
-            prevDiffuseResponsiveIllum = 
+            prevDiffuseResponsiveIllum =
                 BilinearWithBinaryWeightsFloat4(gPrevDiffuseIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
 
             reprojectionFound = 1.0;
@@ -319,7 +307,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
 
     float4 normalRoughness = 0;
 
-    if ((xx >= 0) && (yy >= 0) && (xx < (int)gResolution.x) && (yy < (int)gResolution.y))
+    if ((xx >= 0) && (yy >= 0) && (xx < (int)gRectSize.x) && (yy < (int)gRectSize.y))
     {
         normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[int2(xx, yy) + gRectOrigin]);
     }
@@ -339,7 +327,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
 
     if (linearThreadIndex < (THREAD_GROUP_SIZE + SKIRT * 2) * (THREAD_GROUP_SIZE + SKIRT * 2))
     {
-        if ((xx >= 0) && (yy >= 0) && (xx < (int)gResolution.x) && (yy < (int)gResolution.y))
+        if ((xx >= 0) && (yy >= 0) && (xx < (int)gRectSize.x) && (yy < (int)gRectSize.y))
         {
             normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[int2(xx, yy) + gRectOrigin]);
         }
@@ -390,7 +378,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
     float diffuse2ndMoment = diffuse1stMoment * diffuse1stMoment;
 
     // Getting current frame worldspace position for current pixel
-    float3 currentWorldPos = getCurrentWorldPos(ipos, currentLinearZ);
+    float3 currentWorldPos = GetCurrentWorldPos(ipos, currentLinearZ);
 
     // Reading motion vector
     float3 motionVector = gMotion[gRectOrigin + ipos].xyz * gMotionVectorScale.xyy;
@@ -411,7 +399,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
         prevDiffuseIlluminationAnd2ndMomentSMB,
         prevDiffuseIlluminationAnd2ndMomentSMBResponsive,
         prevNormalSMB,
-        historyLength, 
+        historyLength,
         footprintQuality
     );
 
@@ -419,8 +407,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 ipos : SV_DispatchThreadId, uint3 groupThreadId
     historyLength = historyLength + 1.0;
     historyLength = min(100.0, historyLength);
 
-    // Minimize "getting stuck in history" effect when only fraction of bilinear footprint is valid 
-    // by shortening the history length 
+    // Minimize "getting stuck in history" effect when only fraction of bilinear footprint is valid
+    // by shortening the history length
     if (footprintQuality < 1.0)
     {
         historyLength *= sqrt(footprintQuality);

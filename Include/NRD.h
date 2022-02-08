@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -31,9 +31,9 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 2
-#define NRD_VERSION_MINOR 10
+#define NRD_VERSION_MINOR 12
 #define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "18 November 2021"
+#define NRD_VERSION_DATE "7 February 2022"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall

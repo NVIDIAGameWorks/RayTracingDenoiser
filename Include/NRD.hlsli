@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v2.10
+// NRD v2.12
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -66,113 +66,140 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
 #if( defined COMPILER_FXC || defined COMPILER_DXC )
 
-    #define NRD_CONSTANTS_START \
-        cbuffer globalConstants : register( b0 ) {
+    #define NRD_EXPORT
+    #define NRD_CS_MAIN                                                                 main
 
-    #define NRD_CONSTANT( constantType, constantName ) constantType constantName;
+    #define NRD_CONSTANTS_START                                                         cbuffer globalConstants : register( b0 ) {
+    #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
+    #define NRD_CONSTANTS_END                                                           };
 
-    #define NRD_CONSTANTS_END \
-        };
-
-    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex ) \
-        resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex ) \
-        resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex ) \
-        resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex );
 
 #elif( defined COMPILER_UNREAL_ENGINE )
 
+    #define NRD_EXPORT
+    #define NRD_CS_MAIN                                                                 main
+
     #define NRD_CONSTANTS_START
-    #define NRD_CONSTANT( constantType, constantName ) constantType constantName;
+    #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
     #define NRD_CONSTANTS_END
 
-    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex ) \
-        resourceType resourceName;
-    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex ) \
-        resourceType resourceName;
-    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex ) \
-        resourceType resourceName;
+    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName;
+    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName;
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName;
+
+#elif( defined COMPILER_PSSLC )
+
+    // Helpers
+    #define EXPAND( x )                                                                 x
+    #define GET_NTH_MACRO_4_arg( a, b, c, d, NAME, ... )                                NAME
+    #define GET_NTH_MACRO_3_arg( a, b, c, NAME, ... )                                   NAME
+    #define SampleLevel3( a, b, c )                                                     SampleLOD( a, b, ( float )( c ) )
+    #define SampleLevel4( a, b, c, d )                                                  SampleLOD( a, b, ( float )( c ), d )
+    #define GatherRed3( a, b, c )                                                       GatherRed( ( a ), ( b ), int2( c ) )
+    #define GatherRed2( a, b )                                                          GatherRed( ( a ), ( b ) )
+    #define GatherGreen3( a, b, c )                                                     GatherGreen( ( a ), ( b ), int2( c ) )
+    #define GatherGreen2( a, b )                                                        GatherGreen( ( a ), ( b ) )
+
+    #define NRD_EXPORT                                                                  [ CxxSymbol( EXPORT_NAME ) ]
+    #define NRD_CS_MAIN                                                                 main
+
+    #define NRD_CONSTANTS_START ConstantBuffer globalConstants : register( b0 )         {
+    #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
+    #define NRD_CONSTANTS_END                                                           };
+
+    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex );
+
+    #define numthreads                                                                  NUM_THREADS
+    #define groupshared                                                                 thread_group_memory
+    #define SV_GroupId                                                                  S_GROUP_ID
+    #define SV_GroupIndex                                                               S_GROUP_INDEX
+    #define SV_GroupThreadId                                                            S_GROUP_THREAD_ID
+    #define SV_DispatchThreadId                                                         S_DISPATCH_THREAD_ID
+    #define GroupMemoryBarrierWithGroupSync                                             ThreadGroupMemoryBarrierSync
+    #define GroupMemoryBarrier                                                          ThreadGroupMemoryBarrier
+    #define RWTexture2D                                                                 RW_Texture2D
+    #define cbuffer                                                                     ConstantBuffer
+    #define SampleLevel( ... )                                                          EXPAND( GET_NTH_MACRO_4_arg( __VA_ARGS__, SampleLevel4, SampleLevel3 )( __VA_ARGS__ ) )
+    #define GatherRed( ... )                                                            EXPAND( GET_NTH_MACRO_3_arg( __VA_ARGS__, GatherRed3, GatherRed2 )( __VA_ARGS__ ) )
+    #define GatherGreen( ... )                                                          EXPAND( GET_NTH_MACRO_3_arg( __VA_ARGS__, GatherGreen3, GatherGreen2 )( __VA_ARGS__ ) )
+    #define reversebits                                                                 ReverseBits
+    #define InterlockedAdd( ... )                                                       AtomicAdd( __VA_ARGS__ )
+    #define InterlockedMax( ... )                                                       AtomicMax( __VA_ARGS__ )
 
 #elif( defined( NRD_INPUT_TEXTURE ) && defined( NRD_OUTPUT_TEXTURE ) && defined( NRD_CONSTANTS_START ) && defined( NRD_CONSTANT ) && defined( NRD_CONSTANTS_END ) )
+
+    #define NRD_EXPORT
+    #define NRD_CS_MAIN                                                                 main
 
     // Custom engine that has already defined all the macros
 
 #else
 
-    #error "Please, define one of COMPILER_FXC / COMPILER_DXC or COMPILER_UNREAL_ENGINE or add custom bindings"
-    #error "Please, define the following HLSL keywords to match your platform"
-
-    #define RWTexture2D
-    #define numthreads
-    #define SV_DispatchThreadId
-    #define SV_GroupThreadId
-    #define SV_GroupId
-    #define cbuffer
-    #define SV_GroupIndex
-    #define GroupMemoryBarrierWithGroupSync
-    #define groupshared
-    #define GroupMemoryBarrier
-    #define SampleLevel
-    #define unorm
-    #define InterlockedAdd
-    #define InterlockedMax
+    #error "Please, define one of COMPILER_FXC / COMPILER_DXC or COMPILER_UNREAL_ENGINE or add custom bindings. Use already defined platforms as a reference."
 
 #endif
 
-#define NRD_RADIANCE_COMPRESSION_MODE_NONE                      0
-#define NRD_RADIANCE_COMPRESSION_MODE_MODERATE                  1
-#define NRD_RADIANCE_COMPRESSION_MODE_LESS_MID_ROUGHNESS        2
-#define NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS      3
-#define NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS     4
+//=================================================================================================================================
+// CONSTANTS
+//=================================================================================================================================
 
-#define NRD_NORMAL_ENCODING_UNORM8                              0 // R8G8B8A8 - worst quality, best perf
-#define NRD_NORMAL_ENCODING_OCT10                               1 // R10G10B10A2 - adds small overhead, good quality
-#define NRD_NORMAL_ENCODING_UNORM16                             2 // R16G16B16A16 - best quality, worst perf
+#define NRD_RADIANCE_COMPRESSION_MODE_NONE                                              0
+#define NRD_RADIANCE_COMPRESSION_MODE_MODERATE                                          1
+#define NRD_RADIANCE_COMPRESSION_MODE_LESS_MID_ROUGHNESS                                2
+#define NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS                              3
+#define NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS                             4
+
+#define NRD_NORMAL_ENCODING_UNORM8                                                      0 // R8G8B8A8 - worst quality, best perf
+#define NRD_NORMAL_ENCODING_OCT10                                                       1 // R10G10B10A2 - adds small overhead, good quality
+#define NRD_NORMAL_ENCODING_UNORM16                                                     2 // R16G16B16A16 - best quality, worst perf
+
+#define NRD_FP16_MAX                                                                    65504.0
 
 //=================================================================================================================================
 // SETTINGS
 //=================================================================================================================================
 
+// Used to convert viewZ from FP32 to FP16
+#define NRD_FP16_VIEWZ_SCALE                                                            0.125
+
 // Must match encoding used for IN_NORMAL_ROUGHNESS
 #ifndef NRD_USE_SQRT_LINEAR_ROUGHNESS
-    #define NRD_USE_SQRT_LINEAR_ROUGHNESS                       0
+    #define NRD_USE_SQRT_LINEAR_ROUGHNESS                                               0
 #endif
 
 // Must match encoding used for IN_NORMAL_ROUGHNESS
 #ifndef NRD_USE_MATERIAL_ID_AWARE_FILTERING
-    #define NRD_USE_MATERIAL_ID_AWARE_FILTERING                 0
+    #define NRD_USE_MATERIAL_ID_AWARE_FILTERING                                         1
 #endif
 
 // Must match encoding used for IN_NORMAL_ROUGHNESS
 #ifndef NRD_NORMAL_ENCODING
-    #define NRD_NORMAL_ENCODING                                 NRD_NORMAL_ENCODING_UNORM8
+    #define NRD_NORMAL_ENCODING                                                         NRD_NORMAL_ENCODING_OCT10
 #endif
 
 // [Optional] Color compression for spatial passes (can be NRD_RADIANCE_COMPRESSION_MODE_NONE if the signal is relatively clean)
 #ifndef NRD_RADIANCE_COMPRESSION_MODE
-    #define NRD_RADIANCE_COMPRESSION_MODE                       NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS // 0-4
+    #define NRD_RADIANCE_COMPRESSION_MODE                                               NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS // 0-4
 #endif
-
-// [Optional] Color compression for disocclusion fix (0.1 is enough to suppress undesired fireflies)
-#ifndef NRD_MIP_COLOR_COMPRESSION_AMOUNT
-    #define NRD_MIP_COLOR_COMPRESSION_AMOUNT                    0.1 //0-1
-#endif
-
-// Compatibility stubs (if NRD is integrated as a white box)
-#ifndef NRD_CS_MAIN
-    #define NRD_CS_MAIN                                         main
-#endif
-
-#define NRD_EXPORT                                              // can be non empty
 
 //=================================================================================================================================
 // PRIVATE
 //=================================================================================================================================
 
-#define NRD_MIN_PDF                                             0.01
-#define NRD_FP16_VIEWZ_SCALE                                    0.0125
-#define NRD_FP16_MAX                                            65504.0
+float2 _NRD_EncodeUnitVector( float3 v, const bool bSigned = false )
+{
+    float2 sign = ( step( 0.0, v.xy ) * 2.0 - 1.0 );
+
+    v /= abs( v.x ) + abs( v.y ) + abs( v.z );
+    v.xy = v.z >= 0.0 ? v.xy : ( 1.0 - abs( v.yx ) ) * sign;
+
+    return bSigned ? v.xy : saturate( v.xy * 0.5 + 0.5 );
+}
 
 float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool bNormalize = true )
 {
@@ -218,9 +245,9 @@ float _NRD_GetColorCompressionExposureForSpatialPasses( float linearRoughness )
 }
 
 // Hit distance normalization
-float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float meterToUnitsMultiplier, float linearRoughness = 1.0 )
+float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
 {
-    return ( hitDistParams.x * meterToUnitsMultiplier + abs( viewZ ) * hitDistParams.y ) * lerp( 1.0, hitDistParams.z, saturate( exp2( hitDistParams.w * linearRoughness * linearRoughness ) ) );
+    return ( hitDistParams.x + abs( viewZ ) * hitDistParams.y ) * lerp( 1.0, hitDistParams.z, saturate( exp2( hitDistParams.w * linearRoughness * linearRoughness ) ) );
 }
 
 //=================================================================================================================================
@@ -232,13 +259,11 @@ float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, fl
 //========
 
 // This function is used in all denoisers to decode normal, roughness and optional materialID
-float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
+float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out uint materialID )
 {
     float4 r;
     #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT10 )
-        const bool bSigned = false;
-        const bool bNormalize = false;
-        r.xyz = _NRD_DecodeUnitVector( p.xy, bSigned, bNormalize );
+        r.xyz = _NRD_DecodeUnitVector( p.xy, false, false );
         r.w = p.z;
     #else
         r.xyz = p.xyz * 2.0 - 1.0;
@@ -247,7 +272,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
 
     // By default NRD offers only this decoding variant. It can be changed to match a specific encoding method
     #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT10 && NRD_USE_MATERIAL_ID_AWARE_FILTERING == 1 )
-        materialID = p.w;
+        materialID = uint( p.w * 3.0 );
     #else
         materialID = 0;
     #endif
@@ -262,7 +287,41 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
     return r;
 }
 
-// Helper functions to pack / unpack ray (or averaged) direction and PDF
+float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
+{
+    uint unused;
+
+    return NRD_FrontEnd_UnpackNormalAndRoughness( p, unused );
+}
+
+// Not used in NRD
+float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float linearRoughness, float materialID = 0 )
+{
+    float4 p;
+
+    #if( NRD_USE_SQRT_LINEAR_ROUGHNESS == 1 )
+        linearRoughness = STL::Math::Sqrt01( linearRoughness );
+    #endif
+
+    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT10 )
+        p.xy = _NRD_EncodeUnitVector( N, false );
+        p.z = linearRoughness;
+        p.w = saturate( materialID / 3.0 );
+    #else
+        p.xyz = N;
+
+        // Best fit ( optional )
+        float m = max( abs( N.x ), max( abs( N.y ), abs( N.z ) ) );
+        p.xyz /= m;
+
+        p.xyz = p.xyz * 0.5 + 0.5;
+        p.w = linearRoughness;
+    #endif
+
+    return p;
+}
+
+// Helper functions to pack / unpack ray direction and PDF ( can be averaged for some samples )
 float4 NRD_FrontEnd_PackDirectionAndPdf( float3 direction, float pdf )
 {
     return float4( direction, pdf );
@@ -270,8 +329,6 @@ float4 NRD_FrontEnd_PackDirectionAndPdf( float3 direction, float pdf )
 
 float4 NRD_FrontEnd_UnpackDirectionAndPdf( float4 directionAndPdf )
 {
-    directionAndPdf.w = max( directionAndPdf.w, NRD_MIN_PDF );
-
     return directionAndPdf;
 }
 
@@ -280,9 +337,9 @@ float4 NRD_FrontEnd_UnpackDirectionAndPdf( float4 directionAndPdf )
 //========
 
 // This function returns AO / SO which REBLUR can decode back to "hit distance" internally
-float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float meterToUnitsMultiplier, float linearRoughness = 1.0 )
+float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
 {
-    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, meterToUnitsMultiplier, linearRoughness );
+    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
 
     return saturate( hitDist / f );
 }
@@ -296,6 +353,17 @@ float4 REBLUR_FrontEnd_PackRadianceAndHitDist( float3 radiance, float normHitDis
     }
 
     return float4( radiance, normHitDist );
+}
+
+float4 REBLUR_FrontEnd_PackDirectionAndHitDist( float3 direction, float normHitDist, bool sanitize = true )
+{
+    if( sanitize )
+    {
+        direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : direction;
+        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
+    }
+
+    return float4( direction * 0.5 + 0.5, normHitDist );
 }
 
 //========
@@ -317,8 +385,6 @@ float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bo
 // SIGMA
 //========
 
-// Must be used to "clear" INF pixels
-#define SIGMA_INF_SHADOW        float2( NRD_FP16_MAX, NRD_FP16_MAX )
 #define SIGMA_MIN_DISTANCE      0.0001 // not 0, because it means "NoL < 0, stop processing"
 
 // SIGMA ( single light )
@@ -392,13 +458,26 @@ float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE mult
 // REBLUR
 //========
 
-#define REBLUR_BackEnd_UnpackRadiance( color )  ( color ) // it's a stub for compatibility, currently unpacks internally
+float4 REBLUR_BackEnd_UnpackRadianceAndHitDist( float4 color )
+{
+    return color;
+}
+
+float4 REBLUR_BackEnd_UnpackDirectionAndHitDist( float4 color )
+{
+    color.xyz = color.xyz * 2.0 - 1.0;
+
+    return color;
+}
 
 //========
 // RELAX
 //========
 
-#define RELAX_BackEnd_UnpackRadiance( color )  ( color ) // it's a stub for compatibility, currently unpacks internally
+float4 RELAX_BackEnd_UnpackRadianceAndHitDist( float4 color )
+{
+    return color;
+}
 
 //========
 // SIGMA
@@ -420,13 +499,17 @@ float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE mult
 //      0  - primary hit
 //      1+ - bounces
 
+// TODO: local curvature is needed to adjust hit distance for 2nd+ bounces
 float NRD_GetCorrectedHitDist( float hitDist, float bounceIndex, float roughness0 = 1.0, float importance = 1.0 )
 {
-    // TODO: currently works well only with sane distances, if a huge value is passed (like, 1e32) the effectivness of "fade" will be destroyed...
-    // A "miss" must be last in the chain. How to better handle it?
-    float fade = lerp( 1.0, bounceIndex, roughness0 );
+    bounceIndex -= 1.0; // 0-based starting from 1st bounce
 
-    return hitDist * importance / ( fade * fade );
+    float m0 = roughness0 * roughness0;
+    float compression = 1.0 - exp( -m0 * bounceIndex );
+    float compresedHitDist = hitDist / ( 1.0 + hitDist * compression );
+    float contribution = 1.0 + bounceIndex * bounceIndex * m0;
+
+    return compresedHitDist * importance / contribution;
 }
 
 // We loose G-term if trimming is high, return it back in pre-integrated form
@@ -449,4 +532,11 @@ float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
 float NRD_GetSampleWeight( float3 radiance, bool sanitize = true )
 {
     return ( any( isnan( radiance ) | isinf( radiance ) ) && sanitize ) ? 0.0 : 1.0;
+}
+
+float REBLUR_GetHitDist( float normHitDist, float viewZ, float4 hitDistParams, float roughness )
+{
+    float scale = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, roughness );
+
+    return normHitDist * scale;
 }

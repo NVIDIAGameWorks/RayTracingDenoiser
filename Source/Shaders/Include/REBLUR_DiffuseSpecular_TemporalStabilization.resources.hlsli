@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 
 NVIDIA CORPORATION and its licensors retain all intellectual property
 and proprietary rights in and to this software, related documentation
@@ -38,6 +38,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             NRD_CONSTANT( float4, gSpecAntilag1 ) \
             NRD_CONSTANT( float4, gSpecAntilag2 ) \
             NRD_CONSTANT( float2, gMotionVectorScale ) \
+            NRD_CONSTANT( float, gDiffStabilizationStrength ) \
+            NRD_CONSTANT( float, gSpecStabilizationStrength ) \
         NRD_CONSTANTS_END
 
 #elif( defined REBLUR_DIFFUSE )
@@ -63,6 +65,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             NRD_CONSTANT( float4, gDiffAntilag1 ) \
             NRD_CONSTANT( float4, gDiffAntilag2 ) \
             NRD_CONSTANT( float2, gMotionVectorScale ) \
+            NRD_CONSTANT( float, gDiffStabilizationStrength ) \
         NRD_CONSTANTS_END
 
 #else
@@ -88,6 +91,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             NRD_CONSTANT( float4, gSpecAntilag1 ) \
             NRD_CONSTANT( float4, gSpecAntilag2 ) \
             NRD_CONSTANT( float2, gMotionVectorScale ) \
+            NRD_CONSTANT( float, gSpecStabilizationStrength ) \
         NRD_CONSTANTS_END
 
 #endif
