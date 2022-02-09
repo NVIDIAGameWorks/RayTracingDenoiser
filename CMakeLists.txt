@@ -1,13 +1,7 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.15)
 
-# This DXC will be used if Vulkan SDK is not installed
-set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc")
-
-# Shader output path override
-# set(NRD_SHADER_OUTPUT_PATH "")
-
-# Project folder override
-# set(NRD_PROJECT_FOLDER "External/NRD")
+set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "This DXC will be used if Vulkan SDK is not installed")
+set(NRD_SHADER_OUTPUT_PATH "" CACHE STRING "Shader output path override")
 
 # Settings
 option(NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION "disable interprocedural optimization" OFF)
@@ -45,8 +39,13 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_POSITION_INDEPENDENT_BINARIES ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+
+# warning level 4 and all warnings as errors
+if (MSVC)
+    add_compile_options(/W4 /WX)
+else()
+    add_compile_options(-Wall -Wno-long-long -Werror)
+endif()
 
 if (NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
@@ -55,6 +54,7 @@ endif()
 if ("${NRD_SHADER_OUTPUT_PATH}" STREQUAL "")
     set(NRD_SHADER_OUTPUT_PATH "${PROJECT_BINARY_DIR}/Shaders")
 endif()
+message(STATUS "Using '${NRD_SHADER_OUTPUT_PATH}' directory for storing shaders")
 
 if (NOT NRD_DISABLE_SHADER_COMPILATION)
     # include path for DXC and FXC (used in ShaderCompilation.cmake)

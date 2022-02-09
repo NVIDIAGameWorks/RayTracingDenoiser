@@ -66,8 +66,11 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
 #if( defined COMPILER_FXC || defined COMPILER_DXC )
 
+    #ifndef NRD_CS_MAIN
+        #define NRD_CS_MAIN                                                             main
+    #endif
+
     #define NRD_EXPORT
-    #define NRD_CS_MAIN                                                                 main
 
     #define NRD_CONSTANTS_START                                                         cbuffer globalConstants : register( b0 ) {
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
@@ -79,8 +82,11 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
 #elif( defined COMPILER_UNREAL_ENGINE )
 
+    #ifndef NRD_CS_MAIN
+        #define NRD_CS_MAIN                                                             main
+    #endif
+
     #define NRD_EXPORT
-    #define NRD_CS_MAIN                                                                 main
 
     #define NRD_CONSTANTS_START
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
@@ -103,8 +109,11 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
     #define GatherGreen3( a, b, c )                                                     GatherGreen( ( a ), ( b ), int2( c ) )
     #define GatherGreen2( a, b )                                                        GatherGreen( ( a ), ( b ) )
 
+    #ifndef NRD_CS_MAIN
+        #define NRD_CS_MAIN                                                             main
+    #endif
+
     #define NRD_EXPORT                                                                  [ CxxSymbol( EXPORT_NAME ) ]
-    #define NRD_CS_MAIN                                                                 main
 
     #define NRD_CONSTANTS_START ConstantBuffer globalConstants : register( b0 )         {
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
@@ -133,8 +142,11 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
 #elif( defined( NRD_INPUT_TEXTURE ) && defined( NRD_OUTPUT_TEXTURE ) && defined( NRD_CONSTANTS_START ) && defined( NRD_CONSTANT ) && defined( NRD_CONSTANTS_END ) )
 
+    #ifndef NRD_CS_MAIN
+        #define NRD_CS_MAIN                                                             main
+    #endif
+
     #define NRD_EXPORT
-    #define NRD_CS_MAIN                                                                 main
 
     // Custom engine that has already defined all the macros
 

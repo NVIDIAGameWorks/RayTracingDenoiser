@@ -34,8 +34,7 @@ nrd::Timer::Timer()
 {
 #if defined(_WIN32)
     uint64_t ticksPerSecond = 1;
-    BOOL res = QueryPerformanceFrequency((LARGE_INTEGER*)&ticksPerSecond);
-    assert(res == TRUE);
+    QueryPerformanceFrequency((LARGE_INTEGER*)&ticksPerSecond);
 
     m_InvTicksPerMs = 1000.0 / ticksPerSecond;
 #elif defined(__linux__) || defined(__SCE__)

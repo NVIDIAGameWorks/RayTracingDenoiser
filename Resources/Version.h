@@ -18,11 +18,12 @@ Versioning rules:
 - MINOR - settings & descs change
 - MAJOR - major feature update, API change
 - don't forget to update NRD.hlsli & README
+- don't forget to update requirements in NRDIntegration
 */
 
 #define VERSION_MAJOR                   2
 #define VERSION_MINOR                   12
-#define VERSION_BUILD                   0
+#define VERSION_BUILD                   1
 #define VERSION_REVISION                0
 
 #define VERSION_STRING STR(VERSION_MAJOR.VERSION_MINOR.VERSION_BUILD.VERSION_REVISION)

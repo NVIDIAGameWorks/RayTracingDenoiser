@@ -47,7 +47,7 @@ Or by running scripts (*Windows* only):
 
 `-DNRD_STATIC_LIBRARY=ON` - build NRD as a static library
 
-`-DNRD_DXC_CUSTOM_PATH="my/path/to/dxc"` - custom path to DXC
+`-DNRD_DXC_CUSTOM_PATH="custom/path/to/dxc"` - custom path to DXC
 
 ### Cross compilation
 If target architecture is *ARM64*, set `NRD_CROSSCOMPILE_AARCH64=ON` in addition to setting a correct cmake kit.

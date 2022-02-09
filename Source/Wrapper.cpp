@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRD.h"
 #include "DenoiserImpl.h"
-#include "..\Resources\Version.h"
+#include "../Resources/Version.h"
 
 #include <array>
 
