@@ -173,38 +173,10 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuseSpecularOcclusion(const Method
     float normalWeightStrictness = ml::Lerp( 0.1f, 1.0f, ml::Max( diffSettings.normalWeightStrictness, specSettings.normalWeightStrictness ) );
 
     uint32_t diffCheckerboard = ((uint32_t)diffSettings.checkerboardMode + 2) % 3;
-    ml::float4 diffAntilag1 = ml::float4(diffSettings.antilagIntensitySettings.sigmaScale / GetMinResolutionScale(), diffSettings.antilagHitDistanceSettings.sigmaScale / GetMinResolutionScale(), diffSettings.antilagIntensitySettings.sensitivityToDarkness, diffSettings.antilagHitDistanceSettings.sensitivityToDarkness);
-    ml::float4 diffAntilag2 = ml::float4(diffSettings.antilagIntensitySettings.thresholdMin / GetMinResolutionScale(), diffSettings.antilagHitDistanceSettings.thresholdMin / GetMinResolutionScale(), diffSettings.antilagIntensitySettings.thresholdMax, diffSettings.antilagHitDistanceSettings.thresholdMax);
     float diffBlurRadius = enableReferenceAccumulation ? 0.0f : (diffSettings.blurRadius * GetMinResolutionScale());
-
-    if (!diffSettings.antilagIntensitySettings.enable || enableReferenceAccumulation)
-    {
-        diffAntilag2.x = 99998.0f;
-        diffAntilag2.z = 99999.0f;
-    }
-
-    if (!diffSettings.antilagHitDistanceSettings.enable || enableReferenceAccumulation)
-    {
-        diffAntilag2.y = 99998.0f;
-        diffAntilag2.w = 99999.0f;
-    }
 
     uint32_t specCheckerboard = ((uint32_t)specSettings.checkerboardMode + 2) % 3;
     ml::float4 specTrimmingParams_and_specBlurRadius = ml::float4(specSettings.lobeTrimmingParameters.A, specSettings.lobeTrimmingParameters.B, specSettings.lobeTrimmingParameters.C, enableReferenceAccumulation ? 0.0f : (specSettings.blurRadius * GetMinResolutionScale()));
-    ml::float4 specAntilag1 = ml::float4(specSettings.antilagIntensitySettings.sigmaScale / GetMinResolutionScale(), specSettings.antilagHitDistanceSettings.sigmaScale / GetMinResolutionScale(), specSettings.antilagIntensitySettings.sensitivityToDarkness, specSettings.antilagHitDistanceSettings.sensitivityToDarkness);
-    ml::float4 specAntilag2 = ml::float4(specSettings.antilagIntensitySettings.thresholdMin / GetMinResolutionScale(), specSettings.antilagHitDistanceSettings.thresholdMin / GetMinResolutionScale(), specSettings.antilagIntensitySettings.thresholdMax, specSettings.antilagHitDistanceSettings.thresholdMax);
-
-    if (!specSettings.antilagIntensitySettings.enable || enableReferenceAccumulation)
-    {
-        specAntilag2.x = 99998.0f;
-        specAntilag2.z = 99999.0f;
-    }
-
-    if (!specSettings.antilagHitDistanceSettings.enable || enableReferenceAccumulation)
-    {
-        specAntilag2.y = 99998.0f;
-        specAntilag2.w = 99999.0f;
-    }
 
     NRD_DECLARE_DIMS;
 

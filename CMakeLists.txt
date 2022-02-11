@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
+message("Processing 'NRD'...")
+
 set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "This DXC will be used if Vulkan SDK is not installed")
 set(NRD_SHADER_OUTPUT_PATH "" CACHE STRING "Shader output path override")
 
@@ -54,7 +56,7 @@ endif()
 if ("${NRD_SHADER_OUTPUT_PATH}" STREQUAL "")
     set(NRD_SHADER_OUTPUT_PATH "${PROJECT_BINARY_DIR}/Shaders")
 endif()
-message(STATUS "Using '${NRD_SHADER_OUTPUT_PATH}' directory for storing shaders")
+message(STATUS "NRD shaders output path: '${NRD_SHADER_OUTPUT_PATH}'")
 
 if (NOT NRD_DISABLE_SHADER_COMPILATION)
     # include path for DXC and FXC (used in ShaderCompilation.cmake)

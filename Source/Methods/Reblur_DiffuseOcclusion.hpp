@@ -147,20 +147,6 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurDiffuseOcclusion(const MethodData& me
     float normalWeightStrictness = ml::Lerp( 0.1f, 1.0f, settings.normalWeightStrictness );
 
     uint32_t diffCheckerboard = ((uint32_t)settings.checkerboardMode + 2) % 3;
-    ml::float4 diffAntilag1 = ml::float4(settings.antilagIntensitySettings.sigmaScale / GetMinResolutionScale(), settings.antilagHitDistanceSettings.sigmaScale / GetMinResolutionScale(), settings.antilagIntensitySettings.sensitivityToDarkness, settings.antilagHitDistanceSettings.sensitivityToDarkness);
-    ml::float4 diffAntilag2 = ml::float4(settings.antilagIntensitySettings.thresholdMin / GetMinResolutionScale(), settings.antilagHitDistanceSettings.thresholdMin / GetMinResolutionScale(), settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
-
-    if (!settings.antilagIntensitySettings.enable || settings.enableReferenceAccumulation)
-    {
-        diffAntilag2.x = 99998.0f;
-        diffAntilag2.z = 99999.0f;
-    }
-
-    if (!settings.antilagHitDistanceSettings.enable || settings.enableReferenceAccumulation)
-    {
-        diffAntilag2.y = 99998.0f;
-        diffAntilag2.w = 99999.0f;
-    }
 
     NRD_DECLARE_DIMS;
 

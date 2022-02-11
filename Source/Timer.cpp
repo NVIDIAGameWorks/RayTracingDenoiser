@@ -24,8 +24,7 @@ inline uint64_t _GetTicks()
     return ticks;
 #elif defined(__linux__) || defined(__SCE__)
     struct timespec spec;
-    int res = clock_gettime(CLOCKID, &spec);
-    assert(res == 0);
+    clock_gettime(CLOCKID, &spec);
     return uint64_t(spec.tv_sec) * 1000000000ull + spec.tv_nsec;
 #endif
 }

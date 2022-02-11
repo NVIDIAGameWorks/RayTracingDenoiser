@@ -148,20 +148,6 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurSpecularOcclusion(const MethodData& m
 
     uint32_t specCheckerboard = ((uint32_t)settings.checkerboardMode + 2) % 3;
     ml::float4 specTrimmingParams = ml::float4(settings.lobeTrimmingParameters.A, settings.lobeTrimmingParameters.B, settings.lobeTrimmingParameters.C, 0.0f);
-    ml::float4 specAntilag1 = ml::float4(settings.antilagIntensitySettings.sigmaScale / GetMinResolutionScale(), settings.antilagHitDistanceSettings.sigmaScale / GetMinResolutionScale(), settings.antilagIntensitySettings.sensitivityToDarkness, settings.antilagHitDistanceSettings.sensitivityToDarkness);
-    ml::float4 specAntilag2 = ml::float4(settings.antilagIntensitySettings.thresholdMin / GetMinResolutionScale(), settings.antilagHitDistanceSettings.thresholdMin / GetMinResolutionScale(), settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
-
-    if (!settings.antilagIntensitySettings.enable || settings.enableReferenceAccumulation)
-    {
-        specAntilag2.x = 99998.0f;
-        specAntilag2.z = 99999.0f;
-    }
-
-    if (!settings.antilagHitDistanceSettings.enable || settings.enableReferenceAccumulation)
-    {
-        specAntilag2.y = 99998.0f;
-        specAntilag2.w = 99999.0f;
-    }
 
     NRD_DECLARE_DIMS;
 

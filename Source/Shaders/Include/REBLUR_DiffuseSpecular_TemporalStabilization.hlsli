@@ -146,7 +146,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float4 diffSigma = GetStdDev( diffM1, diffM2 );
 
         float3 diffClamped = clamp( diff.xyz, diffMinInput, diffMaxInput );
-        diff.xyz = diffClamped;
+        diff.xyz = lerp( diff.xyz, diffClamped, 1.0 - gReference );
     #endif
 
     #if( defined REBLUR_SPECULAR )
@@ -155,7 +155,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float4 specSigma = GetStdDev( specM1, specM2 );
 
         float3 specClamped = clamp( spec.xyz, specMinInput, specMaxInput );
-        spec.xyz = lerp( spec.xyz, specClamped, GetSpecMagicCurve( roughness ) );
+        spec.xyz = lerp( spec.xyz, specClamped, GetSpecMagicCurve( roughness ) * ( 1.0 - gReference ) );
     #endif
 
     // Compute previous pixel position

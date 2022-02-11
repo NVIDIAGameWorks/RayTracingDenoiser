@@ -209,24 +209,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float4 occlusion2 = step( planeDist2, disocclusionThreshold );
     float4 occlusion3 = step( planeDist3, disocclusionThreshold );
 
-    // Avoid "got stuck in history" effect under slow motion when only 1 sample is valid from 2x2 footprint and there is a big difference between
-    // foreground and background surfaces. Instead of final scalar accum speed scaling we can apply it to accum speeds from the previous frame
-    float4 planeDist2x2 = float4( planeDist0.w, planeDist1.z, planeDist2.y, planeDist3.x );
-    planeDist2x2 = STL::Math::LinearStep( 0.2, disocclusionThreshold, planeDist2x2 );
-
-    float footprintAvg = STL::Filtering::ApplyBilinearFilter( planeDist2x2.x, planeDist2x2.y, planeDist2x2.z, planeDist2x2.w, bilinearFilterAtPrevPos );
-    float fmin = min( bilinearFilterAtPrevPos.weights.x, bilinearFilterAtPrevPos.weights.y ) + 0.01;
-    float fmax = max( bilinearFilterAtPrevPos.weights.x, bilinearFilterAtPrevPos.weights.y ) + 0.01;
-    footprintAvg = lerp( footprintAvg, 1.0, STL::Math::LinearStep( 0.05, 0.5, fmin / fmax ) );
-
-    #if( defined REBLUR_DIFFUSE )
-        diffPrevAccumSpeeds *= footprintAvg;
-    #endif
-
-    #if( defined REBLUR_SPECULAR )
-        specPrevAccumSpeeds *= footprintAvg;
-    #endif
-
     // Ignore backfacing history
     float4 cosa;
     cosa.x = dot( N, prevNormal00 );
@@ -242,6 +224,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     occlusion2.y *= frontFacing.z;
     occlusion3.x *= frontFacing.w;
 
+    // Avoid "got stuck in history" effect under slow motion when only 1 sample is valid from 2x2 footprint
+    float4 surfaceOcclusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
+    float footprintQuality = STL::Filtering::ApplyBilinearFilter( surfaceOcclusion2x2.x, surfaceOcclusion2x2.y, surfaceOcclusion2x2.z, surfaceOcclusion2x2.w, bilinearFilterAtPrevPos );
+
+    // Avoid footprint momentary stretching due to changed viewing angle
+    float3 Vprev = normalize( Xprev - gCameraDelta.xyz );
+    float VoNflat = abs( dot( Nflat, V ) ) + 1e-3;
+    float VoNflatprev = abs( dot( Nflat, Vprev ) ) + 1e-3;
+    float sizeQuality = VoNflatprev / VoNflat; // this order because we need to fix stretching only, shrinking is OK
+    footprintQuality *= lerp( 0.1, 1.0, saturate( sizeQuality + abs( gIsOrtho ) ) );
+
     float surfaceOcclusionAvg = step( 15.5, dot( occlusion0 + occlusion1 + occlusion2 + occlusion3, 1.0 ) ) * REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA;
 
     // IMPORTANT: CatRom or custom bilinear work as expected when only one is in use. When mixed, a disocclusion event can introduce a switch to
@@ -253,7 +246,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // - computing 4x4 normal weights
     surfaceOcclusionAvg *= float( length( Navg ) > 0.65 ); // TODO: 0.85?
 
-    float4 surfaceOcclusion2x2 = float4( occlusion0.w, occlusion1.z, occlusion2.y, occlusion3.x );
     float4 surfaceWeightsWithOcclusion = STL::Filtering::GetBilinearCustomWeights( bilinearFilterAtPrevPos, surfaceOcclusion2x2 );
 
     float fbits = surfaceOcclusionAvg * 8.0;
@@ -261,6 +253,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Update accumulation speeds
     #if( defined REBLUR_DIFFUSE )
         float diffMaxAccumSpeed = AdvanceAccumSpeed( diffPrevAccumSpeeds, surfaceWeightsWithOcclusion );
+        diffMaxAccumSpeed *= footprintQuality;
 
         float diffHistoryConfidence = 1.0;
         #if( defined REBLUR_PROVIDED_CONFIDENCE )
@@ -270,6 +263,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     #if( defined REBLUR_SPECULAR )
         float specMaxAccumSpeed = AdvanceAccumSpeed( specPrevAccumSpeeds, surfaceWeightsWithOcclusion );
+        specMaxAccumSpeed *= footprintQuality;
 
         float specHistoryConfidence = 1.0;
         #if( defined REBLUR_PROVIDED_CONFIDENCE )
