@@ -23,19 +23,22 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 
 #include "Timer.h"
 
+#define _NRD_STRINGIFY(s) #s
+#define NRD_STRINGIFY(s) _NRD_STRINGIFY(s)
+
 #ifdef NRD_USE_PRECOMPILED_SHADERS
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
         #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_## shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
 
         #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_ ## shaderName ## _cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_ ## shaderName ## _cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_##shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
     #else
         #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
 
         #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_ ## shaderName ## _cs_spirv)})
+            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
     #endif
 #else
     #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
@@ -45,7 +48,7 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
         AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {})
 #endif
 
-#define PushPass(passName) _PushPass(DENOISER_NAME " - " passName)
+#define PushPass(passName) _PushPass(NRD_STRINGIFY(METHOD_NAME) " - " passName)
 
 // TODO: rework is needed, but still better than copy-pasting
 #define NRD_DECLARE_DIMS \
@@ -78,14 +81,14 @@ namespace nrd
     union Settings
     {
         // Add settings here
-        ReblurDiffuseSettings diffuseReblur;
-        ReblurSpecularSettings specularReblur;
-        ReblurDiffuseSpecularSettings diffuseSpecularReblur;
-        SigmaShadowSettings shadowSigma;
+        ReblurSettings reblur;
+        SigmaSettings sigma;
         RelaxDiffuseSettings diffuseRelax;
         RelaxSpecularSettings specularRelax;
         RelaxDiffuseSpecularSettings diffuseSpecularRelax;
         ReferenceSettings reference;
+        SpecularReflectionMvSettings specularReflectionMv;
+        DeltaOptimizationMvSettings deltaOptimizationMv;
     };
 
     struct MethodData
@@ -123,38 +126,30 @@ namespace nrd
     {
     // Add methods here
     public:
+        // Reblur
         size_t AddMethod_ReblurDiffuse(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurDiffuse(const MethodData& methodData);
-        void AddSharedConstants_ReblurDiffuse(const MethodData& methodData, const ReblurDiffuseSettings& settings, Constant*& data);
-
         size_t AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurDiffuseOcclusion(const MethodData& methodData);
-
         size_t AddMethod_ReblurSpecular(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurSpecular(const MethodData& methodData);
-        void AddSharedConstants_ReblurSpecular(const MethodData& methodData, const ReblurSpecularSettings& settings, Constant*& data);
-
         size_t AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurSpecularOcclusion(const MethodData& methodData);
-
         size_t AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurDiffuseSpecular(const MethodData& methodData);
-        void AddSharedConstants_ReblurDiffuseSpecular(const MethodData& methodData, const ReblurDiffuseSpecularSettings& settings, Constant*& data);
-
         size_t AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurDiffuseSpecularOcclusion(const MethodData& methodData);
-
         size_t AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w, uint16_t h);
-        void UpdateMethod_ReblurDiffuseDirectionalOcclusion(const MethodData& methodData);
 
+        void UpdateMethod_Reblur(const MethodData& methodData);
+        void UpdateMethod_ReblurOcclusion(const MethodData& methodData);
+
+        void AddSharedConstants_Reblur(const MethodData& methodData, const ReblurSettings& settings, Constant*& data);
+
+        // Sigma
         size_t AddMethod_SigmaShadow(uint16_t w, uint16_t h);
         void UpdateMethod_SigmaShadow(const MethodData& methodData);
-        void AddSharedConstants_SigmaShadow(const MethodData& methodData, const SigmaShadowSettings& settings, Constant*& data);
+        void AddSharedConstants_Sigma(const MethodData& methodData, const SigmaSettings& settings, Constant*& data);
 
         size_t AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h);
         void UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData);
 
-        void AddSharedConstants_Relax(const MethodData& methodData, Constant*& data);
+        // Relax
+        void AddSharedConstants_Relax(const MethodData& methodData, Constant*& data, nrd::Method method);
 
         size_t AddMethod_RelaxDiffuse(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxDiffuse(const MethodData& methodData);
@@ -167,6 +162,12 @@ namespace nrd
 
         size_t AddMethod_Reference(uint16_t w, uint16_t h);
         void UpdateMethod_Reference(const MethodData& methodData);
+
+        size_t AddMethod_SpecularReflectionMv();
+        void UpdateMethod_SpecularReflectionMv(const MethodData& methodData);
+
+        size_t AddMethod_DeltaOptimizationMv(uint16_t w, uint16_t h);
+        void UpdateMethod_DeltaOptimizationMv(const MethodData& methodData);
 
     // Internal
     public:
@@ -285,14 +286,6 @@ namespace nrd
             [[maybe_unused]] size_t num = size_t(lastConstant - (const Constant*)dispatchDesc.constantBufferData);
             [[maybe_unused]] size_t bytes = num * sizeof(uint32_t);
             assert( bytes == dispatchDesc.constantBufferDataSize );
-        }
-
-        inline float GetMinResolutionScale() const
-        {
-            float a = ml::Min(m_ResolutionScalePrev.x, m_ResolutionScalePrev.y);
-            float b = ml::Min(m_CommonSettings.resolutionScale[0], m_CommonSettings.resolutionScale[1]);
-
-            return ml::Min(a, b);
         }
 
     private:

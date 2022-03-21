@@ -26,7 +26,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // FP16
 
-#ifdef COMPILER_DXC
+#ifdef NRD_COMPILER_DXC
     #define half_float float16_t
     #define half_float2 float16_t2
     #define half_float3 float16_t3
@@ -42,33 +42,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // DEFAULT SETTINGS (can be modified)
 //==================================================================================================================
 
-#ifndef NRD_USE_SANITIZATION
-    #define NRD_USE_SANITIZATION                                0 // bool
-#endif
-
-#ifndef NRD_USE_QUADRATIC_DISTRIBUTION
-    #define NRD_USE_QUADRATIC_DISTRIBUTION                      0 // bool
-#endif
-
-#ifndef NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY
-    #define NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY              100.0 // w = 1 / (1 + this * z)
-#endif
-
-#ifndef NRD_BILATERAL_WEIGHT_CUTOFF
-    #define NRD_BILATERAL_WEIGHT_CUTOFF                         0.03 // normalized % // TODO: 1-2%?
-#endif
-
-#ifndef NRD_CATROM_SHARPNESS
-    #define NRD_CATROM_SHARPNESS                                0.5 // [0; 1], 0.5 matches Catmull-Rom
-#endif
-
-#if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_UNORM8 )
-    #define NRD_ENCODING_ERRORS                                 float2( STL::Math::DegToRad( 1.2 ), 0.0025 )
-#elif( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT10 )
-    #define NRD_ENCODING_ERRORS                                 float2( STL::Math::DegToRad( 0.4 ), 0.001 )
-#else
-    #define NRD_ENCODING_ERRORS                                 float2( STL::Math::DegToRad( 0 ), 0.0 )
-#endif
+#define NRD_USE_SANITIZATION                                    0 // bool
+#define NRD_USE_QUADRATIC_DISTRIBUTION                          0 // bool
+#define NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY                  100.0 // w = 1 / ( 1 + this * z )
+#define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03 // normalized % // TODO: 1-2%?
+#define NRD_CATROM_SHARPNESS                                    0.5 // [ 0; 1 ], 0.5 matches Catmull-Rom
+#define NRD_ENCODING_ERRORS                                     float2( STL::Math::DegToRad( 0.5 ), 0.0002 )
+#define NRD_PARALLAX_NORMALIZATION                              30.0 // was 60 in normal mode ( too laggy ) and 30 in reference and ortho modes
 
 //==================================================================================================================
 // CTA & preloading
@@ -110,6 +90,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Misc
 
+// sigma = standard deviation, variance = sigma ^ 2
+#define GetStdDev( m1, m2 )                     sqrt( abs( ( m2 ) - ( m1 ) * ( m1 ) ) ) // sqrt( max( m2 - m1 * m1, 0.0 ) )
+
+#if( NRD_USE_MATERIAL_ID == 1 )
+    #define CompareMaterials( m0, m, mask )     ( ( mask ) == 0 ? 1.0 : ( ( m0 ) == ( m ) ) )
+#else
+    #define CompareMaterials( m0, m, mask )     1.0
+#endif
+
 #if( NRD_USE_SANITIZATION == 1 )
     float4 Sanitize( float4 x, float4 replacer )
     {
@@ -135,12 +124,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #define Sanitize( x, replacer ) ( x )
 #endif
 
-// sigma = standard deviation, variance = sigma ^ 2
-#define GetStdDev( m1, m2 ) sqrt( abs( m2 - m1 * m1 ) ) // sqrt( max( m2 - m1 * m1, 0.0 ) )
-
-float PixelRadiusToWorld( float unproject, float isOrtho, float pixelRadius, float viewZ )
+float PixelRadiusToWorld( float unproject, float orthoMode, float pixelRadius, float viewZ )
 {
-     return pixelRadius * unproject * lerp( viewZ, 1.0, abs( isOrtho ) );
+     return pixelRadius * unproject * lerp( viewZ, 1.0, abs( orthoMode ) );
 }
 
 float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float4 baseRotator, uint frameIndex )
@@ -182,15 +168,39 @@ float2 ApplyCheckerboard( inout float2 uv, uint mode, uint counter, float2 scree
     int2 uvi = int2( uv * screenSize );
     bool hasData = STL::Sequence::CheckerBoard( uvi, frameIndex ) == mode;
     if( !hasData )
-        uvi.y += ( ( counter & 0x1 ) == 0 ) ? -1 : 1;
+        uvi.x += ( ( counter & 0x1 ) == 0 ) ? -1 : 1;
     uv = ( float2( uvi ) + 0.5 ) * invScreenSize;
 
     return float2( uv.x * 0.5, uv.y );
 }
 
-bool CompareMaterials( uint m0, uint m, uint mask )
+float GetSpecMagicCurve( float roughness, float power = 0.25 )
 {
-    return ( m0 & mask ) == ( m & mask );
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLjAtMl4oLTE1LjAqeCkiLCJjb2xvciI6IiNGMjE4MTgifSx7InR5cGUiOjAsImVxIjoiKDEtMl4oLTIwMCp4KngpKSooeF4wLjI1KSIsImNvbG9yIjoiIzIyRUQxNyJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiMxNzE2MTYifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxLjEiXSwic2l6ZSI6WzEwMDAsNTAwXX1d
+
+    float f = 1.0 - exp2( -200.0 * roughness * roughness );
+    f *= STL::Math::Pow01( roughness, power );
+
+    return f;
+}
+
+float ComputeParallax( float3 X, float3 Xprev, float4 cameraDelta, bool orthoMode )
+{
+    float3 Xt = Xprev - cameraDelta.xyz;
+    float p = dot( X, Xt );
+    float parallax = sqrt( max( dot( X, X ) * dot( Xt, Xt ) - p * p, 0.0 ) ) / p;
+
+    // Special case for ortho projection, where translation doesn't introduce parallax
+    parallax = orthoMode ? cameraDelta.w : parallax; // TODO: do it better!
+
+    return parallax * NRD_PARALLAX_NORMALIZATION;
+}
+
+float GetParallaxInPixels( float parallax, float unproject ) // TODO: ortho!
+{
+    float parallaxInPixels = parallax / ( NRD_PARALLAX_NORMALIZATION * unproject );
+
+    return parallaxInPixels;
 }
 
 // Kernel
@@ -226,6 +236,9 @@ float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight,
 // Weights
 
 #define _ComputeWeight( p, value ) STL::Math::SmoothStep01( 1.0 - abs( value * p.x + p.y ) )
+
+#define GetRoughnessWeight( p, value ) _ComputeWeight( p, value )
+#define GetHitDistanceWeight( p, value ) _ComputeWeight( p, value )
 
 float GetGeometryWeight( float2 params0, float3 n0, float3 p )
 {
@@ -272,14 +285,14 @@ float4 GetBilateralWeight( float4 z, float zc )
     float w4 = w12.x * w3.y; \
     /* Fallback to custom bilinear */ \
     w = useBicubic ? w : bilinearCustomWeights; \
-    w4 = useBicubic ? w4 : 0.0001; \
+    w4 = useBicubic ? w4 : 0.00001; \
     float invSum = 1.0 / ( dot( w, 1.0 ) + w4 ); \
     /* Texture coordinates */ \
     float2 uv0 = centerPos + ( useBicubic ? float2( tc2.x, tc0.y ) : float2( 0, 0 ) ); \
     float2 uv1 = centerPos + ( useBicubic ? float2( tc0.x, tc2.y ) : float2( 1, 0 ) ); \
     float2 uv2 = centerPos + ( useBicubic ? float2( tc2.x, tc2.y ) : float2( 0, 1 ) ); \
     float2 uv3 = centerPos + ( useBicubic ? float2( tc3.x, tc2.y ) : float2( 1, 1 ) ); \
-    float2 uv4 = centerPos + ( useBicubic ? float2( tc2.x, tc3.y ) : float2( 0, 0 ) );
+    float2 uv4 = centerPos + ( useBicubic ? float2( tc2.x, tc3.y ) : f ); // if NRD_USE_MATERIAL_ID = 1, failed reprojection ends here. If material test is OFF we must get a bilinear sample
 
 #define _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( color, tex ) \
     /* Sampling */ \

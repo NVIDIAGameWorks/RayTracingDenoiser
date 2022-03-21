@@ -18,37 +18,37 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 {
     float center = diff;
 
-    float radius = gDiffBlurRadius;
+    float radius = gBlurRadius;
     float minAccumSpeed = GetMipLevel( 1.0 ) + 0.001;
     float boost = saturate( 1.0 - diffInternalData.y / minAccumSpeed );
-    radius *= ( 1.0 + 2.0 * boost ) / 3.0;
+    radius *= ( 1.0 + 5.0 * boost ) / 3.0;
 
     float radiusScale = 1.0;
-    float radiusBias = 0.0; // see GetBlurRadius()
-    float strictness = 1.0;
+    float radiusBias = 0.0;
+    float fractionScale = 1.0;
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
         radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
-        radiusBias = error.x * gDiffBlurRadiusScale + 0.00001;
-        strictness = REBLUR_POST_BLUR_STRICTNESS;
+        radiusBias = error.x * gBlurRadiusScale + 0.00001;
+        fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        radiusBias = error.x * gDiffBlurRadiusScale + 0.00001;
-        strictness = REBLUR_BLUR_NORMAL_WEIGHT_RELAXATION;
+        radiusBias = error.x * gBlurRadiusScale + 0.00001;
+        fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #endif
 
     // Blur radius
-    float hitDist = REBLUR_GetHitDist( center, viewZ, gDiffHitDistParams, 1.0 );
-    float blurRadius = GetBlurRadius( radius, hitDist, viewZ, diffInternalData.x, radiusBias, radiusScale );
-    float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
+    float hitDist = REBLUR_GetHitDist( center, viewZ, gHitDistParams, 1.0 );
+    float blurRadius = GetBlurRadius( radius, hitDist, frustumHeight, diffInternalData.x, radiusBias, radiusScale );
+    float worldBlurRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
 
     // Denoising
-    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
     float hitDistFactor = hitDist / ( hitDist + frustumHeight );
 
     float3 Vv = GetViewVector( Xv, true );
     float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams( diffInternalData.x, viewZ, 1.0, gNormalWeightStrictness * strictness );
+    float normalWeightParams = GetNormalWeightParams( diffInternalData.x, frustumHeight, gLobeAngleFraction * fractionScale );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center, diffInternalData.x );
     float sum = 1.0;
 
@@ -77,9 +77,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 s = gIn_Diff.SampleLevel( gNearestMirror, uvScaled, 0 );
         float zs = s.y / NRD_FP16_VIEWZ_SCALE;
 
-        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gIsOrtho );
+        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
-        uint materialIDs;
+        float materialIDs;
         Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
         // Sample weight
@@ -106,7 +106,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     error.x = GetColorErrorForAdaptiveRadiusScale( diff, center, diffInternalData.x, 1.0, REBLUR_SPATIAL_MODE );
 
     // Input mix
-    diff = lerp( diff, center, REBLUR_INPUT_MIX.y );
+    diff = lerp( diff, center, gInputMix * ( 1.0 - diffInternalData.x ) );
 
     // Output
     #if( REBLUR_SPATIAL_MODE == REBLUR_BLUR )

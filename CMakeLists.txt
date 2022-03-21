@@ -42,12 +42,6 @@ set(CMAKE_POSITION_INDEPENDENT_BINARIES ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
-# warning level 4 and all warnings as errors
-if (MSVC)
-    add_compile_options(/W4 /WX)
-else()
-    add_compile_options(-Wall -Wno-long-long -Werror)
-endif()
 
 if (NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
@@ -69,21 +63,16 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
     file(GLOB_RECURSE NRD_HLSL_MATHLIB_HEADER_FILES "${NRD_MATHLIB_INCLUDE_PATH}/*.hlsli")
     file(GLOB_RECURSE NRD_HLSL_INCLUDE "Include/*.hlsli")
 
+    file(MAKE_DIRECTORY ${NRD_SHADER_OUTPUT_PATH})
     include(ShaderCompilation.cmake)
-
-    # create "build/Shaders"
-    add_custom_target(CreateFolderForShaders ALL
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${NRD_SHADER_OUTPUT_PATH}")
-    set_property(TARGET CreateFolderForShaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
 
     # define build rules for the shaders
     list_hlsl_headers("${NRD_HLSL_FILES}" NRD_HEADER_FILES)
     list_hlsl_headers("${NRD_HLSL_MATHLIB_HEADER_FILES}" NRD_HEADER_FILES)
     list_hlsl_headers("${NRD_HLSL_INCLUDE}" NRD_HEADER_FILES)
     list_hlsl_shaders("${NRD_HLSL_FILES}" "${NRD_HEADER_FILES}" NRD_SHADER_FILES)
-    add_custom_target(NrdShaders ALL DEPENDS ${NRD_SHADER_FILES} SOURCES "${NRD_HEADER_FILES}")
-    add_dependencies(NrdShaders CreateFolderForShaders)
-    set_property(TARGET NrdShaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
+    add_custom_target(NRDShaders ALL DEPENDS ${NRD_SHADER_FILES} SOURCES "${NRD_HEADER_FILES}")
+    set_property(TARGET NRDShaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
 endif()
 
 if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
@@ -116,7 +105,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC "Include" "External")
 set_property(TARGET ${PROJECT_NAME} PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
 
 if (NOT NRD_DISABLE_SHADER_COMPILATION)
-    add_dependencies(${PROJECT_NAME} NrdShaders)
+    add_dependencies(${PROJECT_NAME} NRDShaders)
 endif()
 
 if (NRD_USE_PRECOMPILED_SHADERS)
@@ -131,9 +120,7 @@ else()
     target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_ONLY_SPIRV_SHADERS_AVAILABLE=1)
 endif()
 
-if (NRD_STATIC_LIBRARY)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "NRD_API=extern \"C\"")
-else()
+if (NOT NRD_STATIC_LIBRARY)
     if(WIN32)
         target_compile_definitions(${PROJECT_NAME} PRIVATE "NRD_API=extern \"C\" __declspec(dllexport)")
     else()
@@ -145,10 +132,13 @@ if ((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64") OR (CMAKE_SYSTEM_PROCESSOR MATCHES
     set(NRD_ARCHITECTURE_COMPILE_OPTIONS -msse4.1)
 endif()
 
+# warning level 4 and all warnings as errors
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(${PROJECT_NAME} PRIVATE ${NRD_ARCHITECTURE_COMPILE_OPTIONS} -Wno-missing-braces -Wno-return-type-c-linkage)
+    target_compile_options(${PROJECT_NAME} PRIVATE ${NRD_ARCHITECTURE_COMPILE_OPTIONS} -Wextra -Werror -Wno-return-type-c-linkage)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(${PROJECT_NAME} PRIVATE ${NRD_ARCHITECTURE_COMPILE_OPTIONS})
+    target_compile_options(${PROJECT_NAME} PRIVATE ${NRD_ARCHITECTURE_COMPILE_OPTIONS} -Wall -Werror)
+elseif (MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
 endif()
 
 if (NOT NRD_IS_SUBMODULE)

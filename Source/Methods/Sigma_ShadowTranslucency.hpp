@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
 {
-    #define DENOISER_NAME "SIGMA::ShadowTranscluency"
+    #define METHOD_NAME SIGMA_ShadowTranslucency
 
     enum class Transient
     {
@@ -34,7 +34,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
-    SetSharedConstants(1, 1, 9, 10);
+    SIGMA_DECLARE_SHARED_CONSTANT_NUM;
 
     PushPass("Classify tiles");
     {
@@ -105,9 +105,9 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t
         AddDispatch( SIGMA_ShadowTranslucency_SplitScreen, SumConstants(0, 0, 0, 1), 16, 1 );
     }
 
-    #undef DENOISER_NAME
+    #undef METHOD_NAME
 
-    return sizeof(SigmaShadowSettings);
+    return sizeof(SigmaSettings);
 }
 
 void nrd::DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData)
@@ -122,7 +122,7 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& m
         SPLIT_SCREEN,
     };
 
-    const SigmaShadowSettings& settings = methodData.settings.shadowSigma;
+    const SigmaSettings& settings = methodData.settings.sigma;
 
     NRD_DECLARE_DIMS;
 
@@ -133,7 +133,7 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& m
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
         Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_SigmaShadow(methodData, settings, data);
+        AddSharedConstants_Sigma(methodData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         ValidateConstants(data);
 
@@ -142,32 +142,32 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& m
 
     // CLASSIFY_TILES
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::CLASSIFY_TILES));
-    AddSharedConstants_SigmaShadow(methodData, settings, data);
+    AddSharedConstants_Sigma(methodData, settings, data);
     ValidateConstants(data);
 
     // SMOOTH_TILES
     data = PushDispatch(methodData, AsUint(Dispatch::SMOOTH_TILES));
-    AddSharedConstants_SigmaShadow(methodData, settings, data);
+    AddSharedConstants_Sigma(methodData, settings, data);
     AddUint2(data, tilesW, tilesH);
     ValidateConstants(data);
 
     // PRE_BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::PRE_BLUR));
-    AddSharedConstants_SigmaShadow(methodData, settings, data);
+    AddSharedConstants_Sigma(methodData, settings, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[0]);
     ValidateConstants(data);
 
     // BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
-    AddSharedConstants_SigmaShadow(methodData, settings, data);
+    AddSharedConstants_Sigma(methodData, settings, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator[1]);
     ValidateConstants(data);
 
     // TEMPORAL_STABILIZATION
     data = PushDispatch(methodData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
-    AddSharedConstants_SigmaShadow(methodData, settings, data);
+    AddSharedConstants_Sigma(methodData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
@@ -177,7 +177,7 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadowTranslucency(const MethodData& m
     if (m_CommonSettings.splitScreen > 0.0f)
     {
         data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_SigmaShadow(methodData, settings, data);
+        AddSharedConstants_Sigma(methodData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         ValidateConstants(data);
     }

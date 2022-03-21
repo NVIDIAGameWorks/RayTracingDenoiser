@@ -100,7 +100,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
         if (NOT "${FXC_PROFILE}" STREQUAL "" AND NOT "${NRD_FXC_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_DXBC} ${OUTPUT_PATH_DXBC}.h
-                    COMMAND ${NRD_FXC_PATH} /nologo /E main -DCOMPILER_FXC=1 /T ${FXC_PROFILE}
+                    COMMAND ${NRD_FXC_PATH} /nologo /E main -DNRD_COMPILER_FXC=1 /T ${FXC_PROFILE}
                         /I "${NRD_HEADER_INCLUDE_PATH}" /I "${NRD_SHADER_INCLUDE_PATH}" /I "${NRD_MATHLIB_INCLUDE_PATH}" /I "Include"
                         ${FILE_NAME} /Vn g_${BYTECODE_ARRAY_NAME}_dxbc /Fh ${OUTPUT_PATH_DXBC}.h /Fo ${OUTPUT_PATH_DXBC}
                         /WX /O3 /all_resources_bound
@@ -115,7 +115,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
         if (NOT "${DXC_PROFILE}" STREQUAL "" AND NOT "${NRD_DXC_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_DXIL} ${OUTPUT_PATH_DXIL}.h
-                    COMMAND ${NRD_DXC_PATH} -E main -DCOMPILER_DXC=1 -T ${DXC_PROFILE}
+                    COMMAND ${NRD_DXC_PATH} -E main -DNRD_COMPILER_DXC=1 -T ${DXC_PROFILE}
                         -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
                         ${FILE_NAME} -Vn g_${BYTECODE_ARRAY_NAME}_dxil -Fh ${OUTPUT_PATH_DXIL}.h -Fo ${OUTPUT_PATH_DXIL}
                         -WX -O3 -enable-16bit-types -all_resources_bound
@@ -130,7 +130,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
         if (NOT "${DXC_PROFILE}" STREQUAL "" AND NOT "${NRD_DXC_SPIRV_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_SPIRV} ${OUTPUT_PATH_SPIRV}.h
-                    COMMAND ${NRD_DXC_SPIRV_PATH} -E main -DCOMPILER_DXC=1 -DVULKAN=1 -T ${DXC_PROFILE}
+                    COMMAND ${NRD_DXC_SPIRV_PATH} -E main -DNRD_COMPILER_DXC=1 -DVULKAN=1 -T ${DXC_PROFILE}
                         -I "${NRD_HEADER_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}" -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "Include"
                         ${FILE_NAME} -spirv -Vn g_${BYTECODE_ARRAY_NAME}_spirv -Fh ${OUTPUT_PATH_SPIRV}.h -Fo ${OUTPUT_PATH_SPIRV} ${NRD_DXC_VK_SHIFTS}
                         -WX -O3 -enable-16bit-types -all_resources_bound

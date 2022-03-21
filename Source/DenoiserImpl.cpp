@@ -131,47 +131,47 @@ nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserC
 
         if (methodDesc.method == Method::REBLUR_DIFFUSE)
         {
-            methodData.settings.diffuseReblur = ReblurDiffuseSettings();
+            methodData.settings.reblur = ReblurSettings();
             methodData.settingsSize = AddMethod_ReblurDiffuse(w, h);
         }
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_OCCLUSION)
         {
-            methodData.settings.diffuseReblur = ReblurDiffuseSettings();
+            methodData.settings.reblur = ReblurSettings();
             methodData.settingsSize = AddMethod_ReblurDiffuseOcclusion(w, h);
         }
         else if (methodDesc.method == Method::REBLUR_SPECULAR)
         {
-            methodData.settings.specularReblur = ReblurSpecularSettings();
+            methodData.settings.reblur = ReblurSettings();
             methodData.settingsSize = AddMethod_ReblurSpecular(w, h);
         }
         else if (methodDesc.method == Method::REBLUR_SPECULAR_OCCLUSION)
         {
-            methodData.settings.specularReblur = ReblurSpecularSettings();
+            methodData.settings.reblur = ReblurSettings();
             methodData.settingsSize = AddMethod_ReblurSpecularOcclusion(w, h);
         }
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR)
         {
-            methodData.settings.diffuseSpecularReblur = ReblurDiffuseSpecularSettings();
+            methodData.settings.reblur = ReblurSettings();
             methodData.settingsSize = AddMethod_ReblurDiffuseSpecular(w, h);
         }
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
         {
-            methodData.settings.diffuseSpecularReblur = ReblurDiffuseSpecularSettings();
+            methodData.settings.reblur = ReblurSettings();
             methodData.settingsSize = AddMethod_ReblurDiffuseSpecularOcclusion(w, h);
         }
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION)
         {
-            methodData.settings.diffuseReblur = ReblurDiffuseSettings();
+            methodData.settings.reblur = ReblurSettings();
             methodData.settingsSize = AddMethod_ReblurDiffuseDirectionalOcclusion(w, h);
         }
         else if (methodDesc.method == Method::SIGMA_SHADOW)
         {
-            methodData.settings.shadowSigma = SigmaShadowSettings();
+            methodData.settings.sigma = SigmaSettings();
             methodData.settingsSize = AddMethod_SigmaShadow(w, h);
         }
         else if (methodDesc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
         {
-            methodData.settings.shadowSigma = SigmaShadowSettings();
+            methodData.settings.sigma = SigmaSettings();
             methodData.settingsSize = AddMethod_SigmaShadowTranslucency(w, h);
         }
         else if (methodDesc.method == Method::RELAX_DIFFUSE)
@@ -193,6 +193,16 @@ nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserC
         {
             methodData.settings.reference = ReferenceSettings();
             methodData.settingsSize = AddMethod_Reference(w, h);
+        }
+        else if (methodDesc.method == Method::SPEC_REFLECTION_MV)
+        {
+            methodData.settings.specularReflectionMv = SpecularReflectionMvSettings();
+            methodData.settingsSize = AddMethod_SpecularReflectionMv();
+        }
+        else if (methodDesc.method == Method::DELTA_OPTIMIZATION_MV)
+        {
+            methodData.settings.deltaOptimizationMv = DeltaOptimizationMvSettings();
+            methodData.settingsSize = AddMethod_DeltaOptimizationMv(w, h);
         }
         else
             return Result::INVALID_ARGUMENT;
@@ -287,19 +297,19 @@ nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const nrd::CommonSettings& c
             UpdatePingPong(methodData);
 
         if (methodData.desc.method == Method::REBLUR_DIFFUSE)
-            UpdateMethod_ReblurDiffuse(methodData);
+            UpdateMethod_Reblur(methodData);
         else if (methodData.desc.method == Method::REBLUR_DIFFUSE_OCCLUSION)
-            UpdateMethod_ReblurDiffuseOcclusion(methodData);
+            UpdateMethod_ReblurOcclusion(methodData);
         else if (methodData.desc.method == Method::REBLUR_SPECULAR)
-            UpdateMethod_ReblurSpecular(methodData);
+            UpdateMethod_Reblur(methodData);
         else if (methodData.desc.method == Method::REBLUR_SPECULAR_OCCLUSION)
-            UpdateMethod_ReblurSpecularOcclusion(methodData);
+            UpdateMethod_ReblurOcclusion(methodData);
         else if (methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR)
-            UpdateMethod_ReblurDiffuseSpecular(methodData);
+            UpdateMethod_Reblur(methodData);
         else if (methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
-            UpdateMethod_ReblurDiffuseSpecularOcclusion(methodData);
+            UpdateMethod_ReblurOcclusion(methodData);
         else if (methodData.desc.method == Method::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION)
-            UpdateMethod_ReblurDiffuseDirectionalOcclusion(methodData);
+            UpdateMethod_Reblur(methodData);
         else if (methodData.desc.method == Method::SIGMA_SHADOW)
             UpdateMethod_SigmaShadow(methodData);
         else if (methodData.desc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
@@ -312,6 +322,10 @@ nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const nrd::CommonSettings& c
             UpdateMethod_RelaxDiffuseSpecular(methodData);
         else if (methodData.desc.method == Method::REFERENCE)
             UpdateMethod_Reference(methodData);
+        else if (methodData.desc.method == Method::SPEC_REFLECTION_MV)
+            UpdateMethod_SpecularReflectionMv(methodData);
+        else if (methodData.desc.method == Method::DELTA_OPTIMIZATION_MV)
+            UpdateMethod_DeltaOptimizationMv(methodData);
     }
 
     dispatchDescs = m_ActiveDispatches.data();
@@ -399,7 +413,18 @@ void nrd::DenoiserImpl::PrepareDesc()
     // Since now all std::vectors become "locked" (no reallocations)
 }
 
-void nrd::DenoiserImpl::AddComputeDispatchDesc(uint8_t workgroupDimX, uint8_t workgroupDimY, uint16_t downsampleFactor, uint32_t constantBufferDataSize, uint32_t maxRepeatNum, const char* shaderFileName, const nrd::ComputeShader& dxbc, const nrd::ComputeShader& dxil, const nrd::ComputeShader& spirv)
+void nrd::DenoiserImpl::AddComputeDispatchDesc
+(
+    uint8_t workgroupDimX,
+    uint8_t workgroupDimY,
+    uint16_t downsampleFactor,
+    uint32_t constantBufferDataSize,
+    uint32_t maxRepeatNum,
+    const char* shaderFileName,
+    const nrd::ComputeShader& dxbc,
+    const nrd::ComputeShader& dxil,
+    const nrd::ComputeShader& spirv
+)
 {
     // Pipeline
     size_t pipelineIndex = 0;
@@ -679,6 +704,25 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Diffuse_TemporalStabilization.cs.dxil.h"
         #include "REBLUR_Diffuse_SplitScreen.cs.dxbc.h"
         #include "REBLUR_Diffuse_SplitScreen.cs.dxil.h"
+
+        #include "REBLUR_Perf_Diffuse_PreBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_PreBlur.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_PreBlurAdvanced.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_PreBlurAdvanced.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_AntiFirefly.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_AntiFirefly.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_Blur.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_Blur.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_PostBlur.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_TemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_TemporalStabilization.cs.dxil.h"
     #endif
 
     #include "REBLUR_Diffuse_PreBlur.cs.spirv.h"
@@ -691,6 +735,16 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Diffuse_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_Diffuse_PostBlur.cs.spirv.h"
     #include "REBLUR_Diffuse_SplitScreen.cs.spirv.h"
+
+    #include "REBLUR_Perf_Diffuse_PreBlur.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_PreBlurAdvanced.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_AntiFirefly.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_Blur.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_TemporalStabilization.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_PostBlur.cs.spirv.h"
 
     // REBLUR_DIFFUSE_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -706,6 +760,17 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseOcclusion_PostBlur.cs.dxil.h"
         #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxbc.h"
         #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxil.h"
+
+        #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_PostBlur.cs.dxil.h"
     #endif
 
     #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h"
@@ -714,6 +779,12 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.spirv.h"
+
+    #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseOcclusion_PostBlur.cs.spirv.h"
 
     // REBLUR_SPECULAR
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -737,6 +808,25 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Specular_TemporalStabilization.cs.dxil.h"
         #include "REBLUR_Specular_SplitScreen.cs.dxbc.h"
         #include "REBLUR_Specular_SplitScreen.cs.dxil.h"
+
+        #include "REBLUR_Perf_Specular_PreBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_PreBlur.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_PreBlurAdvanced.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_PreBlurAdvanced.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_AntiFirefly.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_AntiFirefly.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_Blur.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_Blur.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_PostBlur.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_TemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_TemporalStabilization.cs.dxil.h"
     #endif
 
     #include "REBLUR_Specular_PreBlur.cs.spirv.h"
@@ -749,6 +839,16 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Specular_PostBlur.cs.spirv.h"
     #include "REBLUR_Specular_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_Specular_SplitScreen.cs.spirv.h"
+
+    #include "REBLUR_Perf_Specular_PreBlur.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_PreBlurAdvanced.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_AntiFirefly.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_Blur.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_PostBlur.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_TemporalStabilization.cs.spirv.h"
 
     // REBLUR_SPECULAR_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -764,6 +864,17 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_SpecularOcclusion_PostBlur.cs.dxil.h"
         #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxbc.h"
         #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxil.h"
+
+        #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Perf_SpecularOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_Perf_SpecularOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_Perf_SpecularOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_SpecularOcclusion_PostBlur.cs.dxil.h"
     #endif
 
     #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.spirv.h"
@@ -772,6 +883,12 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_SpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_PostBlur.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_SplitScreen.cs.spirv.h"
+
+    #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Perf_SpecularOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_Perf_SpecularOcclusion_PostBlur.cs.spirv.h"
 
     // REBLUR_DIFFUSE_SPECULAR
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -795,6 +912,25 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecular_PostBlur.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_SplitScreen.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_SplitScreen.cs.dxil.h"
+
+        #include "REBLUR_Perf_DiffuseSpecular_PreBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_PreBlur.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_PreBlurAdvanced.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_PreBlurAdvanced.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_AntiFirefly.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_AntiFirefly.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_Blur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_Blur.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_TemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_TemporalStabilization.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_PostBlur.cs.dxil.h"
     #endif
 
     #include "REBLUR_DiffuseSpecular_PreBlur.cs.spirv.h"
@@ -807,6 +943,16 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_SplitScreen.cs.spirv.h"
+
+    #include "REBLUR_Perf_DiffuseSpecular_PreBlur.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_PreBlurAdvanced.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_AntiFirefly.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_Blur.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_PostBlur.cs.spirv.h"
 
     // REBLUR_DIFFUSE_SPECULAR_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -822,6 +968,17 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecularOcclusion_PostBlur.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxil.h"
+
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur.cs.dxil.h"
     #endif
 
     #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h"
@@ -830,6 +987,12 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.spirv.h"
+
+    #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur.cs.spirv.h"
 
     // SIGMA_SHADOW
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -886,8 +1049,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "RELAX_Diffuse_HistoryClamping.cs.dxil.h"
         #include "RELAX_Diffuse_Firefly.cs.dxbc.h"
         #include "RELAX_Diffuse_Firefly.cs.dxil.h"
-        #include "RELAX_Diffuse_SpatialVarianceEstimation.cs.dxbc.h"
-        #include "RELAX_Diffuse_SpatialVarianceEstimation.cs.dxil.h"
         #include "RELAX_Diffuse_ATrousShmem.cs.dxbc.h"
         #include "RELAX_Diffuse_ATrousShmem.cs.dxil.h"
         #include "RELAX_Diffuse_ATrousStandard.cs.dxbc.h"
@@ -901,7 +1062,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "RELAX_Diffuse_DisocclusionFix.cs.spirv.h"
     #include "RELAX_Diffuse_HistoryClamping.cs.spirv.h"
     #include "RELAX_Diffuse_Firefly.cs.spirv.h"
-    #include "RELAX_Diffuse_SpatialVarianceEstimation.cs.spirv.h"
     #include "RELAX_Diffuse_ATrousShmem.cs.spirv.h"
     #include "RELAX_Diffuse_ATrousStandard.cs.spirv.h"
     #include "RELAX_Diffuse_SplitScreen.cs.spirv.h"
@@ -918,8 +1078,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "RELAX_Specular_HistoryClamping.cs.dxil.h"
         #include "RELAX_Specular_Firefly.cs.dxbc.h"
         #include "RELAX_Specular_Firefly.cs.dxil.h"
-        #include "RELAX_Specular_SpatialVarianceEstimation.cs.dxbc.h"
-        #include "RELAX_Specular_SpatialVarianceEstimation.cs.dxil.h"
         #include "RELAX_Specular_ATrousShmem.cs.dxbc.h"
         #include "RELAX_Specular_ATrousShmem.cs.dxil.h"
         #include "RELAX_Specular_ATrousStandard.cs.dxbc.h"
@@ -933,7 +1091,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "RELAX_Specular_DisocclusionFix.cs.spirv.h"
     #include "RELAX_Specular_HistoryClamping.cs.spirv.h"
     #include "RELAX_Specular_Firefly.cs.spirv.h"
-    #include "RELAX_Specular_SpatialVarianceEstimation.cs.spirv.h"
     #include "RELAX_Specular_ATrousShmem.cs.spirv.h"
     #include "RELAX_Specular_ATrousStandard.cs.spirv.h"
     #include "RELAX_Specular_SplitScreen.cs.spirv.h"
@@ -950,8 +1107,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxil.h"
         #include "RELAX_DiffuseSpecular_Firefly.cs.dxbc.h"
         #include "RELAX_DiffuseSpecular_Firefly.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.dxil.h"
         #include "RELAX_DiffuseSpecular_ATrousShmem.cs.dxbc.h"
         #include "RELAX_DiffuseSpecular_ATrousShmem.cs.dxil.h"
         #include "RELAX_DiffuseSpecular_ATrousStandard.cs.dxbc.h"
@@ -965,7 +1120,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "RELAX_DiffuseSpecular_DisocclusionFix.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_HistoryClamping.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_Firefly.cs.spirv.h"
-    #include "RELAX_DiffuseSpecular_SpatialVarianceEstimation.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_ATrousShmem.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_ATrousStandard.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_SplitScreen.cs.spirv.h"
@@ -980,6 +1134,23 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REFERENCE_Accumulate.cs.spirv.h"
     #include "REFERENCE_SplitScreen.cs.spirv.h"
+
+    // SPEC_REFLECTION_MV
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "SpecularReflectionMv_Compute.cs.dxbc.h"
+        #include "SpecularReflectionMv_Compute.cs.dxil.h"
+    #endif
+
+    #include "SpecularReflectionMv_Compute.cs.spirv.h"
+
+
+    // DELTA_OPTIMIZATION_MV
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "DeltaOptimizationMv_Compute.cs.dxbc.h"
+        #include "DeltaOptimizationMv_Compute.cs.dxil.h"
+    #endif
+
+    #include "DeltaOptimizationMv_Compute.cs.spirv.h"
 #endif
 
 // METHODS =================================================================================
@@ -997,3 +1168,5 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 #include "Methods/Relax_Specular.hpp"
 #include "Methods/Relax_DiffuseSpecular.hpp"
 #include "Methods/Reference.hpp"
+#include "Methods/SpecularReflectionMv.hpp"
+#include "Methods/DeltaOptimizationMv.hpp"

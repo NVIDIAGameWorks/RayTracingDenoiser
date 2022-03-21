@@ -10,15 +10,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t h)
 {
-    #define DENOISER_NAME "REBLUR::SpecularOcclusion"
-    #define MIP_NUM 5
+    #define METHOD_NAME REBLUR_SpecularOcclusion
 
     enum class Permanent
     {
-        PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS = PERMANENT_POOL_START,
+        PREV_VIEWZ_DIFFACCUMSPEED = PERMANENT_POOL_START,
+        PREV_NORMAL_SPECACCUMSPEED,
+        PREV_ROUGHNESS,
     };
 
-    m_PermanentPool.push_back( {Format::RG32_UINT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::R32_UINT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::R32_UINT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::R8_UNORM, w, h, 1} );
 
     enum class Transient
     {
@@ -30,17 +33,19 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
 
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, MIP_NUM} );
+    m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, REBLUR_MIP_NUM} );
     m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
 
-    SetSharedConstants(1, 3, 8, 16);
+    REBLUR_DECLARE_SHARED_CONSTANT_NUM;
 
     PushPass("Temporal accumulation");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
-        PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
+        PushInput( AsUint(Permanent::PREV_VIEWZ_DIFFACCUMSPEED) );
+        PushInput( AsUint(Permanent::PREV_NORMAL_SPECACCUMSPEED) );
+        PushInput( AsUint(Permanent::PREV_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_SPEC_HITDIST) );
         PushInput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
 
@@ -48,7 +53,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        AddDispatch( REBLUR_SpecularOcclusion_TemporalAccumulation, SumConstants(4, 2, 1, 3), 8, 1 );
+        AddDispatch( REBLUR_SpecularOcclusion_TemporalAccumulation, SumConstants(4, 2, 1, 4), 8, 1 );
+        AddDispatch( REBLUR_Perf_SpecularOcclusion_TemporalAccumulation, SumConstants(4, 2, 1, 4), 8, 1 );
     }
 
     PushPass("Temporal accumulation"); // with confidence
@@ -56,7 +62,9 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
-        PushInput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
+        PushInput( AsUint(Permanent::PREV_VIEWZ_DIFFACCUMSPEED) );
+        PushInput( AsUint(Permanent::PREV_NORMAL_SPECACCUMSPEED) );
+        PushInput( AsUint(Permanent::PREV_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_SPEC_HITDIST) );
         PushInput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
         PushInput( AsUint(ResourceType::IN_SPEC_CONFIDENCE) );
@@ -65,14 +73,15 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        AddDispatch( REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence, SumConstants(4, 2, 1, 3), 8, 1 );
+        AddDispatch( REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence, SumConstants(4, 2, 1, 4), 8, 1 );
+        AddDispatch( REBLUR_Perf_SpecularOcclusion_TemporalAccumulationWithConfidence, SumConstants(4, 2, 1, 4), 8, 1 );
     }
 
     PushPass("Mip generation");
     {
         PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
 
-        for( uint16_t i = 1; i < MIP_NUM; i++ )
+        for( uint16_t i = 1; i < REBLUR_MIP_NUM; i++ )
             PushOutput( AsUint(Transient::SPEC_ACCUMULATED), i, 1 );
 
         AddDispatch( NRD_MipGeneration_Float2, SumConstants(0, 0, 1, 2, false), 16, 2 );
@@ -81,11 +90,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
     PushPass("History fix");
     {
         PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_ACCUMULATED), 1, MIP_NUM - 1 );
+        PushInput( AsUint(Transient::SPEC_ACCUMULATED), 1, REBLUR_MIP_NUM - 1 );
 
         PushOutput( AsUint(Transient::SPEC_ACCUMULATED), 0, 1 );
 
         AddDispatch( REBLUR_SpecularOcclusion_HistoryFix, SumConstants(0, 0, 0, 1), 16, 1 );
+        AddDispatch( REBLUR_Perf_SpecularOcclusion_HistoryFix, SumConstants(0, 0, 0, 1), 16, 1 );
     }
 
     PushPass("Blur");
@@ -97,7 +107,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
         PushOutput( AsUint(Transient::SPEC_TEMP) );
 
-        AddDispatch( REBLUR_SpecularOcclusion_Blur, SumConstants(1, 2, 0, 2), 16, 1 );
+        AddDispatch( REBLUR_SpecularOcclusion_Blur, SumConstants(1, 2, 0, 0), 16, 1 );
+        AddDispatch( REBLUR_Perf_SpecularOcclusion_Blur, SumConstants(1, 2, 0, 0), 16, 1 );
     }
 
     PushPass("Post-blur");
@@ -107,10 +118,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PushInput( AsUint(Transient::SPEC_TEMP) );
 
         PushOutput( AsUint(Transient::ESTIMATED_ERROR) );
-        PushOutput( AsUint(Permanent::PREV_VIEWZ_NORMAL_ROUGHNESS_ACCUMSPEEDS) );
+        PushOutput( AsUint(Permanent::PREV_VIEWZ_DIFFACCUMSPEED) );
+        PushOutput( AsUint(Permanent::PREV_NORMAL_SPECACCUMSPEED) );
+        PushOutput( AsUint(Permanent::PREV_ROUGHNESS) );
         PushOutput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
 
-        AddDispatch( REBLUR_SpecularOcclusion_PostBlur, SumConstants(1, 2, 0, 2), 16, 1 );
+        AddDispatch( REBLUR_SpecularOcclusion_PostBlur, SumConstants(1, 2, 0, 0), 16, 1 );
+        AddDispatch( REBLUR_Perf_SpecularOcclusion_PostBlur, SumConstants(1, 2, 0, 0), 16, 1 );
     }
 
     PushPass("Split screen");
@@ -120,104 +134,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
 
         PushOutput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
 
-        AddDispatch( REBLUR_SpecularOcclusion_SplitScreen, SumConstants(0, 0, 0, 2), 16, 1 );
+        AddDispatch( REBLUR_SpecularOcclusion_SplitScreen, SumConstants(0, 0, 0, 3), 16, 1 );
     }
 
-    #undef DENOISER_NAME
-    #undef MIP_NUM
+    #undef METHOD_NAME
 
-    return sizeof(ReblurSpecularSettings);
-}
-
-void nrd::DenoiserImpl::UpdateMethod_ReblurSpecularOcclusion(const MethodData& methodData)
-{
-    enum class Dispatch
-    {
-        TEMPORAL_ACCUMULATION,
-        TEMPORAL_ACCUMULATION_WITH_CONFIDENCE,
-        MIP_GENERATION,
-        HISTORY_FIX,
-        BLUR,
-        POST_BLUR,
-        SPLIT_SCREEN,
-   };
-
-    const ReblurSpecularSettings& settings = methodData.settings.specularReblur;
-
-    float normalWeightStrictness = ml::Lerp( 0.1f, 1.0f, settings.normalWeightStrictness );
-
-    uint32_t specCheckerboard = ((uint32_t)settings.checkerboardMode + 2) % 3;
-    ml::float4 specTrimmingParams = ml::float4(settings.lobeTrimmingParameters.A, settings.lobeTrimmingParameters.B, settings.lobeTrimmingParameters.C, 0.0f);
-
-    NRD_DECLARE_DIMS;
-
-    // SPLIT_SCREEN (passthrough)
-    if (m_CommonSettings.splitScreen >= 1.0f)
-    {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_ReblurSpecular(methodData, settings, data);
-        AddUint(data, specCheckerboard);
-        AddFloat(data, m_CommonSettings.splitScreen);
-        ValidateConstants(data);
-
-        return;
-    }
-
-    // TEMPORAL_ACCUMULATION
-    Constant* data = PushDispatch(methodData, AsUint( m_CommonSettings.isHistoryConfidenceInputsAvailable ? Dispatch::TEMPORAL_ACCUMULATION_WITH_CONFIDENCE : Dispatch::TEMPORAL_ACCUMULATION ));
-    AddSharedConstants_ReblurSpecular(methodData, settings, data);
-    AddFloat4x4(data, m_WorldToViewPrev);
-    AddFloat4x4(data, m_WorldToClipPrev);
-    AddFloat4x4(data, m_ViewToWorld);
-    AddFloat4x4(data, m_WorldToClip);
-    AddFloat4(data, m_FrustumPrev);
-    AddFloat4(data, m_CameraDelta);
-    AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
-    AddFloat(data, m_CheckerboardResolveAccumSpeed);
-    AddFloat(data, settings.enableReferenceAccumulation ? 0.005f : m_CommonSettings.disocclusionThreshold);
-    AddUint(data, specCheckerboard);
-    ValidateConstants(data);
-
-    // MIP_GENERATION
-    data = PushDispatch(methodData, AsUint(Dispatch::MIP_GENERATION));
-    AddUint2(data, rectW, rectH);
-    AddFloat(data, m_CommonSettings.denoisingRange);
-    AddFloat(data, m_CommonSettings.debug);
-    ValidateConstants(data);
-
-    // HISTORY_FIX
-    data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX));
-    AddSharedConstants_ReblurSpecular(methodData, settings, data);
-    AddFloat(data, settings.historyFixStrength);
-    ValidateConstants(data);
-
-    // BLUR
-    data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
-    AddSharedConstants_ReblurSpecular(methodData, settings, data);
-    AddFloat4x4(data, m_WorldToView);
-    AddFloat4(data, m_Rotator[1]);
-    AddFloat4(data, specTrimmingParams);
-    AddFloat(data, settings.maxAdaptiveRadiusScale);
-    AddFloat(data, normalWeightStrictness);
-    ValidateConstants(data);
-
-    // POST_BLUR
-    data = PushDispatch(methodData, AsUint(Dispatch::POST_BLUR));
-    AddSharedConstants_ReblurSpecular(methodData, settings, data);
-    AddFloat4x4(data, m_WorldToView);
-    AddFloat4(data, m_Rotator[2]);
-    AddFloat4(data, specTrimmingParams);
-    AddFloat(data, settings.maxAdaptiveRadiusScale);
-    AddFloat(data, normalWeightStrictness);
-    ValidateConstants(data);
-
-    // SPLIT_SCREEN
-    if (m_CommonSettings.splitScreen > 0.0f)
-    {
-        data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_ReblurSpecular(methodData, settings, data);
-        AddUint(data, specCheckerboard);
-        AddFloat(data, m_CommonSettings.splitScreen);
-        ValidateConstants(data);
-    }
+    return sizeof(ReblurSettings);
 }

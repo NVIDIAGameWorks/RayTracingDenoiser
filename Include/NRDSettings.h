@@ -10,8 +10,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-#define NRD_SETTINGS_VERSION_MAJOR 2
-#define NRD_SETTINGS_VERSION_MINOR 12
+#define NRD_SETTINGS_VERSION_MAJOR 3
+#define NRD_SETTINGS_VERSION_MINOR 0
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -24,6 +24,7 @@ namespace nrd
     //     BLACK and WHITE modes define cells with VALID data
     // Checkerboard can be only horizontal
     // Notes:
+    //     - if checkerboarding is enabled, "mode" defines the orientation of even numbered frames
     //     - all inputs have the same resolution - logical FULL resolution
     //     - noisy input signals (IN_DIFF_XXX / IN_SPEC_XXX) are tightly packed to the LEFT HALF of the texture (the input pixel = 2x1 screen pixel)
     //     - for others the input pixel = 1x1 screen pixel
@@ -122,6 +123,10 @@ namespace nrd
         bool isHistoryConfidenceInputsAvailable = false;
     };
 
+    // REBLUR
+
+    const uint32_t REBLUR_MAX_HISTORY_FRAME_NUM = 63;
+
     // "Normalized hit distance" = saturate( "hit distance" / f ), where:
     // f = ( A + viewZ * B ) * lerp( 1.0, C, exp2( D * roughness ^ 2 ) ), see "NRD.hlsl/REBLUR_FrontEnd_GetNormHitDist"
     struct HitDistanceParameters
@@ -142,7 +147,7 @@ namespace nrd
 
     // Optional specular lobe trimming = A * smoothstep( B, C, roughness )
     // Recommended settings if lobe trimming is needed = { 0.85f, 0.04f, 0.11f }
-    struct LobeTrimmingParameters
+    struct SpecularLobeTrimmingParameters
     {
         // [0; 1] - main level  (0 - GGX dominant direction, 1 - full lobe)
         float A = 1.0f;
@@ -195,44 +200,50 @@ namespace nrd
         bool enable = true;
     };
 
-    // REBLUR_DIFFUSE, REBLUR_DIFFUSE_OCCLUSION and REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
-
-    const uint32_t REBLUR_MAX_HISTORY_FRAME_NUM = 63;
-
-    struct ReblurDiffuseSettings
+    struct ReblurSettings
     {
+        SpecularLobeTrimmingParameters specularLobeTrimmingParameters = {};
         HitDistanceParameters hitDistanceParameters = {};
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
 
-        // Spatial passes do optional material index comparison as: ( material[ center ] & materialMask ) == ( material[ sample ] & materialMask )
-        uint32_t materialMask = 0;
-
-        // [0; REBLUR_MAX_HISTORY_FRAME_NUM]
+        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
         uint32_t maxAccumulatedFrameNum = 31;
 
         // (pixels) - base (worst case) denoising radius
         float blurRadius = 30.0f;
 
-        // [0; 10] - adaptive radius scale, comes into play if the algorithm detects boiling
+        // (normalized %) - defines base blur radius shrinking when number of accumulated frames increases
+        float minConvergedStateBaseRadiusScale = 0.25f;
+
+        // [0; 10] - adaptive radius scale, comes into play if boiling is detected
         float maxAdaptiveRadiusScale = 5.0f;
 
-        // [0; 1] - smaller values make normal weight more strict
-        float normalWeightStrictness = 1.0f;
+        // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
+        float lobeAngleFraction = 0.1f;
 
-        // [0; 1] - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
+        // (normalized %) - base fraction of center roughness used to drive roughness based rejection
+        float roughnessFraction = 0.05f;
+
+        // [0; 1] - if roughness < this, temporal accumulation becomes responsive and driven by roughness (useful for animated water)
+        float responsiveAccumulationRoughnessThreshold = 0.0f;
+
+        // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
         float stabilizationStrength = 1.0f;
 
-        // [0; 1] - aggresiveness of history reconstruction in disoccluded regions (0 - no reconstruction)
+        // (normalized %) - aggresiveness of history reconstruction in disoccluded regions (0 - no reconstruction)
         float historyFixStrength = 1.0f;
 
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
 
+        // (normalized %) - adds a portion of input to the output of spatial passes
+        float inputMix = 0.0f;
+
         // [0.01; 0.1] - default is tuned for 0.5rpp for the worst case
         float residualNoiseLevel = 0.03f;
 
-        // If checkerboarding is enabled, defines the orientation of even numbered frames
+        // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
 
         // Enables a spatial reuse pass before the accumulation pass
@@ -241,52 +252,20 @@ namespace nrd
         // Adds bias in case of badly defined signals, but tries to fight with fireflies
         bool enableAntiFirefly = false;
 
-        // Turns off spatial filtering, more aggressive accumulation
+        // Turns off spatial filtering, does more aggressive accumulation
         bool enableReferenceAccumulation = false;
+
+        // Boosts performance by sacrificing IQ
+        bool enablePerformanceMode = false;
+
+        // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
+        bool enableMaterialTestForDiffuse = false;
+        bool enableMaterialTestForSpecular = false;
     };
 
-    // REBLUR_SPECULAR and REBLUR_SPECULAR_OCCLUSION
+    // SIGMA
 
-    struct ReblurSpecularSettings
-    {
-        HitDistanceParameters hitDistanceParameters = {};
-        LobeTrimmingParameters lobeTrimmingParameters = {};
-        AntilagIntensitySettings antilagIntensitySettings = {};
-        AntilagHitDistanceSettings antilagHitDistanceSettings = {};
-        uint32_t materialMask = 0;
-        uint32_t maxAccumulatedFrameNum = 31;
-        float blurRadius = 30.0f;
-        float maxAdaptiveRadiusScale = 5.0f;
-        float normalWeightStrictness = 1.0f;
-        float stabilizationStrength = 1.0f;
-        float historyFixStrength = 1.0f;
-        float planeDistanceSensitivity = 0.005f;
-        float residualNoiseLevel = 0.03f;
-        CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
-        PrePassMode prePassMode = PrePassMode::SIMPLE;
-        bool enableAntiFirefly = false;
-        bool enableReferenceAccumulation = false;
-    };
-
-    // REBLUR_DIFFUSE_SPECULAR and REBLUR_DIFFUSE_SPECULAR_OCCLUSION
-
-    struct ReblurDiffuseSpecularSettings
-    {
-        // normalWeightStrictness       = min( diffuse, specular )
-        // stabilizationStrength        = min( diffuse, specular )
-        // planeDistanceSensitivity     = min( diffuse, specular )
-        // residualNoiseLevel           = min( diffuse, specular )
-        // prePassMode                  = min( diffuse, specular )
-        // enableAntiFirefly            = min( diffuse, specular )
-        // enableReferenceAccumulation  = min( diffuse, specular )
-
-        ReblurDiffuseSettings diffuse;
-        ReblurSpecularSettings specular;
-    };
-
-    // SIGMA_SHADOW and SIGMA_SHADOW_TRANSLUCENCY
-
-    struct SigmaShadowSettings
+    struct SigmaSettings
     {
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
@@ -302,30 +281,38 @@ namespace nrd
     struct RelaxDiffuseSpecularSettings
     {
         // [0; 100] - radius in pixels (0 disables prepass)
+        float diffusePrepassBlurRadius = 0.0f;
         float specularPrepassBlurRadius = 50.0f;
 
-        // [0; 100] - radius in pixels (0 disables prepass)
-        float diffusePrepassBlurRadius = 0.0f;
-
-        // [0; RELAX_MAX_HISTORY_FRAME_NUM]
+        // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
+        uint32_t diffuseMaxAccumulatedFrameNum = 31;
         uint32_t specularMaxAccumulatedFrameNum = 31;
 
-        // [0; RELAX_MAX_HISTORY_FRAME_NUM]
+        // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history
+        uint32_t diffuseMaxFastAccumulatedFrameNum = 8;
         uint32_t specularMaxFastAccumulatedFrameNum = 8;
 
-        // [0; RELAX_MAX_HISTORY_FRAME_NUM]
-        uint32_t diffuseMaxAccumulatedFrameNum = 31;
+        // A-trous edge stopping Luminance sensitivity
+        float diffusePhiLuminance = 2.0f;
+        float specularPhiLuminance = 1.0f;
 
-        // [0; RELAX_MAX_HISTORY_FRAME_NUM]
-        uint32_t diffuseMaxFastAccumulatedFrameNum = 8;
+        // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
+        float diffuseLobeAngleFraction = 0.5f;
+        float specularLobeAngleFraction = 0.333f;
 
-        // How much variance we inject to specular if reprojection confidence is low
+        // (normalized %) - base fraction of center roughness used to drive roughness based rejection
+        float roughnessFraction = 0.05f;
+
+        // [0; 1] - shorten diffuse history if "dot(N, Nprev)" is less than "1 - this" to maintain sharpness
+        float diffuseHistoryRejectionNormalThreshold = 0.0f;
+
+        // (>= 0) - how much variance we inject to specular if reprojection confidence is low
         float specularVarianceBoost = 1.0f;
 
-        // [0; 1], shorten diffuse history if dot (N, previousN) is less than  (1 - this value), this maintains sharpness
-        float rejectDiffuseHistoryNormalThreshold = 0.0f;
+        // (degrees) - slack for the specular lobe angle used in normal based rejection of specular during A-Trous passes
+        float specularLobeAngleSlack = 0.3f;
 
-        // Normal edge stopper for cross-bilateral sparse filter
+        // (> 0) - normal edge stopper for cross-bilateral sparse filter
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;
 
         // Maximum radius for sparse bilateral filter, expressed in pixels
@@ -337,47 +324,31 @@ namespace nrd
         // [1; 3] - standard deviation scale of color box for clamping main "slow" history to responsive "fast" history
         float historyClampingColorBoxSigmaScale = 2.0f;
 
-        // History length threshold below which spatial variance estimation will be executed
+        // (>= 0) - history length threshold below which spatial variance estimation will be executed
         uint32_t spatialVarianceEstimationHistoryThreshold = 3;
 
         // [2; 8] - number of iteration for A-Trous wavelet transform
         uint32_t atrousIterationNum = 5;
 
-        // A-trous edge stopping Luminance sensitivity
-        float specularPhiLuminance = 2.0f;
-
-        // A-trous edge stopping Luminance sensitivity
-        float diffusePhiLuminance = 2.0f;
-
         // [0; 1] - A-trous edge stopping Luminance weight minimum
         float minLuminanceWeight = 0.0f;
 
-        // A-trous edge stopping normal sensitivity for diffuse, spatial variance estimation normal sensitivity
-        float phiNormal = 64.0f;
-
-        // A-trous edge stopping depth threshold
+        // (normalized %) - A-trous edge stopping depth threshold
         float depthThreshold = 0.01f;
 
-        // Base fraction of the specular lobe angle used in normal based rejection of specular during A-Trous passes; 0.333 works well perceptually
-        float specularLobeAngleFraction = 0.333f;
-
-        // Slack (in degrees) for the specular lobe angle used in normal based rejection of specular during A-Trous passes
-        float specularLobeAngleSlack = 0.3f;
-
         // How much we relax roughness based rejection in areas where specular reprojection is low
+        float luminanceEdgeStoppingRelaxation = 0.5f;
+        float normalEdgeStoppingRelaxation = 0.3f;
         float roughnessEdgeStoppingRelaxation = 0.3f;
 
-        // How much we relax normal based rejection in areas where specular reprojection is low
-        float normalEdgeStoppingRelaxation = 0.3f;
-
-        // How much we relax luminance based rejection in areas where specular reprojection is low
-        float luminanceEdgeStoppingRelaxation = 1.0f;
-
-        // If not OFF, diffuse mode equals checkerboard mode set here, and specular mode opposite: WHITE if diffuse is BLACK and vice versa
+        // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
 
+        // Firefly suppression
+        bool enableAntiFirefly = false;
+
         // Skip reprojection test when there is no motion, might improve quality along the edges for static camera with a jitter
-        bool enableSkipReprojectionTestWithoutMotion = false;
+        bool enableReprojectionTestSkippingWithoutMotion = false;
 
         // Clamp specular virtual history to the current frame neighborhood
         bool enableSpecularVirtualHistoryClamping = true;
@@ -385,23 +356,23 @@ namespace nrd
         // Roughness based rejection
         bool enableRoughnessEdgeStopping = true;
 
-        // Firefly suppression
-        bool enableAntiFirefly = false;
+        // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
+        bool enableMaterialTestForDiffuse = false;
+        bool enableMaterialTestForSpecular = false;
     };
 
     // RELAX_DIFFUSE
 
     struct RelaxDiffuseSettings
     {
-        // [0; 100] - radius in pixels (0 disables prepass)
         float prepassBlurRadius = 0.0f;
 
         uint32_t diffuseMaxAccumulatedFrameNum = 31;
         uint32_t diffuseMaxFastAccumulatedFrameNum = 8;
 
-        // [0; 1], shorten diffuse history if dot (N, previousN) is less than  (1 - this value), this maintains sharpness
-        float rejectDiffuseHistoryNormalThreshold = 0.0f;
-
+        float diffusePhiLuminance = 2.0f;
+        float diffuseLobeAngleFraction = 0.5f;
+        float diffuseHistoryRejectionNormalThreshold = 0.0f;
 
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;
         float disocclusionFixMaxRadius = 14.0f;
@@ -411,14 +382,14 @@ namespace nrd
 
         uint32_t spatialVarianceEstimationHistoryThreshold = 3;
         uint32_t atrousIterationNum = 5;
-        float diffusePhiLuminance = 2.0f;
         float minLuminanceWeight = 0.0f;
-        float phiNormal = 64.0f;
         float depthThreshold = 0.01f;
 
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
-        bool enableSkipReprojectionTestWithoutMotion = false;
+
         bool enableAntiFirefly = false;
+        bool enableReprojectionTestSkippingWithoutMotion = false;
+        bool enableMaterialTest = false;
     };
 
     // RELAX_SPECULAR
@@ -429,7 +400,14 @@ namespace nrd
 
         uint32_t specularMaxAccumulatedFrameNum = 31;
         uint32_t specularMaxFastAccumulatedFrameNum = 8;
+
+        float specularPhiLuminance = 1.0f;
+        float diffuseLobeAngleFraction = 0.5f;
+        float specularLobeAngleFraction = 0.333f;
+        float roughnessFraction = 0.05f;
+
         float specularVarianceBoost = 1.0f;
+        float specularLobeAngleSlack = 0.3f;
 
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;
         float disocclusionFixMaxRadius = 14.0f;
@@ -439,28 +417,41 @@ namespace nrd
 
         uint32_t spatialVarianceEstimationHistoryThreshold = 3;
         uint32_t atrousIterationNum = 5;
-        float specularPhiLuminance = 2.0f;
         float minLuminanceWeight = 0.0f;
-        float phiNormal = 64.0f;
         float depthThreshold = 0.01f;
-        float specularLobeAngleFraction = 0.333f;
-        float specularLobeAngleSlack = 0.3f;
-        float roughnessEdgeStoppingRelaxation = 0.3f;
+
+        float luminanceEdgeStoppingRelaxation = 0.5f;
         float normalEdgeStoppingRelaxation = 0.3f;
-        float luminanceEdgeStoppingRelaxation = 1.0f;
+        float roughnessEdgeStoppingRelaxation = 0.3f;
 
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
-        bool enableSkipReprojectionTestWithoutMotion = false;
+
+        bool enableAntiFirefly = false;
+        bool enableReprojectionTestSkippingWithoutMotion = false;
         bool enableSpecularVirtualHistoryClamping = true;
         bool enableRoughnessEdgeStopping = true;
-        bool enableAntiFirefly = false;
+        bool enableMaterialTest = false;
     };
 
     // REFERENCE
 
     struct ReferenceSettings
     {
-        // (> 0) - Maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
+        // (>= 0) - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
         uint32_t maxAccumulatedFrameNum = 3600;
+    };
+
+    // SPEC_REFLECTION_MV
+
+    struct SpecularReflectionMvSettings
+    {
+        float unused;
+    };
+
+    // DELTA_OPTIMIZATION_MV
+
+    struct DeltaOptimizationMvSettings
+    {
+        float unused;
     };
 }

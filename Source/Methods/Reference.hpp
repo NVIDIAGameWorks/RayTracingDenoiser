@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 size_t nrd::DenoiserImpl::AddMethod_Reference(uint16_t w, uint16_t h)
 {
-    #define DENOISER_NAME "REFERENCE"
+    #define METHOD_NAME Reference
 
     enum class Permanent
     {
@@ -23,7 +23,7 @@ size_t nrd::DenoiserImpl::AddMethod_Reference(uint16_t w, uint16_t h)
 
     PushPass("Accumulate");
     {
-        PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
+        PushInput( AsUint(ResourceType::IN_RADIANCE) );
 
         PushOutput( AsUint(Permanent::HISTORY) );
 
@@ -34,12 +34,12 @@ size_t nrd::DenoiserImpl::AddMethod_Reference(uint16_t w, uint16_t h)
     {
         PushInput( AsUint(Permanent::HISTORY) );
 
-        PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
+        PushOutput( AsUint(ResourceType::OUT_RADIANCE) );
 
         AddDispatch( REFERENCE_SplitScreen, SumConstants(0, 0, 0, 0), 16, 1 );
     }
 
-    #undef DENOISER_NAME
+    #undef METHOD_NAME
 
     return sizeof(ReferenceSettings);
 }

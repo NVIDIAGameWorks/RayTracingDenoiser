@@ -26,53 +26,55 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     float exposure = _NRD_GetColorCompressionExposureForSpatialPasses( roughness );
     spec.xyz = STL::Color::Compress( spec.xyz, exposure );
 
-    float radius = gSpecBlurRadius;
+    float radius = gBlurRadius;
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float2 specInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
         radius *= REBLUR_PRE_BLUR_RADIUS_SCALE( roughness );
     #else
         float minAccumSpeed = GetMipLevel( roughness ) + 0.001;
         float boost = saturate( 1.0 - specInternalData.y / minAccumSpeed );
-        radius *= ( 1.0 + 2.0 * boost ) / 3.0;
+        radius *= ( 1.0 + 5.0 * roughness * boost ) / 3.0;
     #endif
-    radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams.xyz );
+    radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecLobeTrimmingParams.xyz );
 
     float radiusScale = 1.0;
-    float radiusBias = 0.0; // see GetBlurRadius()
-    float strictness = 1.0;
+    float radiusBias = 0.0;
+    float fractionScale = 1.0;
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
         radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
-        radiusBias = lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gSpecBlurRadiusScale + 0.00001;
-        strictness = REBLUR_POST_BLUR_STRICTNESS;
+        radiusBias = lerp( 1.0 / REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gBlurRadiusScale + 0.00001;
+        radius *= lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w );
+        fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        radiusBias = lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gSpecBlurRadiusScale + 0.00001;
-        strictness = REBLUR_BLUR_NORMAL_WEIGHT_RELAXATION;
+        radiusBias = lerp( 1.0 / REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gBlurRadiusScale + 0.00001;
+        radius *= lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w );
+        fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #endif
 
     // Blur radius
-    float hitDist = REBLUR_GetHitDist( center.w, viewZ, gSpecHitDistParams, roughness );
-    float blurRadius = GetBlurRadius( radius, hitDist, viewZ, specInternalData.x, radiusBias, radiusScale, roughness );
-    float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
+    float hitDist = REBLUR_GetHitDist( center.w, viewZ, gHitDistParams, roughness );
+    float blurRadius = GetBlurRadius( radius, hitDist, frustumHeight, specInternalData.x, radiusBias, radiusScale, roughness );
+    float worldBlurRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
 
     // Denoising
-    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
     float hitDistFactor = hitDist / ( hitDist + frustumHeight );
     float anisoFade = lerp( abs( curvature ), 1.0, specInternalData.x );
 
     float3 Vv = GetViewVector( Xv, true );
     float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius, roughness, anisoFade );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams( specInternalData.x, viewZ, roughness, gNormalWeightStrictness * strictness );
+    float normalWeightParams = GetNormalWeightParams( specInternalData.x, frustumHeight, gLobeAngleFraction * fractionScale, roughness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, specInternalData.x );
-    float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
+    float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, gRoughnessFraction * fractionScale );
     float2 sum = 1.0;
 
     #ifdef REBLUR_SPATIAL_REUSE
         blurRadius *= REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE;
 
         float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
-        float normalWeightParamsReuse = rcp( max( angle, NRD_ENCODING_ERRORS.x ) );
+        float normalWeightParamsReuse = 1.0 / max( angle, NRD_ENCODING_ERRORS.x );
 
         float3 V = STL::Geometry::RotateVectorInverse( gWorldToView, Vv );
         float NoV = abs( dot( N, V ) );
@@ -139,9 +141,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float zs = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) / NRD_FP16_VIEWZ_SCALE;
         #endif
 
-        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gIsOrtho );
+        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
-        uint materialIDs;
+        float materialIDs;
         Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
         // Sample weight
@@ -197,7 +199,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     error.z = GetColorErrorForAdaptiveRadiusScale( spec, center, specInternalData.x, roughness, REBLUR_SPATIAL_MODE );
 
     // Input mix
-    spec = lerp( spec, center, REBLUR_INPUT_MIX.xxxy );
+    spec = lerp( spec, center, gInputMix * ( 1.0 - specInternalData.x ) );
 
     // Output
     gOut_Spec[ pixelPos ] = spec;

@@ -18,7 +18,7 @@ Makefile
 # VS Code
 .vscode/
 
-# Shaders
+# shaders
 *.dxbc
 *.dxil
 *.spirv
@@ -26,7 +26,14 @@ Makefile
 *.dxil.h
 *.spirv.h
 
-# Library
+# ninja
+.ninja_deps
+.ninja_log
+build.ninja
+compile_commands.json
+*.log
+
+# library
 *.lib
 *.exp
 *.dll
@@ -36,12 +43,7 @@ Makefile
 *.so.*
 *.manifest
 
-# ninja
-.ninja_deps
-.ninja_log
-build.ninja
-compile_commands.json
-*.log
-
-# batch script
+# generated folders
+_Build/
+_Compiler/
 _NRD_SDK/

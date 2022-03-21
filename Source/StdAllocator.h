@@ -193,12 +193,6 @@ constexpr uint32_t GetCountOf(const std::array<T, N>& v)
     return (uint32_t)v.size();
 }
 
-template<typename T, typename U>
-constexpr uint32_t GetOffsetOf(U T::*member)
-{
-    return (uint32_t)((const char*)&((T*)nullptr->*member) - (const char*)nullptr);
-}
-
 template<typename T, typename... Args>
 constexpr void Construct(T* objects, size_t number, Args&&... args)
 {

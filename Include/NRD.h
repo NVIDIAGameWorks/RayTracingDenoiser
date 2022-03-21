@@ -30,10 +30,10 @@ CREDITS:
 #include <cstdint>
 #include <cstddef>
 
-#define NRD_VERSION_MAJOR 2
-#define NRD_VERSION_MINOR 12
-#define NRD_VERSION_BUILD 2
-#define NRD_VERSION_DATE "11 February 2022"
+#define NRD_VERSION_MAJOR 3
+#define NRD_VERSION_MINOR 0
+#define NRD_VERSION_BUILD 0
+#define NRD_VERSION_DATE "21 March 2022"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall
@@ -44,7 +44,11 @@ CREDITS:
 #endif
 
 #ifndef NRD_API
-    #define NRD_API extern "C"
+    #if NRD_STATIC_LIBRARY
+        #define NRD_API
+    #else
+        #define NRD_API extern "C"
+    #endif
 #endif
 
 #include "NRDDescs.h"

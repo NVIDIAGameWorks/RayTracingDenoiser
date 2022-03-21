@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v2.12
+// NRD v3.0
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -26,8 +26,8 @@ float3 radiance:
         - use VNDF sampling ( or custom importance sampling )
         - if radiance is the result of path tracing, pass normalized hit distance as the sum of first 1-3 hits (always ignore primary hit!)
 
-float linearRoughness:
-    - linearRoughness = sqrt( roughness ), where "roughness" = "m" = "alpha" - specular or real roughness
+float roughness:
+    - "linear roughness" = sqrt( "m" ), where "m" = "alpha" - GGX roughness
 
 float normal:
     - world space normal
@@ -60,27 +60,14 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
  // IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
 
+ #ifndef NRD_INCLUDED
+ #define NRD_INCLUDED
+
 //=================================================================================================================================
 // BINDINGS
 //=================================================================================================================================
 
-#if( defined COMPILER_FXC || defined COMPILER_DXC )
-
-    #ifndef NRD_CS_MAIN
-        #define NRD_CS_MAIN                                                             main
-    #endif
-
-    #define NRD_EXPORT
-
-    #define NRD_CONSTANTS_START                                                         cbuffer globalConstants : register( b0 ) {
-    #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
-    #define NRD_CONSTANTS_END                                                           };
-
-    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex );
-
-#elif( defined COMPILER_UNREAL_ENGINE )
+#if( defined NRD_COMPILER_UNREAL_ENGINE )
 
     #ifndef NRD_CS_MAIN
         #define NRD_CS_MAIN                                                             main
@@ -96,7 +83,23 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
     #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName;
     #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName;
 
-#elif( defined COMPILER_PSSLC )
+#elif( defined NRD_COMPILER_FXC || defined NRD_COMPILER_DXC )
+
+    #ifndef NRD_CS_MAIN
+        #define NRD_CS_MAIN                                                             main
+    #endif
+
+    #define NRD_EXPORT
+
+    #define NRD_CONSTANTS_START                                                         cbuffer globalConstants : register( b0 ) {
+    #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
+    #define NRD_CONSTANTS_END                                                           };
+
+    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex );
+
+#elif( defined NRD_COMPILER_PSSLC )
 
     // Helpers
     #define EXPAND( x )                                                                 x
@@ -113,7 +116,11 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
         #define NRD_CS_MAIN                                                             main
     #endif
 
-    #define NRD_EXPORT                                                                  [ CxxSymbol( EXPORT_NAME ) ]
+    #ifdef EXPORT_NAME
+        #define NRD_EXPORT                                                              [ CxxSymbol( EXPORT_NAME ) ]
+    #else
+        #define NRD_EXPORT
+    #endif
 
     #define NRD_CONSTANTS_START ConstantBuffer globalConstants : register( b0 )         {
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
@@ -139,6 +146,7 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
     #define reversebits                                                                 ReverseBits
     #define InterlockedAdd( ... )                                                       AtomicAdd( __VA_ARGS__ )
     #define InterlockedMax( ... )                                                       AtomicMax( __VA_ARGS__ )
+    #define unorm
 
 #elif( defined( NRD_INPUT_TEXTURE ) && defined( NRD_OUTPUT_TEXTURE ) && defined( NRD_CONSTANTS_START ) && defined( NRD_CONSTANT ) && defined( NRD_CONSTANTS_END ) )
 
@@ -150,9 +158,9 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
     // Custom engine that has already defined all the macros
 
-#else
+#elif( !defined( NRD_HEADER_ONLY ) )
 
-    #error "Please, define one of COMPILER_FXC / COMPILER_DXC or COMPILER_UNREAL_ENGINE or add custom bindings. Use already defined platforms as a reference."
+    #error "Please, define one of NRD_COMPILER_[FXC/DXC/PSSLC/UNREAL_ENGINE] or add custom bindings (use already defined platforms as a reference). Or define NRD_HEADER_ONLY to use this file as a header file only."
 
 #endif
 
@@ -166,9 +174,8 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 #define NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS                              3
 #define NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS                             4
 
-#define NRD_NORMAL_ENCODING_UNORM8                                                      0 // R8G8B8A8 - worst quality, best perf
-#define NRD_NORMAL_ENCODING_OCT10                                                       1 // R10G10B10A2 - adds small overhead, good quality
-#define NRD_NORMAL_ENCODING_UNORM16                                                     2 // R16G16B16A16 - best quality, worst perf
+#define NRD_NORMAL_ENCODING_UNORM                                                       0 // .xyz - normal, .w - roughness
+#define NRD_NORMAL_ENCODING_OCT                                                         1 // .xy - normal, .z - roughness, .w - optional materialID
 
 #define NRD_FP16_MAX                                                                    65504.0
 
@@ -176,28 +183,28 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 // SETTINGS
 //=================================================================================================================================
 
-// Used to convert viewZ from FP32 to FP16
-#define NRD_FP16_VIEWZ_SCALE                                                            0.125
-
 // Must match encoding used for IN_NORMAL_ROUGHNESS
 #ifndef NRD_USE_SQRT_LINEAR_ROUGHNESS
     #define NRD_USE_SQRT_LINEAR_ROUGHNESS                                               0
 #endif
 
-// Must match encoding used for IN_NORMAL_ROUGHNESS
-#ifndef NRD_USE_MATERIAL_ID_AWARE_FILTERING
-    #define NRD_USE_MATERIAL_ID_AWARE_FILTERING                                         1
+// Material ID support
+#ifndef NRD_USE_MATERIAL_ID
+    #define NRD_USE_MATERIAL_ID                                                         1
 #endif
 
 // Must match encoding used for IN_NORMAL_ROUGHNESS
 #ifndef NRD_NORMAL_ENCODING
-    #define NRD_NORMAL_ENCODING                                                         NRD_NORMAL_ENCODING_OCT10
+    #define NRD_NORMAL_ENCODING                                                         NRD_NORMAL_ENCODING_OCT
 #endif
 
 // [Optional] Color compression for spatial passes (can be NRD_RADIANCE_COMPRESSION_MODE_NONE if the signal is relatively clean)
 #ifndef NRD_RADIANCE_COMPRESSION_MODE
     #define NRD_RADIANCE_COMPRESSION_MODE                                               NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS // 0-4
 #endif
+
+// [Optional] Used to convert viewZ from FP32 to FP16
+#define NRD_FP16_VIEWZ_SCALE                                                            0.125
 
 //=================================================================================================================================
 // PRIVATE
@@ -230,7 +237,7 @@ float _NRD_Luminance( float3 linearColor )
     return dot( linearColor, float3( 0.2990, 0.5870, 0.1140 ) );
 }
 
-float _NRD_GetColorCompressionExposureForSpatialPasses( float linearRoughness )
+float _NRD_GetColorCompressionExposureForSpatialPasses( float roughness )
 {
     // Prerequsites:
     // - to minimize biasing the results compression for high roughness should be avoided (diffuse signal compression can lead to darker image)
@@ -240,16 +247,16 @@ float _NRD_GetColorCompressionExposureForSpatialPasses( float linearRoughness )
 
     // Moderate compression
     #if( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_MODERATE )
-        return 0.5 / ( 1.0 + 50.0 * linearRoughness );
+        return 0.5 / ( 1.0 + 50.0 * roughness );
     // Less compression for mid-high roughness
     #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_LESS_MID_ROUGHNESS )
-        return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 60.0 * linearRoughness );
+        return 0.5 * ( 1.0 - roughness ) / ( 1.0 + 60.0 * roughness );
     // Close to the previous one, but offers more compression for low roughness
     #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_BETTER_LOW_ROUGHNESS )
-        return 0.5 * ( 1.0 - linearRoughness ) / ( 1.0 + 1000.0 * linearRoughness * linearRoughness ) + ( 1.0 - sqrt( saturate( linearRoughness ) ) ) * 0.03;
+        return 0.5 * ( 1.0 - roughness ) / ( 1.0 + 1000.0 * roughness * roughness ) + ( 1.0 - sqrt( saturate( roughness ) ) ) * 0.03;
     // A modification of the preious one ( simpler )
     #elif( NRD_RADIANCE_COMPRESSION_MODE == NRD_RADIANCE_COMPRESSION_MODE_SIMPLER_LOW_ROUGHNESS )
-        return 0.6 * ( 1.0 - linearRoughness * linearRoughness ) / ( 1.0 + 400.0 * linearRoughness * linearRoughness );
+        return 0.6 * ( 1.0 - roughness * roughness ) / ( 1.0 + 400.0 * roughness * roughness );
     // No compression
     #else
         return 0;
@@ -257,9 +264,9 @@ float _NRD_GetColorCompressionExposureForSpatialPasses( float linearRoughness )
 }
 
 // Hit distance normalization
-float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
+float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float roughness = 1.0 )
 {
-    return ( hitDistParams.x + abs( viewZ ) * hitDistParams.y ) * lerp( 1.0, hitDistParams.z, saturate( exp2( hitDistParams.w * linearRoughness * linearRoughness ) ) );
+    return ( hitDistParams.x + abs( viewZ ) * hitDistParams.y ) * lerp( 1.0, hitDistParams.z, saturate( exp2( hitDistParams.w * roughness * roughness ) ) );
 }
 
 //=================================================================================================================================
@@ -271,25 +278,23 @@ float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, fl
 //========
 
 // This function is used in all denoisers to decode normal, roughness and optional materialID
-float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out uint materialID )
+float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
 {
+    materialID = 0;
+
     float4 r;
-    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT10 )
+    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT )
         r.xyz = _NRD_DecodeUnitVector( p.xy, false, false );
         r.w = p.z;
+
+        #if( NRD_USE_MATERIAL_ID == 1 )
+            materialID = p.w;
+        #endif
     #else
         r.xyz = p.xyz * 2.0 - 1.0;
         r.w = p.w;
     #endif
 
-    // By default NRD offers only this decoding variant. It can be changed to match a specific encoding method
-    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT10 && NRD_USE_MATERIAL_ID_AWARE_FILTERING == 1 )
-        materialID = uint( p.w * 3.0 );
-    #else
-        materialID = 0;
-    #endif
-
-    // Normalization is very important due to potential octahedron encoding and potential "best fit" usage for simple "N * 0.5 + 0.5" method
     r.xyz = normalize( r.xyz );
 
     #if( NRD_USE_SQRT_LINEAR_ROUGHNESS == 1 )
@@ -307,27 +312,24 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 }
 
 // Not used in NRD
-float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float linearRoughness, float materialID = 0 )
+float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint materialID = 0 )
 {
     float4 p;
 
     #if( NRD_USE_SQRT_LINEAR_ROUGHNESS == 1 )
-        linearRoughness = STL::Math::Sqrt01( linearRoughness );
+        roughness = STL::Math::Sqrt01( roughness );
     #endif
 
-    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT10 )
+    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_OCT )
         p.xy = _NRD_EncodeUnitVector( N, false );
-        p.z = linearRoughness;
-        p.w = saturate( materialID / 3.0 );
+        p.z = roughness;
+        p.w = saturate( ( materialID + 0.5 ) / 3.0 );
     #else
-        p.xyz = N;
-
         // Best fit ( optional )
-        float m = max( abs( N.x ), max( abs( N.y ), abs( N.z ) ) );
-        p.xyz /= m;
+        N /= max( abs( N.x ), max( abs( N.y ), abs( N.z ) ) );
 
-        p.xyz = p.xyz * 0.5 + 0.5;
-        p.w = linearRoughness;
+        p.xyz = N * 0.5 + 0.5;
+        p.w = roughness;
     #endif
 
     return p;
@@ -336,11 +338,16 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float linearRoughness, flo
 // Helper functions to pack / unpack ray direction and PDF ( can be averaged for some samples )
 float4 NRD_FrontEnd_PackDirectionAndPdf( float3 direction, float pdf )
 {
+    // PDF can be extremely large, but we need to fit into FP16
+    pdf = sqrt( clamp( pdf, 0.0001, 10000.0 ) );
+
     return float4( direction, pdf );
 }
 
 float4 NRD_FrontEnd_UnpackDirectionAndPdf( float4 directionAndPdf )
 {
+    directionAndPdf.w *= directionAndPdf.w;
+
     return directionAndPdf;
 }
 
@@ -349,9 +356,9 @@ float4 NRD_FrontEnd_UnpackDirectionAndPdf( float4 directionAndPdf )
 //========
 
 // This function returns AO / SO which REBLUR can decode back to "hit distance" internally
-float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float linearRoughness = 1.0 )
+float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness = 1.0 )
 {
-    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, linearRoughness );
+    float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, roughness );
 
     return saturate( hitDist / f );
 }
@@ -500,26 +507,50 @@ float4 RELAX_BackEnd_UnpackRadianceAndHitDist( float4 color )
 //=================================================================================================================================
 // MISC
 //=================================================================================================================================
+/*
+This function is WIP, but better use it for future compatibility.
 
-// This can be a start, but works badly in many cases:
-//      hitDist = hitDist1 + hitDist2 + ... ;
-// Proper solution:
-//      hitDist = NRD_GetCorrectedHitDist( hitDist1, 1, roughness0 );
-//      hitDist += NRD_GetCorrectedHitDist( hitDist2, 2, roughness0, importance2 );
-// where "importance" shows how much energy a new hit brings compared with the previous state (see NRD sample for more details)
-// Notes:
-//      0  - primary hit
-//      1+ - bounces
+Good start:
+    Passing to NRD only hit distance for the first bounce is a good start. It works well for diffuse and
+    for diffuse-like surfaces in reflections ( even if roughness is low ):
+
+        float accumulatedHitDist = 0;
+
+        for( uint bounceIndex = 1; bounceIndex < bounceNum; bounceIndex++ )
+        {
+            TracePath( ... );
+
+            accumulatedHitDist += bounceIndex == 1 ? currentHitDist : 0;
+        }
+
+But in general ( especially for pure specular paths ) the following solution is better:
+
+        float accumulatedHitDist = 0;
+        float accumulatedRoughness = 0;
+
+        for( uint bounceIndex = 1; bounceIndex < bounceNum; bounceIndex++ )
+        {
+            TracePath( ... );
+
+            accumulatedHitDist += NRD_GetCorrectedHitDist( currentHitDist, bounceIndex, accumulatedRoughness, currentImportance );
+            accumulatedRoughness += isNextEventDiffuse ? 1 : hitRoughness;
+        }
+
+where:
+    importance - shows how much energy a new hit brings compared with the previous state (see NRD sample for more details)
+    bounceIndex - 0 for primary hit, 1+ for bounces
+*/
 
 // TODO: local curvature is needed to adjust hit distance for 2nd+ bounces
-float NRD_GetCorrectedHitDist( float hitDist, float bounceIndex, float roughness0 = 1.0, float importance = 1.0 )
+float NRD_GetCorrectedHitDist( float hitDist, float bounceIndex, float roughnessAccumulatedAlongPath, float importance = 1.0 )
 {
-    bounceIndex -= 1.0; // 0-based starting from 1st bounce
+    // 0-based starting from 1st bounce ( even for direct lighting denoising pass bounceIndex = 1 )
+    bounceIndex -= 1.0;
 
-    float m0 = roughness0 * roughness0;
-    float compression = 1.0 - exp( -m0 * bounceIndex );
+    float m = roughnessAccumulatedAlongPath * roughnessAccumulatedAlongPath;
+    float compression = 1.0 - exp( -m * bounceIndex );
     float compresedHitDist = hitDist / ( 1.0 + hitDist * compression );
-    float contribution = 1.0 + bounceIndex * bounceIndex * m0;
+    float contribution = 1.0 + bounceIndex * bounceIndex * m;
 
     return compresedHitDist * importance / contribution;
 }
@@ -552,3 +583,5 @@ float REBLUR_GetHitDist( float normHitDist, float viewZ, float4 hitDistParams, f
 
     return normHitDist * scale;
 }
+
+#endif

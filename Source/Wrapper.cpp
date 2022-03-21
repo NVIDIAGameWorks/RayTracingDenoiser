@@ -32,7 +32,9 @@ constexpr std::array<nrd::Method, (size_t)nrd::Method::MAX_NUM> g_NrdSupportedMe
     nrd::Method::RELAX_DIFFUSE,
     nrd::Method::RELAX_SPECULAR,
     nrd::Method::RELAX_DIFFUSE_SPECULAR,
-    nrd::Method::REFERENCE
+    nrd::Method::REFERENCE,
+    nrd::Method::SPEC_REFLECTION_MV,
+    nrd::Method::DELTA_OPTIMIZATION_MV
 };
 
 constexpr nrd::LibraryDesc g_NrdLibraryDesc =

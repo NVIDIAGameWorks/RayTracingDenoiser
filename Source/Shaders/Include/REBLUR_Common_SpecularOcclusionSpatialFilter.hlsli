@@ -18,41 +18,43 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 {
     float center = spec;
 
-    float radius = gSpecBlurRadius;
+    float radius = gBlurRadius;
     float minAccumSpeed = GetMipLevel( roughness ) + 0.001;
     float boost = saturate( 1.0 - specInternalData.y / minAccumSpeed );
-    radius *= ( 1.0 + 2.0 * boost ) / 3.0;
-    radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecTrimmingParams.xyz );
+    radius *= ( 1.0 + 5.0 * roughness * boost ) / 3.0;
+    radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecLobeTrimmingParams.xyz );
 
     float radiusScale = 1.0;
-    float radiusBias = 0.0; // see GetBlurRadius()
-    float strictness = 1.0;
+    float radiusBias = 0.0;
+    float fractionScale = 1.0;
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
         radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
-        radiusBias = lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gSpecBlurRadiusScale + 0.00001;
-        strictness = REBLUR_POST_BLUR_STRICTNESS;
+        radiusBias = lerp( 1.0 / REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gBlurRadiusScale + 0.00001;
+        radius *= lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w );
+        fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        radiusBias = lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gSpecBlurRadiusScale + 0.00001;
-        strictness = REBLUR_BLUR_NORMAL_WEIGHT_RELAXATION;
+        radiusBias = lerp( 1.0 / REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w ) * error.z * gBlurRadiusScale + 0.00001;
+        radius *= lerp( REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE, 1.0, error.w );
+        fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #endif
 
     // Blur radius
-    float hitDist = REBLUR_GetHitDist( center, viewZ, gSpecHitDistParams, roughness );
-    float blurRadius = GetBlurRadius( radius, hitDist, viewZ, specInternalData.x, radiusBias, radiusScale, roughness );
-    float worldBlurRadius = PixelRadiusToWorld( gUnproject, gIsOrtho, blurRadius, viewZ );
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
+    float hitDist = REBLUR_GetHitDist( center, viewZ, gHitDistParams, roughness );
+    float blurRadius = GetBlurRadius( radius, hitDist, frustumHeight, specInternalData.x, radiusBias, radiusScale, roughness );
+    float worldBlurRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
 
     // Denoising
-    float frustumHeight = PixelRadiusToWorld( gUnproject, gIsOrtho, gRectSize.y, viewZ );
     float hitDistFactor = hitDist / ( hitDist + frustumHeight );
     float anisoFade = lerp( abs( curvature ), 1.0, specInternalData.x );
 
     float3 Vv = GetViewVector( Xv, true );
     float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius, roughness, anisoFade );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams( specInternalData.x, viewZ, roughness, gNormalWeightStrictness * strictness );
+    float normalWeightParams = GetNormalWeightParams( specInternalData.x, frustumHeight, gLobeAngleFraction * fractionScale, roughness );
     float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center, specInternalData.x );
-    float2 roughnessWeightParams = GetRoughnessWeightParams( roughness );
+    float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, gRoughnessFraction * fractionScale );
     float sum = 1.0;
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
@@ -82,9 +84,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 s = gIn_Spec.SampleLevel( gNearestMirror, uvScaled, 0 );
         float zs = s.y / NRD_FP16_VIEWZ_SCALE;
 
-        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gIsOrtho );
+        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
-        uint materialIDs;
+        float materialIDs;
         Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
         // Sample weight
@@ -111,7 +113,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     error.z = GetColorErrorForAdaptiveRadiusScale( spec, center, specInternalData.x, roughness, REBLUR_SPATIAL_MODE );
 
     // Input mix
-    spec = lerp( spec, center, REBLUR_INPUT_MIX.y );
+    spec = lerp( spec, center, gInputMix * ( 1.0 - specInternalData.x ) );
 
     // Output
     #if( REBLUR_SPATIAL_MODE == REBLUR_BLUR )

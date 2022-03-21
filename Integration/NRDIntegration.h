@@ -20,9 +20,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <map>
 
 #define NRD_INTEGRATION 1
-#define NRD_INTEGRATION_MAJOR 1
-#define NRD_INTEGRATION_MINOR 2
-#define NRD_INTEGRATION_DATE "7 February 2022"
+#define NRD_INTEGRATION_MAJOR 2
+#define NRD_INTEGRATION_MINOR 0
+#define NRD_INTEGRATION_DATE "21 March 2022"
 
 // Settings
 #ifndef NRD_INTEGRATION_ASSERT
@@ -45,6 +45,14 @@ struct NrdIntegrationTexture
 // Ensure to fill all slots even unused ones because the order is predefined
 constexpr uint32_t NRD_USER_POOL_SIZE = (uint32_t)nrd::ResourceType::MAX_NUM - 2;
 typedef std::array<NrdIntegrationTexture, NRD_USER_POOL_SIZE> NrdUserPool;
+
+inline void NrdIntegration_SetResource(NrdUserPool& pool, nrd::ResourceType slot, const NrdIntegrationTexture& texture)
+{
+    NRD_INTEGRATION_ASSERT( texture.subresourceStates->texture != nullptr, "Invalid texture!" );
+    NRD_INTEGRATION_ASSERT( texture.format != nri::Format::UNKNOWN, "Invalid format!" );
+
+    pool[(size_t)slot] = texture;
+}
 
 class NrdIntegration
 {

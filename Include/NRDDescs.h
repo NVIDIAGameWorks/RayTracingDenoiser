@@ -10,8 +10,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-#define NRD_DESCS_VERSION_MAJOR 2
-#define NRD_DESCS_VERSION_MINOR 12
+#define NRD_DESCS_VERSION_MAJOR 3
+#define NRD_DESCS_VERSION_MINOR 0
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -99,9 +99,21 @@ namespace nrd
         // REFERENCE
         // =============================================================================================================================
 
-        // INPUTS - IN_DIFF_RADIANCE_HITDIST
-        // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
+        // INPUTS - IN_RADIANCE
+        // OUTPUTS - OUT_RADIANCE
         REFERENCE,
+
+        // =============================================================================================================================
+        // MOTION VECTORS
+        // =============================================================================================================================
+
+        // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_HITDIST
+        // OUTPUTS - OUT_SPEC_REFLECTION_MV
+        SPEC_REFLECTION_MV,
+
+        // INPUTS - IN_MV, IN_DELTA_PRIMARY_POSW, IN_DELTA_SECONDARY_POSW
+        // OUTPUT - OUT_DELTA_MV
+        DELTA_OPTIMIZATION_MV,
 
         MAX_NUM
     };
@@ -122,8 +134,12 @@ namespace nrd
         // Linear view depth for primary rays (R16f+)
         IN_VIEWZ,
 
-        // REBLUR: Data must be packed using "REBLUR_FrontEnd_PackRadianceAndHitDist" (and "REBLUR_FrontEnd_GetNormHitDist" for hit distance) (RGBA16f+)
         // RELAX: Data must be packed using "RELAX_FrontEnd_PackRadianceAndHitDist"
+        // REBLUR: Data must be packed using "REBLUR_FrontEnd_PackRadianceAndHitDist" (and "REBLUR_FrontEnd_GetNormHitDist" for hit distance) (RGBA16f+)
+        //   Noisy and weighted sum of hit distances along a path (using NRD_GetCorrectedHitDist), excluding primary hit distance.
+        //   REBLUR works with normalized hit distances. It's recommended to use REBLUR_FrontEnd_GetNormHitDist for hit distance normalization.
+        //   Normalization parameters should be passed into NRD as HitDistanceParameters for diffuse and specular separately for internal
+        //   hit distance denormalization.
         IN_DIFF_RADIANCE_HITDIST,
         IN_SPEC_RADIANCE_HITDIST,
 
@@ -135,10 +151,13 @@ namespace nrd
         IN_DIFF_DIRECTION_HITDIST,
 
         // (Optional) Data must be packed using "NRD_FrontEnd_PackDirectionAndPdf" (RGBA8+)
+        //   These inputs are needed only if PrePassMode::ADVANCED is used. The data can be averaged or weighted in case of many RPP. Encoding / decoding
+        //   can be changed in "NRD_FrontEnd_PackDirectionAndPdf" and "NRD_FrontEnd_UnpackDirectionAndPdf" functions.
         IN_DIFF_DIRECTION_PDF,
         IN_SPEC_DIRECTION_PDF,
 
         // (Optional) User-provided history confidence in range 0-1, i.e. antilag (R8+)
+        //   Used only if "CommonSettings::isHistoryConfidenceInputsAvailable = true".
         IN_DIFF_CONFIDENCE,
         IN_SPEC_CONFIDENCE,
 
@@ -148,21 +167,23 @@ namespace nrd
         // SIGMA: Data must be packed using "SIGMA_FrontEnd_PackShadow" (5-args) (RGBA8+)
         IN_SHADOW_TRANSLUCENCY,
 
+        // REFERENCE: input
+        IN_RADIANCE,
+
+        // DELTA_OPTIMIZATION_MV: input
+        IN_DELTA_PRIMARY_POSW,
+        IN_DELTA_SECONDARY_POSW,
+
         //=============================================================================================================================
         // OUTPUTS
         //=============================================================================================================================
 
         // IMPORTANT: These textures can potentially be used as history buffers
 
-        // SIGMA: Data must be unpacked using "SIGMA_BackEnd_UnpackShadow"
-        // .x - shadow, .yzw - translucency (RGBA8+)
-        // .x - shadow (R8+)
-        OUT_SHADOW_TRANSLUCENCY,
-
         // REBLUR: Data must be unpacked using "REBLUR_BackEnd_UnpackRadianceAndHitDist"
-        //  .xyz - radiance, .w - normalized hit distance (RGBA16f+)
+        //   .xyz - radiance, .w - normalized hit distance (RGBA16f+)
         // RELAX: Data must be unpacked using "RELAX_BackEnd_UnpackRadianceAndHitDist"
-        //  .xyz - radiance (R11G11B10f+)
+        //   .xyz - radiance (R11G11B10f+)
         OUT_DIFF_RADIANCE_HITDIST,
         OUT_SPEC_RADIANCE_HITDIST,
 
@@ -172,6 +193,25 @@ namespace nrd
 
         // REBLUR: .xyz - direction, .w - normalized hit distance (RGBA8+)
         OUT_DIFF_DIRECTION_HITDIST,
+
+        // SIGMA: Data must be unpacked using "SIGMA_BackEnd_UnpackShadow"
+        //   .x - shadow, .yzw - translucency (RGBA8+)
+        //   .x - shadow (R8+)
+        //   Usage:
+        //      shadowData = SIGMA_BackEnd_UnpackShadow( shadowData );
+        //      float3 finalShadowCommon = lerp( shadowData.yzw, 1.0, shadowData.x ); // or
+        //      float3 finalShadowExotic = shadowData.yzw * shadowData.x; // or
+        //      float3 finalShadowMoreExotic = shadowData.yzw;
+        OUT_SHADOW_TRANSLUCENCY,
+
+        // REFERENCE: output
+        OUT_RADIANCE,
+
+        // SPEC_REFLECTION_MV: .xy - 2D screen space virtual motion (RG16f+), MV = previous - current
+        OUT_SPEC_REFLECTION_MV,
+
+        // DELTA_OPTIMIZATION_MV: .xy - 2D screen space motion (RG16f+), MV = previous - current
+        OUT_DELTA_MV,
 
         //=============================================================================================================================
         // POOLS
@@ -305,17 +345,6 @@ namespace nrd
         bool enableValidation : 1;
     };
 
-    /*
-    Texture description
-    - always texture-read and texture-storage access
-    - potential descriptors:
-      - shader read:
-        - a descriptor for all mips
-        - a descriptor for first mip only
-        - a descriptor for some mips with a specific offset
-      - shader write:
-        - a descriptor for each mip
-    */
     struct TextureDesc
     {
         Format format;
@@ -324,6 +353,15 @@ namespace nrd
         uint16_t mipNum;
     };
 
+    /*
+    Requested descriptor variants:
+      - shader read:
+        - a descriptor for all mips
+        - a descriptor for first mip only
+        - a descriptor for some mips with a specific offset
+      - shader write:
+        - a descriptor for each mip
+    */
     struct Resource
     {
         DescriptorType stateNeeded;
@@ -357,7 +395,7 @@ namespace nrd
         ComputeShader computeShaderDXBC;
         ComputeShader computeShaderDXIL;
         ComputeShader computeShaderSPIRV;
-        const char* shaderFileName;
+        const char* shaderFileName; // optional, useful for white-box integration or shaders hot reloading
         const char* shaderEntryPointName;
         const DescriptorRangeDesc* descriptorRanges;
         uint32_t descriptorRangeNum;
