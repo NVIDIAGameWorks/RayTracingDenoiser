@@ -24,9 +24,8 @@ if [[ $REPLY =~ ^[Yy]$ ]]
 then
     mkdir -p "Shaders"
 
-    cp -r ../$NRD_DIR/Source/Shaders/ "Shaders"
-    cp ../$NRD_DIR/External/MathLib/*.hlsli "Shaders"
-    cp ../$NRD_DIR/Include/*.hlsli "Shaders"
+    cp -r ../$NRD_DIR/Shaders/ "Shaders"
+    cp ../$NRD_DIR/External/MathLib/*.hlsli "Shaders\Source"
 fi
 
 cd ..

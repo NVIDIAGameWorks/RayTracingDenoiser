@@ -88,7 +88,7 @@ namespace nrd
         RelaxDiffuseSpecularSettings diffuseSpecularRelax;
         ReferenceSettings reference;
         SpecularReflectionMvSettings specularReflectionMv;
-        DeltaOptimizationMvSettings deltaOptimizationMv;
+        SpecularDeltaMvSettings specularDeltaMv;
     };
 
     struct MethodData
@@ -166,8 +166,8 @@ namespace nrd
         size_t AddMethod_SpecularReflectionMv();
         void UpdateMethod_SpecularReflectionMv(const MethodData& methodData);
 
-        size_t AddMethod_DeltaOptimizationMv(uint16_t w, uint16_t h);
-        void UpdateMethod_DeltaOptimizationMv(const MethodData& methodData);
+        size_t AddMethod_SpecularDeltaMv(uint16_t w, uint16_t h);
+        void UpdateMethod_SpecularDeltaMv(const MethodData& methodData);
 
     // Internal
     public:

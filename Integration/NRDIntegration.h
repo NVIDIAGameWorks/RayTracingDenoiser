@@ -21,8 +21,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define NRD_INTEGRATION 1
 #define NRD_INTEGRATION_MAJOR 2
-#define NRD_INTEGRATION_MINOR 0
-#define NRD_INTEGRATION_DATE "21 March 2022"
+#define NRD_INTEGRATION_MINOR 1
+#define NRD_INTEGRATION_DATE "23 March 2022"
 
 // Settings
 #ifndef NRD_INTEGRATION_ASSERT
@@ -78,8 +78,12 @@ public:
 
     // User pool must contain valid entries only for resources which required for the set of
     // requested resources
-    void Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer,
-        const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool);
+    void Denoise
+    (
+        uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer,
+        const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool,
+        bool enableDescriptorCaching = true
+    );
 
     // This function assums that the device is in the IDLE state, i.e. there is no work in flight
     void Destroy();
@@ -92,8 +96,12 @@ private:
 
     void CreateResources();
     void AllocateAndBindMemory();
-    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool,
-        const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
+    void Dispatch
+    (
+        nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool,
+        const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool,
+        bool enableDescriptorCaching
+    );
 
 private:
     std::vector<NrdIntegrationTexture> m_TexturePool;

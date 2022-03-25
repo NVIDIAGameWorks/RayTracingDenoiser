@@ -56,7 +56,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
         AddDispatch( SIGMA_Shadow_SmoothTiles, SumConstants(0, 0, 1, 0), 16, 16 );
     }
 
-    PushPass("Pre-blur");
+    PushPass("Pre-pass");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
@@ -67,7 +67,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_Shadow_PreBlur, SumConstants(1, 1, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_Shadow_PrePass, SumConstants(1, 1, 0, 0), 16, 1 );
     }
 
     PushPass("Blur");

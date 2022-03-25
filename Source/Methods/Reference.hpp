@@ -21,13 +21,13 @@ size_t nrd::DenoiserImpl::AddMethod_Reference(uint16_t w, uint16_t h)
 
     SetSharedConstants(0, 0, 0, 0);
 
-    PushPass("Accumulate");
+    PushPass("Temporal accumulation");
     {
         PushInput( AsUint(ResourceType::IN_RADIANCE) );
 
         PushOutput( AsUint(Permanent::HISTORY) );
 
-        AddDispatch( REFERENCE_Accumulate, SumConstants(0, 0, 2, 2), 16, 1 );
+        AddDispatch( REFERENCE_TemporalAccumulation, SumConstants(0, 0, 2, 2), 16, 1 );
     }
 
     PushPass("Split screen");

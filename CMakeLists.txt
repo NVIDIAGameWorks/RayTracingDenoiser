@@ -4,14 +4,16 @@ message("Processing 'NRD'...")
 
 set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "This DXC will be used if Vulkan SDK is not installed")
 set(NRD_SHADER_OUTPUT_PATH "" CACHE STRING "Shader output path override")
+set(NRD_USE_OCT_NORMAL_ENCODING "0" CACHE STRING "NRD_USE_OCT_NORMAL_ENCODING")
+set(NRD_USE_MATERIAL_ID "0" CACHE STRING "NRD_USE_MATERIAL_ID")
 
 # Settings
-option(NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION "disable interprocedural optimization" OFF)
-option(NRD_DISABLE_SHADER_COMPILATION "disable compilation of shaders" OFF)
-option(NRD_USE_PRECOMPILED_SHADERS "use precompiled shaders" ON)
-option(NRD_STATIC_LIBRARY "build static lib" OFF)
-option(NRD_CROSSCOMPILE_AARCH64 "cross compilation for aarch64" OFF)
-option(NRD_CROSSCOMPILE_X86_64 "cross compilation for x86_64" OFF)
+option(NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION "Disable interprocedural optimization" OFF)
+option(NRD_DISABLE_SHADER_COMPILATION "Disable compilation of shaders" OFF)
+option(NRD_USE_PRECOMPILED_SHADERS "Use precompiled shaders" ON)
+option(NRD_STATIC_LIBRARY "Build static lib" OFF)
+option(NRD_CROSSCOMPILE_AARCH64 "Cross compilation for aarch64" OFF)
+option(NRD_CROSSCOMPILE_X86_64 "Cross compilation for x86_64" OFF)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Include/NRD.h" ver_h)
 string(REGEX MATCH "NRD_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
@@ -51,17 +53,16 @@ if ("${NRD_SHADER_OUTPUT_PATH}" STREQUAL "")
     set(NRD_SHADER_OUTPUT_PATH "${PROJECT_BINARY_DIR}/Shaders")
 endif()
 message(STATUS "NRD shaders output path: '${NRD_SHADER_OUTPUT_PATH}'")
+message(STATUS "NRD.hlsli definitions: NRD_USE_OCT_NORMAL_ENCODING = ${NRD_USE_OCT_NORMAL_ENCODING}; NRD_USE_MATERIAL_ID = ${NRD_USE_MATERIAL_ID}")
 
 if (NOT NRD_DISABLE_SHADER_COMPILATION)
-    # include path for DXC and FXC (used in ShaderCompilation.cmake)
-    set(NRD_SHADER_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Source/Shaders")
-    set(NRD_HEADER_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Include")
+    # Non-NRD include paths
     set(NRD_MATHLIB_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/MathLib")
 
     # list HLSL shaders and headers
-    file(GLOB_RECURSE NRD_HLSL_FILES "Source/Shaders/*.hlsl" "Source/Shaders/*.hlsli")
     file(GLOB_RECURSE NRD_HLSL_MATHLIB_HEADER_FILES "${NRD_MATHLIB_INCLUDE_PATH}/*.hlsli")
-    file(GLOB_RECURSE NRD_HLSL_INCLUDE "Include/*.hlsli")
+    file(GLOB_RECURSE NRD_HLSL_INCLUDE "Shaders/*.hlsli" )
+    file(GLOB_RECURSE NRD_HLSL_FILES "Shaders/*.hlsl")
 
     file(MAKE_DIRECTORY ${NRD_SHADER_OUTPUT_PATH})
     include(ShaderCompilation.cmake)

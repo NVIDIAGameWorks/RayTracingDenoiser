@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.0.0 (NRD)
+# NVIDIA Real-time Denoisers v3.1.0 (NRD)
 
 ## SAMPLE APP
 

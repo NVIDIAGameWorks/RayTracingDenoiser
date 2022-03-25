@@ -80,7 +80,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
         for( uint16_t i = 1; i < REBLUR_MIP_NUM; i++ )
             PushOutput( AsUint(Transient::DIFF_ACCUMULATED), i, 1 );
 
-        AddDispatch( NRD_MipGeneration_Float2, SumConstants(0, 0, 1, 2, false), 16, 2 );
+        AddDispatch( REBLUR_DiffuseOcclusion_MipGen, SumConstants(0, 0, 0, 0), 8, 1 );
+        AddDispatch( REBLUR_Perf_DiffuseOcclusion_MipGen, SumConstants(0, 0, 0, 0), 8, 1 );
     }
 
     PushPass("History fix");
@@ -146,6 +147,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
         TEMPORAL_ACCUMULATION_WITH_CONFIDENCE,
         PERF_TEMPORAL_ACCUMULATION_WITH_CONFIDENCE,
         MIP_GENERATION,
+        PERF_MIP_GENERATION,
         HISTORY_FIX,
         PERF_HISTORY_FIX,
         BLUR,
@@ -201,16 +203,14 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     AddFloat4(data, m_CameraDelta);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
-    AddFloat(data, settings.enableReferenceAccumulation ? 0.005f : m_CommonSettings.disocclusionThreshold );
+    AddFloat(data, m_CommonSettings.disocclusionThreshold );
     AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);
     ValidateConstants(data);
 
     // MIP_GENERATION
-    data = PushDispatch(methodData, AsUint(Dispatch::MIP_GENERATION));
-    AddUint2(data, rectW, rectH);
-    AddFloat(data, m_CommonSettings.denoisingRange);
-    AddFloat(data, m_CommonSettings.debug);
+    data = PushDispatch(methodData, AsUint( settings.enablePerformanceMode ? Dispatch::PERF_MIP_GENERATION : Dispatch::MIP_GENERATION ));
+    AddSharedConstants_Reblur(methodData, settings, data);
     ValidateConstants(data);
 
     // HISTORY_FIX

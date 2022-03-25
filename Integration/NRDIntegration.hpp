@@ -83,8 +83,8 @@ constexpr const char* g_NRD_PermanentPoolNames[] =
     "IN_SHADOWDATA ",
     "IN_SHADOW_TRANSLUCENCY ",
     "IN_RADIANCE ",
-    "IN_DELTA_PRIMARY_POSW ",
-    "IN_DELTA_SECONDARY_POSW ",
+    "IN_DELTA_PRIMARY_POS ",
+    "IN_DELTA_SECONDARY_POS ",
 
     "OUT_DIFF_RADIANCE_HITDIST ",
     "OUT_SPEC_RADIANCE_HITDIST ",
@@ -93,7 +93,7 @@ constexpr const char* g_NRD_PermanentPoolNames[] =
     "OUT_DIFF_DIRECTION_HITDIST ",
     "OUT_SHADOW_TRANSLUCENCY ",
     "OUT_RADIANCE ",
-    "OUT_SPEC_REFLECTION_MV ",
+    "OUT_REFLECTION_MV ",
     "OUT_DELTA_MV "
 };
 
@@ -398,7 +398,7 @@ bool NrdIntegration::SetMethodSettings(nrd::Method method, const void* methodSet
     return result == nrd::Result::SUCCESS;
 }
 
-void NrdIntegration::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool)
+void NrdIntegration::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool, bool enableDescriptorCaching)
 {
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
         printf("Frame %u ==============================================================================\n", consecutiveFrameIndex);
@@ -419,13 +419,13 @@ void NrdIntegration::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer&
         const nrd::DispatchDesc& dispatchDesc = dispatchDescs[i];
         m_NRI->CmdBeginAnnotation(commandBuffer, dispatchDesc.name);
 
-        Dispatch(commandBuffer, *descriptorPool, dispatchDesc, userPool);
+        Dispatch(commandBuffer, *descriptorPool, dispatchDesc, userPool, enableDescriptorCaching);
 
         m_NRI->CmdEndAnnotation(commandBuffer);
     }
 }
 
-void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool)
+void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool, bool enableDescriptorCaching)
 {
     const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_Denoiser);
     const nrd::PipelineDesc& pipelineDesc = denoiserDesc.pipelines[dispatchDesc.pipelineIndex];
@@ -484,7 +484,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
 
             const bool isStorage = descriptorRangeDesc.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE;
             uint64_t key = NRD_CreateDescriptorKey(nrdTexture->subresourceStates->texture, isStorage, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum);
-            const auto& entry = m_Descriptors.find(key);
+            const auto& entry = enableDescriptorCaching ? m_Descriptors.find(key) : m_Descriptors.end();
 
             nri::Descriptor* descriptor = nullptr;
             if (entry == m_Descriptors.end())
@@ -531,6 +531,14 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     m_NRI->CmdSetPipeline(commandBuffer, *pipeline);
     m_NRI->CmdSetDescriptorSets(commandBuffer, 0, 1, &descriptorSet, &dynamicConstantBufferOffset);
     m_NRI->CmdDispatch(commandBuffer, dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1);
+
+    // Cleanup
+    if (!enableDescriptorCaching)
+    {
+        for (const auto& entry : m_Descriptors)
+            m_NRI->DestroyDescriptor(*entry.second);
+        m_Descriptors.clear();
+    }
 
     // Debug logging
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )

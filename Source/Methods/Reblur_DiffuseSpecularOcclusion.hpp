@@ -99,7 +99,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, u
             PushOutput( AsUint(Transient::SPEC_ACCUMULATED), i, 1 );
         }
 
-        AddDispatch( NRD_MipGeneration_Float2_Float2, SumConstants(0, 0, 1, 2, false), 16, 2 );
+        AddDispatch( REBLUR_DiffuseSpecularOcclusion_MipGen, SumConstants(0, 0, 0, 0), 8, 1 );
+        AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_MipGen, SumConstants(0, 0, 0, 0), 8, 1 );
     }
 
     PushPass("History fix");

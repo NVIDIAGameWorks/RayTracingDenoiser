@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 0
+#define NRD_DESCS_VERSION_MINOR 1
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -108,12 +108,12 @@ namespace nrd
         // =============================================================================================================================
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_SPEC_HITDIST
-        // OUTPUTS - OUT_SPEC_REFLECTION_MV
-        SPEC_REFLECTION_MV,
+        // OUTPUTS - OUT_REFLECTION_MV
+        SPECULAR_REFLECTION_MV,
 
-        // INPUTS - IN_MV, IN_DELTA_PRIMARY_POSW, IN_DELTA_SECONDARY_POSW
+        // INPUTS - IN_MV, IN_DELTA_PRIMARY_POS, IN_DELTA_SECONDARY_POS
         // OUTPUT - OUT_DELTA_MV
-        DELTA_OPTIMIZATION_MV,
+        SPECULAR_DELTA_MV,
 
         MAX_NUM
     };
@@ -136,10 +136,10 @@ namespace nrd
 
         // RELAX: Data must be packed using "RELAX_FrontEnd_PackRadianceAndHitDist"
         // REBLUR: Data must be packed using "REBLUR_FrontEnd_PackRadianceAndHitDist" (and "REBLUR_FrontEnd_GetNormHitDist" for hit distance) (RGBA16f+)
-        //   Noisy and weighted sum of hit distances along a path (using NRD_GetCorrectedHitDist), excluding primary hit distance.
-        //   REBLUR works with normalized hit distances. It's recommended to use REBLUR_FrontEnd_GetNormHitDist for hit distance normalization.
-        //   Normalization parameters should be passed into NRD as HitDistanceParameters for diffuse and specular separately for internal
-        //   hit distance denormalization.
+        // Noisy and weighted sum of hit distances along a path (using NRD_GetCorrectedHitDist), excluding primary hit distance.
+        // REBLUR works with normalized hit distances. It's recommended to use REBLUR_FrontEnd_GetNormHitDist for hit distance normalization.
+        // Normalization parameters should be passed into NRD as HitDistanceParameters for diffuse and specular separately for internal
+        // hit distance denormalization.
         IN_DIFF_RADIANCE_HITDIST,
         IN_SPEC_RADIANCE_HITDIST,
 
@@ -151,34 +151,32 @@ namespace nrd
         IN_DIFF_DIRECTION_HITDIST,
 
         // (Optional) Data must be packed using "NRD_FrontEnd_PackDirectionAndPdf" (RGBA8+)
-        //   These inputs are needed only if PrePassMode::ADVANCED is used. The data can be averaged or weighted in case of many RPP. Encoding / decoding
-        //   can be changed in "NRD_FrontEnd_PackDirectionAndPdf" and "NRD_FrontEnd_UnpackDirectionAndPdf" functions.
+        // These inputs are needed only if PrePassMode::ADVANCED is used. The data can be averaged or weighted in case of many RPP. Encoding / decoding
+        // can be changed in "NRD_FrontEnd_PackDirectionAndPdf" and "NRD_FrontEnd_UnpackDirectionAndPdf" functions.
         IN_DIFF_DIRECTION_PDF,
         IN_SPEC_DIRECTION_PDF,
 
         // (Optional) User-provided history confidence in range 0-1, i.e. antilag (R8+)
-        //   Used only if "CommonSettings::isHistoryConfidenceInputsAvailable = true".
+        // Used only if "CommonSettings::isHistoryConfidenceInputsAvailable = true".
         IN_DIFF_CONFIDENCE,
         IN_SPEC_CONFIDENCE,
 
-        // SIGMA: Data must be packed using "SIGMA_FrontEnd_PackShadow" (3-args) (RG16+)
+        // SIGMA: Data must be packed using "SIGMA_FrontEnd_PackShadow" (3/5-args) (RG16+/RGBA8+)
         IN_SHADOWDATA,
-
-        // SIGMA: Data must be packed using "SIGMA_FrontEnd_PackShadow" (5-args) (RGBA8+)
         IN_SHADOW_TRANSLUCENCY,
 
-        // REFERENCE: input
+        // Any signal
         IN_RADIANCE,
 
-        // DELTA_OPTIMIZATION_MV: input
-        IN_DELTA_PRIMARY_POSW,
-        IN_DELTA_SECONDARY_POSW,
+        // Primary and secondary world space positions
+        IN_DELTA_PRIMARY_POS,
+        IN_DELTA_SECONDARY_POS,
 
         //=============================================================================================================================
         // OUTPUTS
         //=============================================================================================================================
 
-        // IMPORTANT: These textures can potentially be used as history buffers
+        // IMPORTANT: These textures can potentially be used as history buffers!
 
         // REBLUR: Data must be unpacked using "REBLUR_BackEnd_UnpackRadianceAndHitDist"
         //   .xyz - radiance, .w - normalized hit distance (RGBA16f+)
@@ -187,11 +185,11 @@ namespace nrd
         OUT_DIFF_RADIANCE_HITDIST,
         OUT_SPEC_RADIANCE_HITDIST,
 
-        // REBLUR: .x - normalized hit distance (R8+)
+        // .x - normalized hit distance (R8+)
         OUT_DIFF_HITDIST,
         OUT_SPEC_HITDIST,
 
-        // REBLUR: .xyz - direction, .w - normalized hit distance (RGBA8+)
+        // .xyz - direction, .w - normalized hit distance (RGBA8+)
         OUT_DIFF_DIRECTION_HITDIST,
 
         // SIGMA: Data must be unpacked using "SIGMA_BackEnd_UnpackShadow"
@@ -204,13 +202,13 @@ namespace nrd
         //      float3 finalShadowMoreExotic = shadowData.yzw;
         OUT_SHADOW_TRANSLUCENCY,
 
-        // REFERENCE: output
+        // .xyz - accumulated signal
         OUT_RADIANCE,
 
-        // SPEC_REFLECTION_MV: .xy - 2D screen space virtual motion (RG16f+), MV = previous - current
-        OUT_SPEC_REFLECTION_MV,
+        // .xy - 2D screen space virtual motion (RG16f+), MV = previous - current
+        OUT_REFLECTION_MV,
 
-        // DELTA_OPTIMIZATION_MV: .xy - 2D screen space motion (RG16f+), MV = previous - current
+        // .xy - 2D screen space motion (RG16f+), MV = previous - current
         OUT_DELTA_MV,
 
         //=============================================================================================================================

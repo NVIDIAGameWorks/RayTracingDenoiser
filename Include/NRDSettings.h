@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 0
+#define NRD_SETTINGS_VERSION_MINOR 1
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -441,16 +441,16 @@ namespace nrd
         uint32_t maxAccumulatedFrameNum = 3600;
     };
 
-    // SPEC_REFLECTION_MV
+    // SPECULAR_REFLECTION_MV
 
     struct SpecularReflectionMvSettings
     {
         float unused;
     };
 
-    // DELTA_OPTIMIZATION_MV
+    // SPECULAR_DELTA_MV
 
-    struct DeltaOptimizationMvSettings
+    struct SpecularDeltaMvSettings
     {
         float unused;
     };

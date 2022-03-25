@@ -70,7 +70,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
 
     const uint32_t halfMaxPassNum = (RELAX_MAX_ATROUS_PASS_NUM - 2 + 1) / 2;
 
-    PushPass("Prepass"); // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+    PushPass("Pre-pass"); // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
     {
         PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
         PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
@@ -82,10 +82,10 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV));
         PushOutput( AsUint(Transient::VIEWZ_R16F));
 
-        AddDispatch( RELAX_DiffuseSpecular_Prepass, SumConstants(0, 1, 0, 7), 16, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_PrePass, SumConstants(0, 1, 0, 7), 16, 1 );
     }
 
-    PushPass("Reproject");
+    PushPass("Temporal accumulation");
     {
 
         PushInput( AsUint(Transient::SPEC_ILLUM_PING) );
@@ -113,10 +113,10 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushOutput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
 
-        AddDispatch( RELAX_DiffuseSpecular_Reproject, SumConstants(0, 0, 0, 14), 8, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_TemporalAccumulation, SumConstants(0, 0, 0, 14), 8, 1 );
     }
 
-    PushPass("Reproject"); // With confidence inputs
+    PushPass("Temporal accumulation"); // With confidence inputs
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
@@ -143,10 +143,10 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
         PushOutput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
 
-        AddDispatch( RELAX_DiffuseSpecular_Reproject, SumConstants(0, 0, 0, 14), 8, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_TemporalAccumulation, SumConstants(0, 0, 0, 14), 8, 1 );
     }
 
-    PushPass("Disocclusion fix");
+    PushPass("History fix");
     {
         PushInput( AsUint(Permanent::SPEC_ILLUM_CURR) );
         PushInput( AsUint(Permanent::DIFF_ILLUM_CURR) );
@@ -161,7 +161,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_ILLUM_RESPONSIVE_PREV) );
         PushOutput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV) );
 
-        AddDispatch( RELAX_DiffuseSpecular_DisocclusionFix, SumConstants(0, 0, 0, 4), 8, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_HistoryFix, SumConstants(0, 0, 0, 4), 8, 1 );
     }
 
     PushPass("History clamping"); // with firefly after it
@@ -204,7 +204,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_ILLUM_PREV) );
         PushOutput( AsUint(Permanent::DIFF_ILLUM_PREV) );
 
-        AddDispatch( RELAX_DiffuseSpecular_Firefly, SumConstants(0, 0, 0, 0), 16, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_AntiFirefly, SumConstants(0, 0, 0, 0), 16, 1 );
     }
 
     // A-trous (first)
@@ -222,9 +222,9 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::NORMAL_ROUGHNESS_PREV) );
         PushOutput( AsUint(Permanent::MATERIAL_ID_PREV) );
 
-        AddDispatch( RELAX_DiffuseSpecular_ATrousShmem, SumConstants(0, 0, 1, 14), 8, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_AtrousSmem, SumConstants(0, 0, 1, 14), 8, 1 );
     }
-    
+
     // A-trous (odd)
     PushPass("A-trous");
     {
@@ -238,7 +238,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::SPEC_ILLUM_PONG) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_PONG) );
 
-        AddDispatchRepeated( RELAX_DiffuseSpecular_ATrousStandard, SumConstants(0, 0, 0, 13), 16, 1, halfMaxPassNum );
+        AddDispatchRepeated( RELAX_DiffuseSpecular_Atrous, SumConstants(0, 0, 0, 13), 16, 1, halfMaxPassNum );
     }
 
     // A-trous (even)
@@ -254,7 +254,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::SPEC_ILLUM_PING) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_PING) );
 
-        AddDispatchRepeated( RELAX_DiffuseSpecular_ATrousStandard, SumConstants(0, 0, 0, 13), 16, 1, halfMaxPassNum );
+        AddDispatchRepeated( RELAX_DiffuseSpecular_Atrous, SumConstants(0, 0, 0, 13), 16, 1, halfMaxPassNum );
     }
 
     // A-trous (odd, last)
@@ -270,7 +270,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint( ResourceType::OUT_SPEC_RADIANCE_HITDIST ) );
         PushOutput( AsUint( ResourceType::OUT_DIFF_RADIANCE_HITDIST ) );
 
-        AddDispatch( RELAX_DiffuseSpecular_ATrousStandard, SumConstants(0, 0, 0, 13), 16, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_Atrous, SumConstants(0, 0, 0, 13), 16, 1 );
     }
 
     // A-trous (even, last)
@@ -286,9 +286,9 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint( ResourceType::OUT_SPEC_RADIANCE_HITDIST ) );
         PushOutput( AsUint( ResourceType::OUT_DIFF_RADIANCE_HITDIST ) );
 
-        AddDispatch( RELAX_DiffuseSpecular_ATrousStandard, SumConstants(0, 0, 0, 13), 16, 1 );
+        AddDispatch( RELAX_DiffuseSpecular_Atrous, SumConstants(0, 0, 0, 13), 16, 1 );
     }
-    
+
     PushPass("Split screen");
     {
         PushInput( AsUint(ResourceType::IN_VIEWZ) );

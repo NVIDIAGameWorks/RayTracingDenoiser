@@ -21,9 +21,9 @@ size_t nrd::DenoiserImpl::AddMethod_SpecularReflectionMv()
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_SPEC_HITDIST) );
 
-        PushOutput( AsUint(ResourceType::OUT_SPEC_REFLECTION_MV) );
+        PushOutput( AsUint(ResourceType::OUT_REFLECTION_MV) );
 
-        AddDispatch( SpecularReflectionMv_Compute, SumConstants(2, 2, 3, 2), 16, 1 );
+        AddDispatch( SpecularReflectionMv_Compute, SumConstants(2, 2, 3, 3), 16, 1 );
     }
 
     #undef METHOD_NAME

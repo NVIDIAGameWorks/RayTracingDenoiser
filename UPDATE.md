@@ -18,7 +18,7 @@ This guide has been designed to simplify migration to a newer version.
   - exposed `minConvergedStateBaseRadiusScale`
   - exposed `roughnessFraction`
   - exposed `responsiveAccumulationRoughnessThreshold`
-  - exposed `inoutMix`
+  - exposed `inputMix`
   - exposed `enablePerformanceMode`
 - *RELAX*:
   - `rejectDiffuseHistoryNormalThreshold` renamed to `diffuseHistoryRejectionNormalThreshold`
@@ -26,3 +26,7 @@ This guide has been designed to simplify migration to a newer version.
   - `phiNormal` replaced by `diffuseLobeAngleFraction` (a different value with similar meaning)
   - exposed `roughnessFraction`
   - exposed `enableMaterialTest`
+
+## v3.0 to v3.1
+
+*NRD* requires explicit definitions of `NRD_USE_OCT_NORMAL_ENCODING` and `NRD_USE_MATERIAL_ID` to avoid a potential confusion when NRD was compiled using one set of values, but an application uses other values. The *CMake* file has been modified to simplify *NRD* integration into projects, where it is used as a *Git* submodule. Now these macro definitions are exposed as *Cmake* options.
