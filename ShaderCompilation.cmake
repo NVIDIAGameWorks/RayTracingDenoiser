@@ -1,6 +1,7 @@
 
 # DXC on Windows does not like forward slashes
 if (WIN32)
+    string(REPLACE "/" "\\" NRD_SHADER_INCLUDE_PATH "${NRD_SHADER_FILES}/Include")
     string(REPLACE "/" "\\" NRD_MATHLIB_INCLUDE_PATH "${NRD_MATHLIB_INCLUDE_PATH}")
 endif()
 
@@ -100,7 +101,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     OUTPUT ${OUTPUT_PATH_DXBC} ${OUTPUT_PATH_DXBC}.h
                     COMMAND ${NRD_FXC_PATH} /nologo /E main /T ${FXC_PROFILE} /WX /O3 /all_resources_bound
                         /DNRD_COMPILER_FXC=1 /DNRD_USE_OCT_NORMAL_ENCODING=${NRD_USE_OCT_NORMAL_ENCODING} /DNRD_USE_MATERIAL_ID=${NRD_USE_MATERIAL_ID}
-                        /I "${NRD_MATHLIB_INCLUDE_PATH}"
+                        /I "${NRD_MATHLIB_INCLUDE_PATH}" /I "${NRD_SHADER_INCLUDE_PATH}"
                         "${FILE_NAME}" /Vn g_${BYTECODE_ARRAY_NAME}_dxbc /Fh ${OUTPUT_PATH_DXBC}.h /Fo ${OUTPUT_PATH_DXBC}
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
@@ -115,7 +116,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     OUTPUT ${OUTPUT_PATH_DXIL} ${OUTPUT_PATH_DXIL}.h
                     COMMAND ${NRD_DXC_PATH} -E main -T ${DXC_PROFILE} -WX -O3 -enable-16bit-types -all_resources_bound
                         -DNRD_COMPILER_DXC=1 -DNRD_USE_OCT_NORMAL_ENCODING=${NRD_USE_OCT_NORMAL_ENCODING} -DNRD_USE_MATERIAL_ID=${NRD_USE_MATERIAL_ID}
-                        -I "${NRD_MATHLIB_INCLUDE_PATH}"
+                        -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}"
                         "${FILE_NAME}" -Vn g_${BYTECODE_ARRAY_NAME}_dxil -Fh ${OUTPUT_PATH_DXIL}.h -Fo ${OUTPUT_PATH_DXIL}
                     MAIN_DEPENDENCY ${FILE_NAME}
                     DEPENDS ${NRD_HEADER_FILES}
@@ -130,7 +131,7 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
                     OUTPUT ${OUTPUT_PATH_SPIRV} ${OUTPUT_PATH_SPIRV}.h
                     COMMAND ${NRD_DXC_SPIRV_PATH} -E main -T ${DXC_PROFILE} -WX -O3 -enable-16bit-types -all_resources_bound
                         -DNRD_COMPILER_DXC=1 -DVULKAN=1 -DNRD_USE_OCT_NORMAL_ENCODING=${NRD_USE_OCT_NORMAL_ENCODING} -DNRD_USE_MATERIAL_ID=${NRD_USE_MATERIAL_ID}
-                        -I "${NRD_MATHLIB_INCLUDE_PATH}"
+                        -I "${NRD_MATHLIB_INCLUDE_PATH}" -I "${NRD_SHADER_INCLUDE_PATH}"
                         "${FILE_NAME}" -Vn g_${BYTECODE_ARRAY_NAME}_spirv -Fh ${OUTPUT_PATH_SPIRV}.h -Fo ${OUTPUT_PATH_SPIRV} ${NRD_DXC_VK_SHIFTS}
                         -spirv
                     MAIN_DEPENDENCY ${FILE_NAME}
