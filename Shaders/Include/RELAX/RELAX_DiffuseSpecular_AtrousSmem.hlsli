@@ -130,11 +130,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
 #endif
 
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-    float historyLength = 255.0 * gHistoryLength[pixelPos].y;
-#else
     float historyLength = 255.0 * gHistoryLength[pixelPos];
-#endif
 
     float centerMaterialID = sharedMaterialID[sharedMemoryIndex.y][sharedMemoryIndex.x];
 
@@ -221,8 +217,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) / specularPhiLIllumination;
                 float relaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
                 specularLuminanceW *= relaxation;
-                specularLuminanceW = min(gMaxLuminanceRelativeDifference, specularLuminanceW);
-                float wSpecular = geometryW * exp_approx(-specularLuminanceW);
+                specularLuminanceW = min(gMaxSpecularLuminanceRelativeDifference, specularLuminanceW);
+                float wSpecular = geometryW * ExpApprox(-specularLuminanceW);
                 wSpecular *= gRoughnessEdgeStoppingEnabled ? (normalWSpecular * specularRoughnessW) : normalWDiffuse;
                 wSpecular = kernel * wSpecular;
                 wSpecular = isCenter ? kernel : wSpecular;
@@ -234,8 +230,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 #endif
 #if( defined RELAX_DIFFUSE )
                 float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) / diffusePhiLIllumination;
-                diffuseLuminanceW = min(gMaxLuminanceRelativeDifference, diffuseLuminanceW);
-                float wDiffuse = geometryW * kernel * normalWDiffuse * exp_approx(-diffuseLuminanceW);
+                diffuseLuminanceW = min(gMaxDiffuseLuminanceRelativeDifference, diffuseLuminanceW);
+                float wDiffuse = geometryW * kernel * normalWDiffuse * ExpApprox(-diffuseLuminanceW);
                 wDiffuse = isCenter ? kernel : wDiffuse;
                 wDiffuse *= isInside ? 1.0 : 0.0;
                 wDiffuse *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask);

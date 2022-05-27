@@ -21,7 +21,8 @@ NRD_SAMPLER_END
         RELAX_SHARED_CB_DATA
         NRD_CONSTANT( float, gSpecularPhiLuminance )
         NRD_CONSTANT( float, gDiffusePhiLuminance )
-        NRD_CONSTANT( float, gMaxLuminanceRelativeDifference )
+        NRD_CONSTANT( float, gMaxDiffuseLuminanceRelativeDifference )
+        NRD_CONSTANT( float, gMaxSpecularLuminanceRelativeDifference )
         NRD_CONSTANT( float, gDepthThreshold )
         NRD_CONSTANT( float, gDiffuseLobeAngleFraction )
         NRD_CONSTANT( float, gRoughnessFraction )
@@ -37,7 +38,7 @@ NRD_SAMPLER_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationAndVariance, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationAndVariance, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float2>, gHistoryLength, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularReprojectionConfidence, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 5 )
@@ -53,7 +54,7 @@ NRD_SAMPLER_END
     NRD_CONSTANTS_START
         RELAX_SHARED_CB_DATA
         NRD_CONSTANT( float, gDiffusePhiLuminance )
-        NRD_CONSTANT( float, gMaxLuminanceRelativeDifference )
+        NRD_CONSTANT( float, gMaxDiffuseLuminanceRelativeDifference )
         NRD_CONSTANT( float, gDepthThreshold )
         NRD_CONSTANT( float, gDiffuseLobeAngleFraction )
         NRD_CONSTANT( uint, gStepSize )
@@ -75,7 +76,7 @@ NRD_SAMPLER_END
     NRD_CONSTANTS_START
         RELAX_SHARED_CB_DATA
         NRD_CONSTANT( float, gSpecularPhiLuminance )
-        NRD_CONSTANT( float, gMaxLuminanceRelativeDifference )
+        NRD_CONSTANT( float, gMaxSpecularLuminanceRelativeDifference )
         NRD_CONSTANT( float, gDepthThreshold )
         NRD_CONSTANT( float, gDiffuseLobeAngleFraction )
         NRD_CONSTANT( float, gRoughnessFraction )

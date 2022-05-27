@@ -42,7 +42,7 @@ inline void AlignedFree(void* userArg, void* memory)
     _aligned_free(memory);
 }
 
-#elif defined(__linux__) || defined(__SCE__)
+#elif defined(__linux__) || defined(__SCE__) || defined(__APPLE__)
 
 #include <cstdlib>
 
@@ -124,6 +124,9 @@ struct StdAllocator
 
     StdAllocator(const MemoryAllocatorInterface& memoryAllocatorInterface) : m_Interface(memoryAllocatorInterface)
     { CheckAndSetDefaultAllocator(m_Interface); }
+
+    StdAllocator(const StdAllocator<T>& allocator) : m_Interface(allocator.GetInterface())
+    {}
 
     template<class U>
     StdAllocator(const StdAllocator<U>& allocator) : m_Interface(allocator.GetInterface())

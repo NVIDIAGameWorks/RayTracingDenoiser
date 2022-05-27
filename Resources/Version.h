@@ -17,13 +17,13 @@ Versioning rules:
 - BUILD - preserves binary compatibility
 - MINOR - settings & descs change
 - MAJOR - major feature update, API change
-- don't forget to update NRD.hlsli & README
+- don't forget to update NRD.hlsli, README and UPDATE
 - don't forget to update requirements in NRDIntegration
 */
 
 #define VERSION_MAJOR                   3
-#define VERSION_MINOR                   1
-#define VERSION_BUILD                   0
+#define VERSION_MINOR                   2
+#define VERSION_BUILD                   3
 #define VERSION_REVISION                0
 
 #define VERSION_STRING STR(VERSION_MAJOR.VERSION_MINOR.VERSION_BUILD.VERSION_REVISION)

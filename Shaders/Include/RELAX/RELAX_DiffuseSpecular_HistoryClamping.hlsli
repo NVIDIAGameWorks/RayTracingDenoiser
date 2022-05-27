@@ -9,11 +9,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #if( defined RELAX_SPECULAR )
-    groupshared float4 sharedSpecular[GROUP_Y + BORDER * 2][GROUP_X + BORDER * 2];
+    groupshared float4 sharedSpecularYCoCg[GROUP_Y + BORDER * 2][GROUP_X + BORDER * 2];
 #endif
 
 #if( defined RELAX_DIFFUSE )
-    groupshared float4 sharedDiffuse[GROUP_Y + BORDER * 2][GROUP_X + BORDER * 2];
+    groupshared float4 sharedDiffuseYCoCg[GROUP_Y + BORDER * 2][GROUP_X + BORDER * 2];
 #endif
 
 void Preload(uint2 sharedPos, int2 globalPos)
@@ -21,13 +21,13 @@ void Preload(uint2 sharedPos, int2 globalPos)
     globalPos = clamp(globalPos, 0, gRectSize - 1.0);
 
     #if( defined RELAX_SPECULAR )
-        float3 specularResponsive = gSpecularIlluminationResponsive[globalPos].rgb;
-        sharedSpecular[sharedPos.y][sharedPos.x] = float4(STL::Color::LinearToYCoCg(specularResponsive), 0);
+        float4 specularResponsive = gSpecularIlluminationResponsive[globalPos];
+        sharedSpecularYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::LinearToYCoCg(specularResponsive.rgb), specularResponsive.a);
     #endif
 
     #if( defined RELAX_DIFFUSE )
-        float3 diffuseResponsive = gDiffuseIlluminationResponsive[globalPos].rgb;
-        sharedDiffuse[sharedPos.y][sharedPos.x] = float4(STL::Color::LinearToYCoCg(diffuseResponsive), 0);
+        float4 diffuseResponsive = gDiffuseIlluminationResponsive[globalPos];
+        sharedDiffuseYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::LinearToYCoCg(diffuseResponsive.rgb), diffuseResponsive.a);
     #endif
 }
 
@@ -38,27 +38,21 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Shared memory is populated with responsive history now and can be used for history clamping
 
     // Reading history length
-#if( defined RELAX_SPECULAR && defined RELAX_DIFFUSE)
-    float2 specularAndDiffuseHistoryLength = gSpecularAndDiffuseHistoryLength[pixelPos];
-#elif( defined RELAX_SPECULAR )
-    float specularHistoryLength = gSpecularHistoryLength[pixelPos];
-#else
-    float diffuseHistoryLength = gDiffuseHistoryLength[pixelPos];
-#endif
+    float historyLength = 255.0 * gHistoryLength[pixelPos];
 
     // Reading normal history
 #if( defined RELAX_SPECULAR )
     float4 specularIlluminationAnd2ndMoment = gSpecularIllumination[pixelPos];
     float3 specularYCoCg = STL::Color::LinearToYCoCg(specularIlluminationAnd2ndMoment.rgb);
-    float3 specularFirstMoment = 0;
-    float3 specularSecondMoment = 0;
+    float3 specularFirstMomentYCoCg = 0;
+    float3 specularSecondMomentYCoCg = 0;
 #endif
 
 #if( defined RELAX_DIFFUSE )
     float4 diffuseIlluminationAnd2ndMoment = gDiffuseIllumination[pixelPos];
     float3 diffuseYCoCg = STL::Color::LinearToYCoCg(diffuseIlluminationAnd2ndMoment.rgb);
-    float3 diffuseFirstMoment = 0;
-    float3 diffuseSecondMoment = 0;
+    float3 diffuseFirstMomentYCoCg = 0;
+    float3 diffuseSecondMomentYCoCg = 0;
 #endif
 
     // Running history clamping
@@ -74,68 +68,83 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
             if (any(p < int2(0, 0)) || any(p >= (int2)gRectSize)) sharedMemoryIndexP = sharedMemoryIndex;
 
 #if( defined RELAX_SPECULAR )
-            float3 specularP = sharedSpecular[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
-            specularFirstMoment += specularP;
-            specularSecondMoment += specularP * specularP;
+            float3 specularSampleYCoCg = sharedSpecularYCoCg[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
+            specularFirstMomentYCoCg += specularSampleYCoCg;
+            specularSecondMomentYCoCg += specularSampleYCoCg * specularSampleYCoCg;
 #endif
 
 #if( defined RELAX_DIFFUSE )
-            float3 diffuseP = sharedDiffuse[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
-            diffuseFirstMoment += diffuseP;
-            diffuseSecondMoment += diffuseP * diffuseP;
+            float3 diffuseSampleYCoCg = sharedDiffuseYCoCg[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
+            diffuseFirstMomentYCoCg += diffuseSampleYCoCg;
+            diffuseSecondMomentYCoCg += diffuseSampleYCoCg * diffuseSampleYCoCg;
 #endif
         }
     }
 
 #if( defined RELAX_SPECULAR )
     // Calculating color box
-    specularFirstMoment /= 25.0;
-    specularSecondMoment /= 25.0;
-    float3 specularSigma = sqrt(max(0.0f, specularSecondMoment - specularFirstMoment * specularFirstMoment));
-    float3 specularColorMin = specularFirstMoment - gColorBoxSigmaScale * specularSigma;
-    float3 specularColorMax = specularFirstMoment + gColorBoxSigmaScale * specularSigma;
+    specularFirstMomentYCoCg /= 25.0;
+    specularSecondMomentYCoCg /= 25.0;
+    float3 specularSigmaYCoCg = sqrt(max(0.0f, specularSecondMomentYCoCg - specularFirstMomentYCoCg * specularFirstMomentYCoCg));
+    float3 specularColorMinYCoCg = specularFirstMomentYCoCg - gColorBoxSigmaScale * specularSigmaYCoCg;
+    float3 specularColorMaxYCoCg = specularFirstMomentYCoCg + gColorBoxSigmaScale * specularSigmaYCoCg;
 
     // Expanding color box with color of the center pixel to minimize introduced bias
-    float3 specularCenter = sharedSpecular[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb;
-    specularColorMin = min(specularColorMin, specularCenter);
-    specularColorMax = max(specularColorMax, specularCenter);
+    float4 specularCenterYCoCg = sharedSpecularYCoCg[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    specularColorMinYCoCg = min(specularColorMinYCoCg, specularCenterYCoCg.rgb);
+    specularColorMaxYCoCg = max(specularColorMaxYCoCg, specularCenterYCoCg.rgb);
 
     // Color clamping
-    specularYCoCg = clamp(specularYCoCg, specularColorMin, specularColorMax);
+    specularYCoCg = clamp(specularYCoCg, specularColorMinYCoCg, specularColorMaxYCoCg);
     float3 clampedSpecular = STL::Color::YCoCgToLinear(specularYCoCg);
 
+    // If history length is less than gFramesToFix, 
+    // then it is the pixel with history fix applied in the previous (history fix) shader,
+    // so data from responsive history needs to be copied to normal history,
+    // and no history clamping is needed.
+    float4 outSpecular = float4(clampedSpecular, specularIlluminationAnd2ndMoment.a);
+    float4 ourSpecularResponsive = float4(STL::Color::YCoCgToLinear(specularCenterYCoCg.rgb), specularCenterYCoCg.a);
+    if (historyLength <= gFramesToFix)
+    {
+        outSpecular = ourSpecularResponsive;
+    }
     // Writing out the results
-    gOutSpecularIllumination[pixelPos.xy] = float4(clampedSpecular, specularIlluminationAnd2ndMoment.a);
+    gOutSpecularIllumination[pixelPos.xy] = outSpecular;
+    gOutSpecularIlluminationResponsive[pixelPos.xy] = ourSpecularResponsive;
 #endif
 
 #if( defined RELAX_DIFFUSE )
     // Calculating color box
-    diffuseFirstMoment /= 25.0;
-    diffuseSecondMoment /= 25.0;
-    float3 diffuseSigma = sqrt(max(0.0f, diffuseSecondMoment - diffuseFirstMoment * diffuseFirstMoment));
-    float3 diffuseColorMin = diffuseFirstMoment - gColorBoxSigmaScale * diffuseSigma;
-    float3 diffuseColorMax = diffuseFirstMoment + gColorBoxSigmaScale * diffuseSigma;
+    diffuseFirstMomentYCoCg /= 25.0;
+    diffuseSecondMomentYCoCg /= 25.0;
+    float3 diffuseSigmaYCoCg = sqrt(max(0.0f, diffuseSecondMomentYCoCg - diffuseFirstMomentYCoCg * diffuseFirstMomentYCoCg));
+    float3 diffuseColorMinYCoCg = diffuseFirstMomentYCoCg - gColorBoxSigmaScale * diffuseSigmaYCoCg;
+    float3 diffuseColorMaxYCoCg = diffuseFirstMomentYCoCg + gColorBoxSigmaScale * diffuseSigmaYCoCg;
 
     // Expanding color box with color of the center pixel to minimize introduced bias
-    float3 diffuseCenter = sharedDiffuse[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb;
-    diffuseColorMin = min(diffuseColorMin, diffuseCenter);
-    diffuseColorMax = max(diffuseColorMax, diffuseCenter);
+    float4 diffuseCenterYCoCg = sharedDiffuseYCoCg[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    diffuseColorMinYCoCg = min(diffuseColorMinYCoCg, diffuseCenterYCoCg.rgb);
+    diffuseColorMaxYCoCg = max(diffuseColorMaxYCoCg, diffuseCenterYCoCg.rgb);
 
     // Color clamping
-    diffuseYCoCg = clamp(diffuseYCoCg, diffuseColorMin, diffuseColorMax);
+    diffuseYCoCg = clamp(diffuseYCoCg, diffuseColorMinYCoCg, diffuseColorMaxYCoCg);
     float3 clampedDiffuse = STL::Color::YCoCgToLinear(diffuseYCoCg);
 
+    // If history length is less than gFramesToFix, 
+    // then it is the pixel with history fix applied in the previous (history fix) shader,
+    // so data from responsive history needs to be copied to normal history,
+    // and no history clamping is needed.
+    float4 outDiffuse = float4(clampedDiffuse, diffuseIlluminationAnd2ndMoment.a);
+    float4 outDiffuseResponsive = float4(STL::Color::YCoCgToLinear(diffuseCenterYCoCg.rgb), diffuseCenterYCoCg.a);
+    if (historyLength <= gFramesToFix)
+    {
+        outDiffuse = outDiffuseResponsive;
+    }
     // Writing out the results
-    gOutDiffuseIllumination[pixelPos.xy] = float4(clampedDiffuse, diffuseIlluminationAnd2ndMoment.a);
+    gOutDiffuseIllumination[pixelPos.xy] = outDiffuse;
+    gOutDiffuseIlluminationResponsive[pixelPos.xy] = outDiffuseResponsive;
 #endif
 
-    // Writing out history length
-#if( defined RELAX_SPECULAR && defined RELAX_DIFFUSE)
-    gOutSpecularAndDiffuseHistoryLength[pixelPos] = specularAndDiffuseHistoryLength;
-#elif( defined RELAX_SPECULAR )
-    gOutSpecularHistoryLength[pixelPos] = specularHistoryLength;
-#elif( defined RELAX_DIFFUSE )
-    gOutDiffuseHistoryLength[pixelPos] = diffuseHistoryLength;
-#endif
-
+    // Writing out history length for use in the next frame
+    gOutHistoryLength[pixelPos] = historyLength / 255.0;
 }

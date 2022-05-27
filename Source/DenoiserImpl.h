@@ -146,7 +146,6 @@ namespace nrd
         void AddSharedConstants_Sigma(const MethodData& methodData, const SigmaSettings& settings, Constant*& data);
 
         size_t AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h);
-        void UpdateMethod_SigmaShadowTranslucency(const MethodData& methodData);
 
         // Relax
         void AddSharedConstants_Relax(const MethodData& methodData, Constant*& data, nrd::Method method);
@@ -315,11 +314,13 @@ namespace nrd
         ml::float4x4 m_WorldToClipPrev = ml::float4x4::Identity();
         ml::float4x4 m_ClipToWorld = ml::float4x4::Identity();
         ml::float4x4 m_ClipToWorldPrev = ml::float4x4::Identity();
+        ml::float4x4 m_WorldPrevToWorld = ml::float4x4::Identity();
         ml::float4 m_Rotator[3] = {};
         ml::float4 m_Frustum = ml::float4(0.0f);
         ml::float4 m_FrustumPrev = ml::float4(0.0f);
-        ml::float4 m_CameraDelta = ml::float4(0.0f);
+        ml::float3 m_CameraDelta = ml::float3(0.0f);
         ml::float3 m_ViewDirection = ml::float3(0.0f);
+        ml::float3 m_ViewDirectionPrev = ml::float3(0.0f);
         ml::float2 m_JitterPrev = ml::float2(0.0f);
         ml::float2 m_ResolutionScalePrev = ml::float2(1.0f);
         const char* m_PassName = nullptr;

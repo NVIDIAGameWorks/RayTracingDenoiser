@@ -103,7 +103,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     offseti -= BORDER;
     float2 offset = float2( offseti ) * gInvRectSize;
     float3 Xvnearest = STL::Geometry::ReconstructViewPosition( pixelUv + offset, gFrustum, viewZnearest, gOrthoMode );
-    float3 Xnearest = STL::Geometry::AffineTransform( gViewToWorld, Xvnearest );
+    float3 Xnearest = STL::Geometry::RotateVector( gViewToWorld, Xvnearest );
     float3 motionVector = gIn_ObjectMotion[ pixelPosUser + offseti ] * gMotionVectorScale.xyy;
     float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, motionVector, gIsWorldSpaceMotionEnabled );
     pixelUvPrev -= offset;
@@ -114,7 +114,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     pixelUvPrev = clamp( pixelUvPrev, 1.5 / gRectSizePrev, 1.0 - 1.5 / gRectSizePrev );
 
     // Sample history
-    SIGMA_TYPE history = BicubicFilterNoCorners( gIn_History, gLinearClamp, pixelUvPrev * gRectSizePrev, gInvScreenSize, SIGMA_USE_CATROM );
+    SIGMA_TYPE history;
+    BicubicFilterNoCorners(
+        pixelUvPrev * gRectSizePrev, gInvScreenSize,
+        gLinearClamp, SIGMA_USE_CATROM,
+        gIn_History, history );
+
     history = UnpackShadow( history );
 
     // Clamp history
@@ -165,8 +170,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #if( SIGMA_REFERENCE == 1 )
         result = lerp( input, history, 0.95 * isInScreen );
     #endif
-
-    result = Sanitize( result, input );
 
     // Debug
     #if( SIGMA_SHOW_TILES == 1 )

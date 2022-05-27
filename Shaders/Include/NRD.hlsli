@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.1
+// NRD v3.2
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -200,27 +200,30 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
     #error "NRD_USE_MATERIAL_ID needs to be defined as 0 or 1."
 #endif
 
-// [Optional] Specular color compression for spatial passes
-#define NRD_RADIANCE_COMPRESSION_MODE                                                   3 // 0-4
-
-// [Optional] Rare needed
+// [Optional] Rarely needed
 #define NRD_USE_SQRT_LINEAR_ROUGHNESS                                                   0
 
 //=================================================================================================================================
 // PRIVATE
 //=================================================================================================================================
 
+#if( NRD_USE_OCT_NORMAL_ENCODING == 0 )
+    #undef NRD_USE_MATERIAL_ID
+    #define NRD_USE_MATERIAL_ID 0
+#endif
+
+#define NRD_FP16_MIN                                                                    1e-7 // min allowed hitDist (0 = no data)
 #define NRD_FP16_MAX                                                                    65504.0
 #define NRD_FP16_VIEWZ_SCALE                                                            0.125 // TODO: tuned for meters, needs to be scaled down for cm and mm
 
 float2 _NRD_EncodeUnitVector( float3 v, const bool bSigned = false )
 {
-    float2 sign = ( step( 0.0, v.xy ) * 2.0 - 1.0 );
+    v /= dot( abs( v ), 1.0 );
 
-    v /= abs( v.x ) + abs( v.y ) + abs( v.z );
-    v.xy = v.z >= 0.0 ? v.xy : ( 1.0 - abs( v.yx ) ) * sign;
+    float2 octWrap = ( 1.0 - abs( v.yx ) ) * ( v.xy >= 0.0 ? 1.0 : -1.0 );
+    v.xy = v.z >= 0.0 ? v.xy : octWrap;
 
-    return bSigned ? v.xy : saturate( v.xy * 0.5 + 0.5 );
+    return bSigned ? v.xy : v.xy * 0.5 + 0.5;
 }
 
 float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool bNormalize = true )
@@ -238,32 +241,6 @@ float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool b
 float _NRD_Luminance( float3 linearColor )
 {
     return dot( linearColor, float3( 0.2990, 0.5870, 0.1140 ) );
-}
-
-float _NRD_GetColorCompressionExposureForSpatialPasses( float roughness )
-{
-    // Prerequsites:
-    // - to minimize biasing the results compression for high roughness should be avoided (diffuse signal compression can lead to darker image)
-    // - the compression function must be monotonic for full roughness range
-
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
-
-    // Moderate compression
-    #if( NRD_RADIANCE_COMPRESSION_MODE == 1 )
-        return 0.5 / ( 1.0 + 50.0 * roughness );
-    // Less compression for mid-high roughness
-    #elif( NRD_RADIANCE_COMPRESSION_MODE == 2 )
-        return 0.5 * ( 1.0 - roughness ) / ( 1.0 + 60.0 * roughness );
-    // Close to the previous one, but offers more compression for low roughness
-    #elif( NRD_RADIANCE_COMPRESSION_MODE == 3 )
-        return 0.5 * ( 1.0 - roughness ) / ( 1.0 + 1000.0 * roughness * roughness ) + ( 1.0 - sqrt( saturate( roughness ) ) ) * 0.03;
-    // A modification of the preious one ( simpler )
-    #elif( NRD_RADIANCE_COMPRESSION_MODE == 4 )
-        return 0.6 * ( 1.0 - roughness * roughness ) / ( 1.0 + 400.0 * roughness * roughness );
-    // No compression
-    #else
-        return 0;
-    #endif
 }
 
 // Hit distance normalization
@@ -374,6 +351,10 @@ float4 REBLUR_FrontEnd_PackRadianceAndHitDist( float3 radiance, float normHitDis
         normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
     }
 
+    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
+    if( normHitDist != 0 )
+        normHitDist = max( normHitDist, NRD_FP16_MIN );
+
     return float4( radiance, normHitDist );
 }
 
@@ -384,6 +365,10 @@ float4 REBLUR_FrontEnd_PackDirectionAndHitDist( float3 direction, float normHitD
         direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : direction;
         normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
     }
+
+    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
+    if( normHitDist != 0 )
+        normHitDist = max( normHitDist, NRD_FP16_MIN );
 
     return float4( direction * 0.5 + 0.5, normHitDist );
 }
@@ -399,6 +384,10 @@ float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bo
         radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
         hitDist = ( isnan( hitDist ) | isinf( hitDist ) ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
     }
+
+    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
+    if( hitDist != 0 )
+        hitDist = max( hitDist, NRD_FP16_MIN );
 
     return float4( radiance, hitDist );
 }
@@ -548,7 +537,7 @@ where:
 float NRD_GetCorrectedHitDist( float hitDist, float bounceIndex, float roughnessAccumulatedAlongPath, float importance = 1.0 )
 {
     // 0-based starting from 1st bounce ( even for direct lighting denoising pass bounceIndex = 1 )
-    bounceIndex -= 1.0;
+    bounceIndex = max( bounceIndex - 1.0, 0.0 );
 
     float m = roughnessAccumulatedAlongPath * roughnessAccumulatedAlongPath;
     float compression = 1.0 - exp( -m * bounceIndex );
@@ -575,9 +564,9 @@ float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
 }
 
 // Needs to be used to avoid summing up NAN/INF values in many rays per pixel scenarios
-float NRD_GetSampleWeight( float3 radiance, bool sanitize = true )
+float NRD_GetSampleWeight( float3 radiance )
 {
-    return ( any( isnan( radiance ) | isinf( radiance ) ) && sanitize ) ? 0.0 : 1.0;
+    return any( isnan( radiance ) | isinf( radiance ) ) ? 0.0 : 1.0;
 }
 
 float REBLUR_GetHitDist( float normHitDist, float viewZ, float4 hitDistParams, float roughness )

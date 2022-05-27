@@ -26,134 +26,6 @@ float4 PackPrevNormalRoughness(float4 normalRoughness)
     return result;
 }
 
-// Filtering helpers
-float4 BicubicFloat4(Texture2D<float4> tex, SamplerState samp, float2 samplePos, float2 invViewSize)
-{
-    float2 tc = floor(samplePos - 0.5) + 0.5;
-    float2 f = saturate(samplePos - tc);
-
-    float2 f2 = f * f;
-    float2 f3 = f2 * f;
-
-    float c = 0.5; // Sharpness: 0.5 is standard for Catmull-Rom
-    float2 w0 = -c * f3 + 2.0 * c * f2 - c * f;
-    float2 w1 = (2.0 - c) * f3 - (3.0 - c) * f2 + 1.0;
-    float2 w2 = -(2.0 - c) * f3 + (3.0 - 2.0 * c) * f2 + c * f;
-    float2 w3 = c * f3 - c * f2;
-    float2 w12 = w1 + w2;
-
-    float2 tc0 = (tc - 1.0) * invViewSize;
-    float2 tc12 = (tc + w2 / w12) * invViewSize;
-    float2 tc3 = (tc + 2.0) * invViewSize;
-
-    float4 result =
-        tex.SampleLevel(samp, float2(tc0.x, tc12.y), 0).rgba * (w0.x * w12.y) +
-        tex.SampleLevel(samp, float2(tc12.x, tc0.y), 0).rgba * (w12.x * w0.y) +
-        tex.SampleLevel(samp, float2(tc12.x, tc12.y), 0).rgba * (w12.x * w12.y) +
-        tex.SampleLevel(samp, float2(tc12.x, tc3.y), 0).rgba * (w12.x * w3.y) +
-        tex.SampleLevel(samp, float2(tc3.x, tc12.y), 0).rgba * (w3.x * w12.y);
-
-    return result / ((w0.x * w12.y) + (w12.x * w0.y) + (w12.x * w12.y) + (w12.x * w3.y) + (w3.x * w12.y));
-}
-
-void BicubicFloat4x2(out float4 result1, out float4 result2, Texture2D<float4> tex1, Texture2D<float4> tex2, SamplerState samp, float2 samplePos, float2 invViewSize)
-{
-    float2 tc = floor(samplePos - 0.5) + 0.5;
-    float2 f = saturate(samplePos - tc);
-
-    float2 f2 = f * f;
-    float2 f3 = f2 * f;
-
-    float c = 0.5; // Sharpness: 0.5 is standard for Catmull-Rom
-    float2 w0 = -c * f3 + 2.0 * c * f2 - c * f;
-    float2 w1 = (2.0 - c) * f3 - (3.0 - c) * f2 + 1.0;
-    float2 w2 = -(2.0 - c) * f3 + (3.0 - 2.0 * c) * f2 + c * f;
-    float2 w3 = c * f3 - c * f2;
-    float2 w12 = w1 + w2;
-
-    float2 tc0 = (tc - 1.0) * invViewSize;
-    float2 tc12 = (tc + w2 / w12) * invViewSize;
-    float2 tc3 = (tc + 2.0) * invViewSize;
-
-    result1 =
-        tex1.SampleLevel(samp, float2(tc0.x, tc12.y), 0).rgba * (w0.x * w12.y) +
-        tex1.SampleLevel(samp, float2(tc12.x, tc0.y), 0).rgba * (w12.x * w0.y) +
-        tex1.SampleLevel(samp, float2(tc12.x, tc12.y), 0).rgba * (w12.x * w12.y) +
-        tex1.SampleLevel(samp, float2(tc12.x, tc3.y), 0).rgba * (w12.x * w3.y) +
-        tex1.SampleLevel(samp, float2(tc3.x, tc12.y), 0).rgba * (w3.x * w12.y);
-
-    result2 =
-        tex2.SampleLevel(samp, float2(tc0.x, tc12.y), 0).rgba * (w0.x * w12.y) +
-        tex2.SampleLevel(samp, float2(tc12.x, tc0.y), 0).rgba * (w12.x * w0.y) +
-        tex2.SampleLevel(samp, float2(tc12.x, tc12.y), 0).rgba * (w12.x * w12.y) +
-        tex2.SampleLevel(samp, float2(tc12.x, tc3.y), 0).rgba * (w12.x * w3.y) +
-        tex2.SampleLevel(samp, float2(tc3.x, tc12.y), 0).rgba * (w3.x * w12.y);
-    float norm = 1.0 / ((w0.x * w12.y) + (w12.x * w0.y) + (w12.x * w12.y) + (w12.x * w3.y) + (w3.x * w12.y));
-
-    result1 *= norm;
-    result2 *= norm;
-}
-
-float BilinearWithBinaryWeightsFloat(Texture2D<float> tex, int2 bilinearOrigin, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
-{
-    float s00 = tex[bilinearOrigin + int2(0, 0)].r;
-    float s10 = tex[bilinearOrigin + int2(1, 0)].r;
-    float s01 = tex[bilinearOrigin + int2(0, 1)].r;
-    float s11 = tex[bilinearOrigin + int2(1, 1)].r;
-    s00 *= binaryWeights.x;
-    s10 *= binaryWeights.y;
-    s01 *= binaryWeights.z;
-    s11 *= binaryWeights.w;
-
-    STL::Filtering::Bilinear bilinear;
-    bilinear.weights = bilinearWeights;
-
-    float r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
-    r /= interpolatedBinaryWeight;
-
-    return r;
-}
-
-float2 BilinearWithBinaryWeightsFloat2(Texture2D<float2> tex, int2 bilinearOrigin, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
-{
-    float2 s00 = tex[bilinearOrigin + int2(0, 0)].rg;
-    float2 s10 = tex[bilinearOrigin + int2(1, 0)].rg;
-    float2 s01 = tex[bilinearOrigin + int2(0, 1)].rg;
-    float2 s11 = tex[bilinearOrigin + int2(1, 1)].rg;
-    s00 *= binaryWeights.x;
-    s10 *= binaryWeights.y;
-    s01 *= binaryWeights.z;
-    s11 *= binaryWeights.w;
-
-    STL::Filtering::Bilinear bilinear;
-    bilinear.weights = bilinearWeights;
-
-    float2 r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
-    r /= interpolatedBinaryWeight;
-
-    return r;
-}
-
-float4 BilinearWithBinaryWeightsFloat4(Texture2D<float4> tex, int2 bilinearOrigin, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
-{
-    float4 s00 = tex[bilinearOrigin + int2(0, 0)].rgba;
-    float4 s10 = tex[bilinearOrigin + int2(1, 0)].rgba;
-    float4 s01 = tex[bilinearOrigin + int2(0, 1)].rgba;
-    float4 s11 = tex[bilinearOrigin + int2(1, 1)].rgba;
-    s00 *= binaryWeights.x;
-    s10 *= binaryWeights.y;
-    s01 *= binaryWeights.z;
-    s11 *= binaryWeights.w;
-
-    STL::Filtering::Bilinear bilinear;
-    bilinear.weights = bilinearWeights;
-
-    float4 r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
-    r /= interpolatedBinaryWeight;
-
-    return r;
-}
-
 float BilinearWithBinaryWeightsImmediateFloat(float s00, float s10, float s01, float s11, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
 {
     s00 *= binaryWeights.x;
@@ -165,22 +37,6 @@ float BilinearWithBinaryWeightsImmediateFloat(float s00, float s10, float s01, f
     bilinear.weights = bilinearWeights;
 
     float r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
-    r /= interpolatedBinaryWeight;
-
-    return r;
-}
-
-float3 BilinearWithBinaryWeightsImmediateFloat3(float3 s00, float3 s10, float3 s01, float3 s11, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
-{
-    s00 *= binaryWeights.x;
-    s10 *= binaryWeights.y;
-    s01 *= binaryWeights.z;
-    s11 *= binaryWeights.w;
-
-    STL::Filtering::Bilinear bilinear;
-    bilinear.weights = bilinearWeights;
-
-    float3 r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
     r /= interpolatedBinaryWeight;
 
     return r;
@@ -272,7 +128,7 @@ float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
 {
     // This is the main parameter - cone angle
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness, angleFraction);
-    angle = 1.0 / max(angle, NRD_ENCODING_ERRORS.x);
+    angle = 1.0 / max(angle, NRD_NORMAL_ENCODING_ERROR);
 
     return angle;
 }
@@ -294,44 +150,10 @@ float GetEncodingAwareNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
     return STL::Math::SmoothStep01(1.0 - (d - RELAX_NORMAL_ULP) * a);
 }
 
-float2 GetRoughnessWeightParams(float roughness, float percentOfRoughness = 0.05)
+float2 GetRoughnessWeightParams(float roughness, float fraction = 0.05)
 {
-    // IMPORTANT: too small values of "percentOfRoughness" can ruin contact shadowing even if neighboring roughness is absolutely same due to re-packing imprecision problems.
-    float a = 1.0 / (roughness * percentOfRoughness * 0.99 + 0.01);
+    float a = rcp(lerp(0.01, 1.0, saturate(roughness * fraction)));
     float b = roughness * a;
 
     return float2(a, -b);
-}
-
-float GetNormHitDist(float hitDist, float viewZ, float4 hitDistParams = float4(3.0, 0.1, 10.0, -25.0), float linearRoughness = 1.0)
-{
-    float f = _REBLUR_GetHitDistanceNormalization(viewZ, hitDistParams, linearRoughness);
-
-    return saturate(hitDist / f);
-}
-
-float2 GetHitDistanceWeightParams(float normHitDist, float nonLinearAccumSpeed, float roughness = 1.0)
-{
-    float threshold = exp2(-17.0 * roughness * roughness); // TODO: not in line with other weights
-    float scale = lerp(threshold, 1.0, nonLinearAccumSpeed);
-
-    float a = rcp(normHitDist * scale * 0.99 + 0.01);
-    float b = normHitDist * a;
-
-    return float2(a, -b);
-}
-
-float EstimateCurvature(float3 Ni, float3 Vi, float3 N, float3 X)
-{
-    float3 Xi = 0 + Vi * dot(X - 0, N) / dot(Vi, N);
-    float3 edge = Xi - X;
-    float curvature = dot(Ni - N, edge) * rsqrt(STL::Math::LengthSquared(edge));
-
-    return curvature;
-}
-
-// Altered (2,0) Pade approximation for exp(), good for negative arguments, max error 0.04 at a = -0.721
-float exp_approx(float a)
-{
-    return 1.0 / (1.0 - a + a *a);
 }

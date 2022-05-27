@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 1
+#define NRD_SETTINGS_VERSION_MINOR 2
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -52,18 +52,6 @@ namespace nrd
         MAX_NUM
     };
 
-    enum class PrePassMode
-    {
-        // Pre-pass is disabled
-        OFF,
-
-        // A not requiring additional inputs spatial reuse pass
-        SIMPLE,
-
-        // A requiring IN_DIFF_DIRECTION_PDF / IN_SPEC_DIRECTION_PDF spatial reuse pass
-        ADVANCED
-    };
-
     struct CommonSettings
     {
         // Matrix requirements:
@@ -82,6 +70,16 @@ namespace nrd
         // If coordinate system moves with the camera, camera delta must be included to reflect camera motion
         float worldToViewMatrixPrev[16] = {};
 
+        // (Optional) Previous world space to current world space matrix. It is for virtual normals, where a coordinate
+        // system of the virtual space changes frame to frame, such as in a case of animated intermediary reflecting
+        // surfaces when primary surface replacement is used for them.
+        float worldPrevToWorldMatrix[16] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f
+        };
+
         // If "isMotionVectorInWorldSpace = true" will be used as "MV * motionVectorScale.xyy"
         float motionVectorScale[2] = {1.0f, 1.0f};
 
@@ -94,11 +92,11 @@ namespace nrd
         // (ms) - user provided if > 0, otherwise - tracked internally
         float timeDeltaBetweenFrames = 0.0f;
 
-        // (units) > 0 - use TLAS or tracing range
-        float denoisingRange = 1e7f;
+        // (units) > 0 - use TLAS or tracing range (max value = NRD_FP16_MAX / NRD_FP16_VIEWZ_SCALE - 1 = 524031)
+        float denoisingRange = 500000.0f;
 
         // (normalized %)
-        float disocclusionThreshold = 0.01f;
+        float disocclusionThreshold = 0.005f;
 
         // [0; 1] - enables "noisy input / denoised output" comparison
         float splitScreen = 0.0f;
@@ -185,10 +183,10 @@ namespace nrd
     struct AntilagHitDistanceSettings
     {
         // (normalized %) - must almost ignore residual noise (boiling), default is tuned for 0.5rpp for the worst case
-        float thresholdMin = 0.015f;
+        float thresholdMin = 0.03f;
 
         // (normalized %) - max > min, usually 2-4x times greater than min
-        float thresholdMax = 0.15f;
+        float thresholdMax = 0.2f;
 
         // (> 0) - real delta is reduced by local variance multiplied by this value
         float sigmaScale = 1.0f;
@@ -209,6 +207,10 @@ namespace nrd
 
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
         uint32_t maxAccumulatedFrameNum = 31;
+
+        // (pixels) - pre-accumulation spatial reuse pass blur radius
+        float diffusePrepassBlurRadius = 0.0f;
+        float specularPrepassBlurRadius = 50.0f;
 
         // (pixels) - base (worst case) denoising radius
         float blurRadius = 30.0f;
@@ -246,13 +248,13 @@ namespace nrd
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
 
-        // Enables a spatial reuse pass before the accumulation pass
-        PrePassMode prePassMode = PrePassMode::SIMPLE;
-
         // Adds bias in case of badly defined signals, but tries to fight with fireflies
         bool enableAntiFirefly = false;
 
-        // Turns off spatial filtering, does more aggressive accumulation
+        // A requiring IN_DIFF_DIRECTION_PDF / IN_SPEC_DIRECTION_PDF spatial reuse pass
+        bool enableAdvancedPrepass = false;
+
+        // Turns off spatial filtering and virtual motion based specular tracking
         bool enableReferenceAccumulation = false;
 
         // Boosts performance by sacrificing IQ
@@ -261,6 +263,9 @@ namespace nrd
         // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
+
+        // Must be used only in case of probabilistic sampling (not checkerboarding), when a pixel can be skipped and have "0" (invalid) hit distance
+        bool enableHitDistanceReconstruction = false;
     };
 
     // SIGMA
@@ -276,11 +281,11 @@ namespace nrd
 
     // RELAX_DIFFUSE_SPECULAR
 
-    const uint32_t RELAX_MAX_HISTORY_FRAME_NUM = 63;
+    const uint32_t RELAX_MAX_HISTORY_FRAME_NUM = 255;
 
     struct RelaxDiffuseSpecularSettings
     {
-        // [0; 100] - radius in pixels (0 disables prepass)
+        // (pixels) - pre-accumulation spatial reuse pass blur radius
         float diffusePrepassBlurRadius = 0.0f;
         float specularPrepassBlurRadius = 50.0f;
 
@@ -301,13 +306,10 @@ namespace nrd
         float specularLobeAngleFraction = 0.333f;
 
         // (normalized %) - base fraction of center roughness used to drive roughness based rejection
-        float roughnessFraction = 0.05f;
-
-        // [0; 1] - shorten diffuse history if "dot(N, Nprev)" is less than "1 - this" to maintain sharpness
-        float diffuseHistoryRejectionNormalThreshold = 0.0f;
+        float roughnessFraction = 0.15f;
 
         // (>= 0) - how much variance we inject to specular if reprojection confidence is low
-        float specularVarianceBoost = 1.0f;
+        float specularVarianceBoost = 0.0f;
 
         // (degrees) - slack for the specular lobe angle used in normal based rejection of specular during A-Trous passes
         float specularLobeAngleSlack = 0.3f;
@@ -331,7 +333,8 @@ namespace nrd
         uint32_t atrousIterationNum = 5;
 
         // [0; 1] - A-trous edge stopping Luminance weight minimum
-        float minLuminanceWeight = 0.0f;
+        float diffuseMinLuminanceWeight = 0.0f;
+        float specularMinLuminanceWeight = 0.0f;
 
         // (normalized %) - A-trous edge stopping depth threshold
         float depthThreshold = 0.01f;
@@ -359,6 +362,9 @@ namespace nrd
         // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
+
+        // Must be used only in case of probabilistic sampling (not checkerboarding), when a pixel can be skipped and have "0" (invalid) hit distance
+        bool enableSpecularHitDistanceReconstruction = false;
     };
 
     // RELAX_DIFFUSE
@@ -372,7 +378,6 @@ namespace nrd
 
         float diffusePhiLuminance = 2.0f;
         float diffuseLobeAngleFraction = 0.5f;
-        float diffuseHistoryRejectionNormalThreshold = 0.0f;
 
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;
         float disocclusionFixMaxRadius = 14.0f;
@@ -404,9 +409,9 @@ namespace nrd
         float specularPhiLuminance = 1.0f;
         float diffuseLobeAngleFraction = 0.5f;
         float specularLobeAngleFraction = 0.333f;
-        float roughnessFraction = 0.05f;
+        float roughnessFraction = 0.15f;
 
-        float specularVarianceBoost = 1.0f;
+        float specularVarianceBoost = 0.0f;
         float specularLobeAngleSlack = 0.3f;
 
         float disocclusionFixEdgeStoppingNormalPower = 8.0f;
@@ -431,6 +436,7 @@ namespace nrd
         bool enableSpecularVirtualHistoryClamping = true;
         bool enableRoughnessEdgeStopping = true;
         bool enableMaterialTest = false;
+        bool enableSpecularHitDistanceReconstruction = false;
     };
 
     // REFERENCE

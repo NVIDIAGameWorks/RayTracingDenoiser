@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.1.0 (NRD)
+# NVIDIA Real-time Denoisers v3.2.3 (NRD)
 
 ## SAMPLE APP
 
@@ -35,7 +35,7 @@ Supported signal types (modulated irradiance can be used instead of radiance):
 
 - Install [*Cmake*](https://cmake.org/download/) 3.15+
 - Install on
-    - Windows: latest *WindowsSDK*, *VulkanSDK*
+    - Windows: latest *WindowsSDK* (22000+), *VulkanSDK* (1.3.204+)
     - Linux (x86-64): latest *VulkanSDK*
     - Linux (aarch64): find a precompiled binary for [*DXC*](https://github.com/microsoft/DirectXShaderCompiler) or disable shader compilation `NRD_DISABLE_SHADER_COMPILATION=OFF`
 - Build (variant 1) - using *Git* and *CMake* explicitly
@@ -47,11 +47,17 @@ Supported signal types (modulated irradiance can be used instead of radiance):
 
 ### CMake options
 
-- `NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION=ON` - disable interprocedural optimization
-- `NRD_DISABLE_SHADER_COMPILATION=ON` - disable shader compilation (shaders can be built on another platform)
-- `NRD_STATIC_LIBRARY=ON` - build NRD as a static library
-- `NRD_DXC_CUSTOM_PATH="custom/path/to/dxc"` - custom path to *DXC*
-- `NRD_CROSSCOMPILE_AARCH64=ON` - required for *ARM64*
+- `NRD_DXC_CUSTOM_PATH = "custom/path/to/dxc"` - custom DXC to use if Vulkan SDK is not installed
+- `NRD_SHADER_OUTPUT_PATH` - shader output path override
+- `NRD_USE_OCT_NORMAL_ENCODING` - `NRD_USE_OCT_NORMAL_ENCODING` value for *NRD.hlsli*
+- `NRD_USE_MATERIAL_ID` - `NRD_USE_MATERIAL_ID` value for *NRD.hlsli*
+- `NRD_DISABLE_SHADER_COMPILATION` - disable shader compilation (shaders can be compiled on another platform)
+- `NRD_USE_PRECOMPILED_SHADERS` -  use precompiled shaders (will be embedded into the library)
+- `NRD_STATIC_LIBRARY` - build static library
+- `NRD_STATIC_CPP_RUNTIME` - link static C++ runtime (*Linux* only), on *Windows* use *CMAKE_MSVC_RUNTIME_LIBRARY*
+- `NRD_CROSSCOMPILE_AARCH64` - cross compilation for *aarch64*
+- `NRD_CROSSCOMPILE_X86_64` - cross compilation for *x86_64*
+- `NRD_INTERPROCEDURAL_OPTIMIZATION` - interprocedural optimization
 
 ### Tested platforms
 
@@ -72,7 +78,7 @@ Supported signal types (modulated irradiance can be used instead of radiance):
 
 RHI must have the ability to do the following:
 * Create shaders from precompiled binary blobs
-* Create an SRV for a specific range of subresources (a real example from the library - SRV = mips { 1, 2, 3, 4 }, UAV = mip 0)
+* Create an SRV for a specific range of subresources
 * Create and bind 4 predefined samplers
 * Invoke a Dispatch call (no raster, no VS/PS)
 * Create 2D textures with SRV / UAV access
@@ -200,11 +206,14 @@ PopulateDenoiserSettings(settings);
 NRD.SetMethodSettings(nrd::Method::NRD_XXX, &settings);
 
 // Fill up the user pool
-NrdUserPool userPool =
-{{
+NrdUserPool userPool = {};
+{
     // Fill the required inputs and outputs in appropriate slots using entryDescs & entryFormat,
     // applying remapping if necessary. Unused slots can be {nullptr, nri::Format::UNKNOWN}
-}};
+    NrdIntegration_SetResource(userPool, ...);
+    ...
+    NrdIntegration_SetResource(userPool, ...);
+};
 
 NRD.Denoise(*cmdBuffer, commonSettings, userPool);
 
@@ -298,14 +307,15 @@ See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
 ## INTERACTION WITH PATH TRACERS
 
 - Path length must be separated into diffuse and specular paths
-- Do not pass *sum of lengths of all segments* as `hitT`. Use `NRD_GetCorrectedHitDist` instead (a suitable baseline is to use hit distance for the first bounce only)
+- Do not pass *sum of lengths of all segments* as `hitT`. Use `NRD_GetCorrectedHitDist` instead (a solid baseline is to use hit distance for the first bounce only)
 - `hitT`, passed to NRD, must not include primary hit distance
 - Noisy radiance inputs must not include material information at primary hits, i.e. material de-modulation is needed
 - Noise in provided hit distances must follow diffuse or specular lobe. It implies the following:
   - `hitT` for `roughness = 0` must be clean
-  - Probability based diffuse / specular split at the origin of the path makes `hitT` barely usable for driving denoising in case of 1rpp for the following reasons:
-    - `hitT / pdf` leads to wrong values and, as the result, wrong specular tracking
-    - `hitT = 0` (if probability requirements are not met) breaks tracking and denoising guiding
+  - In case of probabilistic selection of diffuse / specular sampling at the primary hit, provided `hitT` must follow the following rules:
+    - should not be divided by `pdf`
+    - if diffuse or specular sampling is skipped `hitT` must be set to `0` for corresponding signal type
+    - better enable `enableHitDistanceReconstruction` in a denoiser settings (if supported)
 - Probabilistic sampling for 2nd+ bounces is absolutely acceptable
 - NRD sample is a good start to familiarize yourself with input requirements and best practices
 
@@ -361,9 +371,9 @@ It's worth noting that *RELAX* has a better capability to preserve details in th
    - VNDF sampling for specular;
    - Custom importance sampling for local light sources (*RTXDI*).
 
-**[NRD]** Hit distances should come from an importance sampling method. But if denoising of AO/SO is needed, AO/SO can come from cos-weighted sampling in a tradeoff of IQ.
+**[NRD]** Hit distances should come from an importance sampling method. But if denoising of AO/SO is needed, AO/SO can come from cos-weighted (or VNDF) sampling in a tradeoff of IQ.
 
-**[NRD]** Low discrepancy sampling helps to have more stable output in 0.5-1 rpp mode. It's a must for REBLUR-based Ambient and Specular Occlusion denoisers and SIGMA.
+**[NRD]** Low discrepancy sampling helps to have more stable output in 0.5-1 rpp mode. It's a must for REBLUR-based Ambient and Specular Occlusion denoisers (in this case maximum number of accumulated frames can be reduced to minimize lags) and SIGMA.
 
 **[NRD]** It's recommended to set `CommonSettings::accumulationMode` to `RESET` for a single frame, if a history reset is needed. If history buffers are recreated or contain garbage, it's recommended to use `CLEAR_AND_RESET` for a single frame. `CLEAR_AND_RESET` is not free because clearing is done in a compute shader. Render target clears on the application side should be prioritized over this solution.
 
@@ -373,7 +383,9 @@ It's worth noting that *RELAX* has a better capability to preserve details in th
 
 **[NRD]** If there are areas (besides sky), which don't require denoising (for example, skipped diffuse rays for true metals). `materialID` and `materialMask` can be used to drive spatial passes.
 
-**[NRD]** If a denoiser performs spatial filtering before accumulation, its behavior can be controlled via `PrePassMode` enumeration. `ADVANCED` mode offers better quality but requires valid data in `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details).
+**[NRD]** Input signal quality can be improved by enabling *pre-pass* via setting `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` to a non-zero value. Usually pre-pass is needed for specular and less needed for diffuse (see sample for more details).
+
+**[NRD]** In case of probabilistic diffuse / specular split at the primary hit, it's recommended to enable hit distance reconstruction pass (`enableHitDistanceReconstruction` if exposed in the selected denoiser).
 
 **[NRD]** Maximum number of accumulated frames can be FPS dependent. The following formula can be used on the application side:
 ```
@@ -395,6 +407,8 @@ maxAccumulatedFrameNum = accumulationPeriodInSeconds * FPS
 **[REBLUR]** Even if antilag is off, it's recommended to tune `AntilagIntensitySettings::sensitivityToDarkness`, because it is used for error estimation.
 
 **[REBLUR]** Using "blue" noise can help to minimize shimmering in the output of AO/SO-only denoisers.
+
+**[REBLUR]** `enableAdvancedPrepass` mode offers better quality but requires valid data in `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details).
 
 **[RELAX]** *RELAX* works well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 

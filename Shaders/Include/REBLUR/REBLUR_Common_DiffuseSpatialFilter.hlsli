@@ -21,21 +21,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 {
-    float4 center = diff;
-
-    #if( REBLUR_USE_COMPRESSION_FOR_DIFFUSE == 1 )
-        float exposure = _NRD_GetColorCompressionExposureForSpatialPasses( 1.0 );
-        diff.xyz = STL::Color::Compress( diff.xyz, exposure );
-    #endif
-
-    float radius = gBlurRadius;
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float2 diffInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
-        radius *= REBLUR_PRE_BLUR_RADIUS_SCALE( 1.0 );
+
+        if( radius != 0.0 )
+        {
     #else
-        float minAccumSpeed = GetMipLevel( 1.0 ) + 0.001;
-        float boost = saturate( 1.0 - diffInternalData.y / minAccumSpeed );
-        radius *= ( 1.0 + 5.0 * boost ) / 3.0;
+        float boost = saturate( 1.0 - diffInternalData.y / REBLUR_FIXED_FRAME_NUM );
+        float radius = gBlurRadius;
+        radius *= ( 1.0 + 2.0 * boost ) / 3.0;
     #endif
 
     float radiusScale = 1.0;
@@ -44,34 +38,46 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
         radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
-        radiusBias = error.x * gBlurRadiusScale + 0.00001;
+        radiusBias = diffData.x * gBlurRadiusScale + 0.00001;
         fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        radiusBias = error.x * gBlurRadiusScale + 0.00001;
+        radiusBias = diffData.x * gBlurRadiusScale + 0.00001;
         fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #endif
 
+    if( diff.w == 0.0 )
+        diffInternalData.x = 0.5;
+
     // Blur radius
+    float3 Vv = GetViewVector( Xv, true );
+
     float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
-    float hitDist = REBLUR_GetHitDist( center.w, viewZ, gHitDistParams, 1.0 );
-    float blurRadius = GetBlurRadius( radius, radiusBias, radiusScale, hitDist, frustumHeight, diffInternalData.x, 1.0 );
+    float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
+    float hitDist = ( diff.w == 0.0 ? 1.0 : diff.w ) * hitDistScale;
+
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        float hitDistFactor = GetHitDistFactor( hitDist, frustumHeight ); // NoD = 1
+        float blurRadius = radius * hitDistFactor;
+    #else
+        float hitDistFactor = GetHitDistFactor( hitDist, frustumHeight );
+        float blurRadius = GetBlurRadius( radius, radiusBias, radiusScale, hitDistFactor, frustumHeight, diffInternalData.x );
+    #endif
+
+    if( diff.w == 0.0 )
+        blurRadius = max( blurRadius, 1.0 );
+
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
 
     // Denoising
-    float hitDistFactor = hitDist / ( hitDist + frustumHeight );
-
-    float3 Vv = GetViewVector( Xv, true );
-    float2x3 TvBv = GetKernelBasis( Vv, Nv, worldBlurRadius );
+    float2x3 TvBv = GetKernelBasis( Nv, Nv, 1.0, worldBlurRadius ); // D = N
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
     float normalWeightParams = GetNormalWeightParams( diffInternalData.x, frustumHeight, gLobeAngleFraction * fractionScale );
-    float2 hitDistanceWeightParams = GetHitDistanceWeightParams( center.w, diffInternalData.x );
+    float2 hitDistanceWeightParams = diff.w == 0.0 ? 0.0 : GetHitDistanceWeightParams( diff.w, diffInternalData.x );
     float2 sum = 1.0;
 
     #ifdef REBLUR_SPATIAL_REUSE
-        blurRadius *= REBLUR_PRE_BLUR_SPATIAL_REUSE_BASE_RADIUS_SCALE;
-
         float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( 1.0 );
-        float normalWeightParamsReuse = 1.0 / max( angle, NRD_ENCODING_ERRORS.x );
+        normalWeightParams = 1.0 / max( angle, NRD_NORMAL_ENCODING_ERROR );
 
         uint2 p = pixelPos;
         if( gDiffCheckerboard != 2 )
@@ -82,10 +88,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float NoL = saturate( dot( N, L ) );
 
         sum = NoL / ( dirPdf.w + REBLUR_MIN_PDF );
-        #if( REBLUR_USE_SPATIAL_REUSE_FOR_HIT_DIST == 1 )
-            sum.y = sum.x;
-        #endif
-        diff *= sum.xxxy;
     #endif
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
@@ -96,13 +98,20 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
     #endif
 
+    // Ignore "no data" hit distances
+    sum.y *= float( diff.w != 0.0 );
+
+    // Sampling
+    float4 center = diff;
+    diff *= sum.xxxy;
+
     [unroll]
     for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
     {
         float3 offset = POISSON_SAMPLES( i );
 
         // Sample coordinates
-        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR ) // TODO: screen space is OK for diffuse in pre-pass, but is it OK for glossy specular?
             float2 uv = pixelUv + STL::Geometry::RotateVector( rotator, offset.xy ) * gInvScreenSize * blurRadius;
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
@@ -117,77 +126,80 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Fetch data
         float2 uvScaled = uv * gResolutionScale;
-        float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 );
 
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
             float4 s = gIn_Diff.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
             float zs = abs( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 ) );
         #else
-            float4 s = gIn_Diff.SampleLevel( gNearestMirror, uvScaled, 0 );
-            float zs = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) / NRD_FP16_VIEWZ_SCALE;
+            #ifdef REBLUR_OCCLUSION
+                float2 data = gIn_Diff.SampleLevel( gNearestMirror, uvScaled, 0 );
+                float4 s = data.x;
+                float zs = data.y / NRD_FP16_VIEWZ_SCALE;
+            #else
+                float4 s = gIn_Diff.SampleLevel( gNearestMirror, uvScaled, 0 );
+                float zs = gIn_ScaledViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) / NRD_FP16_VIEWZ_SCALE;
+            #endif
         #endif
 
         float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
         float materialIDs;
+        float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 );
         Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
         // Sample weight
         float w = IsInScreen( uv );
         w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
         w *= GetGaussianWeight( offset.z );
+        w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns );
 
-        #ifdef REBLUR_SPATIAL_REUSE
-            float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_DiffDirectionPdf.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 ) );
-            float3 L = dirPdf.xyz;
-            float NoL = saturate( dot( N, L ) );
+        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+            #ifdef REBLUR_SPATIAL_REUSE
+                float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_DiffDirectionPdf.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 ) );
+                float3 L = dirPdf.xyz;
+                float NoL = saturate( dot( N, L ) );
 
-            w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
-
-            float2 ww = w;
-            ww.x *= NoL / ( dirPdf.w + REBLUR_MIN_PDF );
-            ww.x *= GetNormalWeight( normalWeightParamsReuse, N, Ns.xyz );
-
-            #if( REBLUR_USE_SPATIAL_REUSE_FOR_HIT_DIST == 1 )
-                ww.y = ww.x;
-            #else
-                ww.y *= GetNormalWeight( normalWeightParams, N, Ns.xyz );
-                ww.y *= lerp( minHitDistWeight.y, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, s.w ) );
+                w *= NoL / ( dirPdf.w + REBLUR_MIN_PDF );
             #endif
-        #else
-            float2 ww = GetCombinedWeight( w, geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, hitDistanceWeightParams, s.w, minHitDistWeight );
         #endif
 
-        #if( REBLUR_DEBUG_SPATIAL_DENSITY_CHECK == 1 )
-            ww = IsInScreen( uv );
+        // Weight separation - radiance and hitDist
+        float2 ww = w;
+        #ifndef REBLUR_SPATIAL_REUSE
+            ww *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, s.w ) );
         #endif
 
-        #if( REBLUR_USE_COMPRESSION_FOR_DIFFUSE == 1 )
-            s.xyz = STL::Color::Compress( s.xyz, exposure );
-        #endif
+        // Ignore "no data" hit distances
+        ww.y *= float( s.w != 0.0 );
 
         // Get rid of potentially bad values outside of the screen
         s = w ? s : 0;
 
+        // Accumulate
         diff += s * ww.xxxy;
         sum += ww;
     }
 
     diff *= STL::Math::PositiveRcp( sum.xxxy );
 
-    #if( REBLUR_USE_COMPRESSION_FOR_DIFFUSE == 1 )
-        diff.xyz = STL::Color::Decompress( diff.xyz, exposure );
+    // Input mix
+    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
+        diff = lerp( diff, center, gInputMix * ( 1.0 - diffInternalData.x ) );
+    #else
+        }
     #endif
 
-    // Estimate error
-    error.x = GetColorErrorForAdaptiveRadiusScale( diff, center, diffInternalData.x, 1.0, REBLUR_SPATIAL_MODE );
-
-    // Input mix
-    diff = lerp( diff, center, gInputMix * ( 1.0 - diffInternalData.x ) );
-
     // Output
-    gOut_Diff[ pixelPos ] = diff;
+    #ifdef REBLUR_OCCLUSION
+        #if( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
+            gOut_Diff[ pixelPos ] = float2( diff.w, viewZ * NRD_FP16_VIEWZ_SCALE );
+        #else
+            gOut_Diff[ pixelPos ] = diff.w;
+        #endif
+    #else
+        gOut_Diff[ pixelPos ] = diff;
+    #endif
 }
 
 #undef POISSON_SAMPLE_NUM

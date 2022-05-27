@@ -18,6 +18,7 @@ NRD_SAMPLER_END
 NRD_CONSTANTS_START
     RELAX_SHARED_CB_DATA
     NRD_CONSTANT( float, gColorBoxSigmaScale )
+    NRD_CONSTANT( int, gFramesToFix)
 NRD_CONSTANTS_END
 
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
@@ -27,13 +28,15 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationResponsive, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationResponsive, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float2>, gSpecularAndDiffuseHistoryLength, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 4 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float2>, gOutSpecularAndDiffuseHistoryLength, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIlluminationResponsive, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIlluminationResponsive, u, 3 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutHistoryLength, u, 4 )
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_DIFFUSE )
@@ -41,12 +44,13 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationResponsive, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gDiffuseHistoryLength, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutDiffuseHistoryLength, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIlluminationResponsive, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutHistoryLength, u, 2 )
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_SPECULAR )
@@ -54,12 +58,13 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationResponsive, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularHistoryLength, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutSpecularHistoryLength, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIlluminationResponsive, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutHistoryLength, u, 2 )
     NRD_OUTPUT_TEXTURE_END
 
 #endif

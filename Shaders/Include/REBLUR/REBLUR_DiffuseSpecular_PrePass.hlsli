@@ -42,7 +42,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     if( viewZ > gDenoisingRange )
         return;
 
-    // Checkerboard resolve // TODO: materialID support?
+    // Checkerboard resolve // TODO: materialID support? Invalid hitDist support?
     float viewZ0 = abs( gIn_ViewZ[ pixelPosUser + int2( -1, 0 ) ] );
     float viewZ1 = abs( gIn_ViewZ[ pixelPosUser + int2( 1, 0 ) ] );
     float2 w = GetBilateralWeight( float2( viewZ0, viewZ1 ), viewZ );
@@ -50,7 +50,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     int3 checkerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
     checkerboardPos.xz >>= 1;
-    checkerboardPos += int3(gRectOrigin.xyx);
+    checkerboardPos += int3( gRectOrigin.xyx );
 
     #if( defined REBLUR_DIFFUSE )
         float4 diff = gIn_Diff[ gRectOrigin + uint2( checkerboardPixelPos.x, pixelPos.y ) ];
@@ -76,14 +76,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Spatial filtering
     [branch]
-    if( gSpatialFiltering == 0.0 )
+    if( gDiffPrepassBlurRadius == 0.0 && gSpecPrepassBlurRadius == 0.0 )
     {
         #if( defined REBLUR_DIFFUSE )
             gOut_Diff[ pixelPos ] = diff;
         #endif
+
         #if( defined REBLUR_SPECULAR )
             gOut_Spec[ pixelPos ] = spec;
         #endif
+
         return;
     }
 
@@ -91,22 +93,30 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float materialID;
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ], materialID );
     float3 N = normalAndRoughness.xyz;
-    float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
+    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
     float roughness = normalAndRoughness.w;
 
     // Shared data
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
-    float4 error = 1;
-    float curvature = 0;
 
     #define REBLUR_SPATIAL_MODE REBLUR_PRE_BLUR
 
     #if( defined REBLUR_DIFFUSE )
+    {
+        float radius = gDiffPrepassBlurRadius;
+        float diffData = 1.0;
+
         #include "REBLUR_Common_DiffuseSpatialFilter.hlsli"
+    }
     #endif
 
     #if( defined REBLUR_SPECULAR )
+    {
+        float radius = gSpecPrepassBlurRadius;
+        float2 specData = 1.0;
+
         #include "REBLUR_Common_SpecularSpatialFilter.hlsli"
+    }
     #endif
 }

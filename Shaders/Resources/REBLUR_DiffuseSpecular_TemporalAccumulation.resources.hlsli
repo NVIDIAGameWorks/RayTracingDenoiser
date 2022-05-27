@@ -19,17 +19,26 @@ NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
     NRD_CONSTANT( float4x4, gWorldToViewPrev )
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
-    NRD_CONSTANT( float4x4, gViewToWorld )
     NRD_CONSTANT( float4x4, gWorldToClip )
+    NRD_CONSTANT( float4x4, gWorldPrevToWorld )
     NRD_CONSTANT( float4, gFrustumPrev )
     NRD_CONSTANT( float4, gCameraDelta )
+    NRD_CONSTANT( float4, gRotator )
     NRD_CONSTANT( float2, gMotionVectorScale )
     NRD_CONSTANT( float, gCheckerboardResolveAccumSpeed )
     NRD_CONSTANT( float, gDisocclusionThreshold )
     NRD_CONSTANT( uint, gDiffCheckerboard )
     NRD_CONSTANT( uint, gSpecCheckerboard )
-    NRD_CONSTANT( uint, gPreblurEnabled )
+    NRD_CONSTANT( uint, gIsPrepassEnabled )
 NRD_CONSTANTS_END
+
+#ifdef REBLUR_OCCLUSION
+    #define DATA_TYPE_IN float
+    #define DATA_TYPE_OUT float2
+#else
+    #define DATA_TYPE_IN float4
+    #define DATA_TYPE_OUT float4
+#endif
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
 
@@ -40,10 +49,10 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_ViewZ_DiffAccumSpeed, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_Normal_SpecAccumSpeed, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_Roughness, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_History_Diff, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 8 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_History_Spec, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_History_Diff, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_History_Spec, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 9 )
         #if( defined REBLUR_PROVIDED_CONFIDENCE )
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffConfidence, t, 10 )
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecConfidence, t, 11 )
@@ -51,11 +60,14 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_ScaledViewZ, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Error, u, 2 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 3 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 4 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_DiffData, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecData, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Diff, u, 3 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Spec, u, 4 )
+        #ifndef REBLUR_OCCLUSION
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_ScaledViewZ, u, 5 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined REBLUR_DIFFUSE )
@@ -66,18 +78,20 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_ViewZ_DiffAccumSpeed, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_Normal_SpecAccumSpeed, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_History_Diff, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_History_Diff, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 6 )
         #if( defined REBLUR_PROVIDED_CONFIDENCE )
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffConfidence, t, 7 )
         #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_ScaledViewZ, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Error, u, 2 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 3 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_DiffData, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Diff, u, 2 )
+        #ifndef REBLUR_OCCLUSION
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_ScaledViewZ, u, 3 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #else
@@ -89,27 +103,27 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_ViewZ_DiffAccumSpeed, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_Normal_SpecAccumSpeed, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_Roughness, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_History_Spec, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_History_Spec, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 7 )
         #if( defined REBLUR_PROVIDED_CONFIDENCE )
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecConfidence, t, 8 )
         #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_ScaledViewZ, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Error, u, 2 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 3 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_InternalData, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecData, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Spec, u, 2 )
+        #ifndef REBLUR_OCCLUSION
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_ScaledViewZ, u, 3 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #endif
 
 // Macro magic
-#if( defined REBLUR_SPECULAR )
-    #define NRD_CTA_8X8
+#define NRD_CTA_8X8
 
-    #if( REBLUR_USE_5X5_HISTORY_CLAMPING == 1 )
-        #define NRD_USE_BORDER_2
-    #endif
+#if( REBLUR_USE_5X5_HISTORY_CLAMPING == 1 )
+    #define NRD_USE_BORDER_2
 #endif

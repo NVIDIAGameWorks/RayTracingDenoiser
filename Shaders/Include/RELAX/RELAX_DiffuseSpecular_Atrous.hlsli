@@ -32,13 +32,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos], centerMaterialID);
     float3 centerNormal = centerNormalRoughness.rgb;
     float centerRoughness = centerNormalRoughness.a;
-    float historyLength;
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-    // If both RELAX_DIFFUSE and RELAX_SPECULAR are defined, then history length texture is 2-channel
-    historyLength = 255.0 * gHistoryLength[pixelPos].y;
-#else
-    historyLength = 255.0 * gHistoryLength[pixelPos];
-#endif
+    float historyLength = 255.0 * gHistoryLength[pixelPos];
 
 #if( defined RELAX_SPECULAR )
     float4 centerSpecularIlluminationAndVariance = gSpecularIlluminationAndVariance[pixelPos];
@@ -82,7 +76,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     static const float kernelWeightGaussian3x3[2] = { 0.44198, 0.27901 };
 
     // Adding random offsets to minimize "ringing" at large A-Trous steps
-    uint2 offset = 0;
+    int2 offset = 0;
     if (gStepSize > 4)
     {
         STL::Rng::Initialize(pixelPos, gFrameIndex);
@@ -139,9 +133,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) / specularPhiLIllumination;
                 // Adjusting specular weight to allow more blur for pixels with low reprojection confidence value
                 specularLuminanceW *= specularLuminanceWeightRelaxation;
-                specularLuminanceW = min(gMaxLuminanceRelativeDifference, specularLuminanceW);
+                specularLuminanceW = min(gMaxSpecularLuminanceRelativeDifference, specularLuminanceW);
 
-                wSpecular *= exp_approx(-specularLuminanceW);
+                wSpecular *= ExpApprox(-specularLuminanceW);
                 sumSpecularIlluminationAndVariance += float4(wSpecular.xxx, wSpecular * wSpecular) * sampleSpecularIlluminationAndVariance;
                 sumWSpecular += wSpecular;
             }
@@ -157,9 +151,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 float sampleDiffuseLuminance = STL::Color::Luminance(sampleDiffuseIlluminationAndVariance.rgb);
 
                 float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) / diffusePhiLIllumination;
-                diffuseLuminanceW = min(gMaxLuminanceRelativeDifference, diffuseLuminanceW);
+                diffuseLuminanceW = min(gMaxDiffuseLuminanceRelativeDifference, diffuseLuminanceW);
 
-                wDiffuse *= exp_approx(-diffuseLuminanceW);
+                wDiffuse *= ExpApprox(-diffuseLuminanceW);
                 sumDiffuseIlluminationAndVariance += float4(wDiffuse.xxx, wDiffuse * wDiffuse) * sampleDiffuseIlluminationAndVariance;
                 sumWDiffuse += wDiffuse;
             }

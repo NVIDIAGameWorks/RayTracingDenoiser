@@ -40,7 +40,7 @@ void Preload( uint2 sharedPos, int2 globalPos )
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    // Copy history
+    // Copy history // TODO: do a simple copy, but pass more CTAs from the CPU side, using "gRectSizePrev". Ignore other then copy work outside of "gRectSize"
     #ifdef SIGMA_FIRST_PASS
         int2 prevHalfRectSize = int2( gRectSizePrev * 0.5 + 0.5 );
 

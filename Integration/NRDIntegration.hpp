@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRDIntegration.h"
 
-static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 0, "Unsupported NRD version!");
+static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 2, "Unsupported NRD version!");
 
 #if _WIN32
     #define NRD_INTEGRATION_ALLOCA _alloca
@@ -65,39 +65,6 @@ constexpr std::array<nri::Format, (size_t)nrd::Format::MAX_NUM> g_NRD_NrdToNriFo
     nri::Format::R11_G11_B10_UFLOAT,
     nri::Format::R9_G9_B9_E5_UFLOAT,
 };
-
-constexpr const char* g_NRD_PermanentPoolNames[] =
-{
-    "IN_MV ",
-    "IN_NORMAL_ROUGHNESS ",
-    "IN_VIEWZ ",
-    "IN_DIFF_RADIANCE_HITDIST ",
-    "IN_SPEC_RADIANCE_HITDIST ",
-    "IN_DIFF_HITDIST ",
-    "IN_SPEC_HITDIST ",
-    "IN_DIFF_DIRECTION_HITDIST ",
-    "IN_DIFF_DIRECTION_PDF ",
-    "IN_SPEC_DIRECTION_PDF ",
-    "IN_DIFF_CONFIDENCE ",
-    "IN_SPEC_CONFIDENCE ",
-    "IN_SHADOWDATA ",
-    "IN_SHADOW_TRANSLUCENCY ",
-    "IN_RADIANCE ",
-    "IN_DELTA_PRIMARY_POS ",
-    "IN_DELTA_SECONDARY_POS ",
-
-    "OUT_DIFF_RADIANCE_HITDIST ",
-    "OUT_SPEC_RADIANCE_HITDIST ",
-    "OUT_DIFF_HITDIST ",
-    "OUT_SPEC_HITDIST ",
-    "OUT_DIFF_DIRECTION_HITDIST ",
-    "OUT_SHADOW_TRANSLUCENCY ",
-    "OUT_RADIANCE ",
-    "OUT_REFLECTION_MV ",
-    "OUT_DELTA_MV "
-};
-
-static_assert( std::size(g_NRD_PermanentPoolNames) == ((size_t)nrd::ResourceType::MAX_NUM) - 2, "g_NRD_PermanentPoolNames is partially initialized!" );
 
 static inline nri::Format NRD_GetNriFormat(nrd::Format format)
 {
@@ -557,7 +524,10 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
                     printf("T(%u) ", r.indexInPool);
             }
             else
-                printf(g_NRD_PermanentPoolNames[(uint32_t)r.type]);
+            {
+                const char* s = nrd::GetResourceTypeString(r.type);
+                printf(s);
+            }
         }
         printf("\n\n");
     #endif

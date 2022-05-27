@@ -31,7 +31,6 @@ NRD_SAMPLER_END
         NRD_CONSTANT( uint, gVirtualHistoryClampingEnabled )
         NRD_CONSTANT( uint, gSkipReprojectionTestWithoutMotion )
         NRD_CONSTANT( uint, gResetHistory )
-        NRD_CONSTANT( float, gRejectDiffuseHistoryNormalThreshold )
         NRD_CONSTANT( uint, gUseConfidenceInputs )
     NRD_CONSTANTS_END
 
@@ -48,7 +47,7 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevNormalRoughness, t, 9 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gPrevViewZ, t, 10 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gPrevReflectionHitT, t, 11 )
-        NRD_INPUT_TEXTURE( Texture2D<float2>, gPrevHistoryLength, t, 12 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gPrevHistoryLength, t, 12 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gPrevMaterialID, t, 13 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 14 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 15 )
@@ -60,7 +59,7 @@ NRD_SAMPLER_END
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIlluminationResponsive, u, 2 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIlluminationResponsive, u, 3 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutReflectionHitT, u, 4 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float2>, gOutHistoryLength, u, 5 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutHistoryLength, u, 5 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutSpecularReprojectionConfidence, u, 6 )
     NRD_OUTPUT_TEXTURE_END
 
@@ -74,7 +73,6 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gDisocclusionDepthThreshold )
         NRD_CONSTANT( uint, gSkipReprojectionTestWithoutMotion )
         NRD_CONSTANT( uint, gResetHistory )
-        NRD_CONSTANT( float, gRejectDiffuseHistoryNormalThreshold )
         NRD_CONSTANT( uint, gUseConfidenceInputs )
     NRD_CONSTANTS_END
 

@@ -13,10 +13,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_PERFORMANCE_MODE
 #define REBLUR_SPECULAR
+#define REBLUR_OCCLUSION
 
 #include "../Include/REBLUR/REBLUR_Config.hlsli"
-#include "../Resources/REBLUR_DiffuseSpecularOcclusion_HistoryFix.resources.hlsli"
+#include "../Resources/REBLUR_DiffuseSpecular_HistoryFix.resources.hlsli"
 
 #include "../Include/Common.hlsli"
 #include "../Include/REBLUR/REBLUR_Common.hlsli"
-#include "../Include/REBLUR/REBLUR_DiffuseSpecularOcclusion_HistoryFix.hlsli"
+#include "../Include/REBLUR/REBLUR_DiffuseSpecular_HistoryFix.hlsli"

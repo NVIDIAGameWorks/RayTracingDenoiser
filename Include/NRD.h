@@ -31,9 +31,9 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 3
-#define NRD_VERSION_MINOR 1
-#define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "25 March 2022"
+#define NRD_VERSION_MINOR 2
+#define NRD_VERSION_BUILD 3
+#define NRD_VERSION_DATE "25 May 2022"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall
@@ -62,4 +62,5 @@ namespace nrd
     NRD_API Result NRD_CALL SetMethodSettings(Denoiser& denoiser, Method method, const void* methodSettings);
     NRD_API Result NRD_CALL GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
     NRD_API void NRD_CALL DestroyDenoiser(Denoiser& denoiser);
+    NRD_API const char* GetResourceTypeString(ResourceType resourceType);
 }

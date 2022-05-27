@@ -25,45 +25,22 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 {
 
     float centerViewZ = gViewZFP16[pixelPos] / NRD_FP16_VIEWZ_SCALE;
+    float historyLength = 255.0 * gHistoryLength[pixelPos];
 
     // Early out if linearZ is beyond denoising range
+    // Early out if no disocclusion detected
     [branch]
-    if (centerViewZ > gDenoisingRange)
+    if ((centerViewZ > gDenoisingRange) || (historyLength > gFramesToFix))
     {
         return;
     }
-
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-    // If both RELAX_DIFFUSE and RELAX_SPECULAR are defined, then history length texture is 2-channel
-    // Using diffuse history length to control disocclusion fix
-    float historyLength = 255.0 * gHistoryLength[pixelPos].y;
-#else
-    float historyLength = 255.0 * gHistoryLength[pixelPos];
-#endif
 
 #if( defined RELAX_DIFFUSE )
     float4 diffuseIlluminationAnd2ndMoment = gDiffuseIllumination[pixelPos];
-    float4 diffuseIlluminationResponsive = gDiffuseIlluminationResponsive[pixelPos];
 #endif
 #if( defined RELAX_SPECULAR )
     float4 specularIlluminationAnd2ndMoment = gSpecularIllumination[pixelPos];
-    float4 specularIlluminationResponsive = gSpecularIlluminationResponsive[pixelPos];
 #endif
-
-    // Pass through the input data if no disocclusion detected
-    [branch]
-    if (historyLength > gFramesToFix)
-    {
-#if( defined RELAX_DIFFUSE )
-        gOutDiffuseIllumination[pixelPos] = diffuseIlluminationAnd2ndMoment;
-        gOutDiffuseIlluminationResponsive[pixelPos] = diffuseIlluminationResponsive;
-#endif
-#if( defined RELAX_SPECULAR )
-        gOutSpecularIllumination[pixelPos] = specularIlluminationAnd2ndMoment;
-        gOutSpecularIlluminationResponsive[pixelPos] = specularIlluminationResponsive;
-#endif
-        return;
-    }
 
     // Loading center data
     float centerMaterialID;
@@ -140,15 +117,15 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 #endif
     }
 
+    // Output buffers will hold the pixels with disocclusion processed by history fix.
+    // The next shader will have to copy these areas to normal and responsive history buffers.
 #if( defined RELAX_DIFFUSE )
     float4 outDiffuseIlluminationAnd2ndMoment = diffuseIlluminationAnd2ndMomentSum / diffuseWSum;
     gOutDiffuseIllumination[pixelPos] = outDiffuseIlluminationAnd2ndMoment;
-    gOutDiffuseIlluminationResponsive[pixelPos] = outDiffuseIlluminationAnd2ndMoment;
 #endif
 
 #if( defined RELAX_SPECULAR )
     float4 outSpecularIlluminationAnd2ndMoment = specularIlluminationAnd2ndMomentSum / specularWSum;
     gOutSpecularIllumination[pixelPos] = outSpecularIlluminationAnd2ndMoment;
-    gOutSpecularIlluminationResponsive[pixelPos] = outSpecularIlluminationAnd2ndMoment;
 #endif
 }

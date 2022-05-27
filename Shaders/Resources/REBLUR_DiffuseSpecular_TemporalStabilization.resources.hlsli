@@ -17,8 +17,8 @@ NRD_SAMPLER_END
 
 NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
+    NRD_CONSTANT( float4x4, gWorldToClip )
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
-    NRD_CONSTANT( float4x4, gViewToWorld )
     NRD_CONSTANT( float4, gCameraDelta )
     NRD_CONSTANT( float4, gAntilagMinMaxThreshold )
     NRD_CONSTANT( float2, gAntilagSigmaScale )
@@ -33,7 +33,7 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecData, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 7 )
@@ -56,9 +56,8 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Diff, t, 5 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
@@ -75,7 +74,7 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Error, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecData, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 5 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_HistoryStabilized_Spec, t, 6 )
     NRD_INPUT_TEXTURE_END
@@ -90,6 +89,4 @@ NRD_CONSTANTS_END
 #endif
 
 // Macro magic
-#if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
-    #define NRD_CTA_8X8
-#endif
+#define NRD_CTA_8X8

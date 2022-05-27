@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #if (defined RELAX_SPECULAR)
-    groupshared float4 sharedInSpecular[BUFFER_Y][BUFFER_X];
+groupshared float4 sharedInSpecular[BUFFER_Y][BUFFER_X];
 #endif
 
 groupshared float4 sharedNormalRoughness[BUFFER_Y][BUFFER_X];
@@ -81,23 +81,18 @@ float loadSurfaceMotionBasedPrevData(
     float currentMaterialID,
     uint materialIDMask,
     out float footprintQuality,
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-    out float2 historyLength,
-#else
-    out float historyLength,
-#endif
+    out float historyLength
 #if( defined RELAX_DIFFUSE)
-    out float4 prevDiffuseIllumAnd2ndMoment,
-    out float3 prevDiffuseResponsiveIllum,
+    , out float4 prevDiffuseIllumAnd2ndMoment
+    , out float3 prevDiffuseResponsiveIllum
 #endif
 #if( defined RELAX_SPECULAR)
-    out float4 prevSpecularIllumAnd2ndMoment,
-    out float3 prevSpecularResponsiveIllum,
-    out float3 prevWorldPos,
-    out float  prevReflectionHitT,
-    out float2 prevUV,
+    , out float4 prevSpecularIllumAnd2ndMoment
+    , out float3 prevSpecularResponsiveIllum
+    , out float3 prevWorldPos
+    , out float  prevReflectionHitT
+    , out float2 prevUV
 #endif
-    out float3 prevNormal
 )
 {
     // Calculating jitter margin radius in world space
@@ -122,7 +117,7 @@ float loadSurfaceMotionBasedPrevData(
     int2 bilinearOrigin = int2(floor(prevPixelPosOnScreen - 0.5));
     float2 bilinearWeights = frac(prevPixelPosOnScreen - 0.5);
 
-    // Checking bicubic footprint (with cut corners) first,
+    // Checking bicubic footprint (with cut corners)
     // remembering bilinear taps validity and worldspace position along the way,
     // for faster weighted bilinear and for calculating previous worldspace position
     // bc - bicubic & bilinear tap,
@@ -149,6 +144,7 @@ float loadSurfaceMotionBasedPrevData(
     prevNormal01 = UnpackPrevNormalRoughness(gPrevNormalRoughness[bilinearOrigin + int2(0, 1)]).rgb;
     prevNormal11 = UnpackPrevNormalRoughness(gPrevNormalRoughness[bilinearOrigin + int2(1, 1)]).rgb;
     float3 prevNormalFlat = normalize(prevNormal00 + prevNormal10 + prevNormal01 + prevNormal11);
+    prevNormalFlat = gUseWorldPrevToWorld ? STL::Geometry::RotateVector(gWorldPrevToWorld, prevNormalFlat) : prevNormalFlat;
 
     // Adjusting worldspace position:
     // Applying worldspace motion first,
@@ -267,7 +263,7 @@ float loadSurfaceMotionBasedPrevData(
     }
 
     // Checking bicubic footprint validity for being in rect
-    if (any(bilinearOrigin < int2(1, 1)) || any(bilinearOrigin >= int2(gRectSizePrev) - int2(2, 2)))
+    if (any(bilinearOrigin < int2(1, 1)) || any(bilinearOrigin >= int2(gRectSizePrev)-int2(2, 2)))
     {
         bicubicFootprintValid = 0;
     }
@@ -281,158 +277,80 @@ float loadSurfaceMotionBasedPrevData(
     if (bilinearOrigin.y < 0) bilinearTapsValid.xy = 0;
     if (bilinearOrigin.y >= gRectSizePrev.y) bilinearTapsValid.zw = 0;
 
-    // Calculating interpolated binary weight for bilinear taps in advance
+    // Calculating bilinear weights in advance
     STL::Filtering::Bilinear bilinear;
     bilinear.weights = bilinearWeights;
+    float4 bilinearWeightsWithValidity = STL::Filtering::GetBilinearCustomWeights(bilinear, float4(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w));
+
+    bool useBicubic = (bicubicFootprintValid > 0);
+
+    // Fetching normal history
+    BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+        prevPixelPosOnScreen, gInvResourceSize, bilinearWeightsWithValidity,
+        gLinearClamp, useBicubic
+#if( defined RELAX_DIFFUSE )
+        , gPrevDiffuseIllumination, prevDiffuseIllumAnd2ndMoment
+#endif
+#if( defined RELAX_SPECULAR )
+        , gPrevSpecularIllumination, prevSpecularIllumAnd2ndMoment
+#endif
+    );
+
+    // Fetching fast history
+    float4 spec;
+    float4 diff;
+    BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+        prevPixelPosOnScreen, gInvResourceSize, bilinearWeightsWithValidity,
+        gLinearClamp, useBicubic
+#if( defined RELAX_DIFFUSE )
+        , gPrevDiffuseIlluminationResponsive, diff
+#endif
+#if( defined RELAX_SPECULAR )
+        , gPrevSpecularIlluminationResponsive, spec
+#endif
+    );
+
+#if( defined RELAX_SPECULAR )
+    prevSpecularResponsiveIllum = spec.rgb;
+#endif
+#if( defined RELAX_DIFFUSE )
+    prevDiffuseResponsiveIllum = diff.rgb;
+#endif
+
+    // Fitering previous data that does not need bicubic
     float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
     interpolatedBinaryWeight = max(1e-6, interpolatedBinaryWeight);
 
-    // Applying reprojection filters
-    float reprojectionFound = 0;
-    historyLength = 0;
-    footprintQuality = 0;
-    prevNormal = currentNormal;
-#if( defined RELAX_DIFFUSE)
-    prevDiffuseIllumAnd2ndMoment = 0;
-    prevDiffuseResponsiveIllum = 0;
-#endif
-#if( defined RELAX_SPECULAR)
-    prevSpecularIllumAnd2ndMoment = 0;
-    prevSpecularResponsiveIllum = 0;
-    prevWorldPos = currentWorldPos;
-    prevReflectionHitT = currentReflectionHitT;
-#endif
+    float2 gatherOrigin = (bilinearOrigin + 1.0) * gInvResourceSize;
 
-    if (any(bilinearTapsValid))
-    {
-        // Trying to apply bicubic filter first
-        if (bicubicFootprintValid > 0)
-        {
-            // Bicubic for illumination and 2nd moments
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-            BicubicFloat4x2(
-                prevSpecularIllumAnd2ndMoment,
-                prevDiffuseIllumAnd2ndMoment,
-                gPrevSpecularIllumination,
-                gPrevDiffuseIllumination,
-                gLinearClamp,
-                prevPixelPosOnScreen,
-                gInvResourceSize);
-#elif( defined RELAX_DIFFUSE)
-            prevDiffuseIllumAnd2ndMoment = BicubicFloat4(
-                gPrevDiffuseIllumination,
-                gLinearClamp,
-                prevPixelPosOnScreen,
-                gInvResourceSize);
-#elif( defined RELAX_SPECULAR)
-            prevSpecularIllumAnd2ndMoment = BicubicFloat4(
-                gPrevSpecularIllumination,
-                gLinearClamp,
-                prevPixelPosOnScreen,
-                gInvResourceSize);
-#endif
-
-#if(defined RELAX_SPECULAR )
-            prevSpecularIllumAnd2ndMoment = max(0, prevSpecularIllumAnd2ndMoment);
-#endif
-#if(defined RELAX_DIFFUSE )
-            prevDiffuseIllumAnd2ndMoment = max(0, prevDiffuseIllumAnd2ndMoment);
-#endif
-
-#if( RELAX_USE_BICUBIC_FOR_FAST_HISTORY == 1 )
-
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-            float4 spec;
-            float4 diff;
-            BicubicFloat4x2(
-                spec,
-                diff,
-                gPrevSpecularIlluminationResponsive,
-                gPrevDiffuseIlluminationResponsive,
-                gLinearClamp,
-                prevPixelPosOnScreen,
-                gInvResourceSize);
-            prevSpecularResponsiveIllum = max(0, spec.rgb);
-            prevDiffuseResponsiveIllum = max(0, diff.rgb);
-#elif( defined RELAX_DIFFUSE)
-            float4 diff = BicubicFloat4(
-                gPrevDiffuseIlluminationResponsive,
-                gLinearClamp,
-                prevPixelPosOnScreen,
-                gInvResourceSize);
-            prevDiffuseResponsiveIllum = max(0, diff.rgb);
-#elif( defined RELAX_SPECULAR)
-            float4 spec = BicubicFloat4(
-                gPrevSpecularIlluminationResponsive,
-                gLinearClamp,
-                prevPixelPosOnScreen,
-                gInvResourceSize);
-            prevSpecularResponsiveIllum = max(0, spec.rgb);
-#endif
-
-#else // #if( RELAX_USE_BICUBIC_FOR_FAST_HISTORY == 1 )
-#if( defined RELAX_DIFFUSE)
-            prevDiffuseResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevDiffuseIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-#endif
-#if( defined RELAX_SPECULAR)
-            prevSpecularResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevSpecularIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-#endif
-
-#endif // #if( RELAX_USE_BICUBIC_FOR_FAST_HISTORY == 1 )
-            footprintQuality = 1.0;
-
-            reprojectionFound = 2.0;
-        }
-        else
-        {
-            // If no success with the bicubic, then do weighted bilinear
-#if( defined RELAX_DIFFUSE)
-            prevDiffuseIllumAnd2ndMoment =
-                BilinearWithBinaryWeightsFloat4(gPrevDiffuseIllumination, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-
-            prevDiffuseResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevDiffuseIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-#endif
-#if( defined RELAX_SPECULAR)
-            prevSpecularIllumAnd2ndMoment =
-                BilinearWithBinaryWeightsFloat4(gPrevSpecularIllumination, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-
-            prevSpecularResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevSpecularIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-#endif
-
-            reprojectionFound = 1.0;
-        }
-
-        // Calculating previous worldspace position
-        // by applying weighted bilinear to worldspace positions in taps.
-        // Also calculating history length by using weighted bilinear
-
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-        historyLength = 255.0 * BilinearWithBinaryWeightsFloat2(gPrevHistoryLength, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-#else
-        historyLength = 255.0 * BilinearWithBinaryWeightsFloat(gPrevHistoryLength, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-#endif
-
-        prevNormal = BilinearWithBinaryWeightsImmediateFloat3(
-            prevNormal00, prevNormal10, prevNormal01, prevNormal11,
-            bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+    float4 prevHistoryLengths = gPrevHistoryLength.GatherRed(gNearestClamp, gatherOrigin).wzxy;
+    historyLength = 255.0 * BilinearWithBinaryWeightsImmediateFloat(
+        prevHistoryLengths.x,
+        prevHistoryLengths.y,
+        prevHistoryLengths.z,
+        prevHistoryLengths.w,
+        bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
 #if( defined RELAX_SPECULAR )
-        prevWorldPos = BilinearWithBinaryWeightsImmediateFloat3(
-                prevWorldPos00, prevWorldPos10, prevWorldPos01, prevWorldPos11,
-                bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-
-        float2 gatherOrigin = (bilinearOrigin + 1.0) * gInvResourceSize;
-        float4 prevReflectionHitTs = gPrevReflectionHitT.GatherRed(gNearestClamp, gatherOrigin).wzxy;
-
-        prevReflectionHitT = BilinearWithBinaryWeightsImmediateFloat(
-            prevReflectionHitTs.x, prevReflectionHitTs.y, prevReflectionHitTs.z, prevReflectionHitTs.w,
-            bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-
-        prevReflectionHitT = max(0.001, prevReflectionHitT);
+    float4 prevReflectionHitTs = gPrevReflectionHitT.GatherRed(gNearestClamp, gatherOrigin).wzxy;
+    float4 prevWorldPosAndReflectionHitTs = BilinearWithBinaryWeightsImmediateFloat4(
+        float4(prevWorldPos00, prevReflectionHitTs.x),
+        float4(prevWorldPos10, prevReflectionHitTs.y),
+        float4(prevWorldPos01, prevReflectionHitTs.z),
+        float4(prevWorldPos11, prevReflectionHitTs.w),
+        bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
+    prevWorldPos = prevWorldPosAndReflectionHitTs.xyz;
+    prevReflectionHitT = max(0.001, prevWorldPosAndReflectionHitTs.w);
 #endif
 
-        footprintQuality = interpolatedBinaryWeight;
+    float reprojectionFound = (bicubicFootprintValid > 0) ? 2.0 : 1.0;
+    footprintQuality = (bicubicFootprintValid > 0) ? 1.0 : interpolatedBinaryWeight;
+    if (!any(bilinearTapsValid))
+    {
+        reprojectionFound = 0;
+        footprintQuality = 0;
     }
+
     return reprojectionFound;
 }
 
@@ -443,12 +361,15 @@ float loadVirtualMotionBasedPrevData(
     float3 currentWorldPos,
     float3 currentNormal,
     float currentLinearZ,
-    float currentReflectionHitT,
+    float hitDistFocused,
+    float hitDistOriginal,
     float3 currentViewVector,
     float3 prevWorldPos,
     bool surfaceBicubicValid,
     float currentMaterialID,
     uint materialIDMask,
+    float2 prevSurfaceMotionBasedUV,
+    float parallax,
     out float4 prevSpecularIllumAnd2ndMoment,
     out float3 prevSpecularResponsiveIllum,
     out float3 prevNormal,
@@ -461,17 +382,31 @@ float loadVirtualMotionBasedPrevData(
     currentWorldPos -= gPrevCameraPosition.xyz;
 
     // Calculating previous worldspace virtual position based on reflection hitT
-    float3 virtualViewVector = normalize(currentViewVector) * currentReflectionHitT;
+    float3 virtualViewVector = normalize(currentViewVector) * hitDistFocused;
     float3 prevVirtualWorldPos = prevWorldPos + virtualViewVector;
 
     float currentViewVectorLength = length(currentViewVector);
-    float accumulatedSpecularVMBZ = currentViewVectorLength + currentReflectionHitT;
+    float accumulatedSpecularVMBZ = currentViewVectorLength + hitDistFocused;
 
     float4 prevVirtualClipPos = mul(gPrevWorldToClip, float4(prevVirtualWorldPos, 1.0));
     prevVirtualClipPos.xy /= prevVirtualClipPos.w;
     prevUVVMB = prevVirtualClipPos.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
-    float2 prevVirtualPixelPosOnScreen = prevUVVMB * gRectSizePrev;
 
+    // If the focused HitT puts the UV for virtual motion based specular
+    // too far from surface motion based UV,
+    // then recalculate UV using the non-focused HitT
+    if (length(prevUVVMB - prevSurfaceMotionBasedUV) > (parallax / NRD_PARALLAX_NORMALIZATION) + 0.001)
+    {
+        virtualViewVector = normalize(currentViewVector) * hitDistOriginal;
+        prevVirtualWorldPos = prevWorldPos + virtualViewVector;
+        currentViewVectorLength = length(currentViewVector);
+        accumulatedSpecularVMBZ = currentViewVectorLength + hitDistOriginal;
+        prevVirtualClipPos = mul(gPrevWorldToClip, float4(prevVirtualWorldPos, 1.0));
+        prevVirtualClipPos.xy /= prevVirtualClipPos.w;
+        prevUVVMB = prevVirtualClipPos.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
+    }
+
+    float2 prevVirtualPixelPosOnScreen = prevUVVMB * gRectSizePrev;
     float jitterRadius = getJitterRadius(gJitterDelta, accumulatedSpecularVMBZ);
     float disocclusionThreshold = (gDisocclusionDepthThreshold + jitterRadius) * (gOrthoMode == 0 ? currentLinearZ : 1.0);
 
@@ -549,12 +484,6 @@ float loadVirtualMotionBasedPrevData(
     if (bilinearOrigin.y < 0) bilinearTapsValid.xy = 0;
     if (bilinearOrigin.y >= gRectSizePrev.y) bilinearTapsValid.zw = 0;
 
-    // Calculating interpolated binary weight for bilinear taps in advance
-    STL::Filtering::Bilinear bilinear;
-    bilinear.weights = bilinearWeights;
-    float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
-    interpolatedBinaryWeight = max(1e-6, interpolatedBinaryWeight);
-
     // Applying reprojection
     float reprojectionFound = 0;
     prevSpecularIllumAnd2ndMoment = 0;
@@ -563,29 +492,33 @@ float loadVirtualMotionBasedPrevData(
     prevRoughness = 0;
     prevReflectionHitT = gDenoisingRange;
 
-    // Weighted bilinear (or bicubic optionally) for prev specular data based on virtual motion
+    // Weighted bilinear (or bicubic optionally) for prev specular data based on virtual motion.
     if (any(bilinearTapsValid))
     {
-#if( RELAX_USE_BICUBIC_FOR_VIRTUAL_MOTION_SPECULAR == 1 )
-        if (surfaceBicubicValid)
-        {
-            prevSpecularIllumAnd2ndMoment = max(0, BicubicFloat4(gPrevSpecularIllumination, gLinearClamp, prevVirtualPixelPosOnScreen, gInvResourceSize));
+        // Calculating bilinear weights in advance
+        STL::Filtering::Bilinear bilinear;
+        bilinear.weights = bilinearWeights;
+        float4 bilinearWeightsWithValidity = STL::Filtering::GetBilinearCustomWeights(bilinear, float4(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w));
 
-#if( RELAX_USE_BICUBIC_FOR_FAST_HISTORY == 1 )
-            prevSpecularResponsiveIllum = max(0, BicubicFloat4(gPrevSpecularIlluminationResponsive, gLinearClamp, prevVirtualPixelPosOnScreen, gInvResourceSize).rgb);
-#else
-            prevSpecularResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevSpecularIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-#endif
-        }
-        else
-        {
-            prevSpecularIllumAnd2ndMoment = BilinearWithBinaryWeightsFloat4(gPrevSpecularIllumination, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-            prevSpecularResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevSpecularIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-        }
-#else
-        prevSpecularIllumAnd2ndMoment = BilinearWithBinaryWeightsFloat4(gPrevSpecularIllumination, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
-        prevSpecularResponsiveIllum = BilinearWithBinaryWeightsFloat4(gPrevSpecularIlluminationResponsive, bilinearOrigin, bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight).rgb;
-#endif
+        bool useBicubic = (surfaceBicubicValid > 0);
+
+        // Fetching normal virtual motion based specular history
+        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+            prevVirtualPixelPosOnScreen, gInvResourceSize, bilinearWeightsWithValidity,
+            gLinearClamp, useBicubic,
+            gPrevSpecularIllumination, prevSpecularIllumAnd2ndMoment);
+
+        // Fetching fast virtual motion based specular history
+        float4 spec;
+        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+            prevVirtualPixelPosOnScreen, gInvResourceSize, bilinearWeightsWithValidity,
+            gLinearClamp, useBicubic,
+            gPrevSpecularIlluminationResponsive, spec);
+        prevSpecularResponsiveIllum = spec.rgb;
+
+        // Fitering previous data that does not need bicubic
+        float interpolatedBinaryWeight = STL::Filtering::ApplyBilinearFilter(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w, bilinear);
+        interpolatedBinaryWeight = max(1e-6, interpolatedBinaryWeight);
 
         float4 prevNormalRoughness = BilinearWithBinaryWeightsImmediateFloat4(
             float4(prevNormal00, prevRoughness00),
@@ -595,18 +528,25 @@ float loadVirtualMotionBasedPrevData(
             bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
         prevNormal = prevNormalRoughness.xyz;
+        prevNormal = gUseWorldPrevToWorld ? STL::Geometry::RotateVector(gWorldPrevToWorld, prevNormal) : prevNormal;
         prevRoughness = prevNormalRoughness.w;
 
         float4 prevReflectionHitTs = gPrevReflectionHitT.GatherRed(gNearestClamp, gatherOrigin).wzxy;
 
         prevReflectionHitT = BilinearWithBinaryWeightsImmediateFloat(
-            prevReflectionHitTs.x, prevReflectionHitTs.y, prevReflectionHitTs.z, prevReflectionHitTs.w,
+            prevReflectionHitTs.x,
+            prevReflectionHitTs.y,
+            prevReflectionHitTs.z,
+            prevReflectionHitTs.w,
             bilinearWeights, bilinearTapsValid, interpolatedBinaryWeight);
 
         prevReflectionHitT = max(0.001, prevReflectionHitT);
         reprojectionFound = 1.0;
     }
-    return reprojectionFound;
+    // Using all() marks entire virtual motion based specular history footprint 
+    // invalid for specular reprojection logic down the shader code even if at least one bilinear tap is invalid.
+    // This helps rejecting potentially incorrect data.
+    return all(bilinearTapsValid) ? 1.0 : 0.0;
 }
 #endif
 
@@ -670,7 +610,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
 #if( defined RELAX_SPECULAR )
     float4 specularIllumination = sharedInSpecular[sharedMemoryIndex.y][sharedMemoryIndex.x];
-    specularIllumination.a = max(0.001, min(gDenoisingRange, specularIllumination.a));
 #endif
 
     // Reading current GBuffer data
@@ -683,7 +622,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // since undefined masks are zeroes in those cases
     float currentMaterialID;
     NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[gRectOrigin + pixelPos], currentMaterialID);
-    currentMaterialID = floor( currentMaterialID * 3.0 + 0.5 ) / 255.0; // IMPORTANT: properly repack 2-bits to 8-bits
+    currentMaterialID = floor(currentMaterialID * 3.0 + 0.5) / 255.0; // IMPORTANT: properly repack 2-bits to 8-bits
 
     // Getting current frame worldspace position and view vector for current pixel
     float3 currentWorldPos = GetCurrentWorldPosFromPixelPos(pixelPos, currentLinearZ);
@@ -694,8 +633,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 #if( defined RELAX_SPECULAR)
     float4 specM1 = specularIllumination;
     float4 specM2 = specM1 * specM1;
-    float minHitDist3x3 = gDenoisingRange;
-    float minHitDist5x5 = gDenoisingRange;
+    float minHitDist3x3 = (specularIllumination.a != 0.0) ? specularIllumination.a : gDenoisingRange;
+    float minHitDist5x5 = minHitDist3x3;
 
     [unroll]
     for (int i = -2; i <= 2; i++)
@@ -709,10 +648,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
             float4 spec = sharedInSpecular[sharedMemoryIndex.y + j][sharedMemoryIndex.x + i];
             specM1 += spec;
             specM2 += spec * spec;
-            minHitDist5x5 = min(spec.w, minHitDist5x5);
+            minHitDist5x5 = (spec.w != 0) ? min(spec.w, minHitDist5x5) : minHitDist5x5;
             if ((abs(i) <= 1) && (abs(j) <= 1))
             {
-                minHitDist3x3 = min(spec.w, minHitDist3x3);
+                minHitDist3x3 = (spec.w != 0) ? min(spec.w, minHitDist3x3) : minHitDist3x3;
             }
         }
     }
@@ -724,7 +663,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 currentNormalAveraged = currentNormal;
 #if( defined RELAX_SPECULAR )
     float curvature = 0;
-    float curvatureSum = 0;
 #endif
     [unroll]
     for (int k = -1; k <= 1; k++)
@@ -741,18 +679,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
             float3 x = GetCurrentWorldPosFromPixelPos(p, 1.0);
             float3 v = normalize(gOrthoMode ? gFrustumForward.xyz : x);
             float c = EstimateCurvature(pNormal, v, currentNormal, currentWorldPos);
-
-            float w = exp2(-0.5 * STL::Math::LengthSquared(float2(k,l)));
-            curvature += c * w;
-            curvatureSum += w;
+            curvature += c;
 #endif
         }
     }
     currentNormalAveraged /= 9.0;
 
 #if( defined RELAX_SPECULAR )
-    curvature /= curvatureSum;
-    curvature *= STL::Math::LinearStep(0.0, NRD_ENCODING_ERRORS.y, abs(curvature));
+    curvature /= 8;
     float currentRoughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance(currentRoughness, currentNormalAveraged);
 #endif
 
@@ -771,7 +705,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 motionVector = gMotion[gRectOrigin + pixelPos].xyz * gMotionVectorScale.xyy;
 
     // Loading previous data based on surface motion vectors
-    float3 prevNormalSMB;
     float footprintQuality;
 #if( defined RELAX_DIFFUSE )
     float4 prevDiffuseIlluminationAnd2ndMomentSMB;
@@ -784,11 +717,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 prevWorldPosSMB;
     float2 prevUVSMB;
 #endif
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-    float2 historyLength;
-#else
     float historyLength;
-#endif
 
     float surfaceMotionBasedReprojectionFound = loadSurfaceMotionBasedPrevData(
         pixelPos,
@@ -802,24 +731,23 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         currentMaterialID,
         gDiffMaterialMask | gSpecMaterialMask, // TODO: improve?
         footprintQuality,
-        historyLength,
+        historyLength
 #if( defined RELAX_DIFFUSE)
-        prevDiffuseIlluminationAnd2ndMomentSMB,
-        prevDiffuseIlluminationAnd2ndMomentSMBResponsive,
+        , prevDiffuseIlluminationAnd2ndMomentSMB
+        , prevDiffuseIlluminationAnd2ndMomentSMBResponsive
 #endif
 #if( defined RELAX_SPECULAR)
-        prevSpecularIlluminationAnd2ndMomentSMB,
-        prevSpecularIlluminationAnd2ndMomentSMBResponsive,
-        prevWorldPosSMB,
-        prevReflectionHitTSMB,
-        prevUVSMB,
+        , prevSpecularIlluminationAnd2ndMomentSMB
+        , prevSpecularIlluminationAnd2ndMomentSMBResponsive
+        , prevWorldPosSMB
+        , prevReflectionHitTSMB
+        , prevUVSMB
 #endif
-        prevNormalSMB
     );
 
-     // History length is based on surface motion based disocclusion
+    // History length is based on surface motion based disocclusion
     historyLength = historyLength + 1.0;
-    historyLength = min(100.0, historyLength);
+    historyLength = min(RELAX_MAX_ACCUM_FRAME_NUM, historyLength);
 
     // Avoid footprint momentary stretching due to changed viewing angle
     float3 prevWorldPos = currentWorldPos + motionVector * float(gIsWorldSpaceMotionEnabled != 0);
@@ -849,14 +777,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float diffMaxAccumulatedFrameNum = gDiffuseMaxAccumulatedFrameNum;
     float diffMaxFastAccumulatedFrameNum = gDiffuseMaxFastAccumulatedFrameNum;
 
-    if (gRejectDiffuseHistoryNormalThreshold > 0)
-    {
-        float NDotPrevN = saturate(dot(currentNormal, prevNormalSMB));
-        float diffuseNormalWeight = 0.5 + 0.5 * (NDotPrevN > (1.0 - gRejectDiffuseHistoryNormalThreshold) ? 1.0 : 0.0);
-        diffMaxAccumulatedFrameNum *= diffuseNormalWeight;
-        diffMaxFastAccumulatedFrameNum *= diffuseNormalWeight;
-    }
-
     if (gUseConfidenceInputs)
     {
         float inDiffConfidence = gDiffConfidence[pixelPos];
@@ -864,11 +784,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         diffMaxFastAccumulatedFrameNum *= inDiffConfidence;
     }
 
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-    float diffHistoryLength = historyLength.y;
-#else
     float diffHistoryLength = historyLength;
-#endif
 
     float diffuseAlpha = (surfaceMotionBasedReprojectionFound > 0) ? max(1.0 / (diffMaxAccumulatedFrameNum + 1.0), 1.0 / diffHistoryLength) : 1.0;
     float diffuseAlphaResponsive = (surfaceMotionBasedReprojectionFound > 0) ? max(1.0 / (diffMaxFastAccumulatedFrameNum + 1.0), 1.0 / diffHistoryLength) : 1.0;
@@ -902,16 +818,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         specMaxFastAccumulatedFrameNum *= inSpecConfidence;
     }
 
-#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
-    float specHistoryLength = historyLength.x;
-#else
     float specHistoryLength = historyLength;
-#endif
     float specHistoryFrames = min(specMaxAccumulatedFrameNum, specHistoryLength);
     float specHistoryResponsiveFrames = min(specMaxFastAccumulatedFrameNum, specHistoryLength);
 
     // Calculating surface parallax
-    float parallax = ComputeParallax(currentWorldPos, currentWorldPos + motionVector * (gIsWorldSpaceMotionEnabled != 0 ? 1.0 : 0.0), gPrevCameraPosition, gOrthoMode != 0);
+    float2 pixelUv = float2(pixelPos + 0.5) * gInvRectSize;
+    float parallax = ComputeParallax(prevWorldPos, pixelUv, prevUVSMB, gWorldToClip, gPrevCameraPosition.xyz, gRectSize, gUnproject, gOrthoMode);
     float parallaxOrig = parallax;
     float hitDistToSurfaceRatio = saturate(prevReflectionHitTSMB / currentLinearZ);
     parallax *= hitDistToSurfaceRatio;
@@ -946,17 +859,16 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Thin lens equation for adjusting reflection HitT
     float pixelSize = PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, currentLinearZ);
-    curvature *= NoV / pixelSize;
     float hitDist = specularIllumination.a;
     hitDist = lerp(minHitDist3x3, minHitDist5x5, STL::Math::SmoothStep(0.04, 0.08, currentRoughnessModified));
     hitDist = clamp(hitDist, specM1.a - specSigma.a * 3.0, specM1.a + specSigma.a * 3.0);
-    float divider = 0.5 + curvature * hitDist;
+    float divider = 0.5 + curvature * hitDist * NoV;
     float hitDistFocused = 0.5 * hitDist / (divider == 0 ? 0.5 : divider);
 
     // Limiting hitDist in ortho case to avoid extreme amounts of motion in reflection
-    if(gOrthoMode != 0) hitDistFocused = min(currentLinearZ, hitDistFocused);
+    if (gOrthoMode != 0) hitDistFocused = min(currentLinearZ, hitDistFocused);
 
-    if(abs(hitDistFocused) < 0.001) hitDistFocused = 0.001;
+    if (abs(hitDistFocused) < 0.001) hitDistFocused = 0.001;
 
     // Loading specular data based on virtual motion
     float4 prevSpecularIlluminationAnd2ndMomentVMB;
@@ -972,11 +884,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         currentNormal,
         currentLinearZ,
         hitDistFocused,
+        hitDist,
         currentViewVector,
         prevWorldPosSMB,
         surfaceMotionBasedReprojectionFound == 2.0 ? true : false,
         currentMaterialID,
         gSpecMaterialMask,
+        prevUVSMB,
+        parallaxOrig,
         prevSpecularIlluminationAnd2ndMomentVMB,
         prevSpecularIlluminationAnd2ndMomentVMBResponsive,
         prevNormalVMB,
@@ -990,18 +905,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float virtualLobeScale = lerp(0.5, 1.0, fresnelFactor);
     float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(currentRoughnessModified);
     lobeHalfAngle *= virtualLobeScale;
-    lobeHalfAngle += NRD_ENCODING_ERRORS.x + STL::Math::DegToRad(1.5); // TODO: tune better?
+    lobeHalfAngle += NRD_NORMAL_ENCODING_ERROR + STL::Math::DegToRad(1.5); // TODO: tune better?
     float virtualNormalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, lobeHalfAngle);
 
     virtualHistoryConfidence *= lerp(virtualNormalWeight, 1.0, saturate(fresnelFactor * parallax));
-
-#if( RELAX_USE_BICUBIC_FOR_VIRTUAL_MOTION_SPECULAR == 0 )
-    // Artificially decreasing virtual motion confidence by 50% if there is no parallax to avoid overblurring
-    // due to bilinear filtering used for virtual motion based reprojection,
-    // this will put more weight to surface based reprojection which uses higher order filter
-    float noParallaxSharpener = 0.5 + 0.5 * STL::Math::LinearStep(0.5, 1.0, parallaxInPixels);
-    virtualHistoryConfidence *= noParallaxSharpener;
-#endif
 
     // Amount of virtual motion - dominant factor
     float4 D = STL::ImportanceSampling::GetSpecularDominantDirection(currentNormal, V, currentRoughness, RELAX_SPEC_DOMINANT_DIRECTION);
@@ -1015,12 +922,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     virtualHistoryAmount *= (gOrthoMode == 0) ? rw * 0.9 + 0.1 : 1.0;
 
     // Decreasing virtual history amount for ortho case
-    virtualHistoryAmount *= (gOrthoMode == 0) ? 1.0 : 0.5;
+    virtualHistoryAmount *= (gOrthoMode == 0) ? 1.0 : 0.75;
 
     // Virtual history confidence - hit distance
     float maxDist = max(prevReflectionHitTVMB, prevReflectionHitTSMB);
     float dHitT = max(0, sqrt(abs(prevReflectionHitTVMB - prevReflectionHitTSMB)) - 0.0 * specSigma.a);
-    float virtualHistoryHitDistConfidence = 1.0 - saturate(10.0 * dHitT / (currentLinearZ + maxDist));
+    float dHitTMultiplier = lerp(20.0, 0.0, GetSpecMagicCurve(currentRoughnessModified));
+    float virtualHistoryHitDistConfidence = 1.0 - saturate(dHitTMultiplier * dHitT / (currentLinearZ + maxDist));
     virtualHistoryConfidence *= virtualHistoryHitDistConfidence;
 
     // "Looking back" 1 and 2 frames and applying normal weight to decrease lags
@@ -1034,6 +942,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     backUV2 *= (gInvResourceSize * gRectSizePrev);
     float3 backNormal1 = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, backUV1, 0)).rgb;
     float3 backNormal2 = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, backUV2, 0)).rgb;
+    backNormal1 = gUseWorldPrevToWorld ? STL::Geometry::RotateVector(gWorldPrevToWorld, backNormal1) : backNormal1;
+    backNormal2 = gUseWorldPrevToWorld ? STL::Geometry::RotateVector(gWorldPrevToWorld, backNormal2) : backNormal2;
     float maxAngle1 = lobeHalfAngle + avgCurvatureAngle * 1.0;
     float maxAngle2 = lobeHalfAngle + avgCurvatureAngle * 2.0;
     float backNormalWeight1 = IsInScreen(backUV1) ? GetEncodingAwareNormalWeight(currentNormal, backNormal1, maxAngle1) : 1.0;
@@ -1046,16 +956,15 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Clamping specular virtual history to current specular signal
     float4 specHistoryVirtual = float4(prevSpecularIlluminationAnd2ndMomentVMB.rgb, prevReflectionHitTVMB);
 
-    if(gVirtualHistoryClampingEnabled != 0)
+    if (gVirtualHistoryClampingEnabled != 0)
     {
-        float SMC = STL::Math::SmoothStep(0.15, 0.25, currentRoughnessModified);
-        float sigmaScale = lerp(2.0, 6.0, SMC);
-        sigmaScale *= 1.0 + 7.0 * SMC * max(gFramerateScale, 1.0); // Looks aggressive, but it will be balanced by virtualUnclampedAmount
+        float sigmaScale = 6.0;
+        sigmaScale *= 1.0 + 7.0 * max(gFramerateScale, 1.0); // Looks aggressive, but it will be balanced by virtualUnclampedAmount
         float4 specHistoryVirtualClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, specHistoryVirtual);
         float3 specHistoryVirtualResponsiveClamped = STL::Color::Clamp(specM1, specSigma * sigmaScale, prevSpecularIlluminationAnd2ndMomentVMBResponsive.rgbb).rgb;
 
-        float virtualUnclampedAmount = GetSpecMagicCurve(currentRoughnessModified) * virtualHistoryConfidence;
-        virtualUnclampedAmount += gFramerateScale * (0.2 + 0.33 * GetSpecMagicCurve(currentRoughnessModified) * (1.0 - virtualHistoryHitDistConfidence));
+        float virtualUnclampedAmount = 0.5 * virtualHistoryConfidence + 0.5 * STL::Math::SmoothStep(0.1, 0.25, currentRoughnessModified);
+        virtualUnclampedAmount += gFramerateScale * (0.1 + 0.33 * (1.0 - virtualHistoryHitDistConfidence));
         virtualUnclampedAmount = saturate(virtualUnclampedAmount);
 
         specHistoryVirtual = lerp(specHistoryVirtualClamped, specHistoryVirtual, virtualUnclampedAmount);
@@ -1068,13 +977,17 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     }
 
     // Current specular signal ( virtual motion )
-    float specVirtualFrames = specHistoryFrames * virtualRoughnessWeight * (0.1 + 0.9 * backNormalWeight);
-    float specVirtualResponsiveFrames = specHistoryResponsiveFrames * virtualRoughnessWeight * (0.0 + 1.0 * backNormalWeight);
+    float specVirtualFrames = specHistoryFrames * virtualRoughnessWeight * (0.5 + 0.5 * backNormalWeight);
+    float specVirtualResponsiveFrames = specHistoryResponsiveFrames * virtualRoughnessWeight * backNormalWeight;
+
+    // Relying on fast history to be up to speed with reflection HitT inconsistency
+    specVirtualResponsiveFrames *= lerp(virtualHistoryHitDistConfidence, 0.5 + 0.5 * virtualHistoryHitDistConfidence, GetSpecMagicCurve(currentRoughnessModified));
 
     // Artificially decreasing virtual history frames if FPS is lower than 60 and virtual confidence is low, to decrease lags
     float fpsScaler = lerp(saturate(gFramerateScale * gFramerateScale), 1.0, virtualHistoryConfidence);
     specVirtualResponsiveFrames *= fpsScaler;
     specVirtualFrames *= fpsScaler;
+
 
     float specVirtualAlpha = 1.0 / (specVirtualFrames + 1.0);
     float specVirtualResponsiveAlpha = 1.0 / (specVirtualResponsiveFrames + 1.0);

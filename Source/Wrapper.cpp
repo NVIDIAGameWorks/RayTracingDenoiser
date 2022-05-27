@@ -44,7 +44,46 @@ constexpr nrd::LibraryDesc g_NrdLibraryDesc =
     (uint32_t)g_NrdSupportedMethods.size(),
     VERSION_MAJOR,
     VERSION_MINOR,
-    VERSION_BUILD
+    VERSION_BUILD,
+#ifdef NRD_USE_OCT_NORMAL_ENCODING
+    2, true
+#else
+    0, false
+#endif
+};
+
+constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResourceTypeNames =
+{
+    "IN_MV ",
+    "IN_NORMAL_ROUGHNESS ",
+    "IN_VIEWZ ",
+    "IN_DIFF_RADIANCE_HITDIST ",
+    "IN_SPEC_RADIANCE_HITDIST ",
+    "IN_DIFF_HITDIST ",
+    "IN_SPEC_HITDIST ",
+    "IN_DIFF_DIRECTION_HITDIST ",
+    "IN_DIFF_DIRECTION_PDF ",
+    "IN_SPEC_DIRECTION_PDF ",
+    "IN_DIFF_CONFIDENCE ",
+    "IN_SPEC_CONFIDENCE ",
+    "IN_SHADOWDATA ",
+    "IN_SHADOW_TRANSLUCENCY ",
+    "IN_RADIANCE ",
+    "IN_DELTA_PRIMARY_POS ",
+    "IN_DELTA_SECONDARY_POS ",
+
+    "OUT_DIFF_RADIANCE_HITDIST ",
+    "OUT_SPEC_RADIANCE_HITDIST ",
+    "OUT_DIFF_HITDIST ",
+    "OUT_SPEC_HITDIST ",
+    "OUT_DIFF_DIRECTION_HITDIST ",
+    "OUT_SHADOW_TRANSLUCENCY ",
+    "OUT_RADIANCE ",
+    "OUT_REFLECTION_MV ",
+    "OUT_DELTA_MV ",
+
+    "TRANSIENT_POOL",
+    "PERMANENT_POOL",
 };
 
 NRD_API const nrd::LibraryDesc& NRD_CALL nrd::GetLibraryDesc()
@@ -91,4 +130,9 @@ NRD_API void NRD_CALL nrd::DestroyDenoiser(nrd::Denoiser& denoiser)
 {
     StdAllocator<uint8_t> memoryAllocator = ((DenoiserImpl&)denoiser).GetStdAllocator();
     Deallocate(memoryAllocator, (DenoiserImpl*)&denoiser);
+}
+
+NRD_API const char* NRD_CALL nrd::GetResourceTypeString(nrd::ResourceType resourceType)
+{
+    return g_NrdResourceTypeNames[(size_t)resourceType];
 }

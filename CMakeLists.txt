@@ -2,18 +2,19 @@ cmake_minimum_required(VERSION 3.15)
 
 message("Processing 'NRD'...")
 
-set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "This DXC will be used if Vulkan SDK is not installed")
+set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "Custom DXC to use if Vulkan SDK is not installed")
 set(NRD_SHADER_OUTPUT_PATH "" CACHE STRING "Shader output path override")
 set(NRD_USE_OCT_NORMAL_ENCODING "0" CACHE STRING "NRD_USE_OCT_NORMAL_ENCODING")
 set(NRD_USE_MATERIAL_ID "0" CACHE STRING "NRD_USE_MATERIAL_ID")
 
 # Settings
-option(NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION "Disable interprocedural optimization" OFF)
-option(NRD_DISABLE_SHADER_COMPILATION "Disable compilation of shaders" OFF)
-option(NRD_USE_PRECOMPILED_SHADERS "Use precompiled shaders" ON)
-option(NRD_STATIC_LIBRARY "Build static lib" OFF)
+option(NRD_DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
+option(NRD_USE_PRECOMPILED_SHADERS "Use precompiled (embedded) shaders" ON)
+option(NRD_STATIC_LIBRARY "Build static library" OFF)
+option(NRD_STATIC_CPP_RUNTIME "Link static C++ runtime (Linux only), on Windows use CMAKE_MSVC_RUNTIME_LIBRARY" OFF)
 option(NRD_CROSSCOMPILE_AARCH64 "Cross compilation for aarch64" OFF)
 option(NRD_CROSSCOMPILE_X86_64 "Cross compilation for x86_64" OFF)
+option(NRD_INTERPROCEDURAL_OPTIMIZATION "Interprocedural optimization" OFF)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Include/NRD.h" ver_h)
 string(REGEX MATCH "NRD_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
@@ -43,11 +44,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_POSITION_INDEPENDENT_BINARIES ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-
-
-if (NRD_DISABLE_INTERPROCEDURAL_OPTIMIZATION)
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-endif()
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION NRD_INTERPROCEDURAL_OPTIMIZATION)
 
 if ("${NRD_SHADER_OUTPUT_PATH}" STREQUAL "")
     set(NRD_SHADER_OUTPUT_PATH "${PROJECT_BINARY_DIR}/Shaders")
@@ -114,9 +111,17 @@ if (NRD_USE_PRECOMPILED_SHADERS)
     target_include_directories(${PROJECT_NAME} PRIVATE "${NRD_SHADER_OUTPUT_PATH}")
 endif()
 
+if (NRD_USE_OCT_NORMAL_ENCODING)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_USE_OCT_NORMAL_ENCODING)
+endif()
+
 if(WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS _UNICODE UNICODE)
 else()
+    if (NRD_STATIC_CPP_RUNTIME)
+        target_link_options(${PROJECT_NAME} PRIVATE -static-libstdc++)
+    endif()
+
     # on non-Windows, FXC is not available and VulkanSDK DXC does not produce signed DXIL
     target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_ONLY_SPIRV_SHADERS_AVAILABLE=1)
 endif()

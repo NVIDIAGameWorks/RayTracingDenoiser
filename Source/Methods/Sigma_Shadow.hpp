@@ -8,7 +8,12 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define SIGMA_DECLARE_SHARED_CONSTANT_NUM SetSharedConstants(1, 1, 9, 10)
+#define SIGMA_SET_SHARED_CONSTANTS                    SetSharedConstants(1, 1, 9, 10)
+#define SIGMA_CLASSIFY_TILES_SET_CONSTANTS            SumConstants(0, 0, 0, 0)
+#define SIGMA_SMOOTH_TILES_SET_CONSTANTS              SumConstants(0, 0, 1, 0)
+#define SIGMA_BLUR_SET_CONSTANTS                      SumConstants(1, 1, 0, 0)
+#define SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS    SumConstants(2, 0, 0, 1)
+#define SIGMA_SPLIT_SCREEN_SET_CONSTANTS              SumConstants(0, 0, 0, 1)
 
 size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
 {
@@ -36,7 +41,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
-    SIGMA_DECLARE_SHARED_CONSTANT_NUM;
+    SIGMA_SET_SHARED_CONSTANTS;
 
     PushPass("Classify tiles");
     {
@@ -44,7 +49,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(Transient::TILES) );
 
-        AddDispatch( SIGMA_Shadow_ClassifyTiles, SumConstants(0, 0, 0, 0), 1, 16 );
+        AddDispatch( SIGMA_Shadow_ClassifyTiles, SIGMA_CLASSIFY_TILES_SET_CONSTANTS, 1, 16 );
     }
 
     PushPass("Smooth tiles");
@@ -53,10 +58,10 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(Transient::SMOOTH_TILES) );
 
-        AddDispatch( SIGMA_Shadow_SmoothTiles, SumConstants(0, 0, 1, 0), 16, 16 );
+        AddDispatch( SIGMA_Shadow_SmoothTiles, SIGMA_SMOOTH_TILES_SET_CONSTANTS, 16, 16 );
     }
 
-    PushPass("Pre-pass");
+    PushPass("Blur");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
@@ -67,10 +72,10 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_Shadow_PrePass, SumConstants(1, 1, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_Shadow_PrePass, SIGMA_BLUR_SET_CONSTANTS, 16, 1 );
     }
 
-    PushPass("Blur");
+    PushPass("Post-blur");
     {
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::DATA_1) );
@@ -79,7 +84,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::DATA_2) );
         PushOutput( AsUint(Transient::TEMP_2) );
 
-        AddDispatch( SIGMA_Shadow_Blur, SumConstants(1, 1, 0, 0), 16, 1 );
+        AddDispatch( SIGMA_Shadow_Blur, SIGMA_BLUR_SET_CONSTANTS, 16, 1 );
     }
 
     PushPass("Temporal stabilization");
@@ -92,7 +97,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_Shadow_TemporalStabilization, SumConstants(2, 0, 0, 1), 16, 1 );
+        AddDispatch( SIGMA_Shadow_TemporalStabilization, SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS, 16, 1 );
     }
 
     PushPass("Split screen");
@@ -101,7 +106,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_Shadow_SplitScreen, SumConstants(0, 0, 0, 1), 16, 1 );
+        AddDispatch( SIGMA_Shadow_SplitScreen, SIGMA_SPLIT_SCREEN_SET_CONSTANTS, 16, 1 );
     }
 
     #undef METHOD_NAME

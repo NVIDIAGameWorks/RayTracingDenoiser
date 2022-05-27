@@ -12,9 +12,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "../Include/NRD.hlsli"
 
 #define REBLUR_PERFORMANCE_MODE
+#define REBLUR_OCCLUSION
 
 #include "../Include/REBLUR/REBLUR_Config.hlsli"
-#include "../Resources/REBLUR_DiffuseSpecularOcclusion_MipGen.resources.hlsli"
+#include "../Resources/REBLUR_DiffuseSpecular_MipGen.resources.hlsli"
 
 #include "../Include/Common.hlsli"
 #include "../Include/REBLUR/REBLUR_Common.hlsli"

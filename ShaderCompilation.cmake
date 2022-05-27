@@ -1,7 +1,8 @@
-
 # DXC on Windows does not like forward slashes
 if (WIN32)
     string(REPLACE "/" "\\" NRD_SHADER_INCLUDE_PATH "${NRD_SHADER_FILES}/Include")
+
+    # Needed only for WinSDK before 22000
     string(REPLACE "/" "\\" NRD_MATHLIB_INCLUDE_PATH "${NRD_MATHLIB_INCLUDE_PATH}")
 endif()
 
@@ -20,7 +21,7 @@ if (WIN32)
 
     set(NRD_WINDOWS_SDK_BIN "${NRD_WINDOWS_SDK_ROOT}/bin/${NRD_WINDOWS_SDK_VERSION}/x64")
 
-    # on Windows, FXC and DXC are part of WindowsSDK and there's also DXC in VulkanSDK which supports SPIR-V
+    # On Windows, FXC and DXC are part of WindowsSDK and there's also DXC in VulkanSDK which supports SPIR-V
     find_program(NRD_FXC_PATH "${NRD_WINDOWS_SDK_BIN}/fxc")
     if (NOT NRD_FXC_PATH)
         message(FATAL_ERROR "Can't find FXC: '${NRD_WINDOWS_SDK_BIN}/fxc'")
@@ -40,7 +41,7 @@ if (WIN32)
         endif()
     endif()
 else()
-    # on Linux, VulkanSDK does not set VULKAN_SDK, but DXC can be called directly
+    # On Linux, VulkanSDK does not set VULKAN_SDK, but DXC can be called directly
     find_program(NRD_DXC_SPIRV_PATH "dxc")
     if (NOT NRD_DXC_SPIRV_PATH)
         find_program(NRD_DXC_SPIRV_PATH "${NRD_DXC_CUSTOM_PATH}")
@@ -95,7 +96,8 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
         set(OUTPUT_PATH_DXIL "${NRD_SHADER_OUTPUT_PATH}/${NAME_ONLY}.dxil")
         set(OUTPUT_PATH_SPIRV "${NRD_SHADER_OUTPUT_PATH}/${NAME_ONLY}.spirv")
         get_shader_profile_from_name(${FILE_NAME} DXC_PROFILE FXC_PROFILE)
-        # add FXC compilation step (DXBC)
+
+        # DXBC
         if (NOT "${FXC_PROFILE}" STREQUAL "" AND NOT "${NRD_FXC_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_DXBC} ${OUTPUT_PATH_DXBC}.h
@@ -110,7 +112,8 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
             )
             list(APPEND NRD_SHADER_FILES ${OUTPUT_PATH_DXBC} ${OUTPUT_PATH_DXBC}.h)
         endif()
-        # add DXC compilation step (DXIL)
+
+        # DXIL
         if (NOT "${DXC_PROFILE}" STREQUAL "" AND NOT "${NRD_DXC_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_DXIL} ${OUTPUT_PATH_DXIL}.h
@@ -125,7 +128,8 @@ macro(list_hlsl_shaders NRD_HLSL_FILES NRD_HEADER_FILES NRD_SHADER_FILES)
             )
             list(APPEND NRD_SHADER_FILES ${OUTPUT_PATH_DXIL} ${OUTPUT_PATH_DXIL}.h)
         endif()
-        # add one more DXC compilation step (SPIR-V)
+
+        # SPIRV
         if (NOT "${DXC_PROFILE}" STREQUAL "" AND NOT "${NRD_DXC_SPIRV_PATH}" STREQUAL "")
             add_custom_command(
                     OUTPUT ${OUTPUT_PATH_SPIRV} ${OUTPUT_PATH_SPIRV}.h

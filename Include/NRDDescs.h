@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 1
+#define NRD_DESCS_VERSION_MINOR 2
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -326,6 +326,8 @@ namespace nrd
         uint8_t versionMajor;
         uint8_t versionMinor;
         uint8_t versionBuild;
+        uint8_t maxSupportedMaterialBitNum;
+        bool isCompiledWithOctPackNormalEncoding : 1;
     };
 
     struct MethodDesc
@@ -400,7 +402,7 @@ namespace nrd
 
         // if "true" all constant buffers share same "ConstantBufferDesc" description
         // if "false" this pipeline doesn't have a constant buffer
-        bool hasConstantData;
+        bool hasConstantData : 1;
     };
 
     struct DescriptorSetDesc
