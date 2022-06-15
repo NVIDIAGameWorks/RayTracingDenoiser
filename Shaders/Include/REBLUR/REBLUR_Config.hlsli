@@ -28,6 +28,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_BILINEAR_FOR_VIRTUAL_NORMAL_WEIGHT           0
 #define REBLUR_USE_HISTORY_FIX_WITHOUT_DISOCCLUSION             0
 #define REBLUR_USE_ACCUM_SPEED_NONLINEAR_INTERPOLATION          0
+#define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
 
 // Experimental kernels
 #ifndef __cplusplus
@@ -81,13 +82,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_TS_ACCUM_TIME                                    ( 30 * 0.5 ) // "gFramerateScale to FPS scale" * "seconds"
 #define REBLUR_PARALLAX_SCALE                                   ( 2.0 * gFramerateScale )
 #define REBLUR_FIXED_FRAME_NUM                                  3.0 // TODO: move to settings
-#define REBLUR_HISTORY_FIX_STEP                                 10.0 // pixels // TODO: gBlurRadius dependent if != 0?
+#define REBLUR_HISTORY_FIX_STEP                                 ( 10.0 * ( gRectSize.y / 1440.0 ) )  // pixels // TODO: gBlurRadius dependent if != 0?
 #define REBLUR_HISTORY_FIX_THRESHOLD_1                          0.111 // was 0.01
 #define REBLUR_HISTORY_FIX_THRESHOLD_2                          0.333 // was 0.25
 #define REBLUR_HIT_DIST_MIN_WEIGHT                              0.1
-#define REBLUR_MIN_PDF                                          0.05
+#define REBLUR_MIN_PDF                                          0.001
 #define REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY                   8.0
-#define REBLUR_INVALID_HITDIST                                  NRD_FP16_MAX // for internal use, 0 = "no data" application-side mark
 
 /*
 TODO: REBLUR_HIT_DIST_SEARCH_RADIUS:
@@ -98,7 +98,7 @@ TODO: REBLUR_HIT_DIST_SEARCH_RADIUS:
  - many weights are currently missing
  - not needed in occlusion-only version
  */
-#define REBLUR_HIT_DIST_SEARCH_RADIUS                           ( 30.0 * ( gScreenSize.x / 2560.0 ) )
+#define REBLUR_HIT_DIST_SEARCH_RADIUS                           ( 30.0 * ( gRectSize.y / 1440.0 ) ) // pixels
 
 // Shared data
 #define REBLUR_SHARED_CB_DATA \
@@ -126,19 +126,19 @@ TODO: REBLUR_HIT_DIST_SEARCH_RADIUS:
     NRD_CONSTANT( float, gFramerateScale ) \
     NRD_CONSTANT( float, gBlurRadius ) \
     NRD_CONSTANT( float, gMaxAccumulatedFrameNum ) \
-    NRD_CONSTANT( float, gResidualNoiseLevel ) \
     NRD_CONSTANT( float, gUnused1 ) \
     NRD_CONSTANT( float, gInputMix ) \
     NRD_CONSTANT( float, gMinConvergedStateBaseRadiusScale ) \
     NRD_CONSTANT( float, gLobeAngleFraction ) \
     NRD_CONSTANT( float, gRoughnessFraction ) \
     NRD_CONSTANT( float, gResponsiveAccumulationRoughnessThreshold ) \
+    NRD_CONSTANT( float, gDiffPrepassBlurRadius ) \
+    NRD_CONSTANT( float, gSpecPrepassBlurRadius ) \
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gResetHistory ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
-    NRD_CONSTANT( uint, gSpecMaterialMask ) \
-    NRD_CONSTANT( uint, gUnused2 )
+    NRD_CONSTANT( uint, gSpecMaterialMask )
 
 #if( !defined REBLUR_DIFFUSE && !defined REBLUR_SPECULAR )
     #define REBLUR_DIFFUSE

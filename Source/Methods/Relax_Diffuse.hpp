@@ -149,17 +149,54 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuse(uint16_t w, uint16_t h)
 
     const uint32_t halfMaxPassNum = (RELAX_MAX_ATROUS_PASS_NUM - 2 + 1) / 2;
 
-    PushPass("Pre-pass"); // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+    PushPass("Hit distance reconstruction"); // 3x3
     {
-        PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(ResourceType::IN_VIEWZ));
+        PushInput(AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST));
+        PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+        PushInput(AsUint(ResourceType::IN_VIEWZ));
 
-        PushOutput( AsUint(Transient::DIFF_ILLUM_TMP) );
-        PushOutput( AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV) );
-        PushOutput( AsUint(Transient::VIEWZ_R16F) );
+        PushOutput(AsUint(Transient::DIFF_ILLUM_PING));
 
-        AddDispatch( RELAX_Diffuse_PrePass, SumConstants(0, 1, 0, 4), 16, 1 );
+        AddDispatch(RELAX_Diffuse_HitDistReconstruction_3x3, SumConstants(0, 0, 0, 0), 8, 1);
+    }
+
+    PushPass("Hit distance reconstruction"); // 5x5
+    {
+        PushInput(AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST));
+        PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+        PushInput(AsUint(ResourceType::IN_VIEWZ));
+
+        PushOutput(AsUint(Transient::DIFF_ILLUM_PING));
+
+        AddDispatch(RELAX_Diffuse_HitDistReconstruction_5x5, SumConstants(0, 0, 0, 0), 8, 1);
+    }
+
+    PushPass("Pre-pass"); // After hit distance reconstruction
+    {
+        // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+        PushInput(AsUint(Transient::DIFF_ILLUM_PING));
+        PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+        PushInput(AsUint(ResourceType::IN_VIEWZ));
+
+        PushOutput(AsUint(Transient::DIFF_ILLUM_TMP));
+        PushOutput(AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV));
+        PushOutput(AsUint(Transient::VIEWZ_R16F));
+
+        AddDispatch(RELAX_Diffuse_PrePass, SumConstants(0, 1, 0, 4), 16, 1);
+    }
+
+    PushPass("Pre-pass"); // Without hit distance reconstruction
+    {
+        // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+        PushInput(AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST));
+        PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+        PushInput(AsUint(ResourceType::IN_VIEWZ));
+
+        PushOutput(AsUint(Transient::DIFF_ILLUM_TMP));
+        PushOutput(AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV));
+        PushOutput(AsUint(Transient::VIEWZ_R16F));
+
+        AddDispatch(RELAX_Diffuse_PrePass, SumConstants(0, 1, 0, 4), 16, 1);
     }
 
     PushPass("Temporal accumulation");
@@ -339,6 +376,9 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)
 {
     enum class Dispatch
     {
+        HITDIST_RECONSTRUCTION_3x3,
+        HITDIST_RECONSTRUCTION_5x5,
+        PREPASS_AFTER_HITDIST_RECONSTRUCTION,
         PREPASS,
         REPROJECT,
         REPROJECT_WITH_CONFIDENCE_INPUTS,
@@ -383,6 +423,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)
     ml::float3 prevFrustumForward = RELAX_GetFrustumForward(m_ViewToWorldPrev, m_FrustumPrev);
     bool isCameraStatic = RELAX_IsCameraStatic(ml::float3(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z), frustumRight, frustumUp, frustumForward, prevFrustumRight, prevFrustumUp, prevFrustumForward);
 
+    bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
+
     // Checkerboard logic
     uint32_t diffuseCheckerboard = 2;
 
@@ -410,8 +452,17 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)
         return;
     }
 
+    // HIT DISTANCE RECONSTRUCTION
+    if (enableHitDistanceReconstruction)
+    {
+        bool is3x3 = settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_3X3;
+        Constant* data = PushDispatch(methodData, is3x3 ? AsUint(Dispatch::HITDIST_RECONSTRUCTION_3x3) : AsUint(Dispatch::HITDIST_RECONSTRUCTION_5x5));
+        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE);
+        ValidateConstants(data);
+    }
+
     // PREPASS
-    Constant* data = PushDispatch(methodData, AsUint(Dispatch::PREPASS));
+    Constant* data = PushDispatch(methodData, AsUint(enableHitDistanceReconstruction ? Dispatch::PREPASS_AFTER_HITDIST_RECONSTRUCTION : Dispatch::PREPASS));
     AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE);
     AddFloat4(data, m_Rotator[0]);
     AddUint(data, diffuseCheckerboard);
@@ -421,7 +472,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)
     ValidateConstants(data);
 
     // REPROJECT
-    data = PushDispatch(methodData, m_CommonSettings.isHistoryConfidenceInputsAvailable ? AsUint(Dispatch::REPROJECT_WITH_CONFIDENCE_INPUTS) : AsUint(Dispatch::REPROJECT));
+    data = PushDispatch(methodData, AsUint(m_CommonSettings.isHistoryConfidenceInputsAvailable ? Dispatch::REPROJECT_WITH_CONFIDENCE_INPUTS : Dispatch::REPROJECT));
     AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE);
     AddFloat(data, (float)settings.diffuseMaxAccumulatedFrameNum);
     AddFloat(data, (float)settings.diffuseMaxFastAccumulatedFrameNum);

@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.2.3 (NRD)
+# NVIDIA Real-time Denoisers v3.3.0 (NRD)
 
 ## SAMPLE APP
 
@@ -208,8 +208,8 @@ NRD.SetMethodSettings(nrd::Method::NRD_XXX, &settings);
 // Fill up the user pool
 NrdUserPool userPool = {};
 {
-    // Fill the required inputs and outputs in appropriate slots using entryDescs & entryFormat,
-    // applying remapping if necessary. Unused slots can be {nullptr, nri::Format::UNKNOWN}
+    // Fill only required "in-use" inputs and outputs in appropriate slots using entryDescs & entryFormat,
+    // applying remapping if necessary. Unused slots will be {nullptr, nri::Format::UNKNOWN}
     NrdIntegration_SetResource(userPool, ...);
     ...
     NrdIntegration_SetResource(userPool, ...);
@@ -276,9 +276,9 @@ Commons inputs:
 
 * **IN\_MV** - non-jittered primary surface motion (`old = new + MV`)
 
-  Supported variants:
-  - 3D world space motion (recommended) - camera motion should not be included (it's already in the matrices). In other words, if there are no moving objects all motion vectors = 0. The `.w` channel is unused and can be used by the app;
-  - 2D screen space motion
+  Supported variants via `ComminSettings::isMotionVectorInWorldSpace`:
+  - 3D world space motion (recommended) - camera motion should not be included (it's already in the matrices). In other words, if there are no moving objects all motion vectors = 0. The `.w` channel is unused and can be used by the app
+  - 2D screen space motion - 2D motion doesn't provide information about moving along view direction, it only allows to "get" the direction. NRD can introduce pixels with rejected history on dynamic objects in this case.
 
   Motion vector scaling can be provided via `CommonSettings::motionVectorScale`.
 
@@ -298,26 +298,30 @@ Commons inputs:
 
   If `materialID` is provided, NRD diffuse and specular denoisers won't mix up surfaces with different material IDs.
 
-* **IN\_VIEWZ** - `.x` - view-space Z coordinate of the primary surface
+* **IN\_VIEWZ** - `.x` - view-space Z coordinate of the primary hit position (linearized g-buffer depth)
 
-  Positive and negative values are supported.
+  Positive and negative values are supported. Z values in all pixels must be in the same space, matching space defined by matrices passed to NRD. If, for example, the protagonist's hands are rendered using special matrices, Z values should be computed as:
+  - reconstruct world position using special matrices for "hands"
+  - project on screen using matrices passed to NRD
+  - `.w` component is positive view Z (or just transform world space position to main view space and take `.z` component)
 
 See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
 
-## INTERACTION WITH PATH TRACERS
+## NOISY DATA REQUIREMENTS
+
+NRD sample is a good start to familiarize yourself with input requirements and best practices, but main requirements can be summarized to:
 
 - Path length must be separated into diffuse and specular paths
-- Do not pass *sum of lengths of all segments* as `hitT`. Use `NRD_GetCorrectedHitDist` instead (a solid baseline is to use hit distance for the first bounce only)
+- Do not pass *sum of lengths of all segments* as `hitT`. A solid baseline is to use hit distance for the 1st bounce only, it works for diffuse and specular signals. In case of multi-bounce specular on metals it's recommended to use `NRD_GetCorrectedHitDist` instead (and tricks from the sample)
 - `hitT`, passed to NRD, must not include primary hit distance
 - Noisy radiance inputs must not include material information at primary hits, i.e. material de-modulation is needed
-- Noise in provided hit distances must follow diffuse or specular lobe. It implies the following:
-  - `hitT` for `roughness = 0` must be clean
-  - In case of probabilistic selection of diffuse / specular sampling at the primary hit, provided `hitT` must follow the following rules:
-    - should not be divided by `pdf`
-    - if diffuse or specular sampling is skipped `hitT` must be set to `0` for corresponding signal type
-    - better enable `enableHitDistanceReconstruction` in a denoiser settings (if supported)
+- Noise in provided hit distances must follow a diffuse or specular lobe. It implies that `hitT` for `roughness = 0` must be clean (if probabilistic sampling is not in use)
+- In case of probabilistic diffuse / specular selection at the primary hit, provided `hitT` must follow the following rules:
+  - Should not be divided by `PDF`
+  - If diffuse or specular sampling is skipped, `hitT` must be set to `0` for corresponding signal type
+  - `hitDistanceReconstructionMode` must be set to something other than `OFF`, but bear in mind that the search area is limited to 3x3 or 5x5. In other words, it's the application's responsibility to guarantee a valid sample in this area. It can be achieved by clamping probabilities and using Bayer-like dithering (see the sample for more details)
+  - Pre-pass must be enabled (i.e. `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` must be set to 20-70 pixels) to compensate entropy increase, since radiance in valid samples is divided by probability to compensate 0 values in some neighbors
 - Probabilistic sampling for 2nd+ bounces is absolutely acceptable
-- NRD sample is a good start to familiarize yourself with input requirements and best practices
 
 ## INTEGRATION GUIDE, RECOMMENDATIONS AND GOOD PRACTICES
 
@@ -367,8 +371,8 @@ It's worth noting that *RELAX* has a better capability to preserve details in th
 **[NRD]** Passing pre-exposured colors (i.e. `color * exposure`) is not recommended, because a significant momentary change in exposure is hard to react to in this case.
 
 **[NRD]** Importance sampling is recommended to achieve good results in case of complex lighting environments. Consider using:
-   - Cosine distribution for diffuse from non-local light sources;
-   - VNDF sampling for specular;
+   - Cosine distribution for diffuse from non-local light sources
+   - VNDF sampling for specular
    - Custom importance sampling for local light sources (*RTXDI*).
 
 **[NRD]** Hit distances should come from an importance sampling method. But if denoising of AO/SO is needed, AO/SO can come from cos-weighted (or VNDF) sampling in a tradeoff of IQ.
@@ -385,14 +389,14 @@ It's worth noting that *RELAX* has a better capability to preserve details in th
 
 **[NRD]** Input signal quality can be improved by enabling *pre-pass* via setting `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` to a non-zero value. Usually pre-pass is needed for specular and less needed for diffuse (see sample for more details).
 
-**[NRD]** In case of probabilistic diffuse / specular split at the primary hit, it's recommended to enable hit distance reconstruction pass (`enableHitDistanceReconstruction` if exposed in the selected denoiser).
+**[NRD]** In case of probabilistic diffuse / specular split at the primary hit, hit distance reconstruction pass must be enabled, if exposed in the denoiser (see `HitDistanceReconstructionMode`).
+
+**[NRD]** In case of probabilistic diffuse / specular split at the primary hit, pre pass must be enabled, if exposed in the denoiser (see `diffusePrepassBlurRadius` and `specularPrepassBlurRadius`).
 
 **[NRD]** Maximum number of accumulated frames can be FPS dependent. The following formula can be used on the application side:
 ```
 maxAccumulatedFrameNum = accumulationPeriodInSeconds * FPS
 ```
-
-**[NRD INTEGRATION]** Ensure that all slots in `NrdUserPool` are filled. Not referenced slots can be set to 0.
 
 **[REBLUR]** In case of *REBLUR* ensure that `enableReferenceAccumulation = true` works properly first. It's not mandatory, but will help to simplify debugging of potential issues by implicitly disabling spatial filtering entirely.
 
@@ -408,7 +412,7 @@ maxAccumulatedFrameNum = accumulationPeriodInSeconds * FPS
 
 **[REBLUR]** Using "blue" noise can help to minimize shimmering in the output of AO/SO-only denoisers.
 
-**[REBLUR]** `enableAdvancedPrepass` mode offers better quality but requires valid data in `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details).
+**[REBLUR]** `enableAdvancedPrepass` mode offers better quality but requires valid `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details). It can't be used in case of probabilistic split at primary hit (advanced pre-pass assumes that every pixel has valid data, PDF reconstruction is not implemented for performance reasons).
 
 **[RELAX]** *RELAX* works well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 

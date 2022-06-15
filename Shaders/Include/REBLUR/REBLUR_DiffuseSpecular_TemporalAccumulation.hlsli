@@ -63,8 +63,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float4 specM2 = spec * spec;
         float roughnessM1 = roughness;
         float roughnessM2 = roughness * roughness;
-        float minHitDist3x3 = spec.w != 0.0 ? spec.w : REBLUR_INVALID_HITDIST;
-        float minHitDist5x5 = minHitDist3x3;
+        float minHitDist = spec.w;
+        float minHitDist5x5 = spec.w;
     #endif
 
     float3 Navg = N;
@@ -102,14 +102,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float c = EstimateCurvature( n.xyz, v, N, X );
                     curvature += c;
 
-                    if( s.w != 0.0 )
-                        minHitDist3x3 = min( s.w, minHitDist3x3 );
+                    minHitDist = min( s.w, minHitDist );
                 }
                 else
-                {
-                    if( s.w != 0.0 )
-                        minHitDist5x5 = min( s.w, minHitDist5x5 );
-                }
+                    minHitDist5x5 = min( s.w, minHitDist5x5 );
             #else
                 if( all( abs( o ) <= 1 ) ) // only in 3x3
                 {
@@ -136,7 +132,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         curvature /= 8.0;
 
-        minHitDist5x5 = min( minHitDist5x5, minHitDist3x3 );
+        minHitDist5x5 = min( minHitDist, minHitDist5x5 );
+        minHitDist = lerp( minHitDist, minHitDist5x5, STL::Math::SmoothStep( 0.04, 0.08, roughnessModified ) );
     #endif
 
     // Previous position for surface motion
@@ -288,26 +285,20 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #if( defined REBLUR_DIFFUSE )
         float4 diff = gIn_Diff[ pixelPos ];
 
-        // Checkerboard resolve // TODO: materialID support? Invalid hitDist support?
-        bool diffHasData = gDiffCheckerboard == 2 || checkerboard == gDiffCheckerboard;
-        if( !diffHasData && gResetHistory == 0 )
-        {
-            float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, diffAccumSpeedUpperBound );
-            float historyWeight = 1.0 - gCheckerboardResolveAccumSpeed * temporalAccumulationParams.x;
-
-            diff = MixHistoryAndCurrent( diffHistory, diff, historyWeight );
-        }
-
-        // Accumulation
+        // Accumulation with checkerboard resolve // TODO: materialID support?
         float diffAccumSpeed = diffAccumSpeedUpperBound;
         float diffAccumSpeedNonLinear = 1.0 / ( min( diffAccumSpeed, gMaxAccumulatedFrameNum ) + 1.0 );
+
+        bool diffHasData = gDiffCheckerboard == 2 || checkerboard == gDiffCheckerboard;
+        if( !diffHasData )
+            diffAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * saturate( diffAccumSpeedUpperBound / REBLUR_FIXED_FRAME_NUM );
 
         float4 diffResult = MixHistoryAndCurrent( diffHistory, diff, diffAccumSpeedNonLinear );
 
         // Output
         gOut_Diff[ pixelPos ] = diffResult;
 
-        float diffError = GetColorErrorForAdaptiveRadiusScale( diffResult, diffHistory, diffAccumSpeedNonLinear, 1.0, 0, false );
+        float diffError = GetColorErrorForAdaptiveRadiusScale( diffResult, diffHistory, diffAccumSpeedNonLinear, 1.0, false );
         float diffAccumSpeedFinal = min( diffMaxAccumSpeedNoConfidence, max( diffAccumSpeed, REBLUR_USE_HISTORY_FIX_WITHOUT_DISOCCLUSION ? 0 : REBLUR_FIXED_FRAME_NUM ) );
 
         gOut_DiffData[ pixelPos ] = diffError;
@@ -319,32 +310,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #if( defined REBLUR_SPECULAR )
         float smc = GetSpecMagicCurve( roughnessModified );
 
-        // Parallax
-        float parallaxSurface = ComputeParallax( Xprev, pixelUv, pixelUvPrev, gWorldToClip, gCameraDelta.xyz, gRectSize, gUnproject, gOrthoMode );
-        float parallaxInPixels = GetParallaxInPixels( parallaxSurface, gUnproject );
-
-        // Checkerboard resolve // TODO: materialID support? Invalid hitDist support?
-        bool specHasData = gSpecCheckerboard == 2 || checkerboard == gSpecCheckerboard;
-        if( !specHasData && gResetHistory == 0 )
-        {
-            float2 temporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, specAccumSpeedUpperBound, parallaxSurface, roughness );
-            float historyWeight = 1.0 - gCheckerboardResolveAccumSpeed * temporalAccumulationParams.x;
-
-            float4 specHistorySurfaceClamped = STL::Color::Clamp( specM1, specSigma * temporalAccumulationParams.y, specHistorySurface, REBLUR_USE_COLOR_CLAMPING_AABB ); // TODO: needed?
-            specHistorySurfaceClamped = lerp( specHistorySurfaceClamped, specHistorySurface, smc );
-
-            spec = MixHistoryAndCurrent( specHistorySurfaceClamped, spec, historyWeight, roughnessModified );
-        }
-
         // Filtered current hit distance
-        minHitDist3x3 = minHitDist3x3 == REBLUR_INVALID_HITDIST ? specHistorySurface.w : minHitDist3x3;
-        minHitDist5x5 = minHitDist5x5 == REBLUR_INVALID_HITDIST ? specHistorySurface.w : minHitDist3x3;
-
-        float hitDist = lerp( minHitDist3x3, minHitDist5x5, STL::Math::SmoothStep( 0.04, 0.08, roughnessModified ) );
-
-        float hitDistScaleForTracking = hitDist;
+        float hitDist = minHitDist;
         #if( REBLUR_USE_OPTIMIZED_HIT_DIST_FOR_TRACKING != 0 )
-            float2 searchRadius = REBLUR_HIT_DIST_SEARCH_RADIUS * gInvScreenSize * smc * NoV;
+            float2 searchRadius = max( REBLUR_HIT_DIST_SEARCH_RADIUS, gSpecPrepassBlurRadius ) * smc * NoV * gInvScreenSize;
 
             [unroll]
             for( int s = 0; s < 8; s++ )
@@ -355,13 +324,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 float2 uvScaled = uv * gResolutionScale + gRectOffset * float( !gIsPrepassEnabled );
 
                 float hd = gIn_Spec.SampleLevel( gNearestMirror, uvScaled, 0 ).w;
-                hd *= IsInScreen( uvScaled );
 
-                if( hd != 0.0 )
+                if( IsInScreen( uv ) )
                     hitDist = min( hitDist, hd );
             }
         #endif
-        hitDistScaleForTracking = saturate( hitDist / ( hitDistScaleForTracking + 1e-6 ) );
+        float hitDistScaleForTracking = saturate( hitDist / ( specM1.w + 1e-6 ) );
 
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         hitDist *= hitDistScale;
@@ -412,11 +380,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             gIn_History_Spec, specHistoryVirtual
         );
 
+        // Parallax
+        float parallaxSurface = ComputeParallax( Xprev, pixelUv, pixelUvPrev, gWorldToClip, gCameraDelta.xyz, gRectSize, gUnproject, gOrthoMode );
+        float parallaxInPixels = GetParallaxInPixels( parallaxSurface, gUnproject );
+
         // Virtual motion - hit distance similarity // TODO: move into "prev-prev" loop?
-        // Tests: 3, 6, 8, 11, 14, 100, 104, 106, 109, 110, 120, 127, 130, 131
+        // Tests: 3, 6, 8, 11, 14, 100, 103, 104, 106, 109, 110, 120, 127, 130, 131, 138, 139
         float specAccumSpeedSurface = GetSpecAccumSpeed( specAccumSpeedUpperBound, roughnessModified, NoV, parallaxSurface * hitDistFactor );
         float hitDistAccumSpeedNonLinear = 1.0 / ( min( specAccumSpeedSurface, gMaxAccumulatedFrameNum ) + 1.0 );
-        hitDistAccumSpeedNonLinear = max( hitDistAccumSpeedNonLinear, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) );
         hitDistAccumSpeedNonLinear = lerp( 1.0, hitDistAccumSpeedNonLinear, STL::Math::SmoothStep( 0.04, 0.11, roughnessModified ) ); // see tests 114 and 138
 
         float hitDistSurface = lerp( specHistorySurface.w, spec.w, hitDistAccumSpeedNonLinear ) * hitDistScale;
@@ -425,13 +396,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float hitDistVirtualCompressed = abs( ApplyThinLensEquation( NoV, hitDistVirtual, curvature ) );
         float hitDistDelta = abs( hitDistSurfaceCompressed - hitDistVirtualCompressed ); // sigma subtraction can worsen!
         float hitDistMax = max( hitDistSurfaceCompressed, hitDistVirtualCompressed );
-        float parallaxSurfaceNorm = SaturateParallax( parallaxSurface * REBLUR_PARALLAX_SCALE );
-        float oneMinusParallaxSurfaceNormMod = 1.0 - parallaxSurfaceNorm * ( 1.0 - roughnessModified );
+        float parallaxSurfaceNorm = SaturateParallax( parallaxSurface * REBLUR_PARALLAX_SCALE ); // TODO: better use virtual parallax, but more "minimum" hitDist is needed
         float hitDistDeltaScale = lerp( 50.0, 0.0, roughnessModified ) * parallaxSurfaceNorm;
-        float virtualMotionHitDistWeight = 1.0 - saturate( hitDistDeltaScale * hitDistDelta / ( oneMinusParallaxSurfaceNormMod * frustumHeight + hitDistMax + 1e-6 ) );
+        float virtualMotionHitDistWeight = 1.0 - virtualHistoryAmount * virtualHistoryAmount * saturate( hitDistDeltaScale * hitDistDelta / ( smc * frustumHeight + hitDistMax + 1e-6 ) );
 
-        float minConfidence = smc * saturate( gFramerateScale * 0.66 ) + 0.05 * gFramerateScale * oneMinusParallaxSurfaceNormMod;
-        minConfidence = lerp( 1.0, saturate( minConfidence ), parallaxSurfaceNorm ); // TODO: parallaxSurfaceNorm => 1 - oneMinusParallaxSurfaceNormMod?
+        float minConfidence = smc * saturate( gFramerateScale * 0.5 );
         virtualHistoryConfidence *= lerp( minConfidence, 1.0, virtualMotionHitDistWeight );
 
         // Normal weight ( with fixing trails if radiance on a flat surface is taken from a sloppy surface )
@@ -503,9 +472,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Fallback to surface motion if virtual motion doesn't go well
         virtualHistoryAmount *= saturate( ( specAccumSpeedVirtual + 1.0 ) / ( specAccumSpeedSurface * smc + 1.0 ) );
 
-        // Final composition
+        // Accumulation with checkerboard resolve // TODO: materialID support?
         float specAccumSpeed = InterpolateAccumSpeeds( specAccumSpeedSurface, specAccumSpeedVirtual, virtualHistoryAmount );
         float specAccumSpeedNonLinear = 1.0 / ( min( specAccumSpeed, gMaxAccumulatedFrameNum ) + 1.0 );
+
+        bool specHasData = gSpecCheckerboard == 2 || checkerboard == gSpecCheckerboard;
+        if( !specHasData )
+            specAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * saturate( specAccumSpeedUpperBound / REBLUR_FIXED_FRAME_NUM );
 
         float4 specHistory = lerp( specHistorySurface, specHistoryVirtualMixed, virtualHistoryAmount );
         float4 specResult = MixHistoryAndCurrent( specHistory, spec, specAccumSpeedNonLinear, roughnessModified );
@@ -521,7 +494,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         virtualHistoryConfidence = lerp( 1.0, virtualHistoryConfidence, virtualHistoryAmount );
         virtualHistoryConfidence = lerp( virtualHistoryConfidence, 1.0, specAccumSpeedNonLinear );
 
-        float specError = GetColorErrorForAdaptiveRadiusScale( specResult, specHistory, specAccumSpeedNonLinear, roughnessModified, 0, false );
+        float specError = GetColorErrorForAdaptiveRadiusScale( specResult, specHistory, specAccumSpeedNonLinear, roughnessModified, false );
         float specAccumSpeedFinal = min( specMaxAccumSpeedNoConfidence, max( specAccumSpeed, REBLUR_USE_HISTORY_FIX_WITHOUT_DISOCCLUSION ? 0 : REBLUR_FIXED_FRAME_NUM ) );
 
         gOut_SpecData[ pixelPos ] = float4( specError, virtualHistoryConfidence, virtualHistoryAmount, hitDistScaleForTracking );

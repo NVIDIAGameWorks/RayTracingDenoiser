@@ -66,22 +66,37 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h)
 
     const uint32_t halfMaxPassNum = (RELAX_MAX_ATROUS_PASS_NUM - 2 + 1) / 2;
 
-    PushPass("Hit distance reconstruction");
+    PushPass("Hit distance reconstruction"); // 3x3
     {
         PushInput(AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST));
+        PushInput(AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST));
         PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
         PushInput(AsUint(ResourceType::IN_VIEWZ));
 
         PushOutput(AsUint(Transient::SPEC_ILLUM_PING));
+        PushOutput(AsUint(Transient::DIFF_ILLUM_PING));
 
-        AddDispatch(RELAX_DiffuseSpecular_HitDistReconstruction, SumConstants(0, 0, 0, 0), 8, 1);
+        AddDispatch(RELAX_DiffuseSpecular_HitDistReconstruction_3x3, SumConstants(0, 0, 0, 0), 8, 1);
+    }
+
+    PushPass("Hit distance reconstruction"); // 5x5
+    {
+        PushInput(AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST));
+        PushInput(AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST));
+        PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+        PushInput(AsUint(ResourceType::IN_VIEWZ));
+
+        PushOutput(AsUint(Transient::SPEC_ILLUM_PING));
+        PushOutput(AsUint(Transient::DIFF_ILLUM_PING));
+
+        AddDispatch(RELAX_DiffuseSpecular_HitDistReconstruction_5x5, SumConstants(0, 0, 0, 0), 8, 1);
     }
 
     PushPass("Pre-pass"); // After hit distance reconstruction
     {
         // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
         PushInput( AsUint(Transient::SPEC_ILLUM_PING) );
-        PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
+        PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
@@ -333,7 +348,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
 {
     enum class Dispatch
     {
-        HITDIST_RECONSTRUCTION,
+        HITDIST_RECONSTRUCTION_3x3,
+        HITDIST_RECONSTRUCTION_5x5,
         PREPASS_AFTER_HITDIST_RECONSTRUCTION,
         PREPASS,
         REPROJECT,
@@ -380,6 +396,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     ml::float3 prevFrustumForward = RELAX_GetFrustumForward(m_ViewToWorldPrev, m_FrustumPrev);
     bool isCameraStatic = RELAX_IsCameraStatic(ml::float3(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z), frustumRight, frustumUp, frustumForward, prevFrustumRight, prevFrustumUp, prevFrustumForward);
 
+    bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
 
     // Checkerboard logic
     uint32_t specularCheckerboard = 2;
@@ -413,45 +430,29 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     }
 
     // HIT DISTANCE RECONSTRUCTION
-    if (settings.enableSpecularHitDistanceReconstruction)
+    if (enableHitDistanceReconstruction)
     {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::HITDIST_RECONSTRUCTION));
+        bool is3x3 = settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_3X3;
+        Constant* data = PushDispatch(methodData, is3x3 ? AsUint(Dispatch::HITDIST_RECONSTRUCTION_3x3) : AsUint(Dispatch::HITDIST_RECONSTRUCTION_5x5));
         AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE_SPECULAR);
         ValidateConstants(data);
     }
 
     // PREPASS
-    if (settings.enableSpecularHitDistanceReconstruction)
-    {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::PREPASS_AFTER_HITDIST_RECONSTRUCTION));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE_SPECULAR);
-        AddFloat4(data, m_Rotator[0]);
-        AddUint(data, diffuseCheckerboard);
-        AddUint(data, specularCheckerboard);
-        AddFloat(data, settings.diffusePrepassBlurRadius);
-        AddFloat(data, settings.specularPrepassBlurRadius);
-        AddFloat(data, 1.0f);
-        AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
-        AddFloat(data, settings.roughnessFraction);
-        ValidateConstants(data);
-    }
-    else
-    {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::PREPASS));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE_SPECULAR);
-        AddFloat4(data, m_Rotator[0]);
-        AddUint(data, diffuseCheckerboard);
-        AddUint(data, specularCheckerboard);
-        AddFloat(data, settings.diffusePrepassBlurRadius);
-        AddFloat(data, settings.specularPrepassBlurRadius);
-        AddFloat(data, 1.0f);
-        AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
-        AddFloat(data, settings.roughnessFraction);
-        ValidateConstants(data);
-    }
+    Constant* data = PushDispatch(methodData, AsUint(enableHitDistanceReconstruction ? Dispatch::PREPASS_AFTER_HITDIST_RECONSTRUCTION : Dispatch::PREPASS));
+    AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE_SPECULAR);
+    AddFloat4(data, m_Rotator[0]);
+    AddUint(data, diffuseCheckerboard);
+    AddUint(data, specularCheckerboard);
+    AddFloat(data, settings.diffusePrepassBlurRadius);
+    AddFloat(data, settings.specularPrepassBlurRadius);
+    AddFloat(data, 1.0f);
+    AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
+    AddFloat(data, settings.roughnessFraction);
+    ValidateConstants(data);
 
     // REPROJECT
-    Constant* data = PushDispatch(methodData, m_CommonSettings.isHistoryConfidenceInputsAvailable ? AsUint(Dispatch::REPROJECT_WITH_CONFIDENCE_INPUTS) : AsUint(Dispatch::REPROJECT));
+    data = PushDispatch(methodData, AsUint(m_CommonSettings.isHistoryConfidenceInputsAvailable ? Dispatch::REPROJECT_WITH_CONFIDENCE_INPUTS : Dispatch::REPROJECT));
     AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE_SPECULAR);
     AddFloat(data, (float)settings.specularMaxAccumulatedFrameNum);
     AddFloat(data, (float)settings.specularMaxFastAccumulatedFrameNum);

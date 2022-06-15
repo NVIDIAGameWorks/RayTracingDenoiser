@@ -167,8 +167,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             curvature * pixelSize, diffInternalData.x
         );
 
-        float diffMipScale = lerp( 0.0, 1.0, REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
-        float diffMinAccumSpeed = min( diffInternalData.y, REBLUR_FIXED_FRAME_NUM * diffMipScale );
+        // TODO: diffAntilag = lerp( diffAntilag, 1.0, diffData.x )?
+
+        float diffMinAccumSpeed = min( diffInternalData.y, REBLUR_FIXED_FRAME_NUM * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
         diffInternalData.y = lerp( diffMinAccumSpeed, diffInternalData.y, diffAntilag );
 
         // Clamp history and combine with the current frame
@@ -192,6 +193,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             uint diffMode = REBLUR_DEBUG;
             if( diffMode == 1 ) // Accumulated frame num
                 diffResult.w = 1.0 - saturate( diffInternalData.y / ( gMaxAccumulatedFrameNum + 1.0 ) ); // map history reset to red
+            else if( diffMode == 2 ) // Antilag
+                diffResult.w = diffAntilag;
 
             // Show how colorization represents 0-1 range on the bottom
             diffResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.96 ? pixelUv.x : diffResult.w );
@@ -236,9 +239,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float hitDistFactor = GetHitDistFactor( spec.w * hitDistScale, frustumHeight, 0.0 ); // hitDist is for tracking only
         parallaxSurface *= hitDistFactor;
 
-        // Not needed for TA, but helps TS to mitigate suboptimal reprojection in TA
-        virtualHistoryAmount *= STL::Math::Sqrt01( hitDistFactor ); // TODO: keep an eye on it
-
         // Combine surface and virtual motion
         float4 specHistory = lerp( specHistorySurface, specHistoryVirtual, virtualHistoryAmount );
 
@@ -248,8 +248,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
             curvature * pixelSize, specInternalData.x, roughness );
 
-        float specMipScale = lerp( 1.0 - virtualHistoryConfidence * virtualHistoryConfidence, 1.0, REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
-        float specMinAccumSpeed = min( specInternalData.y, REBLUR_FIXED_FRAME_NUM * specMipScale );
+        specAntilag = lerp( 1.0, specAntilag, virtualHistoryConfidence * virtualHistoryConfidence );
+        specAntilag = lerp( specAntilag, 1.0, specData.x );
+
+        float specMinAccumSpeed = min( specInternalData.y, REBLUR_FIXED_FRAME_NUM * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
         specInternalData.y = lerp( specMinAccumSpeed, specInternalData.y, specAntilag );
 
         // Clamp history and combine with the current frame
@@ -273,19 +275,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             uint specMode = REBLUR_DEBUG;
             if( specMode == 1 ) // Accumulated frame num
                 specResult.w = 1.0 - saturate( specInternalData.y / ( gMaxAccumulatedFrameNum + 1.0 ) ); // map history reset to red
-            else if( specMode == 2 ) // Error
+            else if( specMode == 2 ) // Antilag
+                specResult.w = specAntilag;
+            else if( specMode == 3 ) // Error
                 specResult.w = specData.x;
-            else if( specMode == 3 ) // Curvature magnitude
+            else if( specMode == 4 ) // Curvature magnitude
                 specResult.w = abs( curvature * pixelSize );
-            else if( specMode == 4 ) // Curvature sign
+            else if( specMode == 5 ) // Curvature sign
                 specResult.w = curvature * pixelSize < 0 ? 1 : 0;
-            else if( specMode == 5 ) // Virtual history amount
+            else if( specMode == 6 ) // Virtual history amount
                 specResult.w = virtualHistoryAmount;
-            else if( specMode == 6 ) // Hit dist scale for tracking
+            else if( specMode == 7 ) // Hit dist scale for tracking
                 specResult.w = hitDistScaleForTracking;
-            else if( specMode == 7 ) // Virtual history confidence
+            else if( specMode == 8 ) // Virtual history confidence
                 specResult.w = 1.0 - virtualHistoryConfidence; // map zero confidence to red
-            else if( specMode == 8 ) // Parallax
+            else if( specMode == 9 ) // Parallax
                 specResult.w = parallaxSurface;
 
             // Show how colorization represents 0-1 range on the bottom

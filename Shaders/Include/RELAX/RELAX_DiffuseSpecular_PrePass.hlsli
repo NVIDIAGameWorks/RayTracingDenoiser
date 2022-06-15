@@ -19,6 +19,7 @@ float getNormalWeightParams(float nonLinearAccumSpeed, float roughness = 1.0, fl
     s = lerp(s, 1.0, nonLinearAccumSpeed);
     angle *= s;
     angle = 1.0 / max(angle, NRD_NORMAL_ENCODING_ERROR);
+
     return angle;
 }
 
@@ -63,9 +64,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     // Early out if linearZ is beyond denoising range
     [branch]
     if (centerViewZ > gDenoisingRange)
-    {
         return;
-    }
 
     // Checkerboard resolve weights
     float2 checkerboardResolveWeights = 1.0;
@@ -100,9 +99,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
     bool diffHasData = true;
     if (gDiffuseCheckerboard != 2)
-    {
         diffHasData = (checkerboard == gDiffuseCheckerboard);
-    }
 
     if (!diffHasData)
     {
@@ -132,17 +129,17 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float hitDistFactor = GetHitDistFactor(hitDist, frustumHeight); // NoD = 1
         float blurRadius = gDiffuseBlurRadius * hitDistFactor;
 
-        if (diffuseIllumination.w == 0.0) blurRadius = max(blurRadius, 1.0);
+        if (diffuseIllumination.w == 0.0)
+            blurRadius = max(blurRadius, 1.0);
 
-        float worldBlurRadius = PixelRadiusToWorld(gUnproject, gOrthoMode, blurRadius, centerViewZ) *
-            min(gResolutionScale.x, gResolutionScale.y);
+        float worldBlurRadius = PixelRadiusToWorld(gUnproject, gOrthoMode, blurRadius, centerViewZ) * min(gResolutionScale.x, gResolutionScale.y);
 
         float normalWeightParams = getNormalWeightParams(1.0 / 9.0, 1.0);
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams(diffuseIllumination.w, 1.0 / 9.0);
 
         float weightSum = 1.0;
 
-        float diffMinHitDistanceWeight = (diffuseIllumination.a == 0) ? 1.0 : 0.2;
+        float diffMinHitDistanceWeight = 0.2;
 
         // Spatial blur
         [unroll]
@@ -156,9 +153,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             // Handle half res input in the checkerboard mode
             float2 checkerboardUv = uv;
             if (gDiffuseCheckerboard != 2)
-            {
                 checkerboardUv = ApplyCheckerboard(uv, gDiffuseCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
-            }
 
             // Fetch data
             float2 uvScaled = uv * gResolutionScale + gRectOffset;
@@ -177,8 +172,6 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             sampleWeight *= GetGaussianWeight(offset.z);
             sampleWeight *= CompareMaterials(centerMaterialID, sampleMaterialID, gDiffMaterialMask);
 
-            float minHitDistanceWeight = 0.2;
-            float hitDistanceWeight = GetHitDistanceWeight(hitDistanceWeightParams, sampleDiffuseIllumination.a);
             sampleWeight *= GetPlaneDistanceWeight(
                 centerWorldPos,
                 centerNormal,
@@ -187,18 +180,16 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 gDepthThreshold);
             sampleWeight *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
 
-            if ((sampleDiffuseIllumination.a != 0) || (diffMinHitDistanceWeight == 1.0))
-            {
-                sampleWeight *= lerp(diffMinHitDistanceWeight, 1.0, hitDistanceWeight);
+            sampleWeight *= lerp(diffMinHitDistanceWeight, 1.0, GetHitDistanceWeight(hitDistanceWeightParams, sampleDiffuseIllumination.a));
 
-                diffuseIllumination += (sampleWeight > 0) ? sampleDiffuseIllumination * sampleWeight : 0;
+            diffuseIllumination += (sampleWeight > 0) ? sampleDiffuseIllumination * sampleWeight : 0;
 
-                weightSum += sampleWeight;
-            }
+            weightSum += sampleWeight;
         }
 
         diffuseIllumination /= weightSum;
     }
+
     gOutDiffuseIllumination[pixelPos] = clamp(diffuseIllumination, 0, NRD_FP16_MAX);
 #endif
 
@@ -208,9 +199,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
     bool specHasData = true;
     if (gSpecularCheckerboard != 2)
-    {
         specHasData = (checkerboard == gSpecularCheckerboard);
-    }
 
     if (!specHasData)
     {
@@ -279,9 +268,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             // Handle half res input in the checkerboard mode
             float2 checkerboardUv = uv;
             if (gSpecularCheckerboard != 2)
-            {
                 checkerboardUv = ApplyCheckerboard(uv, gSpecularCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
-            }
 
             // Fetch data
             float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
@@ -315,16 +302,13 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             // which should not be pre-blurred
             float worldPosDiff = length(sampleWorldPos - centerWorldPos);
             float rcw = saturate(sampleSpecularIllumination.a / (15.0 * worldPosDiff + 1.0e-4));
-            sampleWeight *= rcw * rcw;
+            sampleWeight *= sampleSpecularIllumination.a > 0 ? rcw * rcw : 1.0;
 
-            if ((sampleSpecularIllumination.a != 0) || (specMinHitDistanceWeight == 1.0))
-            {
-                sampleWeight *= lerp(specMinHitDistanceWeight, 1.0, hitDistanceWeight);
+            sampleWeight *= lerp(specMinHitDistanceWeight, 1.0, hitDistanceWeight);
 
-                specularIllumination.rgb += (sampleWeight > 0) ? sampleSpecularIllumination.rgb * sampleWeight : 0;
+            specularIllumination.rgb += (sampleWeight > 0) ? sampleSpecularIllumination.rgb * sampleWeight : 0;
 
-                weightSum += sampleWeight;
-            }
+            weightSum += sampleWeight;
 
             if ((sampleSpecularIllumination.a != 0) && (minHitT > sampleSpecularIllumination.a)) minHitT = sampleSpecularIllumination.a;
 
@@ -333,7 +317,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
         specularIllumination.a = max(1.0e-6, lerp(specularHitT, minHitT, NoV));
     }
+
     gOutSpecularIllumination[pixelPos] = clamp(specularIllumination, 0, NRD_FP16_MAX);
 #endif
-
 }

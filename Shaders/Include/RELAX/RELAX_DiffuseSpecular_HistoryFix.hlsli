@@ -31,9 +31,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     // Early out if no disocclusion detected
     [branch]
     if ((centerViewZ > gDenoisingRange) || (historyLength > gFramesToFix))
-    {
         return;
-    }
 
 #if( defined RELAX_DIFFUSE )
     float4 diffuseIlluminationAnd2ndMoment = gDiffuseIllumination[pixelPos];
@@ -64,57 +62,60 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
     [unroll]
     for (int j = -2; j <= 2; j++)
-    [unroll]
-    for (int i = -2; i <= 2; i++)
     {
-        int dx = (int)(i * r);
-        int dy = (int)(j * r);
-
-        int2 samplePosInt = (int2)pixelPos + int2(dx, dy);
-
-        bool isInside = all(samplePosInt >= int2(0, 0)) && all(samplePosInt < (int2)gRectSize);
-        if ((i == 0) && (j == 0)) continue;
-
-        float sampleMaterialID;
-        float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[samplePosInt], sampleMaterialID).rgb;
-
-        float sampleViewZ = gViewZFP16[samplePosInt] / NRD_FP16_VIEWZ_SCALE;
-        float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(samplePosInt, sampleViewZ);
-        float geometryWeight = GetPlaneDistanceWeight(
-            centerWorldPos,
-            centerNormal,
-            gOrthoMode == 0 ? centerViewZ : 1.0,
-            sampleWorldPos,
-            gDepthThreshold);
-
-#if( defined RELAX_DIFFUSE )
-        // Summing up diffuse result
-        float diffuseW = geometryWeight;
-        diffuseW *= getDiffuseNormalWeight(centerNormal, sampleNormal);
-        diffuseW = isInside ? diffuseW : 0;
-        diffuseW *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask);
-
-        if (diffuseW > 1e-4)
+        [unroll]
+        for (int i = -2; i <= 2; i++)
         {
-            float4 sampleDiffuseIlluminationAnd2ndMoment = gDiffuseIllumination[samplePosInt];
-            diffuseIlluminationAnd2ndMomentSum += sampleDiffuseIlluminationAnd2ndMoment * diffuseW;
-            diffuseWSum += diffuseW;
-        }
-#endif
-#if( defined RELAX_SPECULAR )
-        // Summing up specular result
-        float specularW = geometryWeight;
-        specularW *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
-        specularW = isInside ? specularW : 0;
-        specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
+            int dx = (int)(i * r);
+            int dy = (int)(j * r);
 
-        if (specularW > 1e-4)
-        {
-            float4 sampleSpecularIlluminationAnd2ndMoment = gSpecularIllumination[samplePosInt];
-            specularIlluminationAnd2ndMomentSum += sampleSpecularIlluminationAnd2ndMoment * specularW;
-            specularWSum += specularW;
+            int2 samplePosInt = (int2)pixelPos + int2(dx, dy);
+
+            bool isInside = all(samplePosInt >= int2(0, 0)) && all(samplePosInt < (int2)gRectSize);
+            if ((i == 0) && (j == 0))
+                continue;
+
+            float sampleMaterialID;
+            float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[samplePosInt], sampleMaterialID).rgb;
+
+            float sampleViewZ = gViewZFP16[samplePosInt] / NRD_FP16_VIEWZ_SCALE;
+            float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(samplePosInt, sampleViewZ);
+            float geometryWeight = GetPlaneDistanceWeight(
+                centerWorldPos,
+                centerNormal,
+                gOrthoMode == 0 ? centerViewZ : 1.0,
+                sampleWorldPos,
+                gDepthThreshold);
+
+    #if( defined RELAX_DIFFUSE )
+            // Summing up diffuse result
+            float diffuseW = geometryWeight;
+            diffuseW *= getDiffuseNormalWeight(centerNormal, sampleNormal);
+            diffuseW = isInside ? diffuseW : 0;
+            diffuseW *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask);
+
+            if (diffuseW > 1e-4)
+            {
+                float4 sampleDiffuseIlluminationAnd2ndMoment = gDiffuseIllumination[samplePosInt];
+                diffuseIlluminationAnd2ndMomentSum += sampleDiffuseIlluminationAnd2ndMoment * diffuseW;
+                diffuseWSum += diffuseW;
+            }
+    #endif
+    #if( defined RELAX_SPECULAR )
+            // Summing up specular result
+            float specularW = geometryWeight;
+            specularW *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
+            specularW = isInside ? specularW : 0;
+            specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
+
+            if (specularW > 1e-4)
+            {
+                float4 sampleSpecularIlluminationAnd2ndMoment = gSpecularIllumination[samplePosInt];
+                specularIlluminationAnd2ndMomentSum += sampleSpecularIlluminationAnd2ndMoment * specularW;
+                specularWSum += specularW;
+            }
+    #endif
         }
-#endif
     }
 
     // Output buffers will hold the pixels with disocclusion processed by history fix.

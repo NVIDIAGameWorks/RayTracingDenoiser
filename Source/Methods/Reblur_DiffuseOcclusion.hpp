@@ -36,16 +36,29 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
 
     REBLUR_SET_SHARED_CONSTANTS;
 
-    PushPass("Hit distance reconstruction");
+    for (int i = 0; i < 2; i++)
     {
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_DIFF_HITDIST) );
+        bool is5x5                  = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
-        PushOutput( AsUint(Transient::DIFF_TEMP) );
+        PushPass("Hit distance reconstruction");
+        {
+            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( AsUint(ResourceType::IN_DIFF_HITDIST) );
 
-        AddDispatch( REBLUR_DiffuseOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-        AddDispatch( REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            PushOutput( AsUint(Transient::DIFF_TEMP) );
+
+            if (is5x5)
+            {
+                AddDispatch( REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
+            else
+            {
+                AddDispatch( REBLUR_DiffuseOcclusion_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
+        }
     }
 
     for (int i = 0; i < 4; i++)
@@ -158,7 +171,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     enum class Dispatch
     {
         HITDIST_RECONSTRUCTION,
-        TEMPORAL_ACCUMULATION   = HITDIST_RECONSTRUCTION + 1 * 2,
+        TEMPORAL_ACCUMULATION   = HITDIST_RECONSTRUCTION + 2 * 2,
         MIP_GEN                 = TEMPORAL_ACCUMULATION + 4 * 2,
         HISTORY_FIX             = MIP_GEN + 1 * 2,
         BLUR                    = HISTORY_FIX + 1 * 2,
@@ -167,6 +180,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     };
 
     const ReblurSettings& settings = methodData.settings.reblur;
+
+    bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
 
     uint32_t specCheckerboard = 2;
     uint32_t diffCheckerboard = 2;
@@ -203,16 +218,16 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     }
 
     // HITDIST_RECONSTRUCTION
-    if (settings.enableHitDistanceReconstruction)
+    if (enableHitDistanceReconstruction)
     {
-        uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (settings.enablePerformanceMode ? 1 : 0);
+        uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (settings.hitDistanceReconstructionMode == nrd::HitDistanceReconstructionMode::AREA_5X5 ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
         Constant* data = PushDispatch(methodData, passIndex);
         AddSharedConstants_Reblur(methodData, settings, data);
         ValidateConstants(data);
     }
 
     // TEMPORAL_ACCUMULATION
-    uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isHistoryConfidenceInputsAvailable ? 4 : 0) + (settings.enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+    uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isHistoryConfidenceInputsAvailable ? 4 : 0) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
     Constant* data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
     AddFloat4x4(data, m_WorldToViewPrev);

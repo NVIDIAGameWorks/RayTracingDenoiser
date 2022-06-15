@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 2
+#define NRD_SETTINGS_VERSION_MINOR 3
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -48,6 +48,20 @@ namespace nrd
 
         // Like RESTART, but additionally clears resources from potential garbage
         CLEAR_AND_RESTART,
+
+        MAX_NUM
+    };
+
+    enum class HitDistanceReconstructionMode : uint8_t
+    {
+        // Probabilistic split at primary hit is not used, hence hit distance is always valid (reconstruction is not needed)
+        OFF,
+
+        // If hit distance is invalid due to probabilistic sampling, reconstruct using 3x3 neighbors
+        AREA_3X3,
+
+        // If hit distance is invalid due to probabilistic sampling, reconstruct using 5x5 neighbors
+        AREA_5X5,
 
         MAX_NUM
     };
@@ -205,14 +219,14 @@ namespace nrd
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
 
-        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
+        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames (= FPS * "time of accumulation")
         uint32_t maxAccumulatedFrameNum = 31;
 
-        // (pixels) - pre-accumulation spatial reuse pass blur radius
-        float diffusePrepassBlurRadius = 0.0f;
+        // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of probabilistic sampling)
+        float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
 
-        // (pixels) - base (worst case) denoising radius
+        // (pixels) - base (worst case) denoising radius (30 is a baseline for 1440p)
         float blurRadius = 30.0f;
 
         // (normalized %) - defines base blur radius shrinking when number of accumulated frames increases
@@ -242,16 +256,16 @@ namespace nrd
         // (normalized %) - adds a portion of input to the output of spatial passes
         float inputMix = 0.0f;
 
-        // [0.01; 0.1] - default is tuned for 0.5rpp for the worst case
-        float residualNoiseLevel = 0.03f;
-
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
+
+        // Must be used only in case of probabilistic sampling (not checkerboarding), when a pixel can be skipped and have "0" (invalid) hit distance
+        HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;
 
         // Adds bias in case of badly defined signals, but tries to fight with fireflies
         bool enableAntiFirefly = false;
 
-        // A requiring IN_DIFF_DIRECTION_PDF / IN_SPEC_DIRECTION_PDF spatial reuse pass
+        // A requiring IN_DIFF_DIRECTION_PDF / IN_SPEC_DIRECTION_PDF spatial reuse pass (can't be used with probabilistic sampling)
         bool enableAdvancedPrepass = false;
 
         // Turns off spatial filtering and virtual motion based specular tracking
@@ -263,9 +277,6 @@ namespace nrd
         // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
-
-        // Must be used only in case of probabilistic sampling (not checkerboarding), when a pixel can be skipped and have "0" (invalid) hit distance
-        bool enableHitDistanceReconstruction = false;
     };
 
     // SIGMA
@@ -285,7 +296,7 @@ namespace nrd
 
     struct RelaxDiffuseSpecularSettings
     {
-        // (pixels) - pre-accumulation spatial reuse pass blur radius
+        // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of probabilistic sampling)
         float diffusePrepassBlurRadius = 0.0f;
         float specularPrepassBlurRadius = 50.0f;
 
@@ -347,6 +358,9 @@ namespace nrd
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
 
+        // Must be used only in case of probabilistic sampling (not checkerboarding), when a pixel can be skipped and have "0" (invalid) hit distance
+        HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;
+
         // Firefly suppression
         bool enableAntiFirefly = false;
 
@@ -362,9 +376,6 @@ namespace nrd
         // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
-
-        // Must be used only in case of probabilistic sampling (not checkerboarding), when a pixel can be skipped and have "0" (invalid) hit distance
-        bool enableSpecularHitDistanceReconstruction = false;
     };
 
     // RELAX_DIFFUSE
@@ -391,6 +402,7 @@ namespace nrd
         float depthThreshold = 0.01f;
 
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
+        HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;
 
         bool enableAntiFirefly = false;
         bool enableReprojectionTestSkippingWithoutMotion = false;
@@ -430,13 +442,13 @@ namespace nrd
         float roughnessEdgeStoppingRelaxation = 0.3f;
 
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
+        HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;
 
         bool enableAntiFirefly = false;
         bool enableReprojectionTestSkippingWithoutMotion = false;
         bool enableSpecularVirtualHistoryClamping = true;
         bool enableRoughnessEdgeStopping = true;
         bool enableMaterialTest = false;
-        bool enableSpecularHitDistanceReconstruction = false;
     };
 
     // REFERENCE

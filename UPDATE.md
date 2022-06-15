@@ -36,10 +36,20 @@ This guide has been designed to simplify migration to a newer version.
 - removed `PrePassMode`
 - added `maxSupportedMaterialBitNum` and `isCompiledWithOctPackNormalEncoding` to `LibraryDesc`
 - added optional `worldPrevToWorldMatrix` to `CommonSettings`
-- *REBLUR*
+- *REBLUR*:
   - exposed `diffusePrepassBlurRadius` and `specularPrepassBlurRadius`
   - exposed `enableAdvancedPrepass` matching previously used `PrePassMode::ADVANCED`
   - exposed `enableHitDistanceReconstruction`
-- *RELAX*
+- *RELAX*:
   - removed `diffuseHistoryRejectionNormalThreshold`
   - removed `minLuminanceWeight` and added separated `diffuseMinLuminanceWeight` and `specularMinLuminanceWeight`
+  - exposed `enableSpecularHitDistanceReconstruction`
+
+## To v3.3
+
+- exposed `HitDistanceReconstructionMode`
+- *REBLUR*:
+  - `enableHitDistanceReconstruction` replaced with `hitDistanceReconstructionMode`
+  - removed `residualNoiseLevel`
+- *RELAX*:
+  - `enableSpecularHitDistanceReconstruction` replaced with `hitDistanceReconstructionMode`

@@ -44,18 +44,31 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, u
 
     REBLUR_SET_SHARED_CONSTANTS;
 
-    PushPass("Hit distance reconstruction");
+    for (int i = 0; i < 2; i++)
     {
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_DIFF_HITDIST) );
-        PushInput( AsUint(ResourceType::IN_SPEC_HITDIST) );
+        bool is5x5                  = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
-        PushOutput( AsUint(Transient::DIFF_TEMP) );
-        PushOutput( AsUint(Transient::SPEC_TEMP) );
+        PushPass("Hit distance reconstruction");
+        {
+            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( AsUint(ResourceType::IN_DIFF_HITDIST) );
+            PushInput( AsUint(ResourceType::IN_SPEC_HITDIST) );
 
-        AddDispatch( REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-        AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            PushOutput( AsUint(Transient::DIFF_TEMP) );
+            PushOutput( AsUint(Transient::SPEC_TEMP) );
+
+            if (is5x5)
+            {
+                AddDispatch( REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
+            else
+            {
+                AddDispatch( REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
+        }
     }
 
     for (int i = 0; i < 4; i++)

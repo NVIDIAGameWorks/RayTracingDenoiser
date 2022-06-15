@@ -58,6 +58,3 @@ NRD_CONSTANTS_END
     NRD_OUTPUT_TEXTURE_END
 
 #endif
-
-// Macro magic
-#define NRD_USE_BORDER_1

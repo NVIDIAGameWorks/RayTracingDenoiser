@@ -16,8 +16,10 @@ void Preload( uint2 sharedPos, int2 globalPos )
     globalPos = clamp( globalPos, 0, gRectSize - 1.0 );
     uint2 globalIdUser = gRectOrigin + globalPos;
 
-    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalIdUser ] );
     float viewZ = abs( gIn_ViewZ[ globalIdUser ] );
+
+    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalIdUser ] );
+    s_Normal_Roughness[ sharedPos.y ][ sharedPos.x ] = normalAndRoughness;
 
     float2 hitDist = 1.0;
     #if( defined REBLUR_DIFFUSE )
@@ -26,7 +28,10 @@ void Preload( uint2 sharedPos, int2 globalPos )
         #else
             hitDist.x = gIn_Diff[ globalPos ].w;
         #endif
-        hitDist.x *= _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
+
+        #if( REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION == 1 )
+            hitDist.x *= _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
+        #endif
     #endif
 
     #if( defined REBLUR_SPECULAR )
@@ -35,10 +40,12 @@ void Preload( uint2 sharedPos, int2 globalPos )
         #else
             hitDist.y = gIn_Spec[ globalPos ].w;
         #endif
-        hitDist.y *= _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, normalAndRoughness.w );
+
+        #if( REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION == 1 )
+            hitDist.y *= _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, normalAndRoughness.w );
+        #endif
     #endif
 
-    s_Normal_Roughness[ sharedPos.y ][ sharedPos.x ] = normalAndRoughness;
     s_HitDist_ViewZ[ sharedPos.y ][ sharedPos.x ] = float3( hitDist, viewZ );
 }
 
@@ -59,9 +66,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Center data
-    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ] );
+    float4 normalAndRoughness = s_Normal_Roughness[ smemPos.y ][ smemPos.x ];
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;
+
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, center.z );
+    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, center.z, gOrthoMode );
+    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, 1.0 );
+
+    float2 roughnessWeightParams = GetCoarseRoughnessWeightParams( roughness );
+    float diffNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, 1.0 );
+    float specNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, roughness );
 
     #if( defined REBLUR_DIFFUSE )
         #ifndef REBLUR_OCCLUSION
@@ -85,26 +101,32 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         [unroll]
         for( int dx = 0; dx <= BORDER * 2; dx++ )
         {
-            int2 o = int2( dx, dy ) - BORDER;
-
-            #ifdef REBLUR_PERFORMANCE_MODE
-                if( ( o.x == 0 && o.y == 0 ) || abs( o.x ) + abs( o.y ) > 1 ) // skip corners
-                    continue;
-            #else
-                if( o.x == 0 && o.y == 0 )
-                    continue;
-            #endif
+            float2 o = float2( dx, dy ) - BORDER;
+            if( o.x == 0.0 && o.y == 0.0 )
+                continue;
 
             int2 pos = threadPos + int2( dx, dy );
-            float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
             float3 temp = s_HitDist_ViewZ[ pos.y ][ pos.x ];
 
             float w = IsInScreen( pixelUv + o * gInvRectSize );
             w *= GetGaussianWeight( length( o ) * 0.5 );
-            w *= GetBilateralWeight( temp.z, center.z );
-            w *= GetEncodingAwareNormalWeight( normalAndRoughness.xyz, N, STL::Math::Pi( 0.5 ) ); // TODO: use diffuse and specular lobe angle? roughness weight for specular?
+
+            // This weight is strict ( non exponential ) because we need to avoid accessing data from other surfaces
+            float3 Xvs = STL::Geometry::ReconstructViewPosition( pixelUv + o * gInvRectSize, gFrustum, temp.z, gOrthoMode );
+            w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
 
             float2 ww = w * float2( temp.xy != 0.0 );
+            #ifndef REBLUR_PERFORMANCE_MODE
+                float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
+
+                float cosa = saturate( dot( N, normalAndRoughness.xyz ) );
+                float angle = STL::Math::AcosApprox( cosa );
+
+                // These weights have infinite exponential tails, because with strict weights we are reducing a chance to find a valid sample in 3x3 or 5x5 area
+                ww.x *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE );
+                ww.y *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE );
+                ww.y *= _ComputeExponentialWeight( normalAndRoughness.w, roughnessWeightParams.x, roughnessWeightParams.y, NRD_EXP_WEIGHT_DEFAULT_SCALE );
+            #endif
 
             center.xy += temp.xy * ww;
             sum += ww;
@@ -115,8 +137,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     center.xy /= max( sum, 1e-6 );
 
     // Return back to normalized hit distances
-    center.x /= _REBLUR_GetHitDistanceNormalization( center.z, gHitDistParams, 1.0 );
-    center.y /= _REBLUR_GetHitDistanceNormalization( center.z, gHitDistParams, roughness );
+    #if( REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION == 1 )
+        center.x /= _REBLUR_GetHitDistanceNormalization( center.z, gHitDistParams, 1.0 );
+        center.y /= _REBLUR_GetHitDistanceNormalization( center.z, gHitDistParams, roughness );
+    #endif
 
     // Output
     #if( defined REBLUR_DIFFUSE )

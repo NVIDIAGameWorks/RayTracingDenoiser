@@ -9,7 +9,24 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 groupshared float4 sharedNormalRoughness[BUFFER_Y][BUFFER_X];
-groupshared float2 sharedHitdistViewZ[BUFFER_Y][BUFFER_X];
+groupshared float3 sharedHitdistViewZ[BUFFER_Y][BUFFER_X];
+
+float2 GetCoarseRoughnessWeightParams(float roughness)
+{
+    return float2(1.0, -roughness);
+}
+
+float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float roughness = 1.0)
+{
+    // TODO: "pixelRadiusNorm" can be used to estimate how many samples from a potentially bumpy normal map fit into
+    // a pixel, i.e. to increase "fraction" a bit if "pixelRadiusNorm" is close to 1. It was used before. Now it's a
+    // backup plan. See "GetBlurRadius".
+
+    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);
+    angle *= lerp(saturate(fraction), 1.0, nonLinearAccumSpeed); // TODO: use as "percentOfVolume" instead?
+
+    return 1.0 / max(angle, NRD_NORMAL_ENCODING_ERROR);
+}
 
 void Preload(uint2 sharedPos, int2 globalPos)
 {
@@ -19,10 +36,18 @@ void Preload(uint2 sharedPos, int2 globalPos)
     // It's ok that we don't use materialID in Hitdist reconstruction
     float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[globalIdUser]);
     float viewZ = abs(gViewZ[globalIdUser]);
-    float hitdist = gSpecularIllumination[globalPos].w;
+    float2 hitDist = gDenoisingRange;
+
+    #if( defined RELAX_SPECULAR )
+        hitDist.x = gSpecularIllumination[globalPos].w;
+    #endif
+
+    #if( defined RELAX_DIFFUSE )
+        hitDist.y = gDiffuseIllumination[globalPos].w;
+    #endif
 
     sharedNormalRoughness[sharedPos.y][sharedPos.x] = normalRoughness;
-    sharedHitdistViewZ[sharedPos.y][sharedPos.x] = float2(hitdist, viewZ);
+    sharedHitdistViewZ[sharedPos.y][sharedPos.x] = float3(hitDist, viewZ);
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
@@ -34,25 +59,38 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
     PRELOAD_INTO_SMEM;
 
     int2 smemPos = threadPos + BORDER;
-    float2 centerHitdistViewZ = sharedHitdistViewZ[smemPos.y][smemPos.x];
+    float3 centerHitdistViewZ = sharedHitdistViewZ[smemPos.y][smemPos.x];
+    float centerViewZ = centerHitdistViewZ.z;
 
     // Early out
     [branch]
-    if (centerHitdistViewZ.y > gDenoisingRange)
-    {
+    if (centerViewZ > gDenoisingRange)
         return;
-    }
 
     // Center data
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPosUser]);
     float3 centerNormal = normalAndRoughness.xyz;
     float centerRoughness = normalAndRoughness.w;
-    float3 centerSpecular = gSpecularIllumination[pixelPos].xyz;
 
-    // Hit distance reconstruction,
-    // We only care about specular signal in ReLAX as diffuse does not use Hitdist
-    float sumWeight = 100.0 * gDenoisingRange * float(centerHitdistViewZ.x != 0.0);
-    float sumHitdist = centerHitdistViewZ.x * sumWeight;
+    // Hit distance reconstruction
+#if( defined RELAX_SPECULAR )
+    float3 centerSpecularIllumination = gSpecularIllumination[pixelPos].xyz;
+    float centerSpecularHitDist = centerHitdistViewZ.x;
+    float2 roughnessWeightParams = GetCoarseRoughnessWeightParams(centerRoughness);
+    float specularNormalWeightParam = GetNormalWeightParams(1.0, 1.0, centerRoughness);
+
+    float sumSpecularWeight = 1000.0 * float(centerSpecularHitDist != 0.0);
+    float sumSpecularHitDist = centerSpecularHitDist * sumSpecularWeight;
+#endif
+
+#if( defined RELAX_DIFFUSE )
+    float3 centerDiffuseIllumination = gDiffuseIllumination[pixelPos].xyz;
+    float centerDiffuseHitDist = centerHitdistViewZ.y;
+    float diffuseNormalWeightParam = GetNormalWeightParams(1.0, 1.0, 1.0);
+
+    float sumDiffuseWeight = 1000.0 * float(centerDiffuseHitDist != 0.0);
+    float sumDiffuseHitDist = centerDiffuseHitDist * sumDiffuseWeight;
+#endif
 
     [unroll]
     for (int dy = 0; dy <= BORDER * 2; dy++)
@@ -63,28 +101,52 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
             int2 o = int2(dx, dy) - BORDER;
 
             if (o.x == 0 && o.y == 0)
-            {
                 continue;
-            }
 
             int2 pos = threadPos + int2(dx, dy);
             float4 sampleNormalRoughness = sharedNormalRoughness[pos.y][pos.x];
-            float2 sampleHitdistViewZ = sharedHitdistViewZ[pos.y][pos.x];
+            float3 sampleNormal = sampleNormalRoughness.xyz;
+            float3 sampleRoughness = sampleNormalRoughness.w;
+            float3 sampleHitdistViewZ = sharedHitdistViewZ[pos.y][pos.x];
+            float sampleViewZ = sampleHitdistViewZ.z;
+            float cosa = saturate(dot(centerNormal, sampleNormal));
+            float angle = STL::Math::AcosApprox(cosa);
 
             float w = IsInScreen(pixelUv + o * gInvRectSize);
             w *= GetGaussianWeight(length(o) * 0.5);
-            w *= GetBilateralWeight(sampleHitdistViewZ.y, centerHitdistViewZ.y);
-            w *= GetEncodingAwareNormalWeight(sampleNormalRoughness.xyz, centerNormal, STL::Math::Pi(0.5)); // TODO: use diffuse and specular lobe angle? roughness weight for specular?
-            w *= float(sampleHitdistViewZ.x != 0.0);
+            w *= GetBilateralWeight(sampleViewZ, centerViewZ);
 
-            sumHitdist += sampleHitdistViewZ.x * w;
-            sumWeight += w;
+#if( defined RELAX_SPECULAR )
+            float sampleSpecularHitDist = sampleHitdistViewZ.x;
+            float specularWeight = w;
+            specularWeight *= _ComputeExponentialWeight(angle, specularNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE);
+            specularWeight *= _ComputeExponentialWeight(normalAndRoughness.w, roughnessWeightParams.x, roughnessWeightParams.y, NRD_EXP_WEIGHT_DEFAULT_SCALE);
+            specularWeight *= float(sampleSpecularHitDist != 0.0);
+            sumSpecularHitDist += sampleSpecularHitDist * specularWeight;
+            sumSpecularWeight += specularWeight;
+#endif
+
+#if( defined RELAX_DIFFUSE )
+            float sampleDiffuseHitDist = sampleHitdistViewZ.y;
+            float diffuseWeight = w;
+            diffuseWeight *= _ComputeExponentialWeight(angle, diffuseNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE);
+            diffuseWeight *= float(sampleDiffuseHitDist != 0.0);
+
+            sumDiffuseHitDist += sampleDiffuseHitDist * diffuseWeight;
+            sumDiffuseWeight += diffuseWeight;
+#endif
         }
     }
 
-    // Normalize weighted sum
-    sumHitdist /= max(sumWeight, 1e-6);
-
     // Output
-    gOutSpecularIllumination[pixelPos] = float4(centerSpecular, sumHitdist);
+#if( defined RELAX_SPECULAR )
+    sumSpecularHitDist /= max(sumSpecularWeight, 1e-6);
+    gOutSpecularIllumination[pixelPos] = float4(centerSpecularIllumination, sumSpecularHitDist);
+#endif
+
+#if( defined RELAX_DIFFUSE )
+    sumDiffuseHitDist /= max(sumDiffuseWeight, 1e-6);
+    gOutDiffuseIllumination[pixelPos] = float4(centerDiffuseIllumination, sumDiffuseHitDist);
+#endif
+
 }

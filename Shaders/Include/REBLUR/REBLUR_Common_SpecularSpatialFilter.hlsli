@@ -21,7 +21,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 {
+    float2 sum = 1.0;
+
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        sum = hasData.y;
+
         float2 specInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
 
         if( radius != 0.0 )
@@ -48,9 +52,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #endif
 
-    if( spec.w == 0.0 )
-        specInternalData.x = 0.5;
-
     // Blur radius
     float3 Vv = GetViewVector( Xv, true );
     float4 Dv = STL::ImportanceSampling::GetSpecularDominantDirection( Nv, Vv, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
@@ -58,7 +59,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
     float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
-    float hitDist = ( spec.w == 0.0 ? 1.0 : spec.w ) * hitDistScale;
+    float hitDist = spec.w * hitDistScale;
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumHeight );
@@ -74,19 +75,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float blurRadius = GetBlurRadius( radius, radiusBias, radiusScale, hitDistFactor, frustumHeight, specInternalData.x, roughness );
     #endif
 
-    if( spec.w == 0.0 )
-        blurRadius = max( blurRadius, 1.0 );
-
     float worldBlurRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
 
     // Denoising
     float2x3 TvBv = GetKernelBasis( Dv.xyz, Nv, NoD, worldBlurRadius, roughness, specInternalData.x );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
-    float normalWeightParams = GetNormalWeightParams( specInternalData.x, frustumHeight, gLobeAngleFraction * fractionScale, roughness );
-    float2 hitDistanceWeightParams = spec.w == 0.0 ? 0.0 : GetHitDistanceWeightParams( spec.w, specInternalData.x );
+    float normalWeightParams = GetNormalWeightParams( specInternalData.x, gLobeAngleFraction * fractionScale, roughness );
+    float2 hitDistanceWeightParams = GetHitDistanceWeightParams( spec.w, specInternalData.x );
 
     float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, gRoughnessFraction * fractionScale );
-    float2 sum = 1.0;
 
     #ifdef REBLUR_SPATIAL_REUSE
         float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
@@ -120,9 +117,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     float2 minHitDistWeightLowConfidence = lerp( minHitDistWeight, 1.0, hitDistFactor );
     minHitDistWeight = lerp( minHitDistWeightLowConfidence, minHitDistWeight, specData.y );
-
-    // Ignore "no data" hit distances
-    sum.y *= float( spec.w != 0.0 );
 
     // Sampling
     float4 center = spec;
@@ -204,9 +198,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             ww *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, s.w ) );
         #endif
 
-        // Ignore "no data" hit distances
-        ww.y *= float( s.w != 0.0 );
-
         // Get rid of potentially bad values outside of the screen
         s = w ? s : 0;
 
@@ -221,6 +212,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
         spec = lerp( spec, center, gInputMix * ( 1.0 - specInternalData.x ) );
     #else
+        }
+
+        // Checkerboard resolve ( if pre-pass failed )
+        [branch]
+        if( !hasData.y && sum.x == 0.0 )
+        {
+            float4 s0 = gIn_Spec[ checkerboardPos.xy ];
+            float4 s1 = gIn_Spec[ checkerboardPos.zy ];
+
+            spec *= saturate( 1.0 - wc.x - wc.y );
+            spec += s0 * wc.x + s1 * wc.y;
         }
     #endif
 

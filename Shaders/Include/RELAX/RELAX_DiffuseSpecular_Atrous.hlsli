@@ -42,9 +42,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float specularReprojectionConfidence = gSpecularReprojectionConfidence[pixelPos];
     float specularLuminanceWeightRelaxation = 1.0;
     if (gStepSize <= 4)
-    {
         specularLuminanceWeightRelaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
-    }
 
 #if( defined RELAX_SPECULAR )
     float specularPhiLIllumination = gSpecularPhiLuminance * max(1.0e-4, sqrt(centerSpecularVar));
@@ -91,7 +89,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
         {
             int2 p = pixelPos + offset + int2(xx, yy) * gStepSize;
             bool isCenter = ((xx == 0) && (yy == 0));
-            if (isCenter) continue;
+            if (isCenter)
+                continue;
 
             bool isInside = all(p >= int2(0, 0)) && all(p < int2(gRectSize));
             float kernel = isInside ? kernelWeightGaussian3x3[abs(xx)] * kernelWeightGaussian3x3[abs(yy)] : 0.0;

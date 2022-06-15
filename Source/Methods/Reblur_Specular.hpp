@@ -46,9 +46,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
 
     REBLUR_SET_SHARED_CONSTANTS;
 
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < 4; i++)
     {
-        bool isPrepassEnabled = ( ( ( i >> 0 ) & 0x1 ) != 0 );
+        bool is5x5                  = ( ( ( i >> 1 ) & 0x1 ) != 0 );
+        bool isPrepassEnabled       = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Hit distance reconstruction");
         {
@@ -61,8 +62,16 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
             else
                 PushOutput( SPEC_TEMP1 );
 
-            AddDispatch( REBLUR_Specular_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Specular_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            if (is5x5)
+            {
+                AddDispatch( REBLUR_Specular_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Specular_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
+            else
+            {
+                AddDispatch( REBLUR_Specular_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Specular_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
         }
     }
 

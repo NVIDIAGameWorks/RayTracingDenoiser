@@ -133,14 +133,6 @@ float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
     return angle;
 }
 
-float GetNormalWeight(float params0, float3 n0, float3 n)
-{
-    float cosa = saturate(dot(n0, n));
-    float angle = STL::Math::AcosApprox(cosa);
-
-    return _ComputeWeight(float2(params0, -0.001), angle);
-}
-
 float GetEncodingAwareNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
 {
     float a = 1.0 / maxAngle;

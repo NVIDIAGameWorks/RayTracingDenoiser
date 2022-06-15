@@ -91,8 +91,11 @@ void runRCRS(
             int2 p = pixelPos + int2(xx, yy);
             int2 sharedMemoryIndexSample = threadPos + int2(BORDER, BORDER) + int2(xx,yy);
 
-            if ((xx == 0) && (yy == 0)) continue;
-            if (any(p < int2(0, 0)) || any(p >= (int2)gRectSize)) continue;
+            if ((xx == 0) && (yy == 0))
+                continue;
+
+            if (any(p < int2(0, 0)) || any(p >= (int2)gRectSize))
+                continue;
 
             // Fetching sample data
             float4 v = sharedNormalAndViewZ[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];
@@ -153,26 +156,18 @@ void runRCRS(
 #if( defined RELAX_SPECULAR )
     int2 specularCoords = sharedMemoryIndex;
     if(specularLuminanceCenter > maxSpecularLuminance)
-    {
         specularCoords = maxSpecularLuminanceCoords;
-    }
     if(specularLuminanceCenter < minSpecularLuminance)
-    {
         specularCoords = minSpecularLuminanceCoords;
-    }
     outSpecular = float4(sharedSpecular[specularCoords.y][specularCoords.x].rgb, specular2ndMomentCenter);
 #endif
 
 #if( defined RELAX_DIFFUSE )
     int2 diffuseCoords = sharedMemoryIndex;
     if(diffuseLuminanceCenter > maxDiffuseLuminance)
-    {
         diffuseCoords = maxDiffuseLuminanceCoords;
-    }
     if(diffuseLuminanceCenter < minDiffuseLuminance)
-    {
         diffuseCoords = minDiffuseLuminanceCoords;
-    }
     outDiffuse = float4(sharedDiffuse[diffuseCoords.y][diffuseCoords.x].rgb, diffuse2ndMomentCenter);
 #endif
 }
@@ -190,9 +185,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Early out if linearZ is beyond denoising range
     [branch]
     if (centerViewZ > gDenoisingRange)
-    {
         return;
-    }
 
     // Running firefly filter
 #if( defined RELAX_SPECULAR )

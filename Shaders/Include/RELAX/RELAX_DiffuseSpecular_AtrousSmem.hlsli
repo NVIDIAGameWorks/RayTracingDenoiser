@@ -41,7 +41,7 @@ void computeVariance(
     float4 diffuseSum = 0;
 #endif
 
-   static const float kernel[2][2] =
+    static const float kernel[2][2] =
     {
         { 1.0 / 4.0, 1.0 / 8.0  },
         { 1.0 / 8.0, 1.0 / 16.0 }
@@ -119,9 +119,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     // Early out if linearZ is beyond denoising range
     [branch]
     if (centerViewZ > gDenoisingRange)
-    {
         return;
-    }
 
     float3 centerNormal = normalRoughness.rgb;
     float centerRoughness = normalRoughness.a;

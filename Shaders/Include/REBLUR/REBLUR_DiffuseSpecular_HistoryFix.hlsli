@@ -110,7 +110,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float NoV = abs( dot( V, N ) );
 
     TYPE scale = saturate( 1.0 - frameNum );
-    scale *= 1.0 - STL::BRDF::Pow5( NoV );
+    scale *= lerp( 1.0, 0.5, STL::BRDF::Pow5( NoV ) );
     scale *= gHistoryFixStrength;
 
     #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
@@ -123,9 +123,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     // History reconstruction // TODO: materialID support?
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
+    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, 1.0 );
+
     #if( defined REBLUR_DIFFUSE )
         ReconstructHistory(
-            scaledViewZ, diffScale, pixelPos, pixelUv, gOut_Diff, gIn_Diff
+            geometryWeightParams, Nv, scaledViewZ, diffScale, pixelPos, pixelUv, gOut_Diff, gIn_Diff
             #ifndef REBLUR_OCCLUSION
                 , gIn_ScaledViewZ
             #endif
@@ -134,7 +138,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     #if( defined REBLUR_SPECULAR )
         ReconstructHistory(
-            scaledViewZ, specScale, pixelPos, pixelUv, gOut_Spec, gIn_Spec
+            geometryWeightParams, Nv, scaledViewZ, specScale, pixelPos, pixelUv, gOut_Spec, gIn_Spec
             #ifndef REBLUR_OCCLUSION
                 , gIn_ScaledViewZ
             #endif

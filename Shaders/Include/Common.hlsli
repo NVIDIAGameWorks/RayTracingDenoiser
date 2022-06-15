@@ -37,12 +37,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 //==================================================================================================================
 
 #define NRD_USE_QUADRATIC_DISTRIBUTION                          0 // bool
-#define NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY                  100.0 // w = 1 / ( 1 + this * z )
-#define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03 // normalized % // TODO: 1-2%?
+#define NRD_USE_EXPONENTIAL_WEIGHTS                             0 // bool
+#define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03
 #define NRD_CATROM_SHARPNESS                                    0.5 // [ 0; 1 ], 0.5 matches Catmull-Rom
 #define NRD_NORMAL_ENCODING_ERROR                               STL::Math::DegToRad( 0.5 )
 #define NRD_PARALLAX_NORMALIZATION                              30.0
 #define NRD_RADIANCE_COMPRESSION_MODE                           3 // 0-4, specular color compression for spatial passes
+#define NRD_EXP_WEIGHT_DEFAULT_SCALE                            3.0
 
 //==================================================================================================================
 // CTA & preloading
@@ -355,40 +356,55 @@ float2 GetHitDistanceWeightParams( float normHitDist, float nonLinearAccumSpeed 
 
 // Weights
 
-float ExpApprox( float x ) // TODO: use for all weights? definitely a must for "noisy" data comparison when confidence is unclear
+// IMPORTANT:
+// - works for "negative x" only
+// - huge error for x < -2, but still applicable for "weight" calculations
+// http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJleHAoeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiMS8oeCp4LXgrMSkiLCJjb2xvciI6IiMwRkIwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyItMTAiLCIwIiwiMCIsIjEiXX1d
+// TODO: use for all weights? definitely a must for "noisy" data comparison when confidence is unclear
+#define ExpApprox( x ) \
+    rcp( ( x ) * ( x ) - ( x ) + 1.0 )
+
+// Must be used for noisy data
+// http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLWFicygoeC0wLjUpLzAuMikiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiZXhwKC0yKmFicygoeC0wLjUpLzAuMikpIiwiY29sb3IiOiIjRkYwMDE1In0seyJ0eXBlIjowLCJlcSI6IjEvKCgtMyphYnMoKHgtMC41KS8wLjIpKV4yLSgtMyphYnMoKHgtMC41KS8wLjIpKSsxKSIsImNvbG9yIjoiIzAwQTgyNyJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIxIiwiMCIsIjEiXX1d
+// scale = 3-5 is needed to match energy in "_ComputeNonExponentialWeight" ( especially when used in a recurrent loop )
+#define _ComputeExponentialWeight( x, px, py, scale ) \
+    ExpApprox( -scale * abs( ( x ) * ( px ) + ( py ) ) )
+
+// A good choice for non noisy data
+#define _ComputeNonExponentialWeight( x, px, py ) \
+    STL::Math::SmoothStep01( 1.0 - abs( ( x ) * ( px ) + ( py ) ) )
+
+#if( NRD_USE_EXPONENTIAL_WEIGHTS == 1 )
+    #define _ComputeWeight( x, px, py ) \
+        _ComputeExponentialWeight( x, px, py, NRD_EXP_WEIGHT_DEFAULT_SCALE )
+#else
+    #define _ComputeWeight( x, px, py ) \
+        _ComputeNonExponentialWeight( x, px, py )
+#endif
+
+float GetRoughnessWeight( float2 params, float roughness )
 {
-    // IMPORTANT:
-    // - works for "negative x" only
-    // - huge error for x < -2, but still applicable for "weight" calculations
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJleHAoeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiMS8oeCp4LXgrMSkiLCJjb2xvciI6IiMwRkIwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyItMTAiLCIwIiwiMCIsIjEiXX1d
-
-    return rcp( x * x - x + 1.0 );
+    return _ComputeWeight( roughness, params.x, params.y );
 }
-
-#define _ComputeWeight( params, value ) STL::Math::SmoothStep01( 1.0 - abs( value * params.x + params.y ) )
-
-#define GetRoughnessWeight( params, value ) _ComputeWeight( params, value )
 
 float GetHitDistanceWeight( float2 params, float hitDist )
 {
-    // Comparison:
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLWFicygoeC0wLjUpLzAuMikiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiZXhwKC0yKmFicygoeC0wLjUpLzAuMikpIiwiY29sb3IiOiIjRkYwMDE1In0seyJ0eXBlIjowLCJlcSI6ImV4cCgtNSphYnMoKHgtMC41KS8wLjIpKSIsImNvbG9yIjoiIzAwQTgyNyJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIxIiwiMCIsIjEiXX1d
-
-    #if 1
-        // "Tail" given by approximation is much higher than the original one,
-        // -5.0 helps to preserve same energy comparing with "weight with cut off"
-        float x = abs( hitDist * params.x + params.y );
-        return ExpApprox( -5.0 * x );
-    #else
-        return _ComputeWeight( params, hitDist );
-    #endif
+    return _ComputeExponentialWeight( hitDist, params.x, params.y, 5.0 ); // TODO: lowering 5 to 3 (default) leads to minor energy loss in test 140
 }
 
 float GetGeometryWeight( float2 params, float3 n0, float3 p )
 {
     float d = dot( n0, p );
 
-    return _ComputeWeight( params, d );
+    return _ComputeWeight( d, params.x, params.y );
+}
+
+float GetNormalWeight( float param, float3 N, float3 n )
+{
+    float cosa = saturate( dot( N, n ) );
+    float angle = STL::Math::AcosApprox( cosa );
+
+    return _ComputeWeight( angle, param, 0.0 );
 }
 
 float GetGaussianWeight( float r )
@@ -396,18 +412,21 @@ float GetGaussianWeight( float r )
     return exp( -0.66 * r * r ); // assuming r is normalized to 1
 }
 
-#define _GetBilateralWeight( z, zc ) \
-    z = abs( z - zc ) * rcp( min( abs( z ), abs( zc ) ) + 0.001 ); \
-    z = rcp( 1.0 + NRD_BILATERAL_WEIGHT_VIEWZ_SENSITIVITY * z ) * step( z, NRD_BILATERAL_WEIGHT_CUTOFF );
+// Only for checkerboard resolve and some "lazy" comparisons
 
 float GetBilateralWeight( float z, float zc )
-{ _GetBilateralWeight( z, zc ); return z; }
+{
+    float t = abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) + 1e-6 );
+
+    return STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, t );
+}
 
 float2 GetBilateralWeight( float2 z, float zc )
-{ _GetBilateralWeight( z, zc ); return z; }
+{
+    float2 t = abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) + 1e-6 );
 
-float4 GetBilateralWeight( float4 z, float zc )
-{ _GetBilateralWeight( z, zc ); return z; }
+    return STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, t );
+}
 
 // Upsampling
 

@@ -264,18 +264,20 @@ float loadSurfaceMotionBasedPrevData(
 
     // Checking bicubic footprint validity for being in rect
     if (any(bilinearOrigin < int2(1, 1)) || any(bilinearOrigin >= int2(gRectSizePrev)-int2(2, 2)))
-    {
         bicubicFootprintValid = 0;
-    }
 
     // Checking bilinear footprint validity for being in rect
     // Bilinear footprint:
     // x y
     // z w
-    if (bilinearOrigin.x < 0) bilinearTapsValid.xz = 0;
-    if (bilinearOrigin.x >= gRectSizePrev.x) bilinearTapsValid.yw = 0;
-    if (bilinearOrigin.y < 0) bilinearTapsValid.xy = 0;
-    if (bilinearOrigin.y >= gRectSizePrev.y) bilinearTapsValid.zw = 0;
+    if (bilinearOrigin.x < 0)
+        bilinearTapsValid.xz = 0;
+    if (bilinearOrigin.x >= gRectSizePrev.x)
+        bilinearTapsValid.yw = 0;
+    if (bilinearOrigin.y < 0)
+        bilinearTapsValid.xy = 0;
+    if (bilinearOrigin.y >= gRectSizePrev.y)
+        bilinearTapsValid.zw = 0;
 
     // Calculating bilinear weights in advance
     STL::Filtering::Bilinear bilinear;
@@ -479,10 +481,14 @@ float loadVirtualMotionBasedPrevData(
     // Bilinear footprint:
     // x y
     // z w
-    if (bilinearOrigin.x < 0) bilinearTapsValid.xz = 0;
-    if (bilinearOrigin.x >= gRectSizePrev.x) bilinearTapsValid.yw = 0;
-    if (bilinearOrigin.y < 0) bilinearTapsValid.xy = 0;
-    if (bilinearOrigin.y >= gRectSizePrev.y) bilinearTapsValid.zw = 0;
+    if (bilinearOrigin.x < 0)
+        bilinearTapsValid.xz = 0;
+    if (bilinearOrigin.x >= gRectSizePrev.x)
+        bilinearTapsValid.yw = 0;
+    if (bilinearOrigin.y < 0)
+        bilinearTapsValid.xy = 0;
+    if (bilinearOrigin.y >= gRectSizePrev.y)
+        bilinearTapsValid.zw = 0;
 
     // Applying reprojection
     float reprojectionFound = 0;
@@ -543,7 +549,7 @@ float loadVirtualMotionBasedPrevData(
         prevReflectionHitT = max(0.001, prevReflectionHitT);
         reprojectionFound = 1.0;
     }
-    // Using all() marks entire virtual motion based specular history footprint 
+    // Using all() marks entire virtual motion based specular history footprint
     // invalid for specular reprojection logic down the shader code even if at least one bilinear tap is invalid.
     // This helps rejecting potentially incorrect data.
     return all(bilinearTapsValid) ? 1.0 : 0.0;
@@ -597,9 +603,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     [branch]
     if (currentLinearZ > gDenoisingRange)
-    {
         return;
-    }
 
     uint2 sharedMemoryIndex = threadPos.xy + int2(BORDER, BORDER);
 
@@ -643,16 +647,16 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         for (int j = -2; j <= 2; j++)
         {
             // Skipping center pixel
-            if ((i == 0) && (j == 0)) continue;
+            if ((i == 0) && (j == 0))
+                continue;
 
             float4 spec = sharedInSpecular[sharedMemoryIndex.y + j][sharedMemoryIndex.x + i];
             specM1 += spec;
             specM2 += spec * spec;
             minHitDist5x5 = (spec.w != 0) ? min(spec.w, minHitDist5x5) : minHitDist5x5;
+
             if ((abs(i) <= 1) && (abs(j) <= 1))
-            {
                 minHitDist3x3 = (spec.w != 0) ? min(spec.w, minHitDist3x3) : minHitDist3x3;
-            }
         }
     }
     specM1 /= 25.0;
@@ -671,7 +675,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         for (int l = -1; l <= 1; l++)
         {
             // Skipping center pixel
-            if ((k == 0) && (l == 0)) continue;
+            if ((k == 0) && (l == 0))
+                continue;
+
             float3 pNormal = sharedNormalRoughness[sharedMemoryIndex.y + k][sharedMemoryIndex.x + l].xyz;
             currentNormalAveraged += pNormal;
 #if( defined RELAX_SPECULAR )
@@ -768,7 +774,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     }
 
     // Handling history reset if needed
-    if (gResetHistory != 0) historyLength = 1.0;
+    if (gResetHistory != 0)
+        historyLength = 1.0;
 
 #if( defined RELAX_DIFFUSE )
     // DIFFUSE ACCUMULATION BELOW
@@ -866,9 +873,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float hitDistFocused = 0.5 * hitDist / (divider == 0 ? 0.5 : divider);
 
     // Limiting hitDist in ortho case to avoid extreme amounts of motion in reflection
-    if (gOrthoMode != 0) hitDistFocused = min(currentLinearZ, hitDistFocused);
+    if (gOrthoMode != 0)
+        hitDistFocused = min(currentLinearZ, hitDistFocused);
 
-    if (abs(hitDistFocused) < 0.001) hitDistFocused = 0.001;
+    if (abs(hitDistFocused) < 0.001)
+        hitDistFocused = 0.001;
 
     // Loading specular data based on virtual motion
     float4 prevSpecularIlluminationAnd2ndMomentVMB;
@@ -987,7 +996,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float fpsScaler = lerp(saturate(gFramerateScale * gFramerateScale), 1.0, virtualHistoryConfidence);
     specVirtualResponsiveFrames *= fpsScaler;
     specVirtualFrames *= fpsScaler;
-
 
     float specVirtualAlpha = 1.0 / (specVirtualFrames + 1.0);
     float specVirtualResponsiveAlpha = 1.0 / (specVirtualResponsiveFrames + 1.0);

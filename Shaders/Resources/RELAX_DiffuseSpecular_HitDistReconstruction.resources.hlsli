@@ -21,15 +21,48 @@ NRD_CONSTANTS_END
 
 // This shader works on specular signal only
 
-NRD_INPUT_TEXTURE_START
-    NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 0 )
-    NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 1 )
-    NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 2 )
-NRD_INPUT_TEXTURE_END
+#if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
+    NRD_INPUT_TEXTURE_START
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 3 )
+    NRD_INPUT_TEXTURE_END
 
-NRD_OUTPUT_TEXTURE_START
-    NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
-NRD_OUTPUT_TEXTURE_END
+    NRD_OUTPUT_TEXTURE_START
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 1 )
+    NRD_OUTPUT_TEXTURE_END
+
+#elif( defined RELAX_DIFFUSE )
+
+    NRD_INPUT_TEXTURE_START
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 2 )
+    NRD_INPUT_TEXTURE_END
+
+    NRD_OUTPUT_TEXTURE_START
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 0 )
+    NRD_OUTPUT_TEXTURE_END
+
+#elif( defined RELAX_SPECULAR )
+
+    NRD_INPUT_TEXTURE_START
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 2 )
+    NRD_INPUT_TEXTURE_END
+
+    NRD_OUTPUT_TEXTURE_START
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
+    NRD_OUTPUT_TEXTURE_END
+
+#endif
 
 // Macro magic
 #define NRD_CTA_8X8
+
+#ifdef RELAX_HITDIST_RECONSTRUCTION_5X5
+    #define NRD_USE_BORDER_2
+#endif

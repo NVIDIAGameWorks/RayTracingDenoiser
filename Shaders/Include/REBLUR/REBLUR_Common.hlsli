@@ -199,26 +199,27 @@ float GetMax( float3 c )
 float GetMinAllowedLimitForHitDistNonLinearAccumSpeed( float roughness )
 {
     /*
-    0 can be used to unblock accumulation of hitDist, but due to strict hitDist weight and effects
-    of feedback loop color banding (crunched colors) will appear. It can be solved in two ways:
-    - accelerating hitDist accumulation to preserve noise a bit
-    - adding some hitDist input to the output in spatial passes
+    (old) If non-exponential weight is used for hit distance:
+        0 can't be used to unblock accumulation of hitDist due to strict hitDist weight and effects
+        of feedback loop color banding (crunched colors) will appear. It can be solved in two ways:
+            - accelerating hitDist accumulation to preserve noise a bit
+            - adding some hitDist input to the output in spatial passes
+
+    (new) If exponential weight is used:
+        Exponential weight allows to accumulate hitT more. But if accumulation speed matches main
+        accumulation it deminishes contact shadowing a bit.
 
     Previously was:
         nonLinearAccumSpeed = lerp( 0.2, 0.1, STL::Math::Sqrt01( roughness ) );
     */
 
-    #ifdef REBLUR_OCCLUSION
-        float k = 0.5;
+    #if 1
+        float scale = 1.0;
     #else
-        float k = 0.333;
+        float scale = GetSpecMagicCurve( roughness ); // TODO: should work better, but not in case of noisy ( suboptimal ) hit distances for low roughness
     #endif
 
-    float smc = GetSpecMagicCurve( roughness );
-    float s = lerp( 4.0 / ( gMaxAccumulatedFrameNum + 0.001 ), k, smc ); // TODO: can scale for 0 roughness be increased? Should work better if hit distances are clean
-    float nonLinearAccumSpeed = 1.0 / ( 1.0 + s * gMaxAccumulatedFrameNum );
-
-    return nonLinearAccumSpeed;
+    return 1.0 / ( 1.0 + 0.5 * scale * gMaxAccumulatedFrameNum );
 }
 
 float4 MixHistoryAndCurrent( float4 history, float4 current, float nonLinearAccumSpeed, float roughness = 1.0 )
@@ -257,17 +258,31 @@ float GetSensitivityToDarkness( float roughness )
     return sensitivityToDarknessScale;
 }
 
-float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float nonLinearAccumSpeed, float roughness, float scale, bool isOcclusionOnly )
+float GetFadeBasedOnAccumulatedFrames( float nonLinearAccumSpeed )
+{
+    float fade = 1.0 - nonLinearAccumSpeed;
+
+    // Normalize
+    fade = saturate( fade / 0.95 );
+
+    // Ignore reconstructed frames
+    float accumSpeed = rcp( nonLinearAccumSpeed ) - 1.0;
+    fade *= STL::Math::LinearStep( REBLUR_FIXED_FRAME_NUM - 1, REBLUR_FIXED_FRAME_NUM + 1, accumSpeed );
+
+    return fade;
+}
+
+float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float nonLinearAccumSpeed, float roughness, bool isOcclusionOnly )
 {
     float2 p = float2( isOcclusionOnly ? 0 : GetMax( prev.xyz ), prev.w );
     float2 c = float2( isOcclusionOnly ? 0 : GetMax( curr.xyz ), curr.w );
     float2 f = abs( c - p ) / ( max( c, p ) + gSensitivityToDarkness * GetSensitivityToDarkness( roughness ) + 0.001 );
-    float s = 3.0 - scale;
 
-    float error = max( f.x, f.y ); // TODO: store this value and normalize before use? can be helpful for normal weight
-    error = STL::Math::SmoothStep( 0.0, saturate( gResidualNoiseLevel * s ), error );
-    error *= STL::Math::Pow01( lerp( 0.05, 1.0, roughness ), 0.33333 );
-    error *= float( nonLinearAccumSpeed != 1.0 );
+    // TODO: use "hitDistFactor" to avoid over blurring contact shadowing?
+
+    float error = max( f.x, f.y );
+    error = STL::Math::SmoothStep( 0.03, 0.25, error );
+    error *= GetFadeBasedOnAccumulatedFrames( nonLinearAccumSpeed );
     error *= 1.0 - gReference;
 
     return error;
@@ -284,7 +299,7 @@ float ComputeAntilagScale(
 
     // Antilag
     float2 h = float2( GetMax( history.xyz ), history.w );
-    float2 c = float2( GetMax( m1.xyz ), m1.w ); // TODO: use signal, average antilag before use
+    float2 c = float2( GetMax( m1.xyz ), m1.w ); // using signal leads to bias in test #62
     float2 s = float2( GetMax( sigma.xyz ), sigma.w );
 
     float2 delta = abs( h - c ) - s * antilagSigmaScale;
@@ -293,7 +308,7 @@ float ComputeAntilagScale(
 
     float antilag = min( delta.x, delta.y );
     antilag = lerp( 1.0, antilag, stabilizationStrength );
-    antilag = lerp( antilag, 1.0, nonLinearAccumSpeed );
+    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( nonLinearAccumSpeed ) );
 
     // IMPORTANT: antilag must be turned off if REBLUR_DEBUG writes into the TS history
 
@@ -374,7 +389,7 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle )
 
 // Weight parameters
 
-float GetNormalWeightParams( float nonLinearAccumSpeed, float frustumHeight, float fraction, float roughness = 1.0 )
+float GetNormalWeightParams( float nonLinearAccumSpeed, float fraction, float roughness = 1.0 )
 {
     // TODO: "pixelRadiusNorm" can be used to estimate how many samples from a potentially bumpy normal map fit into
     // a pixel, i.e. to increase "fraction" a bit if "pixelRadiusNorm" is close to 1. It was used before. Now it's a
@@ -392,6 +407,11 @@ float2 GetRoughnessWeightParams( float roughness, float fraction )
     float b = roughness * a;
 
     return float2( a, -b );
+}
+
+float2 GetCoarseRoughnessWeightParams( float roughness )
+{
+    return float2( 1.0, -roughness );
 }
 
 float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed, float parallax = 0.0, float roughness = 1.0, float virtualHistoryAmount = 0.0 )
@@ -423,27 +443,6 @@ float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float
 
 // Weights
 
-float GetNormalWeight( float param, float3 N, float3 n )
-{
-    float cosa = saturate( dot( N, n ) );
-    float angle = STL::Math::AcosApprox( cosa );
-
-    return _ComputeWeight( float2( param, 0.0 ), angle );
-}
-
-float4 GetNormalWeight4( float param, float3 N, float3 n00, float3 n10, float3 n01, float3 n11 )
-{
-    float4 cosa;
-    cosa.x = dot( N, n00 );
-    cosa.y = dot( N, n10 );
-    cosa.z = dot( N, n01 );
-    cosa.w = dot( N, n11 );
-
-    float4 angle = STL::Math::AcosApprox( saturate( cosa ) );
-
-    return _ComputeWeight( float2( param, 0.0 ), angle );
-}
-
 float GetCombinedWeight
 (
     float2 geometryWeightParams, float3 Nv, float3 Xvs,
@@ -459,25 +458,25 @@ float GetCombinedWeight
     t.y = STL::Math::AcosApprox( saturate( dot( N, Ns.xyz ) ) );
     t.z = Ns.w;
 
-    t = STL::Math::SmoothStep01( 1.0 - abs( t * a + b ) );
+    float3 w = _ComputeWeight( t, a, b );
 
-    return t.x * t.y * t.z;
+    return w.x * w.y * w.z;
 }
 
 // History fix
 // Related tests: 20, 23, 24, 27, 28, 54, 59, 65, 66, 76, 81, 98, 112, 117, 124, 126, 128, 134
 
 #ifdef REBLUR_OCCLUSION
-    void ReconstructHistory( float z0, float scale, uint2 pixelPos, float2 pixelUv, RWTexture2D<float2> texOut, Texture2D<float2> texIn )
+    void ReconstructHistory( float2 geometryWeightParams, float3 Nv, float z0, float scale, uint2 pixelPos, float2 pixelUv, RWTexture2D<float2> texOut, Texture2D<float2> texIn )
 #else
-    void ReconstructHistory( float z0, float scale, uint2 pixelPos, float2 pixelUv, RWTexture2D<float4> texOut, Texture2D<float4> texIn, Texture2D<float> texScaledViewZ )
+    void ReconstructHistory( float2 geometryWeightParams, float3 Nv, float z0, float scale, uint2 pixelPos, float2 pixelUv, RWTexture2D<float4> texOut, Texture2D<float4> texIn, Texture2D<float> texScaledViewZ )
 #endif
 {
     // Early out
     if( scale < REBLUR_HISTORY_FIX_THRESHOLD_1 )
         return;
 
-    float2 stepSize = scale * gInvScreenSize;
+    float2 stepSize = scale * gInvRectSize;
     float sum = 0.0;
 
     #ifdef REBLUR_OCCLUSION
@@ -510,9 +509,11 @@ float GetCombinedWeight
                     float z = texScaledViewZ.SampleLevel( gLinearClamp, uvScaled, 1 ); // baseMip = 0
                 #endif
 
-                float w = GetBilateralWeight( z, z0 );
-                w *= IsInScreen( uv );
+                float w = IsInScreen( uv );
                 w *= exp2( -0.25 * STL::Math::LengthSquared( tap ) );
+
+                float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z / NRD_FP16_VIEWZ_SCALE, gOrthoMode );
+                w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
 
                 blurry += s * w;
                 sum += w;
@@ -543,9 +544,11 @@ float GetCombinedWeight
                     float z = texScaledViewZ.SampleLevel( gLinearClamp, uvScaled, 1 ); // baseMip = 0
                 #endif
 
-                float w = GetBilateralWeight( z, z0 );
-                w *= IsInScreen( uv );
+                float w = IsInScreen( uv );
                 w *= exp2( -0.25 * STL::Math::LengthSquared( tap ) );
+
+                float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z / NRD_FP16_VIEWZ_SCALE, gOrthoMode );
+                w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
 
                 blurry += s * w;
                 sum += w;

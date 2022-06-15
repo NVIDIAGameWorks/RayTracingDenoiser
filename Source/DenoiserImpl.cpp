@@ -679,8 +679,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // REBLUR_DIFFUSE & REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_Diffuse_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Diffuse_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Diffuse_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Diffuse_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Diffuse_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_Diffuse_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Diffuse_PrePass.cs.dxbc.h"
         #include "REBLUR_Diffuse_PrePass.cs.dxil.h"
         #include "REBLUR_Diffuse_PrePassAdvanced.cs.dxbc.h"
@@ -702,8 +704,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Diffuse_SplitScreen.cs.dxbc.h"
         #include "REBLUR_Diffuse_SplitScreen.cs.dxil.h"
 
-        #include "REBLUR_Perf_Diffuse_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Perf_Diffuse_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Perf_Diffuse_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.dxil.h"
+        #include "REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_PrePass.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_Diffuse_PrePassAdvanced.cs.dxbc.h"
@@ -724,7 +728,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_Diffuse_TemporalStabilization.cs.dxil.h"
     #endif
 
-    #include "REBLUR_Diffuse_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Diffuse_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Diffuse_PrePass.cs.spirv.h"
     #include "REBLUR_Diffuse_PrePassAdvanced.cs.spirv.h"
     #include "REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
@@ -736,7 +741,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Diffuse_PostBlur.cs.spirv.h"
     #include "REBLUR_Diffuse_SplitScreen.cs.spirv.h"
 
-    #include "REBLUR_Perf_Diffuse_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_PrePassAdvanced.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.spirv.h"
@@ -749,8 +755,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // REBLUR_DIFFUSE_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
@@ -766,8 +774,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxbc.h"
         #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxil.h"
 
-        #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
@@ -782,7 +792,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseOcclusion_PostBlur.cs.dxil.h"
     #endif
 
-    #include "REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_MipGen.cs.spirv.h"
@@ -791,7 +802,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseOcclusion_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.spirv.h"
 
-    #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_MipGen.cs.spirv.h"
@@ -801,8 +813,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // REBLUR_SPECULAR
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_Specular_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Specular_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Specular_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Specular_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Specular_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_Specular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Specular_PrePass.cs.dxbc.h"
         #include "REBLUR_Specular_PrePass.cs.dxil.h"
         #include "REBLUR_Specular_PrePassAdvanced.cs.dxbc.h"
@@ -824,8 +838,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Specular_SplitScreen.cs.dxbc.h"
         #include "REBLUR_Specular_SplitScreen.cs.dxil.h"
 
-        #include "REBLUR_Perf_Specular_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Perf_Specular_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_Specular_PrePass.cs.dxbc.h"
         #include "REBLUR_Perf_Specular_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_Specular_PrePassAdvanced.cs.dxbc.h"
@@ -846,7 +862,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_Specular_TemporalStabilization.cs.dxil.h"
     #endif
 
-    #include "REBLUR_Specular_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Specular_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Specular_PrePass.cs.spirv.h"
     #include "REBLUR_Specular_PrePassAdvanced.cs.spirv.h"
     #include "REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
@@ -858,7 +875,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Specular_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_Specular_SplitScreen.cs.spirv.h"
 
-    #include "REBLUR_Perf_Specular_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_Specular_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_Specular_PrePassAdvanced.cs.spirv.h"
     #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.spirv.h"
@@ -871,8 +889,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // REBLUR_SPECULAR_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_SpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_SpecularOcclusion_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_SpecularOcclusion_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
@@ -888,8 +908,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxbc.h"
         #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxil.h"
 
-        #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
@@ -904,7 +926,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_SpecularOcclusion_PostBlur.cs.dxil.h"
     #endif
 
-    #include "REBLUR_SpecularOcclusion_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_SpecularOcclusion_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_MipGen.cs.spirv.h"
@@ -913,7 +936,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_SpecularOcclusion_PostBlur.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_SplitScreen.cs.spirv.h"
 
-    #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_MipGen.cs.spirv.h"
@@ -923,8 +947,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // REBLUR_DIFFUSE_SPECULAR
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_DiffuseSpecular_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_DiffuseSpecular_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecular_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecular_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_PrePass.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_PrePass.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_PrePassAdvanced.cs.dxbc.h"
@@ -946,8 +972,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecular_SplitScreen.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_SplitScreen.cs.dxil.h"
 
-        #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_PrePassAdvanced.cs.dxbc.h"
@@ -968,7 +996,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseSpecular_PostBlur.cs.dxil.h"
     #endif
 
-    #include "REBLUR_DiffuseSpecular_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecular_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PrePass.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PrePassAdvanced.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
@@ -980,7 +1009,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_SplitScreen.cs.spirv.h"
 
-    #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_PrePassAdvanced.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
@@ -993,8 +1023,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // REBLUR_DIFFUSE_SPECULAR_OCCLUSION
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
@@ -1010,8 +1042,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxil.h"
 
-        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.dxbc.h"
@@ -1026,7 +1060,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur.cs.dxil.h"
     #endif
 
-    #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_MipGen.cs.spirv.h"
@@ -1035,7 +1070,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecularOcclusion_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.spirv.h"
 
-    #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulationWithConfidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_MipGen.cs.spirv.h"
@@ -1088,6 +1124,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // RELAX_DIFFUSE
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "RELAX_Diffuse_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "RELAX_Diffuse_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.dxil.h"
         #include "RELAX_Diffuse_PrePass.cs.dxbc.h"
         #include "RELAX_Diffuse_PrePass.cs.dxil.h"
         #include "RELAX_Diffuse_TemporalAccumulation.cs.dxbc.h"
@@ -1106,6 +1146,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "RELAX_Diffuse_SplitScreen.cs.dxil.h"
     #endif
 
+    #include "RELAX_Diffuse_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "RELAX_Diffuse_PrePass.cs.spirv.h"
     #include "RELAX_Diffuse_TemporalAccumulation.cs.spirv.h"
     #include "RELAX_Diffuse_HistoryFix.cs.spirv.h"
@@ -1117,8 +1159,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // RELAX_SPECULAR
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_Specular_HitDistReconstruction.cs.dxbc.h"
-        #include "RELAX_Specular_HitDistReconstruction.cs.dxil.h"
+        #include "RELAX_Specular_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "RELAX_Specular_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "RELAX_Specular_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "RELAX_Specular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "RELAX_Specular_PrePass.cs.dxbc.h"
         #include "RELAX_Specular_PrePass.cs.dxil.h"
         #include "RELAX_Specular_TemporalAccumulation.cs.dxbc.h"
@@ -1137,7 +1181,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "RELAX_Specular_SplitScreen.cs.dxil.h"
     #endif
 
-    #include "RELAX_Specular_HitDistReconstruction.cs.spirv.h"
+    #include "RELAX_Specular_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "RELAX_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "RELAX_Specular_PrePass.cs.spirv.h"
     #include "RELAX_Specular_TemporalAccumulation.cs.spirv.h"
     #include "RELAX_Specular_HistoryFix.cs.spirv.h"
@@ -1149,8 +1194,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     // RELAX_DIFFUSE_SPECULAR
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_HitDistReconstruction_3x3.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_HitDistReconstruction_3x3.cs.dxil.h"
+        #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxbc.h"
+        #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "RELAX_DiffuseSpecular_PrePass.cs.dxbc.h"
         #include "RELAX_DiffuseSpecular_PrePass.cs.dxil.h"
         #include "RELAX_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
@@ -1169,7 +1216,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxil.h"
     #endif
 
-    #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_HitDistReconstruction_3x3.cs.spirv.h"
+    #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_PrePass.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_HistoryFix.cs.spirv.h"

@@ -14,7 +14,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM              SumConstants(0, 0, 0, 0)
 #define REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM                 8
 
-#define REBLUR_PREPASS_CONSTANT_NUM                             SumConstants(0, 2, 0, 3)
+#define REBLUR_PREPASS_CONSTANT_NUM                             SumConstants(0, 2, 0, 2)
 #define REBLUR_PREPASS_GROUP_DIM                                16
 
 #define REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM               SumConstants(4, 3, 1, 5)
@@ -71,9 +71,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
 
     REBLUR_SET_SHARED_CONSTANTS;
 
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < 4; i++)
     {
-        bool isPrepassEnabled = ( ( ( i >> 0 ) & 0x1 ) != 0 );
+        bool is5x5                  = ( ( ( i >> 1 ) & 0x1 ) != 0 );
+        bool isPrepassEnabled       = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Hit distance reconstruction");
         {
@@ -86,8 +87,16 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
             else
                 PushOutput( DIFF_TEMP1 );
 
-            AddDispatch( REBLUR_Diffuse_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            if (is5x5)
+            {
+                AddDispatch( REBLUR_Diffuse_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
+            else
+            {
+                AddDispatch( REBLUR_Diffuse_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+            }
         }
     }
 
@@ -265,7 +274,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     enum class Dispatch
     {
         HITDIST_RECONSTRUCTION,
-        PREPASS                 = HITDIST_RECONSTRUCTION + 2 * 2,
+        PREPASS                 = HITDIST_RECONSTRUCTION + 4 * 2,
         TEMPORAL_ACCUMULATION   = PREPASS + 4 * 2,
         MIP_GEN                 = TEMPORAL_ACCUMULATION + 8 * 2,
         HISTORY_FIX             = MIP_GEN + 1 * 2,
@@ -278,6 +287,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     const ReblurSettings& settings = methodData.settings.reblur;
 
     bool skipPrePass = settings.diffusePrepassBlurRadius == 0.0f && settings.specularPrepassBlurRadius == 0.0f && settings.checkerboardMode == CheckerboardMode::OFF;
+    bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
     ml::float4 antilagMinMaxThreshold = ml::float4(settings.antilagIntensitySettings.thresholdMin, settings.antilagHitDistanceSettings.thresholdMin, settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
 
     if (!settings.antilagIntensitySettings.enable || settings.enableReferenceAccumulation)
@@ -327,9 +337,9 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     }
 
     // HITDIST_RECONSTRUCTION
-    if (settings.enableHitDistanceReconstruction)
+    if (enableHitDistanceReconstruction)
     {
-        uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (!skipPrePass ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+        uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (settings.hitDistanceReconstructionMode == nrd::HitDistanceReconstructionMode::AREA_5X5 ? 4 : 0) + (!skipPrePass ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
         Constant* data = PushDispatch(methodData, passIndex);
         AddSharedConstants_Reblur(methodData, settings, data);
         ValidateConstants(data);
@@ -338,19 +348,18 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     // PREPASS
     if (!skipPrePass)
     {
-        uint32_t passIndex = AsUint(Dispatch::PREPASS) + (settings.enableAdvancedPrepass ? 4 : 0) + (settings.enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+        uint32_t passIndex = AsUint(Dispatch::PREPASS) + (settings.enableAdvancedPrepass ? 4 : 0) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
         Constant* data = PushDispatch(methodData, passIndex);
         AddSharedConstants_Reblur(methodData, settings, data);
         AddFloat4(data, m_Rotator[0]);
-        AddFloat4(data, ml::float4(settings.specularLobeTrimmingParameters.A, settings.specularLobeTrimmingParameters.B, settings.specularLobeTrimmingParameters.C, settings.diffusePrepassBlurRadius));
-        AddFloat(data, settings.specularPrepassBlurRadius);
+        AddFloat4(data, ml::float4(settings.specularLobeTrimmingParameters.A, settings.specularLobeTrimmingParameters.B, settings.specularLobeTrimmingParameters.C, 0.0f));
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
         ValidateConstants(data);
     }
 
     // TEMPORAL_ACCUMULATION
-    uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (settings.enableAntiFirefly ? 8 : 0) + (m_CommonSettings.isHistoryConfidenceInputsAvailable ? 4 : 0) + ((!skipPrePass || settings.enableHitDistanceReconstruction) ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+    uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (settings.enableAntiFirefly ? 8 : 0) + (m_CommonSettings.isHistoryConfidenceInputsAvailable ? 4 : 0) + ((!skipPrePass || enableHitDistanceReconstruction) ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
     Constant* data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
     AddFloat4x4(data, m_WorldToViewPrev);
@@ -464,20 +473,20 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
     AddFloat(data, m_FrameRateScale);
     AddFloat(data, settings.enableReferenceAccumulation ? 0.0f : settings.blurRadius);
     AddFloat(data, float( maxAccumulatedFrameNum ));
-    AddFloat(data, settings.residualNoiseLevel);
-
     AddFloat(data, 0.0f); // TODO: unused
+
     AddFloat(data, settings.inputMix);
     AddFloat(data, settings.minConvergedStateBaseRadiusScale);
     AddFloat(data, settings.lobeAngleFraction);
-
     AddFloat(data, settings.roughnessFraction);
-    AddFloat(data, settings.responsiveAccumulationRoughnessThreshold);
-    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
-    AddUint(data, m_CommonSettings.frameIndex);
 
+    AddFloat(data, settings.responsiveAccumulationRoughnessThreshold);
+    AddFloat(data, settings.diffusePrepassBlurRadius);
+    AddFloat(data, settings.specularPrepassBlurRadius);
+    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
+    
+    AddUint(data, m_CommonSettings.frameIndex);
     AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
     AddUint(data, settings.enableMaterialTestForDiffuse ? 1 : 0);
     AddUint(data, settings.enableMaterialTestForSpecular ? 1 : 0);
-    AddUint(data, 0); // TODO: unused
 }
