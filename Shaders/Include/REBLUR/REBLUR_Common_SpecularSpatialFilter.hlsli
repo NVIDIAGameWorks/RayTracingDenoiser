@@ -128,7 +128,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float3 offset = POISSON_SAMPLES( i );
 
         // Sample coordinates
-        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR ) // TODO: screen space is OK for diffuse in pre-pass, but is it OK for glossy specular?
+        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             float2 uv = pixelUv + STL::Geometry::RotateVector( rotator, offset.xy ) * gInvScreenSize * blurRadius;
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );

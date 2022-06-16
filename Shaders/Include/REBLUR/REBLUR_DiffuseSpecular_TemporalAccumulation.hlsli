@@ -449,7 +449,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         virtualMotionNormalWeight = lerp( 1.0, virtualMotionNormalWeight, saturate( virtualMotionLengthInPixels / 0.5 ) );
 
         virtualHistoryConfidence *= virtualMotionNormalWeight;
-        virtualHistoryAmount *= lerp( 0.333, 1.0, virtualMotionNormalWeight ); // TODO: should depend on virtualHistoryAmount and accumSpeed?
+        virtualHistoryAmount *= lerp( 1.0 / ( 1.0 + specAccumSpeedSurface ), 1.0, virtualMotionNormalWeight );
 
         // Virtual motion - accumulation acceleration
         float responsiveAccumulationAmount = GetResponsiveAccumulationAmount( roughness );
@@ -478,7 +478,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         bool specHasData = gSpecCheckerboard == 2 || checkerboard == gSpecCheckerboard;
         if( !specHasData )
-            specAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * saturate( specAccumSpeedUpperBound / REBLUR_FIXED_FRAME_NUM );
+            specAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * specAccumSpeed / ( 1.0 + specAccumSpeed );
 
         float4 specHistory = lerp( specHistorySurface, specHistoryVirtualMixed, virtualHistoryAmount );
         float4 specResult = MixHistoryAndCurrent( specHistory, spec, specAccumSpeedNonLinear, roughnessModified );

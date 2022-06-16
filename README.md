@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.3.0 (NRD)
+# NVIDIA Real-time Denoisers v3.3.1 (NRD)
 
 ## SAMPLE APP
 
@@ -476,7 +476,7 @@ NRD sample has *TESTS* section in the bottom of the UI (`--testMode` required), 
   - if reproducible
     - add a test (by pressing `Add` button)
     - describe the issue and steps to reproduce
-    - attach depending on the selected scene `.bin` file from the `_Data\Tests` folder
+    - attach depending on the selected scene `.bin` file from the `Tests` folder
   - if not
     - verify the integration
 - If nothing helps

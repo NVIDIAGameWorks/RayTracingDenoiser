@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.2
+// NRD v3.3
 
 //=================================================================================================================================
 // INPUT PARAMETERS
