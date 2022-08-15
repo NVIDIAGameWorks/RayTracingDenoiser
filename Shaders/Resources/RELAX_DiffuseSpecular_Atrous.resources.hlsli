@@ -33,6 +33,10 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gRoughnessEdgeStoppingRelaxation )
         NRD_CONSTANT( float, gNormalEdgeStoppingRelaxation )
         NRD_CONSTANT( float, gLuminanceEdgeStoppingRelaxation )
+        NRD_CONSTANT( uint, gUseConfidenceInputs )
+        NRD_CONSTANT( float, gConfidenceDrivenRelaxationMultiplier )
+        NRD_CONSTANT( float, gConfidenceDrivenLuminanceEdgeStoppingRelaxation )
+        NRD_CONSTANT( float, gConfidenceDrivenNormalEdgeStoppingRelaxation )
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
@@ -42,6 +46,8 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularReprojectionConfidence, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 7 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
@@ -58,6 +64,10 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gDepthThreshold )
         NRD_CONSTANT( float, gDiffuseLobeAngleFraction )
         NRD_CONSTANT( uint, gStepSize )
+        NRD_CONSTANT( uint, gUseConfidenceInputs )
+        NRD_CONSTANT( float, gConfidenceDrivenRelaxationMultiplier )
+        NRD_CONSTANT( float, gConfidenceDrivenLuminanceEdgeStoppingRelaxation )
+        NRD_CONSTANT( float, gConfidenceDrivenNormalEdgeStoppingRelaxation )
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
@@ -65,6 +75,7 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 4 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
@@ -87,6 +98,10 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gRoughnessEdgeStoppingRelaxation )
         NRD_CONSTANT( float, gNormalEdgeStoppingRelaxation )
         NRD_CONSTANT( float, gLuminanceEdgeStoppingRelaxation )
+        NRD_CONSTANT( uint, gUseConfidenceInputs )
+        NRD_CONSTANT( float, gConfidenceDrivenRelaxationMultiplier )
+        NRD_CONSTANT( float, gConfidenceDrivenLuminanceEdgeStoppingRelaxation )
+        NRD_CONSTANT( float, gConfidenceDrivenNormalEdgeStoppingRelaxation )
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
@@ -95,6 +110,7 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularReprojectionConfidence, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 5 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START

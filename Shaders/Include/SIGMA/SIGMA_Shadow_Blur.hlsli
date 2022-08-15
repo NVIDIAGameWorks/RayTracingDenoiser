@@ -40,29 +40,9 @@ void Preload( uint2 sharedPos, int2 globalPos )
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    // Copy history // TODO: do a simple copy, but pass more CTAs from the CPU side, using "gRectSizePrev". Ignore other then copy work outside of "gRectSize"
+    // Copy history
     #ifdef SIGMA_FIRST_PASS
-        int2 prevHalfRectSize = int2( gRectSizePrev * 0.5 + 0.5 );
-
-        if( all( gRectSize >= gRectSizePrev ) )
-            gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
-        else if( pixelPos.x < prevHalfRectSize.x && pixelPos.y < prevHalfRectSize.y )
-        {
-            if( pixelPos.x < prevHalfRectSize.x && pixelPos.y < prevHalfRectSize.y )
-            {
-                [unroll]
-                for( int i = 0; i < 2; i++ )
-                {
-                    [unroll]
-                    for( int j = 0; j < 2; j++ )
-                    {
-                        int2 p = pixelPos * 2 + int2( i, j );
-
-                        gOut_History[ p ] = gIn_History[ p ];
-                    }
-                }
-            }
-        }
+        gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
     #endif
 
     // Populate shared memory
@@ -81,6 +61,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Early out
     #ifdef SIGMA_FIRST_PASS
         float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
+        tileValue *= all( pixelPos < gRectSize ); // due to USE_MAX_DIMS
     #else
         float tileValue = 1.0;
     #endif

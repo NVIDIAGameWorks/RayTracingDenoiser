@@ -33,10 +33,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     if ((centerViewZ > gDenoisingRange) || (historyLength > gFramesToFix))
         return;
 
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
     float4 diffuseIlluminationAnd2ndMoment = gDiffuseIllumination[pixelPos];
 #endif
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
     float4 specularIlluminationAnd2ndMoment = gSpecularIllumination[pixelPos];
 #endif
 
@@ -49,11 +49,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float normalWeightParams = GetNormalWeightParams(centerRoughness, 0.33);
 
     // Running sparse cross-bilateral filter
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
     float4 diffuseIlluminationAnd2ndMomentSum = diffuseIlluminationAnd2ndMoment;
     float diffuseWSum = 1;
 #endif
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
     float4 specularIlluminationAnd2ndMomentSum = specularIlluminationAnd2ndMoment;
     float specularWSum = 1;
 #endif
@@ -87,7 +87,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 sampleWorldPos,
                 gDepthThreshold);
 
-    #if( defined RELAX_DIFFUSE )
+    #ifdef RELAX_DIFFUSE
             // Summing up diffuse result
             float diffuseW = geometryWeight;
             diffuseW *= getDiffuseNormalWeight(centerNormal, sampleNormal);
@@ -101,7 +101,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 diffuseWSum += diffuseW;
             }
     #endif
-    #if( defined RELAX_SPECULAR )
+    #ifdef RELAX_SPECULAR
             // Summing up specular result
             float specularW = geometryWeight;
             specularW *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
@@ -120,12 +120,12 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
     // Output buffers will hold the pixels with disocclusion processed by history fix.
     // The next shader will have to copy these areas to normal and responsive history buffers.
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
     float4 outDiffuseIlluminationAnd2ndMoment = diffuseIlluminationAnd2ndMomentSum / diffuseWSum;
     gOutDiffuseIllumination[pixelPos] = outDiffuseIlluminationAnd2ndMoment;
 #endif
 
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
     float4 outSpecularIlluminationAnd2ndMoment = specularIlluminationAnd2ndMomentSum / specularWSum;
     gOutSpecularIllumination[pixelPos] = outSpecularIlluminationAnd2ndMoment;
 #endif

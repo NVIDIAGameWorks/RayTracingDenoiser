@@ -149,3 +149,23 @@ float2 GetRoughnessWeightParams(float roughness, float fraction = 0.05)
 
     return float2(a, -b);
 }
+
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float4> tex0, out float4 c0 )
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+}
+
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float4> tex0, out float4 c0,
+    Texture2D<float4> tex1, out float4 c1 )
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c1, tex1 );
+}

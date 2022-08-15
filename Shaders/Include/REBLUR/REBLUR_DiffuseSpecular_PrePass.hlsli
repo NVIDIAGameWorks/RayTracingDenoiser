@@ -48,33 +48,43 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     #define REBLUR_SPATIAL_MODE REBLUR_PRE_BLUR
 
-    #if( defined REBLUR_DIFFUSE )
+    #ifdef REBLUR_DIFFUSE
     {
         if( gDiffCheckerboard != 2 )
         {
             hasData.x = checkerboard == gDiffCheckerboard;
             checkerboardPixelPos.x >>= 1;
         }
+        uint2 pos = gRectOrigin + uint2( checkerboardPixelPos.x, pixelPos.y );
 
-        float4 diff = gIn_Diff[ gRectOrigin + uint2( checkerboardPixelPos.x, pixelPos.y ) ];
+        float4 diff = gIn_Diff[ pos ];
         float radius = gDiffPrepassBlurRadius;
         float diffData = 1.0;
+
+        #ifdef REBLUR_SH
+            float4 diffSh = gIn_DiffSh[ pos ];
+        #endif
 
         #include "REBLUR_Common_DiffuseSpatialFilter.hlsli"
     }
     #endif
 
-    #if( defined REBLUR_SPECULAR )
+    #ifdef REBLUR_SPECULAR
     {
         if( gSpecCheckerboard != 2 )
         {
             hasData.y = checkerboard == gSpecCheckerboard;
             checkerboardPixelPos.y >>= 1;
         }
+        uint2 pos = gRectOrigin + uint2( checkerboardPixelPos.y, pixelPos.y );
 
-        float4 spec = gIn_Spec[ gRectOrigin + uint2( checkerboardPixelPos.y, pixelPos.y ) ];
+        float4 spec = gIn_Spec[ pos ];
         float radius = gSpecPrepassBlurRadius;
         float2 specData = 1.0;
+
+        #ifdef REBLUR_SH
+            float4 specSh = gIn_SpecSh[ pos ];
+        #endif
 
         #include "REBLUR_Common_SpecularSpatialFilter.hlsli"
     }

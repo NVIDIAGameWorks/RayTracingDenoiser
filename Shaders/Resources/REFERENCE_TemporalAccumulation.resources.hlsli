@@ -20,6 +20,7 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float2, gInvRectSize )
     NRD_CONSTANT( float, gSplitScreen )
     NRD_CONSTANT( float, gAccumSpeed )
+    NRD_CONSTANT( float, gDebug )
 NRD_CONSTANTS_END
 
 NRD_INPUT_TEXTURE_START

@@ -16,17 +16,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS              1
 #define REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS              1
 #define REBLUR_USE_HISTORY_FIX                                  1
-#define REBLUR_USE_5X5_HISTORY_CLAMPING                         1
-#define REBLUR_USE_OPTIMIZED_HIT_DIST_FOR_TRACKING              1
-#define REBLUR_USE_HISTORY_FIX_FAST_PATH                        1
+#define REBLUR_USE_YCOCG                                        1
+#define REBLUR_USE_FAST_HISTORY                                 1
+#define REBLUR_USE_5X5_ANTI_FIREFLY                             1 // can be 0 for clean signals
 
 // Switches ( default 0 )
-#define REBLUR_USE_COLOR_CLAMPING_AABB                          0
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
-#define REBLUR_USE_5X5_ANTI_FIREFLY                             0
 #define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             0
-#define REBLUR_USE_BILINEAR_FOR_VIRTUAL_NORMAL_WEIGHT           0
-#define REBLUR_USE_HISTORY_FIX_WITHOUT_DISOCCLUSION             0
 #define REBLUR_USE_ACCUM_SPEED_NONLINEAR_INTERPOLATION          0
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
 
@@ -73,32 +69,21 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_POST_BLUR_RADIUS_SCALE                           3.0
 #define REBLUR_POST_BLUR_FRACTION_SCALE                         0.5
 
-#define REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM       2 // if > 2 then "prev" normal test is included
-#define REBLUR_RADIUS_BIAS_CONFIDENCE_BASED_SCALE               3.0 // needed ar least for test 67
-#define REBLUR_SPEC_ACCUM_BASE_POWER                            0.5 // previously was 0.66 ( less agressive accumulation, but virtual reprojection works well on flat surfaces and fixes the issue )
-#define REBLUR_SPEC_ACCUM_CURVE                                 0.5 // aggressiveness of history rejection depending on viewing angle ( 1 - low, 0.66 - medium, 0.5 - high )
+#define REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM       2
+#define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       2.0
+#define REBLUR_SPEC_ACCUM_BASE_POWER                            ( 0.4 + 0.2 * exp2( -gFramerateScale ) ) // bigger values = more aggressive rejection
+#define REBLUR_SPEC_ACCUM_CURVE                                 ( 1.0 - exp2( -gFramerateScale ) ) // smaller values = more aggressive rejection
 #define REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE                 0.05
 #define REBLUR_TS_SIGMA_AMPLITUDE                               ( 3.0 * gFramerateScale )
-#define REBLUR_TS_ACCUM_TIME                                    ( 30 * 0.5 ) // "gFramerateScale to FPS scale" * "seconds"
-#define REBLUR_PARALLAX_SCALE                                   ( 2.0 * gFramerateScale )
+#define REBLUR_TS_ACCUM_TIME                                    ( gFramerateScale * 30.0 * 0.5 ) // = FPS * seconds
+#define REBLUR_PARALLAX_SCALE                                   ( 2.0 * gFramerateScale ) // TODO: is it possible to use 1 with tweaks in other parameters?
 #define REBLUR_FIXED_FRAME_NUM                                  3.0 // TODO: move to settings
 #define REBLUR_HISTORY_FIX_STEP                                 ( 10.0 * ( gRectSize.y / 1440.0 ) )  // pixels // TODO: gBlurRadius dependent if != 0?
 #define REBLUR_HISTORY_FIX_THRESHOLD_1                          0.111 // was 0.01
 #define REBLUR_HISTORY_FIX_THRESHOLD_2                          0.333 // was 0.25
-#define REBLUR_HIT_DIST_MIN_WEIGHT                              0.1
+#define REBLUR_HIT_DIST_MIN_WEIGHT                              0.1 // TODO: reduce?
 #define REBLUR_MIN_PDF                                          0.001
-#define REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY                   8.0
-
-/*
-TODO: REBLUR_HIT_DIST_SEARCH_RADIUS:
- - TODO: output from PrePass if enabled
- - should depend on curvature?
- - should depend on parallax? In pixels? if yes, radius must be limited in any case
- - should search radius depend on pre-pass radius?
- - many weights are currently missing
- - not needed in occlusion-only version
- */
-#define REBLUR_HIT_DIST_SEARCH_RADIUS                           ( 30.0 * ( gRectSize.y / 1440.0 ) ) // pixels
+#define REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY                   float2( 10.0, 1.1 )
 
 // Shared data
 #define REBLUR_SHARED_CB_DATA \
@@ -126,8 +111,8 @@ TODO: REBLUR_HIT_DIST_SEARCH_RADIUS:
     NRD_CONSTANT( float, gFramerateScale ) \
     NRD_CONSTANT( float, gBlurRadius ) \
     NRD_CONSTANT( float, gMaxAccumulatedFrameNum ) \
-    NRD_CONSTANT( float, gUnused1 ) \
-    NRD_CONSTANT( float, gInputMix ) \
+    NRD_CONSTANT( float, gMaxFastAccumulatedFrameNum ) \
+    NRD_CONSTANT( float, gAntiFirefly ) \
     NRD_CONSTANT( float, gMinConvergedStateBaseRadiusScale ) \
     NRD_CONSTANT( float, gLobeAngleFraction ) \
     NRD_CONSTANT( float, gRoughnessFraction ) \
@@ -139,11 +124,6 @@ TODO: REBLUR_HIT_DIST_SEARCH_RADIUS:
     NRD_CONSTANT( uint, gResetHistory ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
     NRD_CONSTANT( uint, gSpecMaterialMask )
-
-#if( !defined REBLUR_DIFFUSE && !defined REBLUR_SPECULAR )
-    #define REBLUR_DIFFUSE
-    #define REBLUR_SPECULAR
-#endif
 
 // PERFORMANCE MODE: x1.25 perf boost by sacrificing IQ ( DIFFUSE_SPECULAR on RTX 3090 @ 1440p 2.05 vs 2.55 ms )
 #ifdef REBLUR_PERFORMANCE_MODE
@@ -159,11 +139,8 @@ TODO: REBLUR_HIT_DIST_SEARCH_RADIUS:
     #undef REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS
     #define REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS          0
 
-    #undef REBLUR_USE_5X5_HISTORY_CLAMPING
-    #define REBLUR_USE_5X5_HISTORY_CLAMPING                     0 // TODO: better use 1 for bad signals
-
-    #undef REBLUR_USE_OPTIMIZED_HIT_DIST_FOR_TRACKING
-    #define REBLUR_USE_OPTIMIZED_HIT_DIST_FOR_TRACKING          0
+    #undef REBLUR_USE_FAST_HISTORY
+    #define REBLUR_USE_FAST_HISTORY                             0
 
     #undef REBLUR_USE_SCREEN_SPACE_SAMPLING
     #define REBLUR_USE_SCREEN_SPACE_SAMPLING                    1

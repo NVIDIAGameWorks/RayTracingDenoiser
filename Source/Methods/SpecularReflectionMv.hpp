@@ -23,7 +23,7 @@ size_t nrd::DenoiserImpl::AddMethod_SpecularReflectionMv()
 
         PushOutput( AsUint(ResourceType::OUT_REFLECTION_MV) );
 
-        AddDispatch( SpecularReflectionMv_Compute, SumConstants(2, 2, 3, 3), 16, 1 );
+        AddDispatch( SpecularReflectionMv_Compute, SumConstants(3, 3, 4, 3), 16, 1 );
     }
 
     #undef METHOD_NAME
@@ -46,14 +46,17 @@ void nrd::DenoiserImpl::UpdateMethod_SpecularReflectionMv(const MethodData& meth
     // COMPUTE
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::COMPUTE));
     AddFloat4x4(data, m_ViewToWorld);
+    AddFloat4x4(data, m_WorldToClip);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4(data, m_Frustum);
-    AddFloat4(data, ml::float4(m_ViewDirection.x, m_ViewDirection.y, m_ViewDirection.z, 0.0f));
+    AddFloat4(data, ml::float4(m_ViewDirection.x, m_ViewDirection.y, m_ViewDirection.z, m_IsOrtho));
+    AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, unproject));
+    AddFloat2(data, float(rectW), float(rectH));
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
-    AddFloat(data, m_IsOrtho);
-    AddFloat(data, unproject);
+    AddFloat(data, m_CommonSettings.denoisingRange);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
+    AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
 }

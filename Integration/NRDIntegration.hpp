@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRDIntegration.h"
 
-static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 2, "Unsupported NRD version!");
+static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 4, "Unsupported NRD version!");
 
 #if _WIN32
     #define NRD_INTEGRATION_ALLOCA _alloca
@@ -276,6 +276,7 @@ void NrdIntegration::CreateResources()
     resourceStateNum = 0;
     for (uint32_t i = 0; i < poolSize; i++)
     {
+        // Create NRI texture
         const nrd::TextureDesc& nrdTextureDesc = (i < denoiserDesc.permanentPoolSize) ? denoiserDesc.permanentPool[i] : denoiserDesc.transientPool[i - denoiserDesc.permanentPoolSize];
         const nri::Format format = NRD_GetNriFormat(nrdTextureDesc.format);
 
@@ -290,6 +291,7 @@ void NrdIntegration::CreateResources()
             snprintf(name, sizeof(name), "NRD::TransientPool(%u)", i - denoiserDesc.permanentPoolSize);
         m_NRI->SetTextureDebugName(*texture, name);
 
+        // Construct NRD texture
         NrdIntegrationTexture nrdTexture = {};
         nrdTexture.subresourceStates = &m_ResourceState[resourceStateNum];
         nrdTexture.format = format;
@@ -299,7 +301,20 @@ void NrdIntegration::CreateResources()
             nrdTexture.subresourceStates[mip] = nri::TextureTransition(texture, nri::AccessBits::UNKNOWN, nri::TextureLayout::UNKNOWN, mip, 1);
 
         resourceStateNum += nrdTextureDesc.mipNum;
+
+        // Adjust memory usage
+        nri::MemoryDesc memoryDesc = {};
+        m_NRI->GetTextureMemoryInfo(*texture, nri::MemoryLocation::DEVICE, memoryDesc);
+
+        if (i < denoiserDesc.permanentPoolSize)
+            m_PermanentPoolSize += memoryDesc.size;
+        else
+            m_TransientPoolSize += memoryDesc.size;
     }
+
+    #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
+        printf("%s: %.1f Mb (permanent), %.1f Mb (transient)\n", m_Name, double(m_PermanentPoolSize) / (1024.0f * 1024.0f), double(m_TransientPoolSize) / (1024.0f * 1024.0f));
+    #endif
 
     // Constant buffer
     const nri::DeviceDesc& deviceDesc = m_NRI->GetDeviceDesc(*m_Device);
@@ -368,7 +383,7 @@ bool NrdIntegration::SetMethodSettings(nrd::Method method, const void* methodSet
 void NrdIntegration::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool, bool enableDescriptorCaching)
 {
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("Frame %u ==============================================================================\n", consecutiveFrameIndex);
+        printf("%s (Frame %u) ==============================================================================\n", m_Name, consecutiveFrameIndex);
     #endif
 
     const nrd::DispatchDesc* dispatchDescs = nullptr;
@@ -526,7 +541,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
             else
             {
                 const char* s = nrd::GetResourceTypeString(r.type);
-                printf(s);
+                printf("%s ", s);
             }
         }
         printf("\n\n");
@@ -569,6 +584,8 @@ void NrdIntegration::Destroy()
 
     m_NRI = nullptr;
     m_Device = nullptr;
+    m_PermanentPoolSize = 0;
+    m_TransientPoolSize = 0;
     m_ConstantBufferSize = 0;
     m_ConstantBufferViewSize = 0;
     m_ConstantBufferOffset = 0;

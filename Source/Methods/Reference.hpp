@@ -27,7 +27,7 @@ size_t nrd::DenoiserImpl::AddMethod_Reference(uint16_t w, uint16_t h)
 
         PushOutput( AsUint(Permanent::HISTORY) );
 
-        AddDispatch( REFERENCE_TemporalAccumulation, SumConstants(0, 0, 2, 2), 16, 1 );
+        AddDispatch( REFERENCE_TemporalAccumulation, SumConstants(0, 0, 2, 3), 16, 1 );
     }
 
     PushPass("Split screen");
@@ -67,6 +67,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reference(const MethodData& methodData)
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
     AddFloat(data, m_CommonSettings.splitScreen);
     AddFloat(data, 1.0f / (1.0f + float(m_AccumulatedFrameNum)));
+    AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
 
     // COPY

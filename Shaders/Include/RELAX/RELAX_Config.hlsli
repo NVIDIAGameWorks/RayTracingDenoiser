@@ -19,8 +19,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // Shared constants common to all ReLAX denoisers
 #define RELAX_SHARED_CB_DATA \
     NRD_CONSTANT( float4x4, gPrevWorldToClip ) \
+    NRD_CONSTANT( float4x4, gPrevWorldToView ) \
     NRD_CONSTANT( float4x4, gWorldToClip ) \
     NRD_CONSTANT( float4x4, gWorldPrevToWorld ) \
+    NRD_CONSTANT( float4x4, gViewToWorld ) \
     NRD_CONSTANT( float4, gFrustumRight ) \
     NRD_CONSTANT( float4, gFrustumUp ) \
     NRD_CONSTANT( float4, gFrustumForward ) \

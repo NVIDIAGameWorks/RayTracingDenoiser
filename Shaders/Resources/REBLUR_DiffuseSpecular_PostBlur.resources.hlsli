@@ -34,23 +34,33 @@ NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffData, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecData, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 3 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 6 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 4 )
+        #endif
+        #ifdef REBLUR_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 6 )
         #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Roughness, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Diff, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Spec, u, 2 )
-        #ifdef REBLUR_OCCLUSION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_ViewZ_DiffAccumSpeed, u, 3 )
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Normal_SpecAccumSpeed, u, 4 )
+        #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 3 )
+            #ifdef REBLUR_SH
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_DiffSh, u, 4 )
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecSh, u, 5 )
+            #endif
+        #else
+            #ifdef REBLUR_SH
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_DiffSh, u, 3 )
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecSh, u, 4 )
+            #endif
         #endif
     NRD_OUTPUT_TEXTURE_END
 
@@ -58,19 +68,28 @@ NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffData, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 2 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 4 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
+        #endif
+        #ifdef REBLUR_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 4 )
         #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Diff, u, 0 )
-        #ifdef REBLUR_OCCLUSION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_ViewZ_DiffAccumSpeed, u, 1 )
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Normal_SpecAccumSpeed, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Diff, u, 1 )
+        #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 2 )
+            #ifdef REBLUR_SH
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_DiffSh, u, 3 )
+            #endif
+        #else
+            #ifdef REBLUR_SH
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_DiffSh, u, 2 )
+            #endif
         #endif
     NRD_OUTPUT_TEXTURE_END
 
@@ -78,20 +97,28 @@ NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_InternalData, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecData, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 2 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ScaledViewZ, t, 4 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
+        #endif
+        #ifdef REBLUR_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 4 )
         #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Roughness, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Spec, u, 1 )
-        #ifdef REBLUR_OCCLUSION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_ViewZ_DiffAccumSpeed, u, 2 )
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Normal_SpecAccumSpeed, u, 3 )
+        #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 2 )
+            #ifdef REBLUR_SH
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecSh, u, 3 )
+            #endif
+        #else
+            #ifdef REBLUR_SH
+                NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecSh, u, 2 )
+            #endif
         #endif
     NRD_OUTPUT_TEXTURE_END
 

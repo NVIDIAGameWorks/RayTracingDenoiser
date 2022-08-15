@@ -20,4 +20,4 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "../Include/Common.hlsli"
 #include "../Include/REBLUR/REBLUR_Common.hlsli"
-#include "../Include/REBLUR/REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.hlsli"
+#include "../Include/REBLUR/REBLUR_DiffuseSpecular_TemporalAccumulation.hlsli"

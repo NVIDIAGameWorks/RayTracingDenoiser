@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 3
+#define NRD_SETTINGS_VERSION_MINOR 4
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -109,7 +109,7 @@ namespace nrd
         // (units) > 0 - use TLAS or tracing range (max value = NRD_FP16_MAX / NRD_FP16_VIEWZ_SCALE - 1 = 524031)
         float denoisingRange = 500000.0f;
 
-        // (normalized %)
+        // (normalized %) - if relative distance difference is greater than threshold, history gets reset (0.25-1.5% works well)
         float disocclusionThreshold = 0.005f;
 
         // [0; 1] - enables "noisy input / denoised output" comparison
@@ -191,7 +191,7 @@ namespace nrd
         float sensitivityToDarkness = 0.0f; // IMPORTANT: 0 is a bad default
 
         // Ideally, must be enabled, but since "sensitivityToDarkness" requires fine tuning from the app side it is disabled by default
-        bool enable = false;
+        bool enable = false; // IMPORTANT: doesn't affect "occlusion" denoisers
     };
 
     struct AntilagHitDistanceSettings
@@ -220,7 +220,10 @@ namespace nrd
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};
 
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames (= FPS * "time of accumulation")
-        uint32_t maxAccumulatedFrameNum = 31;
+        uint32_t maxAccumulatedFrameNum = 30;
+
+        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history
+        uint32_t maxFastAccumulatedFrameNum = 6;
 
         // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of probabilistic sampling)
         float diffusePrepassBlurRadius = 30.0f;
@@ -252,9 +255,6 @@ namespace nrd
 
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
-
-        // (normalized %) - adds a portion of input to the output of spatial passes
-        float inputMix = 0.0f;
 
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
@@ -301,12 +301,12 @@ namespace nrd
         float specularPrepassBlurRadius = 50.0f;
 
         // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
-        uint32_t diffuseMaxAccumulatedFrameNum = 31;
-        uint32_t specularMaxAccumulatedFrameNum = 31;
+        uint32_t diffuseMaxAccumulatedFrameNum = 30;
+        uint32_t specularMaxAccumulatedFrameNum = 30;
 
         // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history
-        uint32_t diffuseMaxFastAccumulatedFrameNum = 8;
-        uint32_t specularMaxFastAccumulatedFrameNum = 8;
+        uint32_t diffuseMaxFastAccumulatedFrameNum = 6;
+        uint32_t specularMaxFastAccumulatedFrameNum = 6;
 
         // A-trous edge stopping Luminance sensitivity
         float diffusePhiLuminance = 2.0f;
@@ -350,6 +350,11 @@ namespace nrd
         // (normalized %) - A-trous edge stopping depth threshold
         float depthThreshold = 0.01f;
 
+        // Confidence inputs can affect spatial blurs, relaxing some weights in areas with low confidence
+        float confidenceDrivenRelaxationMultiplier = 0.0f;
+        float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
+        float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
+
         // How much we relax roughness based rejection in areas where specular reprojection is low
         float luminanceEdgeStoppingRelaxation = 0.5f;
         float normalEdgeStoppingRelaxation = 0.3f;
@@ -384,8 +389,8 @@ namespace nrd
     {
         float prepassBlurRadius = 0.0f;
 
-        uint32_t diffuseMaxAccumulatedFrameNum = 31;
-        uint32_t diffuseMaxFastAccumulatedFrameNum = 8;
+        uint32_t diffuseMaxAccumulatedFrameNum = 30;
+        uint32_t diffuseMaxFastAccumulatedFrameNum = 6;
 
         float diffusePhiLuminance = 2.0f;
         float diffuseLobeAngleFraction = 0.5f;
@@ -401,6 +406,10 @@ namespace nrd
         float minLuminanceWeight = 0.0f;
         float depthThreshold = 0.01f;
 
+        float confidenceDrivenRelaxationMultiplier = 0.0f;
+        float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
+        float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
+
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;
 
@@ -415,8 +424,8 @@ namespace nrd
     {
         float prepassBlurRadius = 50.0f;
 
-        uint32_t specularMaxAccumulatedFrameNum = 31;
-        uint32_t specularMaxFastAccumulatedFrameNum = 8;
+        uint32_t specularMaxAccumulatedFrameNum = 30;
+        uint32_t specularMaxFastAccumulatedFrameNum = 6;
 
         float specularPhiLuminance = 1.0f;
         float diffuseLobeAngleFraction = 0.5f;
@@ -437,6 +446,10 @@ namespace nrd
         float minLuminanceWeight = 0.0f;
         float depthThreshold = 0.01f;
 
+        float confidenceDrivenRelaxationMultiplier = 0.0f;
+        float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
+        float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
+
         float luminanceEdgeStoppingRelaxation = 0.5f;
         float normalEdgeStoppingRelaxation = 0.3f;
         float roughnessEdgeStoppingRelaxation = 0.3f;
@@ -456,7 +469,7 @@ namespace nrd
     struct ReferenceSettings
     {
         // (>= 0) - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
-        uint32_t maxAccumulatedFrameNum = 3600;
+        uint32_t maxAccumulatedFrameNum = 1024;
     };
 
     // SPECULAR_REFLECTION_MV

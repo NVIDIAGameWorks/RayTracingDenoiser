@@ -22,6 +22,7 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float2, gMotionVectorScale )
     NRD_CONSTANT( uint2, gRectOrigin )
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled )
+    NRD_CONSTANT( float, gDebug )
 NRD_CONSTANTS_END
 
 NRD_INPUT_TEXTURE_START

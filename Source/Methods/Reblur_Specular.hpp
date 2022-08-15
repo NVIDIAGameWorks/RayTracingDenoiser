@@ -11,57 +11,59 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
 {
     #define METHOD_NAME REBLUR_Specular
-    #define SPEC_TEMP1 AsUint(Permanent::SPEC_HISTORY_STABILIZED_PONG), 0, 1, AsUint(Permanent::SPEC_HISTORY_STABILIZED_PING)
-    #define SPEC_TEMP2 AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST)
+    #define SPEC_TEMP1 AsUint(Transient::SPEC_TMP1)
+    #define SPEC_TEMP2 AsUint(Transient::SPEC_TMP2)
 
     enum class Permanent
     {
-        PREV_VIEWZ_DIFFACCUMSPEED = PERMANENT_POOL_START,
-        PREV_NORMAL_SPECACCUMSPEED,
-        PREV_ROUGHNESS,
+        PREV_VIEWZ = PERMANENT_POOL_START,
+        PREV_NORMAL_ROUGHNESS,
+        PREV_ACCUMSPEEDS_MATERIALID,
         SPEC_HISTORY,
-        SPEC_HISTORY_STABILIZED_PING,
-        SPEC_HISTORY_STABILIZED_PONG,
+        SPEC_FAST_HISTORY_PING,
+        SPEC_FAST_HISTORY_PONG,
     };
 
-    m_PermanentPool.push_back( {Format::R32_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R32_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R8_UNORM, w, h, 1} );
+    m_PermanentPool.push_back( {Format::R32_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
+    m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
 
     enum class Transient
     {
-        INTERNAL_DATA = TRANSIENT_POOL_START,
-        SCALED_VIEWZ,
-        SPEC_DATA,
-        SPEC_ACCUMULATED,
+        DATA1 = TRANSIENT_POOL_START,
+        DATA2,
+        SPEC_MIN_HITDIST,
+        SPEC_TMP1,
+        SPEC_TMP2,
     };
 
+    m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, REBLUR_MIP_NUM} );
-    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, REBLUR_MIP_NUM} );
+    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM; i++)
     {
-        bool is5x5                  = ( ( ( i >> 1 ) & 0x1 ) != 0 );
-        bool isPrepassEnabled       = ( ( ( i >> 0 ) & 0x1 ) != 0 );
+        bool is5x5 = ( ( ( i >> 1 ) & 0x1 ) != 0 );
+        bool isPrepassEnabled = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Hit distance reconstruction");
         {
+            // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
 
-            if (isPrepassEnabled)
-                PushOutput( SPEC_TEMP2 );
-            else
-                PushOutput( SPEC_TEMP1 );
+            // Outputs
+            PushOutput( isPrepassEnabled ? SPEC_TEMP2 : SPEC_TEMP1 );
 
+            // Shaders
             if (is5x5)
             {
                 AddDispatch( REBLUR_Specular_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
@@ -69,36 +71,36 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
             }
             else
             {
-                AddDispatch( REBLUR_Specular_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Specular_HitDistReconstruction_3x3, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Specular_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Specular_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
             }
         }
     }
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < REBLUR_PREPASS_PERMUTATION_NUM; i++)
     {
-        bool isAdvanced             = ( ( ( i >> 1 ) & 0x1 ) != 0 );
+        bool isAdvanced = ( ( ( i >> 1 ) & 0x1 ) != 0 );
         bool isAfterReconstruction  = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Pre-pass");
         {
+            // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
-
-            if (isAfterReconstruction)
-                PushInput( SPEC_TEMP2 );
-            else
-                PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
+            PushInput( isAfterReconstruction ? SPEC_TEMP2 : AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
 
             if (isAdvanced)
                 PushInput( AsUint(ResourceType::IN_SPEC_DIRECTION_PDF) );
 
+            // Outputs
             PushOutput( SPEC_TEMP1 );
+            PushOutput( AsUint(Transient::SPEC_MIN_HITDIST) );
 
+            // Shaders
             if (isAdvanced)
             {
-                AddDispatch( REBLUR_Specular_PrePassAdvanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Specular_PrePassAdvanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Specular_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Specular_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
             }
             else
             {
@@ -108,44 +110,38 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         }
     }
 
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM; i++)
     {
-        bool isAntifireflyEnabled   = ( ( ( i >> 2 ) & 0x1 ) != 0 );
-        bool hasConfidenceInputs    = ( ( ( i >> 1 ) & 0x1 ) != 0 );
-        bool isAfterPrepass         = ( ( ( i >> 0 ) & 0x1 ) != 0 );
+        bool isTemporalStabilization = ( ( ( i >> 2 ) & 0x1 ) != 0 );
+        bool hasConfidenceInputs = ( ( ( i >> 1 ) & 0x1 ) != 0 );
+        bool isAfterPrepass = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Temporal accumulation");
         {
+            // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(ResourceType::IN_MV) );
-            PushInput( AsUint(Permanent::PREV_VIEWZ_DIFFACCUMSPEED) );
-            PushInput( AsUint(Permanent::PREV_NORMAL_SPECACCUMSPEED) );
-            PushInput( AsUint(Permanent::PREV_ROUGHNESS) );
-            PushInput( AsUint(Permanent::SPEC_HISTORY) );
-
-            if (isAfterPrepass)
-                PushInput( SPEC_TEMP1 );
-            else
-                PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
+            PushInput( AsUint(Permanent::PREV_VIEWZ) );
+            PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushInput( AsUint(Transient::SPEC_MIN_HITDIST) );
+            PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : REBLUR_DUMMY );
+            PushInput( isAfterPrepass ? SPEC_TEMP1 : AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
+            PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
+            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PONG) );
             
-            if (hasConfidenceInputs)
-                PushInput( AsUint(ResourceType::IN_SPEC_CONFIDENCE) );
+            // Outputs
+            PushOutput( SPEC_TEMP2 );
+            PushOutput( AsUint(Transient::DATA1) );
+            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
+            PushOutput( AsUint(Transient::DATA2) );
 
-            PushOutput( AsUint(Transient::INTERNAL_DATA) );
-            PushOutput( AsUint(Transient::SPEC_DATA) );
-
-            if (isAntifireflyEnabled)
-                PushOutput( SPEC_TEMP2 );
-            else
-                PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
-
-            PushOutput( AsUint(Transient::SCALED_VIEWZ) );
-
+            // Shaders
             if (hasConfidenceInputs)
             {
-                AddDispatch( REBLUR_Specular_TemporalAccumulationWithConfidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Specular_TemporalAccumulationWithConfidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Specular_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Specular_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
             }
             else
             {
@@ -155,89 +151,135 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         }
     }
 
-    PushPass("Mip gen");
+    for (int i = 0; i < REBLUR_HISTORY_FIX_PERMUTATION_NUM; i++)
     {
-        PushInput( SPEC_TEMP2 );
-
-        for( int16_t i = REBLUR_MIP_NUM - 1; i >= 0; i-- )
+        PushPass("History fix");
         {
-            PushOutput( AsUint(Transient::SPEC_ACCUMULATED), i, 1 );
-            PushOutput( AsUint(Transient::SCALED_VIEWZ), i, 1 );
+            // Inputs
+            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(Transient::DATA1) );
+            PushInput( SPEC_TEMP2 );
+            PushInput( AsUint(Transient::DATA2) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
+
+            // Outputs
+            PushOutput( SPEC_TEMP1 );
+
+            AddDispatch( REBLUR_Specular_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_Specular_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
         }
-
-        AddDispatch( REBLUR_Specular_MipGen, REBLUR_MIPGEN_CONSTANT_NUM, REBLUR_MIPGEN_GROUP_DIM, 1 );
-        AddDispatch( REBLUR_Perf_Specular_MipGen, REBLUR_MIPGEN_CONSTANT_NUM, REBLUR_MIPGEN_GROUP_DIM, 1 ); // fast path, but no anti-firefly support
     }
 
-    PushPass("History fix");
+    for (int i = 0; i < REBLUR_BLUR_PERMUTATION_NUM; i++)
     {
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_ACCUMULATED), 1, REBLUR_MIP_NUM - 1 );
-        PushInput( AsUint(Transient::SCALED_VIEWZ), 0, REBLUR_MIP_NUM );
+        PushPass("Blur");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(Transient::DATA1) );
+            PushInput( SPEC_TEMP1 );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
-        PushOutput( AsUint(Transient::SPEC_ACCUMULATED), 0, 1 );
+            // Outputs
+            PushOutput( SPEC_TEMP2 );
+            PushOutput( AsUint(Permanent::PREV_VIEWZ) );
 
-        AddDispatch( REBLUR_Specular_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
-        AddDispatch( REBLUR_Perf_Specular_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
+            // Shaders
+            AddDispatch( REBLUR_Specular_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_Specular_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+        }
     }
 
-    PushPass("Blur");
+    for (int i = 0; i < REBLUR_POST_BLUR_PERMUTATION_NUM; i++)
     {
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_DATA) );
-        PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
-        PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        bool isTemporalStabilization = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
-        PushOutput( SPEC_TEMP2 );
+        PushPass("Post-blur");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(Transient::DATA1) );
+            PushInput( SPEC_TEMP2 );
+            PushInput( AsUint(Permanent::PREV_VIEWZ) );
 
-        AddDispatch( REBLUR_Specular_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
-        AddDispatch( REBLUR_Perf_Specular_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+            // Outputs
+            PushOutput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
+
+            if (isTemporalStabilization)
+                PushOutput( AsUint(Permanent::SPEC_HISTORY) );
+            else
+            {
+                PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
+                PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            }
+
+            // Shaders
+            if (isTemporalStabilization)
+            {
+                AddDispatch( REBLUR_Specular_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Specular_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+            }
+            else
+            {
+                AddDispatch( REBLUR_Specular_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Specular_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+            }
+        }
     }
 
-    PushPass("Post-blur");
+    for (int i = 0; i < REBLUR_COPY_STABILIZED_HISTORY_PERMUTATION_NUM; i++)
     {
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_DATA) );
-        PushInput( SPEC_TEMP2 );
-        PushInput( AsUint(Transient::SCALED_VIEWZ) );
+        PushPass("Copy stabilized history");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
 
-        PushOutput( AsUint(Permanent::PREV_ROUGHNESS) );
-        PushOutput( AsUint(Permanent::SPEC_HISTORY) );
+            // Outputs
+            PushOutput( SPEC_TEMP2 );
 
-        AddDispatch( REBLUR_Specular_PostBlur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
-        AddDispatch( REBLUR_Perf_Specular_PostBlur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+            // Shaders
+            AddDispatch( REBLUR_Specular_CopyStabilizedHistory, REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM, REBLUR_COPY_STABILIZED_HISTORY_GROUP_DIM, USE_MAX_DIMS );
+        }
     }
 
-    PushPass("Temporal stabilization");
+    for (int i = 0; i < REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM; i++)
     {
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_MV) );
-        PushInput( AsUint(Transient::INTERNAL_DATA) );
-        PushInput( AsUint(Transient::SPEC_DATA) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_STABILIZED_PING), 0, 1, AsUint(Permanent::SPEC_HISTORY_STABILIZED_PONG) );
+        PushPass("Temporal stabilization");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(Permanent::PREV_VIEWZ) );
+            PushInput( AsUint(ResourceType::IN_MV) );
+            PushInput( AsUint(Transient::DATA1) );
+            PushInput( AsUint(Transient::DATA2) );
+            PushInput( AsUint(Permanent::SPEC_HISTORY) );
+            PushInput( SPEC_TEMP2 );
 
-        PushOutput( AsUint(Permanent::PREV_VIEWZ_DIFFACCUMSPEED) );
-        PushOutput( AsUint(Permanent::PREV_NORMAL_SPECACCUMSPEED) );
-        PushOutput( AsUint(Permanent::SPEC_HISTORY_STABILIZED_PONG), 0, 1, AsUint(Permanent::SPEC_HISTORY_STABILIZED_PING) );
-        PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
+            // Outputs
+            PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
 
-        AddDispatch( REBLUR_Specular_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
-        AddDispatch( REBLUR_Perf_Specular_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
+            // Shaders
+            AddDispatch( REBLUR_Specular_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_Specular_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
+        }
     }
 
-    PushPass("Split screen");
+    for (int i = 0; i < REBLUR_SPLIT_SCREEN_PERMUTATION_NUM; i++)
     {
-        PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
+        PushPass("Split screen");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
 
-        PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
+            // Outputs
+            PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
 
-        AddDispatch( REBLUR_Specular_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
+            // Shaders
+            AddDispatch( REBLUR_Specular_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
+        }
     }
 
     #undef METHOD_NAME

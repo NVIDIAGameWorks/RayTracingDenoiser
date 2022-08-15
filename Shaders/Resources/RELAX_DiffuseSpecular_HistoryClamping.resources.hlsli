@@ -18,7 +18,13 @@ NRD_SAMPLER_END
 NRD_CONSTANTS_START
     RELAX_SHARED_CB_DATA
     NRD_CONSTANT( float, gColorBoxSigmaScale )
-    NRD_CONSTANT( int, gFramesToFix)
+    NRD_CONSTANT( float, gFramesToFix )
+    #if( defined RELAX_SPECULAR )
+        NRD_CONSTANT( uint, gSpecFastHistory )
+    #endif
+    #if( defined RELAX_DIFFUSE )
+        NRD_CONSTANT( uint, gDiffFastHistory )
+    #endif
 NRD_CONSTANTS_END
 
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
@@ -70,4 +76,5 @@ NRD_CONSTANTS_END
 #endif
 
 // Macro magic
+#define NRD_CTA_8X8
 #define NRD_USE_BORDER_2

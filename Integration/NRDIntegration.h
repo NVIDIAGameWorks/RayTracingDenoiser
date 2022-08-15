@@ -20,9 +20,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <map>
 
 #define NRD_INTEGRATION 1
-#define NRD_INTEGRATION_MAJOR 2
-#define NRD_INTEGRATION_MINOR 2
-#define NRD_INTEGRATION_DATE "25 April 2022"
+#define NRD_INTEGRATION_MAJOR 3
+#define NRD_INTEGRATION_MINOR 0
+#define NRD_INTEGRATION_DATE "14 July 2022"
 
 // Settings
 #ifndef NRD_INTEGRATION_ASSERT
@@ -60,8 +60,9 @@ public:
     // The application must provide number of buffered frames, it's needed to guarantee that
     // constants data and descriptor sets are not overwritten while being executed on the GPU.
     // Usually it's 2-3 frames.
-    NrdIntegration(uint32_t bufferedFrameMaxNum) :
-        m_BufferedFrameMaxNum(bufferedFrameMaxNum)
+    NrdIntegration(uint32_t bufferedFrameMaxNum, const char* persistentName = "") :
+        m_Name(persistentName)
+        , m_BufferedFrameMaxNum(bufferedFrameMaxNum)
     {}
 
     ~NrdIntegration()
@@ -91,6 +92,16 @@ public:
     // Should not be called explicitly, unless you want to reload pipelines
     void CreatePipelines();
 
+    // Helpers
+    inline double GetTotalMemoryUsageInMb() const
+    { return double(m_PermanentPoolSize + m_TransientPoolSize) / (1024.0 * 1024.0); }
+
+    inline double GetPersistentMemoryUsageInMb() const
+    { return double(m_PermanentPoolSize) / (1024.0 * 1024.0); }
+
+    inline double GetAliasableMemoryUsageInMb() const
+    { return double(m_TransientPoolSize) / (1024.0 * 1024.0); }
+
 private:
     NrdIntegration(const NrdIntegration&) = delete;
 
@@ -117,6 +128,9 @@ private:
     nri::Buffer* m_ConstantBuffer = nullptr;
     nri::Descriptor* m_ConstantBufferView = nullptr;
     nrd::Denoiser* m_Denoiser = nullptr;
+    const char* m_Name = nullptr;
+    uint64_t m_PermanentPoolSize = 0;
+    uint64_t m_TransientPoolSize = 0;
     uint64_t m_ConstantBufferSize = 0;
     uint32_t m_ConstantBufferViewSize = 0;
     uint32_t m_ConstantBufferOffset = 0;

@@ -20,13 +20,13 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId)
     float viewZ = gIn_ViewZ[ pixelPosUser ];
     uint2 checkerboardPos = pixelPos;
 
-    #if( defined RELAX_DIFFUSE )
+    #ifdef RELAX_DIFFUSE
         checkerboardPos.x = pixelPos.x >> ( gDiffCheckerboard != 2 ? 1 : 0 );
         float4 diffResult = gIn_Diff[ gRectOrigin + checkerboardPos ];
         gOut_Diff[ pixelPos ] = diffResult * float( viewZ < gDenoisingRange );
     #endif
 
-    #if( defined RELAX_SPECULAR )
+    #ifdef RELAX_SPECULAR
         checkerboardPos.x = pixelPos.x >> ( gSpecCheckerboard != 2 ? 1 : 0 );
         float4 specResult = gIn_Spec[ gRectOrigin + checkerboardPos ];
         gOut_Spec[ pixelPos ] = specResult * float( viewZ < gDenoisingRange );

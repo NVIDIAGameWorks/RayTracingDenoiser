@@ -20,7 +20,7 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float, gDepthThreshold )
     NRD_CONSTANT( float, gDisocclusionFixEdgeStoppingNormalPower )
     NRD_CONSTANT( float, gMaxRadius )
-    NRD_CONSTANT( int, gFramesToFix )
+    NRD_CONSTANT( float, gFramesToFix )
 NRD_CONSTANTS_END
 
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )

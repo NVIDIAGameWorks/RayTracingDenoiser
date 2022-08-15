@@ -64,7 +64,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxSpecular(uint16_t w, uint16_t h)
 
         PushOutput(AsUint(Transient::SPEC_ILLUM_PING) );
 
-        AddDispatch(RELAX_Specular_HitDistReconstruction_3x3, SumConstants(0, 0, 0, 0), 8, 1 );
+        AddDispatch(RELAX_Specular_HitDistReconstruction, SumConstants(0, 0, 0, 0), 8, 1 );
     }
 
     PushPass("Hit distance reconstruction"); // 5x5
@@ -174,7 +174,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_ILLUM_RESPONSIVE_PREV) );
         PushOutput( AsUint(Permanent::SPEC_HISTORY_LENGTH_PREV) );
 
-        AddDispatch( RELAX_Specular_HistoryClamping, SumConstants(0, 0, 0, 2), 16, 1 );
+        AddDispatch( RELAX_Specular_HistoryClamping, SumConstants(0, 0, 0, 3), 8, 1 );
     }
 
     PushPass("History clamping"); // without firefly after it
@@ -187,7 +187,7 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxSpecular(uint16_t w, uint16_t h)
         PushOutput( AsUint(Permanent::SPEC_ILLUM_RESPONSIVE_PREV) );
         PushOutput( AsUint(Permanent::SPEC_HISTORY_LENGTH_PREV) );
 
-        AddDispatch( RELAX_Specular_HistoryClamping, SumConstants(0, 0, 0, 2), 16, 1 );
+        AddDispatch( RELAX_Specular_HistoryClamping, SumConstants(0, 0, 0, 3), 8, 1 );
     }
 
     PushPass("Anti-firefly");
@@ -200,77 +200,86 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxSpecular(uint16_t w, uint16_t h)
 
         AddDispatch( RELAX_Specular_AntiFirefly, SumConstants(0, 0, 0, 0), 16, 1 );
     }
-
-    // A-trous (first)
-    PushPass("A-trous (SMEM)");
+    for (int i = 0; i < 2; i++)
     {
-        PushInput( AsUint(Permanent::SPEC_ILLUM_PREV) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR) );
-        PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::VIEWZ_R16F) );
+        bool withConfidenceInputs = (i == 1);
 
-        PushOutput( AsUint(Transient::SPEC_ILLUM_PING) );
-        PushOutput( AsUint(Permanent::NORMAL_ROUGHNESS_PREV) );
-        PushOutput( AsUint(Permanent::MATERIAL_ID_PREV) );
+        // A-trous (first)
+        PushPass("A-trous (SMEM)");
+        {
+            PushInput(AsUint(Permanent::SPEC_ILLUM_PREV));
+            PushInput(AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR));
+            PushInput(AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
+            PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+            PushInput(AsUint(Transient::VIEWZ_R16F));
+            PushInput(withConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F));
 
-        AddDispatch( RELAX_Specular_AtrousSmem, SumConstants(0, 0, 1, 13), 8, 1 );
-    }
+            PushOutput(AsUint(Transient::SPEC_ILLUM_PING));
+            PushOutput(AsUint(Permanent::NORMAL_ROUGHNESS_PREV));
+            PushOutput(AsUint(Permanent::MATERIAL_ID_PREV));
 
-    // A-trous (odd)
-    PushPass("A-trous");
-    {
-        PushInput( AsUint(Transient::SPEC_ILLUM_PING) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR) );
-        PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::VIEWZ_R16F) );
+            AddDispatch(RELAX_Specular_AtrousSmem, SumConstants(0, 0, 1, 17), 8, 1);
+        }
 
-        PushOutput( AsUint(Transient::SPEC_ILLUM_PONG) );
+        // A-trous (odd)
+        PushPass("A-trous");
+        {
+            PushInput(AsUint(Transient::SPEC_ILLUM_PING));
+            PushInput(AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR));
+            PushInput(AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
+            PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+            PushInput(AsUint(Transient::VIEWZ_R16F));
+            PushInput(withConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F));
 
-        AddDispatchRepeated( RELAX_Specular_Atrous, SumConstants(0, 0, 0, 12), 16, 1, halfMaxPassNum );
-    }
+            PushOutput(AsUint(Transient::SPEC_ILLUM_PONG));
 
-    // A-trous (even)
-    PushPass("A-trous");
-    {
-        PushInput( AsUint(Transient::SPEC_ILLUM_PONG) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR) );
-        PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::VIEWZ_R16F) );
+            AddDispatchRepeated(RELAX_Specular_Atrous, SumConstants(0, 0, 0, 16), 16, 1, halfMaxPassNum);
+        }
 
-        PushOutput( AsUint(Transient::SPEC_ILLUM_PING) );
+        // A-trous (even)
+        PushPass("A-trous");
+        {
+            PushInput(AsUint(Transient::SPEC_ILLUM_PONG));
+            PushInput(AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR));
+            PushInput(AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
+            PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+            PushInput(AsUint(Transient::VIEWZ_R16F));
+            PushInput(withConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F));
 
-        AddDispatchRepeated( RELAX_Specular_Atrous, SumConstants(0, 0, 0, 12), 16, 1, halfMaxPassNum );
-    }
+            PushOutput(AsUint(Transient::SPEC_ILLUM_PING));
 
-    // A-trous (odd, last)
-    PushPass("A-trous");
-    {
-        PushInput( AsUint(Transient::SPEC_ILLUM_PING) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR) );
-        PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::VIEWZ_R16F) );
+            AddDispatchRepeated(RELAX_Specular_Atrous, SumConstants(0, 0, 0, 16), 16, 1, halfMaxPassNum);
+        }
 
-        PushOutput( AsUint( ResourceType::OUT_SPEC_RADIANCE_HITDIST ) );
+        // A-trous (odd, last)
+        PushPass("A-trous");
+        {
+            PushInput(AsUint(Transient::SPEC_ILLUM_PING));
+            PushInput(AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR));
+            PushInput(AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
+            PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+            PushInput(AsUint(Transient::VIEWZ_R16F));
+            PushInput(withConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F));
 
-        AddDispatch( RELAX_Specular_Atrous, SumConstants(0, 0, 0, 12), 16, 1 );
-    }
+            PushOutput(AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST));
 
-    // A-trous (even, last)
-    PushPass("A-trous");
-    {
-        PushInput( AsUint(Transient::SPEC_ILLUM_PONG) );
-        PushInput( AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR) );
-        PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::VIEWZ_R16F) );
+            AddDispatch(RELAX_Specular_Atrous, SumConstants(0, 0, 0, 16), 16, 1);
+        }
 
-        PushOutput( AsUint( ResourceType::OUT_SPEC_RADIANCE_HITDIST ) );
+        // A-trous (even, last)
+        PushPass("A-trous");
+        {
+            PushInput(AsUint(Transient::SPEC_ILLUM_PONG));
+            PushInput(AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR));
+            PushInput(AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE));
+            PushInput(AsUint(ResourceType::IN_NORMAL_ROUGHNESS));
+            PushInput(AsUint(Transient::VIEWZ_R16F));
+            PushInput(withConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F));
 
-        AddDispatch( RELAX_Specular_Atrous, SumConstants(0, 0, 0, 12), 16, 1 );
+            PushOutput(AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST));
+
+            AddDispatch(RELAX_Specular_Atrous, SumConstants(0, 0, 0, 16), 16, 1);
+        }
     }
 
     PushPass("Split screen");
@@ -307,6 +316,11 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         ATROUS_EVEN,
         ATROUS_ODD_LAST,
         ATROUS_EVEN_LAST,
+        ATROUS_SMEM_WITH_CONFIDENCE_INPUTS,
+        ATROUS_ODD_WITH_CONFIDENCE_INPUTS,
+        ATROUS_EVEN_WITH_CONFIDENCE_INPUTS,
+        ATROUS_ODD_LAST_WITH_CONFIDENCE_INPUTS,
+        ATROUS_EVEN_LAST_WITH_CONFIDENCE_INPUTS,
         SPLIT_SCREEN,
     };
 
@@ -406,10 +420,10 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
     // DISOCCLUSION FIX
     data = PushDispatch(methodData, AsUint(Dispatch::DISOCCLUSION_FIX));
     AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
-    AddFloat(data, m_IsOrtho == 0 ? m_CommonSettings.disocclusionThreshold : disocclusionThresholdOrtho);
+    AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
     AddFloat(data, settings.disocclusionFixEdgeStoppingNormalPower);
     AddFloat(data, settings.disocclusionFixMaxRadius);
-    AddUint(data, settings.disocclusionFixNumFramesToFix);
+    AddFloat(data, float(settings.disocclusionFixNumFramesToFix));
     ValidateConstants(data);
 
     if (settings.enableAntiFirefly)
@@ -418,7 +432,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING));
         AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
-        AddUint(data, settings.disocclusionFixNumFramesToFix);
+        AddFloat(data, float(settings.disocclusionFixNumFramesToFix));
+        AddUint(data, settings.specularMaxFastAccumulatedFrameNum < settings.specularMaxAccumulatedFrameNum ? 1 : 0);
         ValidateConstants(data);
 
         // FIREFLY
@@ -432,7 +447,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING_NO_FIREFLY));
         AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
-        AddUint(data, settings.disocclusionFixNumFramesToFix);
+        AddFloat(data, float(settings.disocclusionFixNumFramesToFix));
+        AddUint(data, settings.specularMaxFastAccumulatedFrameNum < settings.specularMaxAccumulatedFrameNum ? 1 : 0);
         ValidateConstants(data);
     }
 
@@ -441,12 +457,24 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
     for (uint32_t i = 0; i < iterationNum; i++)
     {
         Dispatch dispatch;
-        if (i == 0)
-            dispatch = Dispatch::ATROUS_SMEM;
-        else if (i == iterationNum - 1)
-            dispatch = (i % 2 == 0) ? Dispatch::ATROUS_EVEN_LAST : Dispatch::ATROUS_ODD_LAST;
+        if (!m_CommonSettings.isHistoryConfidenceInputsAvailable)
+        {
+            if (i == 0)
+                dispatch = Dispatch::ATROUS_SMEM;
+            else if (i == iterationNum - 1)
+                dispatch = (i % 2 == 0) ? Dispatch::ATROUS_EVEN_LAST : Dispatch::ATROUS_ODD_LAST;
+            else
+                dispatch = (i % 2 == 0) ? Dispatch::ATROUS_EVEN : Dispatch::ATROUS_ODD;
+        }
         else
-            dispatch = (i % 2 == 0) ? Dispatch::ATROUS_EVEN : Dispatch::ATROUS_ODD;
+        {
+            if (i == 0)
+                dispatch = Dispatch::ATROUS_SMEM_WITH_CONFIDENCE_INPUTS;
+            else if (i == iterationNum - 1)
+                dispatch = (i % 2 == 0) ? Dispatch::ATROUS_EVEN_LAST_WITH_CONFIDENCE_INPUTS : Dispatch::ATROUS_ODD_LAST_WITH_CONFIDENCE_INPUTS;
+            else
+                dispatch = (i % 2 == 0) ? Dispatch::ATROUS_EVEN_WITH_CONFIDENCE_INPUTS : Dispatch::ATROUS_ODD_WITH_CONFIDENCE_INPUTS;
+        }
 
         data = PushDispatch(methodData, AsUint(dispatch));
         AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
@@ -469,6 +497,10 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         AddFloat(data, settings.roughnessEdgeStoppingRelaxation);
         AddFloat(data, settings.normalEdgeStoppingRelaxation);
         AddFloat(data, settings.luminanceEdgeStoppingRelaxation);
+        AddUint(data, m_CommonSettings.isHistoryConfidenceInputsAvailable ? 1 : 0);
+        AddFloat(data, settings.confidenceDrivenRelaxationMultiplier);
+        AddFloat(data, settings.confidenceDrivenLuminanceEdgeStoppingRelaxation);
+        AddFloat(data, settings.confidenceDrivenNormalEdgeStoppingRelaxation);
         ValidateConstants(data);
     }
 

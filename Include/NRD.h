@@ -11,18 +11,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 /*
 CREDITS:
     Developed by:
-        Library, REBLUR and SIGMA denoisers:
-            Dmitry Zhdan (dzhdan@nvidia.com)
-
-        ReLAX denoiser:
-            Tim Cheblokov (ttcheblokov@nvidia.com)
-            Pawel Kozlowski (pkozlowski@nvidia.com)
+        Dmitry Zhdan (dzhdan@nvidia.com)
+        Tim Cheblokov (ttcheblokov@nvidia.com)
 
     Special thanks:
-        Evgeny Makarov (NVIDIA) - denoising ideas
-        Ivan Fedorov (NVIDIA) - interface
-        Ivan Povarov (NVIDIA) - QA, integrations and feedback
-        Oles Shyshkovtsov (4A GAMES) - initial idea of recurrent blurring
+        Pawel Kozlowski (NVIDIA)
+        Evgeny Makarov (NVIDIA)
+        Ivan Fedorov (NVIDIA)
+        Ivan Povarov (NVIDIA)
+        Oles Shyshkovtsov (4A GAMES) for initial idea of recurrent blurring
 */
 
 #pragma once
@@ -31,9 +28,9 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 3
-#define NRD_VERSION_MINOR 3
-#define NRD_VERSION_BUILD 1
-#define NRD_VERSION_DATE "16 June 2022"
+#define NRD_VERSION_MINOR 4
+#define NRD_VERSION_BUILD 0
+#define NRD_VERSION_DATE "14 July 2022"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall
@@ -62,5 +59,8 @@ namespace nrd
     NRD_API Result NRD_CALL SetMethodSettings(Denoiser& denoiser, Method method, const void* methodSettings);
     NRD_API Result NRD_CALL GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
     NRD_API void NRD_CALL DestroyDenoiser(Denoiser& denoiser);
+
+    // Helpers
     NRD_API const char* GetResourceTypeString(ResourceType resourceType);
+    NRD_API const char* GetMethodString(Method method);
 }

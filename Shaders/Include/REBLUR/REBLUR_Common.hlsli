@@ -16,73 +16,91 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Storage
 
-#define REBLUR_ACCUMSPEED_BITS                          6
-#define REBLUR_NORMAL_BITS                              12
-#define REBLUR_NORMAL_ACCUMSPEED_MATERIALID_BITS        REBLUR_NORMAL_BITS, REBLUR_NORMAL_BITS, REBLUR_ACCUMSPEED_BITS, 2 // sum == 32!
-#define REBLUR_MAX_ACCUM_FRAME_NUM                      ( ( 1 << REBLUR_ACCUMSPEED_BITS ) - 1 )
+#define REBLUR_MAX_ACCUM_FRAME_NUM                      63.0
+#define REBLUR_ACCUMSPEED_BITS                          7 // "( 1 << REBLUR_ACCUMSPEED_BITS ) - 1" must be >= REBLUR_MAX_ACCUM_FRAME_NUM
+#define REBLUR_MATERIALID_BITS                          ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
 #define REBLUR_ROUGHNESS_ULP                            ( 1.0 / 255.0 )
 #define REBLUR_NORMAL_ULP                               STL::Math::DegToRad( 0.05 )
 
 // Data packing for the next frame
 
-#define UnpackPrevViewZ( p )    asfloat( p & ~REBLUR_MAX_ACCUM_FRAME_NUM )
+#define PackViewZ( p )      min( p * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX )
+#define UnpackViewZ( p )    ( p / NRD_FP16_VIEWZ_SCALE )
 
-uint PackViewZAccumSpeed( float viewZ, float diffAccumSpeed )
+float4 PackNormalRoughness( float4 p )
 {
-    uint p = asuint( viewZ ) & ~REBLUR_MAX_ACCUM_FRAME_NUM;
-    p |= uint( diffAccumSpeed + 0.5 ); // diffAccumSpeed is in range [0; 63]
+    return float4( p.xyz * 0.5 + 0.5, p.w );
+}
+
+float4 UnpackNormalAndRoughness( float4 p, bool isNormalized = true )
+{
+    p.xyz = p.xyz * 2.0 - 1.0;
+
+    if( isNormalized )
+        p.xyz = normalize( p.xyz );
 
     return p;
 }
 
-float4 UnpackDiffAccumSpeed( uint4 p )
+uint PackAccumSpeedsMaterialID( float diffAccumSpeed, float specAccumSpeed, float materialID )
 {
-    return float4( p & REBLUR_MAX_ACCUM_FRAME_NUM );
-}
+    float3 t = float3( diffAccumSpeed, specAccumSpeed, materialID );
+    t.xy /= REBLUR_MAX_ACCUM_FRAME_NUM;
 
-uint PackNormalAccumSpeedMaterialID( float3 N, float specAccumSpeed, float materialID )
-{
-    #if( NRD_USE_OCT_NORMAL_ENCODING == 0 )
-        // Avoid quantization issues breaking oct normal encoding due to introduced "wrap from the other side".
-        // Needed only if internal normals are less precise as input normals.
-        float norm = float( 1 << REBLUR_NORMAL_BITS );
-        N = N * 0.5 + 0.5;
-        N = floor( N * norm ) / norm;
-        N = N * 2.0 - 1.0;
-    #endif
-
-    float4 t;
-    t.xy = STL::Packing::EncodeUnitVector( N );
-    t.z = specAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM;
-    t.w = materialID;
-
-    uint p = STL::Packing::RgbaToUint( t, REBLUR_NORMAL_ACCUMSPEED_MATERIALID_BITS );
+    uint p = STL::Packing::RgbaToUint( t.xyzz, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 );
 
     return p;
 }
 
-float3 UnpackPrevNormalAccumSpeedMaterialID( uint p, out float accumSpeed, out float materialID )
+float3 UnpackAccumSpeedsMaterialID( uint p )
 {
-    float4 t = STL::Packing::UintToRgba( p, REBLUR_NORMAL_ACCUMSPEED_MATERIALID_BITS );
-    float3 N = STL::Packing::DecodeUnitVector( t.xy );
+    float3 t = STL::Packing::UintToRgba( p, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 ).xyz;
+    t.xy *= REBLUR_MAX_ACCUM_FRAME_NUM;
 
-    accumSpeed = t.z * REBLUR_MAX_ACCUM_FRAME_NUM;
-    materialID = t.w;
-
-    return p ? N : 0;
-}
-
-float3 UnpackPrevNormal( uint p )
-{
-    float unused1;
-    float unused2;
-
-    return UnpackPrevNormalAccumSpeedMaterialID( p, unused1, unused2 );
+    return t;
 }
 
 // Internal data
 
-float4 PackDiffSpecInternalData( float diffAccumSpeed, float specAccumSpeed, float curvature, float viewZ, float fbits )
+float4 PackInternalData1( float diffAccumSpeed, float diffRadiusScale, float specAccumSpeed, float specRadiusScale )
+{
+    float4 r;
+    r.x = saturate( diffAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
+    r.y = diffRadiusScale;
+    r.z = saturate( specAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
+    r.w = specRadiusScale;
+
+    // Optional
+    r.yw = STL::Math::Sqrt01( r.yw );
+
+    // Allow RG8_UNORM for specular only denoiser
+    #ifndef REBLUR_DIFFUSE
+        r.xy = r.zw;
+    #endif
+
+    return r;
+}
+
+float4 UnpackInternalData1( float4 p )
+{
+    // Allow RG8_UNORM for specular only denoiser
+    #ifndef REBLUR_DIFFUSE
+        p.zw = p.xy;
+    #endif
+
+    float4 r;
+    r.x = p.x * REBLUR_MAX_ACCUM_FRAME_NUM;
+    r.y = p.y;
+    r.z = p.z * REBLUR_MAX_ACCUM_FRAME_NUM;
+    r.w = p.w;
+
+    // Optional
+    r.yw *= r.yw;
+
+    return r;
+}
+
+float4 PackInternalData2( float fbits, float curvature, float virtualHistoryAmount, float hitDistScaleForTracking, float viewZ )
 {
     // BITS:
     // 0        - free
@@ -97,38 +115,29 @@ float4 PackDiffSpecInternalData( float diffAccumSpeed, float specAccumSpeed, flo
     fbits += 128.0 * ( packedCurvature < 0.0 ? 1 : 0 );
 
     float4 r;
-    r.x = saturate( diffAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.y = STL::Math::Sqrt01( abs( packedCurvature ) );
-    r.z = saturate( specAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.w = saturate( ( fbits + 0.5 ) / 255.0 );
+    r.x = saturate( ( fbits + 0.5 ) / 255.0 );
+    r.y = abs( packedCurvature );
+    r.z = virtualHistoryAmount;
+    r.w = hitDistScaleForTracking;
+
+    // Optional
+    r.yzw = STL::Math::Sqrt01( r.yzw );
 
     return r;
 }
 
-float4 UnpackDiffSpecInternalData( float4 p, float viewZ, out float curvature, out uint bits )
+float3 UnpackInternalData2( float4 p, float viewZ, out uint bits )
 {
-    float2 accumSpeed = abs( p.xz ) * REBLUR_MAX_ACCUM_FRAME_NUM;
+    // Optional
+    p.yzw *= p.yzw;
 
-    float4 r;
-    r.xz = 1.0 / ( 1.0 + accumSpeed );
-    r.yw = accumSpeed;
+    bits = uint( p.x * 255.0 + 0.5 );
 
-    bits = uint( p.w * 255.0 + 0.5 );
-
-    float packedCurvature = p.y * p.y * ( ( bits & 128 ) != 0 ? -1.0 : 1.0 );
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float sgn = ( bits & 128 ) != 0 ? -1.0 : 1.0;
+    float curvature = p.y * sgn / pixelSize;
 
-    curvature = packedCurvature / pixelSize;
-
-    return r;
-}
-
-float4 UnpackDiffSpecInternalData( float4 p )
-{
-    float unused1;
-    uint unused2;
-
-    return UnpackDiffSpecInternalData( p, 1.0, unused1, unused2 );
+    return float3( p.zw, curvature );
 }
 
 // Accumulation speed
@@ -153,24 +162,31 @@ float AdvanceAccumSpeed( float4 prevAccumSpeed, float4 weights )
     float4 accumSpeeds = prevAccumSpeed + 1.0;
     float accumSpeed = STL::Filtering::ApplyBilinearCustomWeights( accumSpeeds.x, accumSpeeds.y, accumSpeeds.z, accumSpeeds.w, weights );
 
-    return min( accumSpeed, REBLUR_USE_HISTORY_FIX_WITHOUT_DISOCCLUSION ? gMaxAccumulatedFrameNum : REBLUR_MAX_ACCUM_FRAME_NUM );
+    return min( accumSpeed, gMaxAccumulatedFrameNum );
 }
 
-float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float parallax )
+float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float parallax, float curvature, float viewZ )
 {
-    // TODO: optional scale can be applied to parallax if local curvature is very high, but it can lead to lags
-
     // Artificially increase roughness if parallax is low to get a few frames of accumulation // TODO: is there a better way?
-    roughness = roughness + saturate( 0.05 - roughness ) * ( 1.0 - SaturateParallax( parallax * REBLUR_PARALLAX_SCALE ) );
+    float smbParallaxNorm = SaturateParallax( parallax * REBLUR_PARALLAX_SCALE );
+    roughness = roughness + saturate( 0.05 - roughness ) * ( 1.0 - smbParallaxNorm );
 
-    float acos01sq = saturate( 1.0 - NoV * 0.99999 ); // see AcosApprox()
+    // Recalculate virtual roughness from curvature
+    float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float curvatureAngleTan = abs( curvature ) * pixelSize * gFramerateScale;
+
+    float percentOfVolume = 0.75;
+    float roughnessFromCurvatureAngle = STL::Math::Sqrt01( curvatureAngleTan * ( 1.0 - percentOfVolume ) / percentOfVolume );
+
+    roughness = lerp( roughness, 1.0, roughnessFromCurvatureAngle );
 
     // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS4wNSsoeCp4KV4xLjApLygxLjA1LSh4KngpXjEuMCkiLCJjb2xvciI6IiM1MkExMDgifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC42NikvKDEuMDUtKHgqeCleMC42NikiLCJjb2xvciI6IiNFM0Q4MDkifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC41KS8oMS4wNS0oeCp4KV4wLjUpIiwiY29sb3IiOiIjRjUwQTMxIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNDIiXSwic2l6ZSI6WzE5MDAsNzAwXX1d
+    float acos01sq = saturate( 1.0 - NoV * 0.99999 ); // see AcosApprox()
     float a = STL::Math::Pow01( acos01sq, REBLUR_SPEC_ACCUM_CURVE );
     float b = 1.1 + roughness * roughness;
     float parallaxSensitivity = ( b + a ) / ( b - a );
 
-    float powerScale = 1.0 + gFramerateScale * parallax * parallaxSensitivity;
+    float powerScale = 1.0 + parallaxSensitivity * parallax * REBLUR_PARALLAX_SCALE; // TODO: previously was REBLUR_PARALLAX_SCALE => gFramerateScale
     float accumSpeed = GetSpecAccumulatedFrameNum( roughness, powerScale );
 
     // TODO: high parallax => accumSpeed = 0 => history fix. Should be the same trick as for confidence applied here?
@@ -189,11 +205,6 @@ float3 GetViewVector( float3 X, bool isViewSpace = false )
 float3 GetViewVectorPrev( float3 Xprev, float3 cameraDelta )
 {
     return gOrthoMode == 0.0 ? normalize( cameraDelta - Xprev ) : gViewVectorWorldPrev.xyz;
-}
-
-float GetMax( float3 c )
-{
-    return max( c.x, max( c.y, c.z ) );
 }
 
 float GetMinAllowedLimitForHitDistNonLinearAccumSpeed( float roughness )
@@ -216,19 +227,10 @@ float GetMinAllowedLimitForHitDistNonLinearAccumSpeed( float roughness )
     #if 1
         float scale = 1.0;
     #else
-        float scale = GetSpecMagicCurve( roughness ); // TODO: should work better, but not in case of noisy ( suboptimal ) hit distances for low roughness
+        float scale = GetSpecMagicCurve2( roughness ); // TODO: should work better, but not in case of noisy ( suboptimal ) hit distances for low roughness
     #endif
 
     return 1.0 / ( 1.0 + 0.5 * scale * gMaxAccumulatedFrameNum );
-}
-
-float4 MixHistoryAndCurrent( float4 history, float4 current, float nonLinearAccumSpeed, float roughness = 1.0 )
-{
-    float4 r;
-    r.xyz = lerp( history.xyz, current.xyz, nonLinearAccumSpeed );
-    r.w = lerp( history.w, current.w, max( nonLinearAccumSpeed, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
-
-    return r;
 }
 
 float InterpolateAccumSpeeds( float surfaceFrameNum, float virtualFrameNum, float virtualMotionAmount )
@@ -247,70 +249,182 @@ float InterpolateAccumSpeeds( float surfaceFrameNum, float virtualFrameNum, floa
     return 1.0 / c - 1.0;
 }
 
-float GetSensitivityToDarkness( float roughness )
+float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
 {
-    // TODO: if roughness is close to 0, hitDist can be very divergent, antilag potentially can break accumulation
-    // on bumpy surfaces, "sensitivityToDarknessScale" can be increased in this case based on curvature
-
-    // Artificially increase sensitivity to darkness for low roughness, because specular can be very hot
-    float sensitivityToDarknessScale = lerp( 3.0, 1.0, roughness );
-
-    return sensitivityToDarknessScale;
-}
-
-float GetFadeBasedOnAccumulatedFrames( float nonLinearAccumSpeed )
-{
-    float fade = 1.0 - nonLinearAccumSpeed;
-
-    // Normalize
-    fade = saturate( fade / 0.95 );
+    float fade = 1.0; // previously was "saturate( ( 1.0 - nonLinearAccumSpeed ) / 0.95 )"
 
     // Ignore reconstructed frames
-    float accumSpeed = rcp( nonLinearAccumSpeed ) - 1.0;
     fade *= STL::Math::LinearStep( REBLUR_FIXED_FRAME_NUM - 1, REBLUR_FIXED_FRAME_NUM + 1, accumSpeed );
 
     return fade;
 }
 
-float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float nonLinearAccumSpeed, float roughness, bool isOcclusionOnly )
+// Misc ( templates )
+
+#ifdef REBLUR_OCCLUSION
+
+    #define REBLUR_TYPE float
+
+    float MixHistoryAndCurrent( float history, float current, float nonLinearAccumSpeed, float roughness = 1.0 )
+    {
+        float r = lerp( history, current, max( nonLinearAccumSpeed, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
+
+        return r;
+    }
+
+    float ExtractHitDist( float input )
+    { return input; }
+
+    // float2
+    float GetLuma( float2 input )
+    { return input.x; }
+
+    float2 ChangeLuma( float2 input, float newLuma )
+    { return float2( newLuma, input.y ); }
+
+    float2 ClampNegativeToZero( float2 input )
+    { return float2( max( input.x, 0.0 ), input.y ); }
+
+    // float
+    float GetLuma( float input )
+    { return input; }
+
+    float ChangeLuma( float input, float newLuma )
+    { return newLuma; }
+
+    float ClampNegativeToZero( float input )
+    { return max( input.x, 0.0 ); }
+
+#else
+
+    #define REBLUR_TYPE float4
+
+    float4 MixHistoryAndCurrent( float4 history, float4 current, float nonLinearAccumSpeed, float roughness = 1.0 )
+    {
+        float4 r;
+        r.xyz = lerp( history.xyz, current.xyz, nonLinearAccumSpeed );
+        r.w = lerp( history.w, current.w, max( nonLinearAccumSpeed, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
+
+        return r;
+    }
+
+    float ExtractHitDist( float4 input )
+    { return input.w; }
+
+    float GetLuma( float4 input )
+    {
+        #if( REBLUR_USE_YCOCG == 1 )
+            return input.x;
+        #else
+            return _NRD_Luminance( input.xyz );
+        #endif
+    }
+
+    float4 ChangeLuma( float4 input, float newLuma )
+    {
+        float currLuma = GetLuma( input );
+        input.xyz *= newLuma / ( currLuma + 1e-6 );
+
+        return input;
+    }
+
+    float4 ClampNegativeToZero( float4 input )
+    {
+        #if( REBLUR_USE_YCOCG == 1 )
+            input.xyz = _NRD_YCoCgToLinear( input.xyz );
+            input.xyz = _NRD_LinearToYCoCg( input.xyz );
+        #else
+            input.xyz = max( input.xyz, 0.0 );
+        #endif
+
+        input.w = max( input.w, 0.0 );
+
+        return input;
+    }
+
+#endif
+
+float2 GetSensitivityToDarkness( float roughness )
 {
-    float2 p = float2( isOcclusionOnly ? 0 : GetMax( prev.xyz ), prev.w );
-    float2 c = float2( isOcclusionOnly ? 0 : GetMax( curr.xyz ), curr.w );
-    float2 f = abs( c - p ) / ( max( c, p ) + gSensitivityToDarkness * GetSensitivityToDarkness( roughness ) + 0.001 );
+    // Artificially increase sensitivity to darkness for low roughness, because specular can be very hot
+    float sensitivityToDarknessScale = lerp( 3.0, 1.0, roughness );
+
+    #ifdef REBLUR_SH
+        return gSensitivityToDarkness * float2( 0.282095, 1.0 );
+    #else
+        return gSensitivityToDarkness;
+    #endif
+}
+
+#ifdef REBLUR_OCCLUSION
+    float GetColorErrorForAdaptiveRadiusScale( float curr, float prev, float accumSpeed, float roughness = 1.0 )
+#else
+    float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float accumSpeed, float roughness = 1.0 )
+#endif
+{
+#ifdef REBLUR_OCCLUSION
+    float2 p = float2( 0, prev );
+    float2 c = float2( 0, curr );
+#else
+    float2 p = float2( GetLuma( prev ), prev.w );
+    float2 c = float2( GetLuma( curr ), curr.w );
+#endif
+
+    float2 f = abs( c - p ) / ( max( c, p ) + GetSensitivityToDarkness( roughness ) );
+
+    float smc = GetSpecMagicCurve2( roughness );
+    float level = lerp( 1.0, 0.15, smc );
 
     // TODO: use "hitDistFactor" to avoid over blurring contact shadowing?
 
     float error = max( f.x, f.y );
-    error = STL::Math::SmoothStep( 0.03, 0.25, error );
-    error *= GetFadeBasedOnAccumulatedFrames( nonLinearAccumSpeed );
+    error = STL::Math::SmoothStep( 0.0, level, error );
+    error *= GetFadeBasedOnAccumulatedFrames( accumSpeed );
     error *= 1.0 - gReference;
 
     return error;
 }
 
 float ComputeAntilagScale(
-    float4 history, float4 signal, float4 m1, float4 sigma,
+    #ifdef REBLUR_OCCLUSION
+        float history, float signal, float m1, float sigma,
+    #else
+        float4 history, float4 signal, float4 m1, float4 sigma,
+    #endif
     float4 antilagMinMaxThreshold, float2 antilagSigmaScale, float stabilizationStrength,
-    float curvatureMulPixelSize, float nonLinearAccumSpeed, float roughness = 1.0
+    float curvatureMulPixelSize, float2 internalData1, float roughness = 1.0
 )
 {
     // On-edge strictness
     m1 = lerp( m1, signal, abs( curvatureMulPixelSize ) );
 
     // Antilag
-    float2 h = float2( GetMax( history.xyz ), history.w );
-    float2 c = float2( GetMax( m1.xyz ), m1.w ); // using signal leads to bias in test #62
-    float2 s = float2( GetMax( sigma.xyz ), sigma.w );
+#ifdef REBLUR_OCCLUSION
+    float2 h = float2( 0, history );
+    float2 c = float2( 0, m1 ); // using signal leads to bias in test #62
+    float2 s = float2( 0, sigma );
+#else
+    float2 h = float2( GetLuma( history ), history.w );
+    float2 c = float2( GetLuma( m1 ), m1.w ); // using signal leads to bias in test #62
+    float2 s = float2( GetLuma( sigma ), sigma.w );
+#endif
+
+    // TODO: if roughness is close to 0, hitDist can be very divergent, antilag potentially can break accumulation
+    // on bumpy surfaces, "sensitivityToDarknessScale" can be increased in this case based on curvature
 
     float2 delta = abs( h - c ) - s * antilagSigmaScale;
-    delta /= max( h, c ) + gSensitivityToDarkness * GetSensitivityToDarkness( roughness ) + 0.001;
+    delta /= max( h, c ) + GetSensitivityToDarkness( roughness );
+
     delta = STL::Math::SmoothStep( antilagMinMaxThreshold.zw, antilagMinMaxThreshold.xy, delta );
 
     float antilag = min( delta.x, delta.y );
     antilag = lerp( 1.0, antilag, stabilizationStrength );
-    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( nonLinearAccumSpeed ) );
+    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( internalData1.x ) );
+    antilag = lerp( antilag, 1.0, saturate( internalData1.y ) );
 
-    // IMPORTANT: antilag must be turned off if REBLUR_DEBUG writes into the TS history
+    #if( REBLUR_DEBUG != 0 )
+        antilag = 1.0;
+    #endif
 
     return antilag;
 }
@@ -326,31 +440,25 @@ float GetResponsiveAccumulationAmount( float roughness )
 
 float GetBlurRadius(
     float radius, float radiusBias, float radiusScale,
-    float hitDistFactor, float frustumHeight,
-    float nonLinearAccumSpeed, float roughness = 1.0
+    float hitDistFactor, float nonLinearAccumSpeed,
+    float roughness = 1.0
 )
 {
     // Scale down if accumulation goes well, keeping some non-zero scale to avoid under-blurring
     float r = lerp( gMinConvergedStateBaseRadiusScale, 1.0, nonLinearAccumSpeed );
 
-    // Avoid over-blurring on contact ( if specular reprojection confidence is high )
+    // Avoid over-blurring on contact ( tests 76, 95, 120 )
     hitDistFactor = lerp( hitDistFactor, 1.0, nonLinearAccumSpeed );
+    r *= hitDistFactor; // TODO: reduce influence if reprojection confidence is low?
 
-    // TODO: test 76 suits well for blur radius tweaking
-    r *= hitDistFactor;
-    radiusBias *= hitDistFactor;
+    // IMPORTANT: do not apply "hitDistFactor" to radiusBias because it is responsible for error compensation
 
     // Main composition
-    float pixelRadiusNorm = frustumHeight / ( 1.0 + frustumHeight ); // TODO: replace voodoo magic with physically based math
-    pixelRadiusNorm = lerp( 1.0, pixelRadiusNorm, roughness * roughness );
+    r = radius * r + max( radiusBias, 2.0 * roughness ); // TODO: it would be good to get rid of "max"
+    r *= radiusScale;
 
-    r = radius * r * ( radiusScale + radiusBias * pixelRadiusNorm );
-    r += max( radiusBias, 2.0 * roughness ) * radiusScale; // TODO: it would be good to get rid of "max"
-
-    // Modify by roughness, allowing small blur even for 0 roughness if accumulation doesn't go well
-    float boost = lerp( 0.07, 0.0, GetResponsiveAccumulationAmount( roughness ) );
-    float bumpedRoughness = lerp( roughness, 1.0, boost * nonLinearAccumSpeed );
-    r *= GetSpecMagicCurve( bumpedRoughness );
+    // Modify by lobe spread
+    r *= GetSpecMagicCurve2( roughness ); // TODO: roughness at hit needed
 
     // Disable spatial filtering if radius is 0
     r *= float( radius != 0 );
@@ -370,12 +478,12 @@ float GetBlurRadiusScaleBasingOnTrimming( float roughness, float3 trimmingParams
 
 // Encoding precision aware weight functions ( for reprojection )
 
-float2 GetEncodingAwareRoughnessWeights( float roughnessCurr, float roughnessPrev, float sigma, float fraction )
+float GetEncodingAwareRoughnessWeights( float roughnessCurr, float roughnessPrev, float fraction )
 {
-    float2 a = rcp( lerp( 0.01, 1.0, saturate( roughnessCurr * fraction * float2( 2.0, 4.0 ) ) ) );
+    float a = rcp( lerp( 0.01, 1.0, saturate( roughnessCurr * fraction ) ) );
     float d = abs( roughnessPrev - roughnessCurr );
 
-    return STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_ROUGHNESS_ULP - sigma * float2( 1.0, 0.0 ) ) * a );
+    return STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_ROUGHNESS_ULP ) * a );
 }
 
 float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle )
@@ -384,7 +492,10 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle )
     float cosa = saturate( dot( Ncurr, Nprev ) );
     float d = STL::Math::AcosApprox( cosa );
 
-    return STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_NORMAL_ULP ) * a );
+    float w = STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_NORMAL_ULP ) * a );
+    w = saturate( w / 0.95 ); // needed because prev normals are RGBA8 ( test 3, 43 if roughness is low )
+
+    return w;
 }
 
 // Weight parameters
@@ -414,28 +525,20 @@ float2 GetCoarseRoughnessWeightParams( float roughness )
     return float2( 1.0, -roughness );
 }
 
-float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed, float parallax = 0.0, float roughness = 1.0, float virtualHistoryAmount = 0.0 )
+float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed )
 {
     // Normalization depends on FPS
     float nonLinearAccumSpeed = accumSpeed / ( 1.0 + accumSpeed );
     float norm1 = gFramerateScale * 30.0 * 0.25 / ( 1.0 + gFramerateScale * 30.0 * 0.25 );
     float normAccumSpeed = saturate( nonLinearAccumSpeed / norm1 );
 
-    // Correct parallax (not needed if virtual motion is confident)
-    float correctedParallax = parallax * ( 1.0 - virtualHistoryAmount );
-
-    // Allow bigger sigma scale if motion is close to 0
-    float f = SaturateParallax( correctedParallax );
-
     // TODO: should weight depend on "sigma / signal" ratio to avoid stabilization where it's not needed?
     float w = normAccumSpeed * normAccumSpeed;
     w *= isInScreenMulFootprintQuality;
-    w *= lerp( 1.0 - f, 1.0, roughness * roughness );
     w *= float( gResetHistory == 0 );
 
     // TODO: disocclusion regions on stable bumpy surfaces with super low roughness look better with s = 0
     float s = normAccumSpeed;
-    s *= lerp( 1.0, GetSpecMagicCurve( roughness ), f );
     s *= 1.0 - gReference;
 
     return float2( w, 1.0 + REBLUR_TS_SIGMA_AMPLITUDE * s );
@@ -463,107 +566,68 @@ float GetCombinedWeight
     return w.x * w.y * w.z;
 }
 
-// History fix
-// Related tests: 20, 23, 24, 27, 28, 54, 59, 65, 66, 76, 81, 98, 112, 117, 124, 126, 128, 134
-
-#ifdef REBLUR_OCCLUSION
-    void ReconstructHistory( float2 geometryWeightParams, float3 Nv, float z0, float scale, uint2 pixelPos, float2 pixelUv, RWTexture2D<float2> texOut, Texture2D<float2> texIn )
-#else
-    void ReconstructHistory( float2 geometryWeightParams, float3 Nv, float z0, float scale, uint2 pixelPos, float2 pixelUv, RWTexture2D<float4> texOut, Texture2D<float4> texIn, Texture2D<float> texScaledViewZ )
-#endif
+// float4 variants
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float4> tex0, out float4 c0 ) // main - CatRom
 {
-    // Early out
-    if( scale < REBLUR_HISTORY_FIX_THRESHOLD_1 )
-        return;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+}
 
-    float2 stepSize = scale * gInvRectSize;
-    float sum = 0.0;
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float4> tex0, out float4 c0, // main - CatRom
+    Texture2D<float4> tex1, out float4 c1 ) // SH - bilinear
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+    _BilinearFilterWithCustomWeights_Color( c1, tex1 );
+}
 
-    #ifdef REBLUR_OCCLUSION
-        float blurry = 0.0;
-    #else
-        float4 blurry = 0.0;
-    #endif
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float4> tex0, out float4 c0, // main - CatRom
+    Texture2D<float> tex1, out float c1 ) // fast - bilinear
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+    _BilinearFilterWithCustomWeights_Color( c1, tex1 );
+}
 
-#if( REBLUR_USE_HISTORY_FIX_FAST_PATH == 1 )
-    if( scale < REBLUR_HISTORY_FIX_THRESHOLD_2 )
-    {
-        // Fast path
-        [unroll]
-        for( int i = -1; i <= 1; i++ )
-        {
-            [unroll]
-            for( int j = -1; j <= 1; j++ )
-            {
-                float2 tap = float2( i, j );
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float4> tex0, out float4 c0, // main - CatRom
+    Texture2D<float4> tex1, out float4 c1, // SH - bilinear
+    Texture2D<float> tex2, out float c2 ) // fast - bilinear
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+    _BilinearFilterWithCustomWeights_Color( c1, tex1 );
+    _BilinearFilterWithCustomWeights_Color( c2, tex2 );
+}
 
-                float2 uv = pixelUv + tap.xy * stepSize * REBLUR_HISTORY_FIX_STEP;
-                float2 uvScaled = uv * gResolutionScale;
+// float variants
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float> tex0, out float c0 ) // main - CatRom
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+}
 
-                #ifdef REBLUR_OCCLUSION
-                    float2 t = texIn.SampleLevel( gLinearClamp, uvScaled, 0 ); // baseMip = 1
-                    float s = t.x;
-                    float z = t.y;
-                #else
-                    float4 s = texIn.SampleLevel( gLinearClamp, uvScaled, 0 ); // baseMip = 1
-                    float z = texScaledViewZ.SampleLevel( gLinearClamp, uvScaled, 1 ); // baseMip = 0
-                #endif
-
-                float w = IsInScreen( uv );
-                w *= exp2( -0.25 * STL::Math::LengthSquared( tap ) );
-
-                float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z / NRD_FP16_VIEWZ_SCALE, gOrthoMode );
-                w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
-
-                blurry += s * w;
-                sum += w;
-            }
-        }
-    }
-    else
-#endif
-    {
-        // Slow path
-        [unroll]
-        for( int i = -2; i <= 2; i++ )
-        {
-            [unroll]
-            for( int j = -2; j <= 2; j++ )
-            {
-                float2 tap = float2( i, j );
-
-                float2 uv = pixelUv + tap.xy * stepSize * REBLUR_HISTORY_FIX_STEP;
-                float2 uvScaled = uv * gResolutionScale;
-
-                #ifdef REBLUR_OCCLUSION
-                    float2 t = texIn.SampleLevel( gLinearClamp, uvScaled, 0 ); // baseMip = 1
-                    float s = t.x;
-                    float z = t.y;
-                #else
-                    float4 s = texIn.SampleLevel( gLinearClamp, uvScaled, 0 ); // baseMip = 1
-                    float z = texScaledViewZ.SampleLevel( gLinearClamp, uvScaled, 1 ); // baseMip = 0
-                #endif
-
-                float w = IsInScreen( uv );
-                w *= exp2( -0.25 * STL::Math::LengthSquared( tap ) );
-
-                float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z / NRD_FP16_VIEWZ_SCALE, gOrthoMode );
-                w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
-
-                blurry += s * w;
-                sum += w;
-            }
-        }
-    }
-
-    if( sum != 0.0 )
-    {
-        blurry *= rcp( sum );
-
-        #ifdef REBLUR_OCCLUSION
-            texOut[ pixelPos ] = float2( blurry, z0 );
-        #else
-            texOut[ pixelPos ] = blurry;
-        #endif
-    }
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<float> tex0, out float c0, // main - CatRom
+    Texture2D<float> tex1, out float c1 ) // fast - bilinear
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+    _BilinearFilterWithCustomWeights_Color( c1, tex1 );
 }

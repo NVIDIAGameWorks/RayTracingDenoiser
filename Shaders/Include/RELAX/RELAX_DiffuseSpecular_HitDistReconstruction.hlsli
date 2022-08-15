@@ -38,11 +38,11 @@ void Preload(uint2 sharedPos, int2 globalPos)
     float viewZ = abs(gViewZ[globalIdUser]);
     float2 hitDist = gDenoisingRange;
 
-    #if( defined RELAX_SPECULAR )
+    #ifdef RELAX_SPECULAR
         hitDist.x = gSpecularIllumination[globalPos].w;
     #endif
 
-    #if( defined RELAX_DIFFUSE )
+    #ifdef RELAX_DIFFUSE
         hitDist.y = gDiffuseIllumination[globalPos].w;
     #endif
 
@@ -73,7 +73,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
     float centerRoughness = normalAndRoughness.w;
 
     // Hit distance reconstruction
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
     float3 centerSpecularIllumination = gSpecularIllumination[pixelPos].xyz;
     float centerSpecularHitDist = centerHitdistViewZ.x;
     float2 roughnessWeightParams = GetCoarseRoughnessWeightParams(centerRoughness);
@@ -83,7 +83,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
     float sumSpecularHitDist = centerSpecularHitDist * sumSpecularWeight;
 #endif
 
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
     float3 centerDiffuseIllumination = gDiffuseIllumination[pixelPos].xyz;
     float centerDiffuseHitDist = centerHitdistViewZ.y;
     float diffuseNormalWeightParam = GetNormalWeightParams(1.0, 1.0, 1.0);
@@ -116,7 +116,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
             w *= GetGaussianWeight(length(o) * 0.5);
             w *= GetBilateralWeight(sampleViewZ, centerViewZ);
 
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
             float sampleSpecularHitDist = sampleHitdistViewZ.x;
             float specularWeight = w;
             specularWeight *= _ComputeExponentialWeight(angle, specularNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE);
@@ -126,7 +126,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
             sumSpecularWeight += specularWeight;
 #endif
 
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
             float sampleDiffuseHitDist = sampleHitdistViewZ.y;
             float diffuseWeight = w;
             diffuseWeight *= _ComputeExponentialWeight(angle, diffuseNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE);
@@ -139,12 +139,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
     }
 
     // Output
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
     sumSpecularHitDist /= max(sumSpecularWeight, 1e-6);
     gOutSpecularIllumination[pixelPos] = float4(centerSpecularIllumination, sumSpecularHitDist);
 #endif
 
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
     sumDiffuseHitDist /= max(sumDiffuseWeight, 1e-6);
     gOutDiffuseIllumination[pixelPos] = float4(centerDiffuseIllumination, sumDiffuseHitDist);
 #endif

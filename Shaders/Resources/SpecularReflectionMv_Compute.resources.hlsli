@@ -17,15 +17,20 @@ NRD_SAMPLER_END
 
 NRD_CONSTANTS_START
     NRD_CONSTANT( float4x4, gViewToWorld )
+    NRD_CONSTANT( float4x4, gWorldToClip )
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
     NRD_CONSTANT( float4, gFrustum )
-    NRD_CONSTANT( float4, gViewVectorWorld )
+    NRD_CONSTANT( float3, gViewVectorWorld )
+    NRD_CONSTANT( float, gOrthoMode )
+    NRD_CONSTANT( float3, gCameraDelta )
+    NRD_CONSTANT( float, gUnproject )
+    NRD_CONSTANT( float2, gRectSize )
     NRD_CONSTANT( float2, gInvRectSize )
     NRD_CONSTANT( float2, gMotionVectorScale )
     NRD_CONSTANT( uint2, gRectOrigin )
-    NRD_CONSTANT( float, gOrthoMode )
-    NRD_CONSTANT( float, gUnproject )
+    NRD_CONSTANT( float, gDenoisingRange )
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled )
+    NRD_CONSTANT( float, gDebug )
 NRD_CONSTANTS_END
 
 NRD_INPUT_TEXTURE_START

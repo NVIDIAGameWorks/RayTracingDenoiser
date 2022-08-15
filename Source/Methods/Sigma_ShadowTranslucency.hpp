@@ -67,7 +67,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_PrePass, SIGMA_BLUR_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_PrePass, SIGMA_BLUR_SET_CONSTANTS, 16, USE_MAX_DIMS );
     }
 
     PushPass("Post-blur");

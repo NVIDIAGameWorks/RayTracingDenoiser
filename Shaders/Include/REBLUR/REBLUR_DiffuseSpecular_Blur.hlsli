@@ -18,18 +18,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #ifdef REBLUR_OCCLUSION
         float viewZ;
 
-        #if( defined REBLUR_DIFFUSE )
+        #ifdef REBLUR_DIFFUSE
             float2 diffTemp = gIn_Diff[ pixelPos ];
-            viewZ = diffTemp.y / NRD_FP16_VIEWZ_SCALE;
+            viewZ = diffTemp.y;
         #endif
 
-        #if( defined REBLUR_SPECULAR )
+        #ifdef REBLUR_SPECULAR
             float2 specTemp = gIn_Spec[ pixelPos ];
-            viewZ = specTemp.y / NRD_FP16_VIEWZ_SCALE;
+            viewZ = specTemp.y;
         #endif
+
+        viewZ = UnpackViewZ( viewZ );
     #else
-        float viewZ = gIn_ScaledViewZ[ pixelPos ] / NRD_FP16_VIEWZ_SCALE;
+        float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
     #endif
+
+    // Output
+    gOut_ViewZ[ pixelPos ] = PackViewZ( viewZ );
 
     [branch]
     if( viewZ > gDenoisingRange )
@@ -43,9 +48,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float roughness = normalAndRoughness.w;
 
     // Internal data
-    float4 internalData = UnpackDiffSpecInternalData( gIn_InternalData[ pixelPos ] );
-    float2 diffInternalData = internalData.xy;
-    float2 specInternalData = internalData.zw;
+    float4 internalData1 = UnpackInternalData1( gIn_Data1[ pixelPos ] );
 
     // Shared data
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
@@ -54,24 +57,30 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Spatial filtering
     #define REBLUR_SPATIAL_MODE REBLUR_BLUR
 
-    #if( defined REBLUR_DIFFUSE )
+    #ifdef REBLUR_DIFFUSE
         #ifdef REBLUR_OCCLUSION
             float4 diff = diffTemp.x;
         #else
             float4 diff = gIn_Diff[ pixelPos ];
         #endif
-        float diffData = gIn_DiffData[ pixelPos ];
+
+        #ifdef REBLUR_SH
+            float4 diffSh = gIn_DiffSh[ pixelPos ];
+        #endif
 
         #include "REBLUR_Common_DiffuseSpatialFilter.hlsli"
     #endif
 
-    #if( defined REBLUR_SPECULAR )
+    #ifdef REBLUR_SPECULAR
         #ifdef REBLUR_OCCLUSION
             float4 spec = specTemp.x;
         #else
             float4 spec = gIn_Spec[ pixelPos ];
         #endif
-        float2 specData = gIn_SpecData[ pixelPos ].xy;
+
+        #ifdef REBLUR_SH
+            float4 specSh = gIn_SpecSh[ pixelPos ];
+        #endif
 
         #include "REBLUR_Common_SpecularSpatialFilter.hlsli"
     #endif

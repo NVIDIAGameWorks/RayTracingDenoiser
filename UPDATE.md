@@ -53,3 +53,22 @@ This guide has been designed to simplify migration to a newer version.
   - removed `residualNoiseLevel`
 - *RELAX*:
   - `enableSpecularHitDistanceReconstruction` replaced with `hitDistanceReconstructionMode`
+
+## To v3.4
+
+- exposed `REBLUR_DIFFUSE_SH`, `REBLUR_SPECULAR_SH` and `REBLUR_DIFFUSE_SPECULAR_SH` denoisers
+- *NRD.hlsli*:
+  - `REBLUR_FrontEnd_PackRadianceAndHitDist` renamed to `REBLUR_FrontEnd_PackRadianceAndNormHitDist`
+  - `REBLUR_FrontEnd_PackDirectionAndHitDist` renamed to `REBLUR_FrontEnd_PackDirectionAndNormHitDist`
+  - `REBLUR_BackEnd_UnpackRadianceAndHitDist` renamed to `REBLUR_BackEnd_UnpackRadianceAndNormHitDist`
+  - `REBLUR_BackEnd_UnpackDirectionAndHitDist` renamed to `REBLUR_BackEnd_UnpackDirectionAndNormHitDist`
+  - `RELAX_BackEnd_UnpackRadianceAndHitDist` renamed to `RELAX_BackEnd_UnpackRadiance`
+  - removed `NRD_GetCorrectedHitDist`
+- *API*:
+  - exposed miscellaneous function `GetMethodString`
+- *REBLUR*:
+  - removed `inputMix`
+- *RELAX*:
+  - exposed `confidenceDrivenRelaxationMultiplier`
+  - exposed `confidenceDrivenLuminanceEdgeStoppingRelaxation`
+  - exposed `confidenceDrivenNormalEdgeStoppingRelaxation`

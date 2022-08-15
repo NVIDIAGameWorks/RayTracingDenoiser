@@ -33,7 +33,7 @@ size_t nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(uint16_t w, uint16_t h)
         PushOutput( AsUint(ResourceType::OUT_DELTA_MV) );
         PushOutput( AsUint(Permanent::DELTA_SECONDARY_POS_CURR), 0, 1, AsUint(Permanent::DELTA_SECONDARY_POS_PREV) );
 
-        AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 0, 4, 1), 16, 1 );
+        AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 0, 4, 2), 16, 1 );
     }
 
     #undef METHOD_NAME
@@ -58,5 +58,6 @@ void nrd::DenoiserImpl::UpdateMethod_SpecularDeltaMv(const MethodData& methodDat
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
+    AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
 }

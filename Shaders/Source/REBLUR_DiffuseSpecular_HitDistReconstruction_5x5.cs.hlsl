@@ -11,6 +11,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "STL.hlsli"
 #include "../Include/NRD.hlsli"
 
+#define REBLUR_DIFFUSE
+#define REBLUR_SPECULAR
 #define REBLUR_HITDIST_RECONSTRUCTION_5X5
 
 #include "../Include/REBLUR/REBLUR_Config.hlsli"

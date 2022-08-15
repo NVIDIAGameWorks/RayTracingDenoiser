@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.3
+// NRD v3.4
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -215,7 +215,15 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 #define NRD_FP16_MIN                                                                    1e-7 // min allowed hitDist (0 = no data)
 #define NRD_FP16_MAX                                                                    65504.0
 #define NRD_FP16_VIEWZ_SCALE                                                            0.125 // TODO: tuned for meters, needs to be scaled down for cm and mm
+#define NRD_PI                                                                          3.14159265358979323846
 
+// ViewZ packing into FP16
+float _NRD_PackViewZ( float z )
+{
+    return clamp( z * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
+}
+
+// Oct packing
 float2 _NRD_EncodeUnitVector( float3 v, const bool bSigned = false )
 {
     v /= dot( abs( v ), 1.0 );
@@ -238,9 +246,31 @@ float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool b
     return bNormalize ? normalize( n ) : n;
 }
 
+// Color space
 float _NRD_Luminance( float3 linearColor )
 {
     return dot( linearColor, float3( 0.2990, 0.5870, 0.1140 ) );
+}
+
+float3 _NRD_LinearToYCoCg( float3 color )
+{
+    float Y = dot( color, float3( 0.25, 0.5, 0.25 ) );
+    float Co = dot( color, float3( 0.5, 0.0, -0.5 ) );
+    float Cg = dot( color, float3( -0.25, 0.5, -0.25 ) );
+
+    return float3( Y, Co, Cg );
+}
+
+float3 _NRD_YCoCgToLinear( float3 color )
+{
+    float t = color.x - color.z;
+
+    float3 r;
+    r.y = color.x + color.z;
+    r.x = t + color.y;
+    r.z = t - color.y;
+
+    return max( r, 0.0 );
 }
 
 // Hit distance normalization
@@ -250,7 +280,70 @@ float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, fl
 }
 
 //=================================================================================================================================
-// FRONT-END PACKING
+// SPHERICAL HARMONICS
+//=================================================================================================================================
+
+// Spherical harmonics
+struct NRD_SH
+{
+    float3 c0_chroma;
+    float3 c1;
+    float normHitDist;
+};
+
+NRD_SH NRD_SH_Create( float3 color, float3 direction )
+{
+    float3 YCoCg = _NRD_LinearToYCoCg( color );
+
+    NRD_SH sh;
+    sh.c0_chroma = 0.282095 * YCoCg;
+    sh.c1 = 0.488603 * YCoCg.x * direction;
+
+    return sh;
+}
+
+float3 NRD_SH_ExtractColor( NRD_SH sh )
+{
+    return _NRD_YCoCgToLinear( sh.c0_chroma / 0.282095 );
+}
+
+float3 NRD_SH_ExtractDirection( NRD_SH sh )
+{
+    return sh.c1 * rsqrt( dot( sh.c1, sh.c1 ) + 1e-7 );
+}
+
+void NRD_SH_Add( inout NRD_SH result, NRD_SH x )
+{
+    result.c0_chroma += x.c0_chroma;
+    result.c1 += x.c1;
+}
+
+void NRD_SH_Mul( inout NRD_SH result, float x )
+{
+    result.c0_chroma *= x;
+    result.c1 *= x;
+}
+
+// https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf
+float3 NRD_SH_ResolveColor( NRD_SH sh, float3 N, float cosHalfAngle = 0.0 )
+{
+    float d = dot( N, sh.c1 );
+    float Y = 1.023326 * max( d, 0.0 ) + 0.886226 * max( sh.c0_chroma.x, 0.0 );
+
+    // Pages 45-53 ( Y *= 2.0 - hemisphere, Y *= 4.0 - sphere )
+    float solidAngle = 2.0 * NRD_PI * ( 1.0 - cosHalfAngle );
+    Y *= solidAngle / NRD_PI;
+
+    // Corrected color reproduction
+    float eps = 1e-6;
+    float modifier = ( Y + eps ) / ( sh.c0_chroma.x + eps );
+    float2 CoCg = sh.c0_chroma.yz * modifier;
+
+    return _NRD_YCoCgToLinear( float3( Y, CoCg ) );
+}
+
+//=================================================================================================================================
+// FRONT-END
 //=================================================================================================================================
 
 //========
@@ -258,6 +351,7 @@ float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, fl
 //========
 
 // This function is used in all denoisers to decode normal, roughness and optional materialID
+// IN_NORMAL_ROUGHNESS => X
 float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
 {
     materialID = 0;
@@ -284,6 +378,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
     return r;
 }
 
+// IN_NORMAL_ROUGHNESS => X
 float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 {
     float unused;
@@ -292,6 +387,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 }
 
 // Not used in NRD
+// X => IN_NORMAL_ROUGHNESS
 float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint materialID = 0 )
 {
     float4 p;
@@ -316,18 +412,17 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint mate
 }
 
 // Helper functions to pack / unpack ray direction and PDF ( can be averaged for some samples )
+// X => IN_DIFF_DIRECTION_PDF
+// X => IN_SPEC_DIRECTION_PDF
 float4 NRD_FrontEnd_PackDirectionAndPdf( float3 direction, float pdf )
 {
-    // PDF can be extremely large, but we need to fit into FP16
-    pdf = sqrt( clamp( pdf, 0.0001, 10000.0 ) );
-
     return float4( direction, pdf );
 }
 
+// IN_DIFF_DIRECTION_PDF => X
+// IN_SPEC_DIRECTION_PDF => X
 float4 NRD_FrontEnd_UnpackDirectionAndPdf( float4 directionAndPdf )
 {
-    directionAndPdf.w *= directionAndPdf.w;
-
     return directionAndPdf;
 }
 
@@ -343,7 +438,10 @@ float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDist
     return saturate( hitDist / f );
 }
 
-float4 REBLUR_FrontEnd_PackRadianceAndHitDist( float3 radiance, float normHitDist, bool sanitize = true )
+// X => IN_DIFF_RADIANCE_HITDIST
+// X => IN_SPEC_RADIANCE_HITDIST
+// normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
+float4 REBLUR_FrontEnd_PackRadianceAndNormHitDist( float3 radiance, float normHitDist, bool sanitize = true )
 {
     if( sanitize )
     {
@@ -355,10 +453,14 @@ float4 REBLUR_FrontEnd_PackRadianceAndHitDist( float3 radiance, float normHitDis
     if( normHitDist != 0 )
         normHitDist = max( normHitDist, NRD_FP16_MIN );
 
+    radiance = _NRD_LinearToYCoCg( radiance );
+
     return float4( radiance, normHitDist );
 }
 
-float4 REBLUR_FrontEnd_PackDirectionAndHitDist( float3 direction, float normHitDist, bool sanitize = true )
+// X => IN_DIFF_DIRECTION_HITDIST
+// normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
+float4 REBLUR_FrontEnd_PackDirectionAndNormHitDist( float3 direction, float normHitDist, bool sanitize = true )
 {
     if( sanitize )
     {
@@ -373,10 +475,38 @@ float4 REBLUR_FrontEnd_PackDirectionAndHitDist( float3 direction, float normHitD
     return float4( direction * 0.5 + 0.5, normHitDist );
 }
 
+// X => IN_DIFF_SH0 and IN_DIFF_SH1
+// X => IN_SPEC_SH0 and IN_SPEC_SH1
+// normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
+float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direction, float pdf, out float4 out1, bool sanitize = true )
+{
+    if( sanitize )
+    {
+        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
+        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
+    }
+
+    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
+    if( normHitDist != 0 )
+        normHitDist = max( normHitDist, NRD_FP16_MIN );
+
+    NRD_SH sh = NRD_SH_Create( radiance, direction );
+
+    // IN_DIFF_SH0 / IN_SPEC_SH0
+    float4 out0 = float4( sh.c0_chroma, normHitDist );
+
+    // IN_DIFF_SH1 / IN_SPEC_SH1
+    out1 = float4( sh.c1, pdf );
+
+    return out0;
+}
+
 //========
 // RELAX
 //========
 
+// X => IN_DIFF_RADIANCE_HITDIST
+// X => IN_SPEC_RADIANCE_HITDIST
 float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bool sanitize = true )
 {
     if( sanitize )
@@ -400,11 +530,12 @@ float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bo
 
 // SIGMA ( single light )
 
+// X => IN_SHADOWDATA
 float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius )
 {
     float2 r;
     r.x = 0.0;
-    r.y = clamp( viewZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
+    r.y = _NRD_PackViewZ( viewZ );
 
     [flatten]
     if( distanceToOccluder == NRD_FP16_MAX )
@@ -418,15 +549,20 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
     return r;
 }
 
-float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius, float3 translucency, out float4 shadowTranslucency )
+// X => IN_SHADOWDATA and IN_SHADOW_TRANSLUCENCY
+float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius, float3 translucency, out float4 out2 )
 {
-    shadowTranslucency.x = float( distanceToOccluder == NRD_FP16_MAX );
-    shadowTranslucency.yzw = saturate( translucency );
+    // IN_SHADOW_TRANSLUCENCY
+    out2.x = float( distanceToOccluder == NRD_FP16_MAX );
+    out2.yzw = saturate( translucency );
 
-    return SIGMA_FrontEnd_PackShadow( viewZ, distanceToOccluder, tanOfLightAngularRadius );
+    // IN_SHADOWDATA
+    float2 out1 = SIGMA_FrontEnd_PackShadow( viewZ, distanceToOccluder, tanOfLightAngularRadius );
+
+    return out1;
 }
 
-// SIGMA ( multi light )
+// SIGMA multi-light ( experimental )
 
 #define SIGMA_MULTILIGHT_DATATYPE float2x3
 
@@ -449,43 +585,65 @@ void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float 
     multiLightShadowData[ 1 ] += float3( distanceToOccluderProj * weight, weight, 0 );
 }
 
-float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE multiLightShadowData, float3 Lsum, out float4 shadowTranslucency )
+// X => IN_SHADOWDATA and IN_SHADOW_TRANSLUCENCY
+float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE multiLightShadowData, float3 Lsum, out float4 out2 )
 {
-    shadowTranslucency.yzw = multiLightShadowData[ 0 ] / max( Lsum, 1e-6 );
-    shadowTranslucency.x = _NRD_Luminance( shadowTranslucency.yzw );
+    // IN_SHADOW_TRANSLUCENCY
+    out2.yzw = multiLightShadowData[ 0 ] / max( Lsum, 1e-6 );
+    out2.x = _NRD_Luminance( out2.yzw );
 
-    float2 r;
-    r.x = multiLightShadowData[ 1 ].x / max( multiLightShadowData[ 1 ].y, 1e-6 );
-    r.y = clamp( viewZ * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
+    // IN_SHADOWDATA
+    float2 out1;
+    out1.x = multiLightShadowData[ 1 ].x / max( multiLightShadowData[ 1 ].y, 1e-6 );
+    out1.y = _NRD_PackViewZ( viewZ );
 
-    return r;
+    return out1;
 }
 
 //=================================================================================================================================
-// BACK-END UNPACKING
+// BACK-END
 //=================================================================================================================================
 
 //========
 // REBLUR
 //========
 
-float4 REBLUR_BackEnd_UnpackRadianceAndHitDist( float4 color )
+// OUT_DIFF_RADIANCE_HITDIST => X
+// OUT_SPEC_RADIANCE_HITDIST => X
+float4 REBLUR_BackEnd_UnpackRadianceAndNormHitDist( float4 color )
 {
+    color.xyz = _NRD_YCoCgToLinear( color.xyz );
+
     return color;
 }
 
-float4 REBLUR_BackEnd_UnpackDirectionAndHitDist( float4 color )
+// OUT_DIFF_DIRECTION_HITDIST => X
+float4 REBLUR_BackEnd_UnpackDirectionAndNormHitDist( float4 color )
 {
     color.xyz = color.xyz * 2.0 - 1.0;
 
     return color;
 }
 
+// OUT_DIFF_SH0 and OUT_DIFF_SH1 => X
+// OUT_SPEC_SH0 and OUT_SPEC_SH1 => X
+NRD_SH REBLUR_BackEnd_UnpackSh( float4 data0, float4 data1 )
+{
+    NRD_SH sh;
+    sh.c0_chroma = data0.xyz;
+    sh.c1 = data1.xyz;
+    sh.normHitDist = data0.w;
+
+    return sh;
+}
+
 //========
 // RELAX
 //========
 
-float4 RELAX_BackEnd_UnpackRadianceAndHitDist( float4 color )
+// OUT_DIFF_RADIANCE_HITDIST => X
+// OUT_SPEC_RADIANCE_HITDIST => X
+float4 RELAX_BackEnd_UnpackRadiance( float4 color )
 {
     return color;
 }
@@ -494,68 +652,22 @@ float4 RELAX_BackEnd_UnpackRadianceAndHitDist( float4 color )
 // SIGMA
 //========
 
+// OUT_SHADOW_TRANSLUCENCY => X
+//   SIGMA_SHADOW:
+//      float shadowData = SIGMA_BackEnd_UnpackShadow( shadowData );
+//      shadow = shadowData;
+//   SIGMA_SHADOW_TRANSLUCENCY:
+//      float4 shadowData = SIGMA_BackEnd_UnpackShadow( shadowData );
+//      float3 finalShadowCommon = lerp( shadowData.yzw, 1.0, shadowData.x ); // or
+//      float3 finalShadowExotic = shadowData.yzw * shadowData.x; // or
+//      float3 finalShadowMoreExotic = shadowData.yzw;
 #define SIGMA_BackEnd_UnpackShadow( color )  ( color * color )
 
 //=================================================================================================================================
 // MISC
 //=================================================================================================================================
-/*
-This function is WIP, but better use it for future compatibility.
 
-Good start:
-    Passing to NRD only hit distance for the first bounce is a good start. It works well for diffuse and
-    for diffuse-like surfaces in reflections ( even if roughness is low ):
-
-        float accumulatedHitDist = 0;
-
-        for( uint bounceIndex = 1; bounceIndex < bounceNum; bounceIndex++ )
-        {
-            TracePath( ... );
-
-            accumulatedHitDist += bounceIndex == 1 ? currentHitDist : 0;
-        }
-
-But in general ( especially for pure specular paths ) the following solution is better:
-
-        float accumulatedHitDist = 0;
-        float accumulatedRoughness = 0;
-
-        for( uint bounceIndex = 1; bounceIndex < bounceNum; bounceIndex++ )
-        {
-            TracePath( ... );
-
-            accumulatedHitDist += NRD_GetCorrectedHitDist( currentHitDist, bounceIndex, accumulatedRoughness, currentImportance );
-            accumulatedRoughness += isNextEventDiffuse ? 1 : hitRoughness;
-        }
-
-where:
-    importance - shows how much energy a new hit brings compared with the previous state (see NRD sample for more details)
-    bounceIndex - 0 for primary hit, 1+ for bounces
-*/
-
-// TODO: local curvature is needed to adjust hit distance for 2nd+ bounces
-float NRD_GetCorrectedHitDist( float hitDist, float bounceIndex, float roughnessAccumulatedAlongPath, float importance = 1.0 )
-{
-    // 0-based starting from 1st bounce ( even for direct lighting denoising pass bounceIndex = 1 )
-    bounceIndex = max( bounceIndex - 1.0, 0.0 );
-
-    float m = roughnessAccumulatedAlongPath * roughnessAccumulatedAlongPath;
-    float compression = 1.0 - exp( -m * bounceIndex );
-    float compresedHitDist = hitDist / ( 1.0 + hitDist * compression );
-    float contribution = 1.0 + bounceIndex * bounceIndex * m;
-
-    return compresedHitDist * importance / contribution;
-}
-
-// We loose G-term if trimming is high, return it back in pre-integrated form
-// A typical use case is:
-/*
-    float g = gIn_IntegratedBRDF.SampleLevel( gLinearSampler, float2( NoV, roughness ), 0.0 ).x; // pre-integrated G-term
-
-    float trimmingFactor = NRD_GetTrimmingFactor( roughness, trimmingParams );
-    F *= lerp( g, 1.0, trimmingFactor );
-    Lsum += spec * F;
-*/
+// Returns lobe trimming factor for use during tracing
 float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
 {
     float trimmingFactor = trimmingParams.x * smoothstep( trimmingParams.y, trimmingParams.z, roughness );
@@ -569,6 +681,7 @@ float NRD_GetSampleWeight( float3 radiance )
     return any( isnan( radiance ) | isinf( radiance ) ) ? 0.0 : 1.0;
 }
 
+// Scales normalized hit distance back to real length
 float REBLUR_GetHitDist( float normHitDist, float viewZ, float4 hitDistParams, float roughness )
 {
     float scale = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, roughness );

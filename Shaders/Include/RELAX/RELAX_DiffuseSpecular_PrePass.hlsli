@@ -23,7 +23,7 @@ float getNormalWeightParams(float nonLinearAccumSpeed, float roughness = 1.0, fl
     return angle;
 }
 
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
 int2 DiffCheckerboard(int2 pos)
 {
     int2 result = pos;
@@ -34,7 +34,7 @@ int2 DiffCheckerboard(int2 pos)
 }
 #endif
 
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
 int2 SpecCheckerboard(int2 pos)
 {
     int2 result = pos;
@@ -93,7 +93,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
     float2 pixelUv = float2(pixelPos + 0.5) * gInvRectSize;
 
-#if( defined RELAX_DIFFUSE )
+#ifdef RELAX_DIFFUSE
     // Reading diffuse & resolving diffuse checkerboard
     float4 diffuseIllumination = gDiffuseIllumination[DiffCheckerboard(pixelPos + gRectOrigin)];
 
@@ -123,7 +123,6 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     if (gDiffuseBlurRadius > 0)
     {
         // Diffuse blur radius
-        float3 viewVector = (gOrthoMode == 0) ? centerWorldPos : gFrustumForward.xyz;
         float frustumHeight = PixelRadiusToWorld(gUnproject, gOrthoMode, gRectSize.y, centerViewZ);
         float hitDist = (diffuseIllumination.w == 0.0 ? 1.0 : diffuseIllumination.w);
         float hitDistFactor = GetHitDistFactor(hitDist, frustumHeight); // NoD = 1
@@ -193,7 +192,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     gOutDiffuseIllumination[pixelPos] = clamp(diffuseIllumination, 0, NRD_FP16_MAX);
 #endif
 
-#if( defined RELAX_SPECULAR )
+#ifdef RELAX_SPECULAR
     // Reading specular & resolving specular checkerboard
     float4 specularIllumination = gSpecularIllumination[SpecCheckerboard(pixelPos + gRectOrigin)];
 
@@ -225,7 +224,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     if (gSpecularBlurRadius > 0)
     {
         // Specular blur radius
-        float3 viewVector = (gOrthoMode == 0) ? centerWorldPos : gFrustumForward.xyz;
+        float3 viewVector = (gOrthoMode == 0) ? normalize(-centerWorldPos) : gFrustumForward.xyz;
         float4 D = STL::ImportanceSampling::GetSpecularDominantDirection(centerNormal, viewVector, centerRoughness, STL_SPECULAR_DOMINANT_DIRECTION_G2);
         float NoD = abs(dot(centerNormal, D.xyz));
 
@@ -245,13 +244,13 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             blurRadius = max(blurRadius, 1.0);
 
         float normalWeightParams = getNormalWeightParams(1.0 / 9.0, centerRoughness);
-        float2 hitDistanceWeightParams = GetHitDistanceWeightParams(specularIllumination.w, 1.0 / 9.0);
+        float2 hitDistanceWeightParams = GetHitDistanceWeightParams(specularIllumination.w, 1.0 / 9.0, centerRoughness);
         float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
 
         float specMinHitDistanceWeight = (specularIllumination.a == 0) ? 1.0 : 0.2;
         float specularHitT = (specularIllumination.a == 0) ? gDenoisingRange : specularIllumination.a;
 
-        float NoV = abs(dot(centerNormal, -normalize(viewVector)));
+        float NoV = abs(dot(centerNormal, viewVector));
 
         float minHitT = specularHitT;
         float weightSum = 1.0;

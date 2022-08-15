@@ -115,11 +115,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Sample history
     SIGMA_TYPE history;
-    BicubicFilterNoCorners(
-        pixelUvPrev * gRectSizePrev, gInvScreenSize,
-        gLinearClamp, SIGMA_USE_CATROM,
-        gIn_History, history );
+    BicubicFilterNoCorners( pixelUvPrev * gRectSizePrev, gInvScreenSize, SIGMA_USE_CATROM, gIn_History, history );
 
+    history = max( history, 0.0 );
     history = UnpackShadow( history );
 
     // Clamp history

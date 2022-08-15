@@ -64,6 +64,7 @@ namespace nrd
     constexpr uint32_t PERMANENT_POOL_START = 1000;
     constexpr uint32_t TRANSIENT_POOL_START = 2000;
     constexpr size_t CONSTANT_DATA_SIZE = 2 * 1024 * 2014;
+    constexpr uint16_t USE_MAX_DIMS = 0xFFFF;
 
     inline uint16_t DivideUp(uint32_t x, uint16_t y)
     { return uint16_t((x + y - 1) / y); }
@@ -129,13 +130,16 @@ namespace nrd
         // Reblur
         size_t AddMethod_ReblurDiffuse(uint16_t w, uint16_t h);
         size_t AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t h);
+        size_t AddMethod_ReblurDiffuseSh(uint16_t w, uint16_t h);
         size_t AddMethod_ReblurSpecular(uint16_t w, uint16_t h);
         size_t AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t h);
+        size_t AddMethod_ReblurSpecularSh(uint16_t w, uint16_t h);
         size_t AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h);
         size_t AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, uint16_t h);
+        size_t AddMethod_ReblurDiffuseSpecularSh(uint16_t w, uint16_t h);
         size_t AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w, uint16_t h);
 
-        void UpdateMethod_Reblur(const MethodData& methodData);
+        void UpdateMethod_Reblur(const MethodData& methodData, bool isDiffuse, bool isSpecular);
         void UpdateMethod_ReblurOcclusion(const MethodData& methodData);
 
         void AddSharedConstants_Reblur(const MethodData& methodData, const ReblurSettings& settings, Constant*& data);
@@ -233,7 +237,7 @@ namespace nrd
         { m_SharedConstantNum = 16 * num4x4 + 4 * num4 + 2 * num2 + 1 * num1; }
 
         constexpr uint32_t SumConstants(uint32_t num4x4, uint32_t num4, uint32_t num2, uint32_t num1, bool addShared = true)
-        { return ( 16 * num4x4 + 4 * num4 + 2 * num2 + 1 * num1 +( addShared ? m_SharedConstantNum : 0 ) ) * sizeof(uint32_t); }
+        { return ( 16 * num4x4 + 4 * num4 + 2 * num2 + 1 * num1 + ( addShared ? m_SharedConstantNum : 0 ) ) * sizeof(uint32_t); }
 
         inline void PushInput(uint16_t index, uint16_t mipOffset = 0, uint16_t mipNum = 1, uint16_t indexToSwapWith = uint16_t(-1))
         { PushTexture(DescriptorType::TEXTURE, index, mipOffset, mipNum, indexToSwapWith); }
@@ -261,8 +265,13 @@ namespace nrd
             m_ConstantDataOffset += internalDispatchDesc.constantBufferDataSize;
 
             // Update grid size
-            uint16_t w = uint16_t( float(DivideUp(methodData.desc.fullResolutionWidth, internalDispatchDesc.downsampleFactor)) * m_CommonSettings.resolutionScale[0] + 0.5f );
-            uint16_t h = uint16_t( float(DivideUp(methodData.desc.fullResolutionHeight, internalDispatchDesc.downsampleFactor)) * m_CommonSettings.resolutionScale[1] + 0.5f );
+            float sx = ml::Max(internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? m_ResolutionScalePrev.x : 0.0f, m_CommonSettings.resolutionScale[0]);
+            float sy = ml::Max(internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? m_ResolutionScalePrev.y : 0.0f, m_CommonSettings.resolutionScale[1]);
+            uint16_t d = internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? 1 : internalDispatchDesc.downsampleFactor;
+
+            uint16_t w = uint16_t( float(DivideUp(methodData.desc.fullResolutionWidth, d)) * sx + 0.5f );
+            uint16_t h = uint16_t( float(DivideUp(methodData.desc.fullResolutionHeight, d)) * sy + 0.5f );
+
             dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDimX);
             dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDimY);
 

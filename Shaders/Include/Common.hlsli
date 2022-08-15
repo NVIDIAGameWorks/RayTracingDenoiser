@@ -150,7 +150,7 @@ float2 ApplyCheckerboard( inout float2 uv, uint mode, uint counter, float2 scree
 
 float GetSpecMagicCurve( float roughness, float power = 0.25 )
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLjAtMl4oLTE1LjAqeCkiLCJjb2xvciI6IiNGMjE4MTgifSx7InR5cGUiOjAsImVxIjoiKDEtMl4oLTIwMCp4KngpKSooeF4wLjI1KSIsImNvbG9yIjoiIzIyRUQxNyJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiMxNzE2MTYifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxLjEiXSwic2l6ZSI6WzEwMDAsNTAwXX1d
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuMDEpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IigxLTJeKC0yMDAqeCp4KSkqKHheMC4xKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuMjUpIiwiY29sb3IiOiIjMDBGRjA5In0seyJ0eXBlIjowLCJlcSI6IigxLTJeKC0yMDAqeCp4KSkqKHheMC4zKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiNENjIwMDAifSx7InR5cGUiOjAsImVxIjoiKDEtMl4oLTIwMCp4KngpKSooeF4wLjcpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IigxLTJeKC0yMDAqeCp4KSkqKHheMC45KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuOTkpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMS4xIl0sInNpemUiOlsxMDAwLDUwMF19XQ--
 
     float f = 1.0 - exp2( -200.0 * roughness * roughness );
     f *= STL::Math::Pow01( roughness, power );
@@ -158,30 +158,39 @@ float GetSpecMagicCurve( float roughness, float power = 0.25 )
     return f;
 }
 
-float ComputeParallax( float3 Xprev, float2 pixelUv, float2 pixelUvPrev, float4x4 mWorldToClip, float3 cameraDelta, float2 rectSize, float unproject, float orthoMode )
+float GetSpecMagicCurve2( float roughness, float percentOfVolume = 0.987 )
 {
-    float3 Xt = Xprev - cameraDelta;
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJhdGFuKDAuOTkqeCp4LygxLTAuOTkpKS8oYXRhbigwLjk5LygxLTAuOTkpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjk4Nyp4KngvKDEtMC45ODcpKS8oYXRhbigwLjk4Ny8oMS0wLjk4NykpKSIsImNvbG9yIjoiIzE5QkEwMCJ9LHsidHlwZSI6MCwiZXEiOiJhdGFuKDAuOTcqeCp4LygxLTAuOTcpKS8oYXRhbigwLjk3LygxLTAuOTcpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjk1KngqeC8oMS0wLjk1KSkvKGF0YW4oMC45NS8oMS0wLjk1KSkpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6ImF0YW4oMC45KngqeC8oMS0wLjkpKS8oYXRhbigwLjkvKDEtMC45KSkpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6ImF0YW4oMC44NSp4KngvKDEtMC44NSkpLyhhdGFuKDAuODUvKDEtMC44NSkpKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiJhdGFuKDAuOCp4KngvKDEtMC44KSkvKGF0YW4oMC44LygxLTAuOCkpKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiJhdGFuKDAuNzUqeCp4LygxLTAuNzUpKS8oYXRhbigwLjc1LygxLTAuNzUpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjcqeCp4LygxLTAuNykpLyhhdGFuKDAuNy8oMS0wLjcpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxLjEiXSwic2l6ZSI6WzEwMDAsNTAwXX1d
+    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuMjUpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6ImF0YW4oMC45ODcqeCp4LygxLTAuOTg3KSkvKGF0YW4oMC45ODcvKDEtMC45ODcpKSkiLCJjb2xvciI6IiMxREQ2MDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjk3KngqeC8oMS0wLjk3KSkvKGF0YW4oMC45Ny8oMS0wLjk3KSkpIiwiY29sb3IiOiIjQ0MzMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMS4xIl0sInNpemUiOlsxMDAwLDUwMF19XQ--
 
-    float3 clip = STL::Geometry::ProjectiveTransform( mWorldToClip, Xt ).xyw;
+    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, percentOfVolume );
+    float almostHalfPi = STL::ImportanceSampling::GetSpecularLobeHalfAngle( 1.0, percentOfVolume );
+
+    return saturate( angle / almostHalfPi );
+}
+
+float ComputeParallax( float3 X, float2 uvForZeroParallax, float4x4 mWorldToClip, float2 rectSize, float unproject, float orthoMode )
+{
+    float3 clip = STL::Geometry::ProjectiveTransform( mWorldToClip, X ).xyw;
     clip.xy /= clip.z;
     clip.y = -clip.y;
 
     float2 uv = clip.xy * 0.5 + 0.5;
-    float2 parallaxInUv = ( orthoMode == 0.0 ? pixelUv : pixelUvPrev ) - uv;
-    float parallaxInPixels = length( parallaxInUv * rectSize );
+    float invDist = orthoMode == 0.0 ? rsqrt( STL::Math::LengthSquared( X ) ) : rcp( clip.z );
 
-    float radius = PixelRadiusToWorld( unproject, orthoMode, parallaxInPixels, clip.z );
-    float distance = clip.z; // TODO: distance to the point?
-    float parallax = radius / distance;
+    float2 parallaxInUv = uv - uvForZeroParallax;
+    float parallaxInPixels = length( parallaxInUv * rectSize );
+    float parallaxInUnits = PixelRadiusToWorld( unproject, orthoMode, parallaxInPixels, clip.z );
+    float parallax = parallaxInUnits * invDist;
 
     return parallax * NRD_PARALLAX_NORMALIZATION;
 }
 
 float GetParallaxInPixels( float parallax, float unproject )
 {
-    float parallaxInPixels = parallax / ( NRD_PARALLAX_NORMALIZATION * unproject );
+    float smbParallaxInPixels = parallax / ( NRD_PARALLAX_NORMALIZATION * unproject );
 
-    return parallaxInPixels;
+    return smbParallaxInPixels;
 }
 
 float GetColorCompressionExposureForSpatialPasses( float roughness )
@@ -250,7 +259,7 @@ float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
 float3 GetXvirtual(
     float NoV, float hitDist, float curvature,
     float3 X, float3 Xprev, float3 V,
-    float roughness )
+    float dominantFactor )
 {
     /*
     C - curvature
@@ -286,8 +295,7 @@ float3 GetXvirtual(
     // "saturate" is needed to clamp values > 1 if curvature is negative
     float compressionRatio = saturate( ( abs( hitDistFocused ) + 1e-6 ) / ( hitDist + 1e-6 ) );
 
-    float f = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
-    float3 Xvirtual = lerp( Xprev, X, compressionRatio * f ) - V * hitDistFocused * f;
+    float3 Xvirtual = lerp( Xprev, X, compressionRatio * dominantFactor ) - V * hitDistFocused * dominantFactor;
 
     return Xvirtual;
 }
@@ -346,10 +354,12 @@ float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight,
     return float2( a, b );
 }
 
-float2 GetHitDistanceWeightParams( float normHitDist, float nonLinearAccumSpeed )
+float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, float roughness = 1.0 )
 {
-    float a = 1.0 / nonLinearAccumSpeed; // TODO: previously was "1.0 / ( normHitDist * F( roughness) * 0.99 + 0.01 )"
-    float b = normHitDist * a;
+    float smc = GetSpecMagicCurve2( roughness );
+    float norm = min( nonLinearAccumSpeed, smc * 0.97 + 0.03 );
+    float a = 1.0 / norm;
+    float b = hitDist * a;
 
     return float2( a, -b );
 }
@@ -389,7 +399,7 @@ float GetRoughnessWeight( float2 params, float roughness )
 
 float GetHitDistanceWeight( float2 params, float hitDist )
 {
-    return _ComputeExponentialWeight( hitDist, params.x, params.y, 5.0 ); // TODO: lowering 5 to 3 (default) leads to minor energy loss in test 140
+    return _ComputeExponentialWeight( hitDist, params.x, params.y, NRD_EXP_WEIGHT_DEFAULT_SCALE );
 }
 
 float GetGeometryWeight( float2 params, float3 n0, float3 p )
@@ -414,19 +424,8 @@ float GetGaussianWeight( float r )
 
 // Only for checkerboard resolve and some "lazy" comparisons
 
-float GetBilateralWeight( float z, float zc )
-{
-    float t = abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) + 1e-6 );
-
-    return STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, t );
-}
-
-float2 GetBilateralWeight( float2 z, float zc )
-{
-    float2 t = abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) + 1e-6 );
-
-    return STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, t );
-}
+#define GetBilateralWeight( z, zc ) \
+    STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) + 1e-6 ) )
 
 // Upsampling
 
@@ -459,129 +458,29 @@ float2 GetBilateralWeight( float2 z, float zc )
     float2 uv3 = centerPos + ( useBicubic ? float2( 2.0, tc.y ) : float2( 1, 1 ) ); \
     float2 uv4 = centerPos + ( useBicubic ? float2( tc.x, 2.0 ) : f ); // can be used to get a free bilinear sample after some massaging
 
-// IMPORTANT: 0 can be returned if only a single tap is valid from the 2x2 footprint and pure bilinear
-// weights are close to 0 near this tap. The caller must handle this case manually. "Footprint quality"
-// can be used to accelerate accumulation and avoid the problem.
+/*
+IMPORTANT:
+- 0 can be returned if only a single tap is valid from the 2x2 footprint and pure bilinear weights
+  are close to 0 near this tap. The caller must handle this case manually. "Footprint quality"
+  can be used to accelerate accumulation and avoid the problem.
+- can return negative values
+*/
 #define _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( color, tex ) \
     /* Sampling */ \
-    color = tex.SampleLevel( linearSampler, uv0 * invTextureSize, 0 ) * w.x; \
-    color += tex.SampleLevel( linearSampler, uv1 * invTextureSize, 0 ) * w.y; \
-    color += tex.SampleLevel( linearSampler, uv2 * invTextureSize, 0 ) * w.z; \
-    color += tex.SampleLevel( linearSampler, uv3 * invTextureSize, 0 ) * w.w; \
-    color += tex.SampleLevel( linearSampler, uv4 * invTextureSize, 0 ) * w4; \
+    color = tex.SampleLevel( gLinearClamp, uv0 * invTextureSize, 0 ) * w.x; \
+    color += tex.SampleLevel( gLinearClamp, uv1 * invTextureSize, 0 ) * w.y; \
+    color += tex.SampleLevel( gLinearClamp, uv2 * invTextureSize, 0 ) * w.z; \
+    color += tex.SampleLevel( gLinearClamp, uv3 * invTextureSize, 0 ) * w.w; \
+    color += tex.SampleLevel( gLinearClamp, uv4 * invTextureSize, 0 ) * w4; \
     /* Normalize similarly to "STL::Filtering::ApplyBilinearCustomWeights()" */ \
-    color = sum < 0.0001 ? 0 : color * rcp( sum ); \
-    /* Avoid negative values from CatRom, but doesn't suit for YCoCg or negative input */ \
-    color = max( color, 0 )
+    color = sum < 0.0001 ? 0 : color * rcp( sum );
 
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-    float2 samplePos, float2 invTextureSize, float4 bilinearCustomWeights,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0 )
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-}
-
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-    float2 samplePos, float2 invTextureSize, float4 bilinearCustomWeights,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0,
-    Texture2D<float4> tex1, out float4 c1 )
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c1, tex1 );
-}
-
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-    float2 samplePos, float2 invTextureSize, float4 bilinearCustomWeights,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0,
-    Texture2D<float4> tex1, out float4 c1,
-    Texture2D<float4> tex2, out float4 c2,
-    Texture2D<float4> tex3, out float4 c3 )
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c1, tex1 );
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c2, tex2 );
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c3, tex3 );
-}
-
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights1(
-    float2 samplePos, float2 invTextureSize, float4 bilinearCustomWeights,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float> tex0, out float c0 )
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-}
-
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights1(
-    float2 samplePos, float2 invTextureSize, float4 bilinearCustomWeights,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float> tex0, out float c0,
-    Texture2D<float> tex1, out float c1 )
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c1, tex1 );
-}
-
-void BicubicFilterNoCorners(
-    float2 samplePos, float2 invTextureSize,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0 )
-{
-    if( !useBicubic )
-    {
-        c0 = tex0.SampleLevel( linearSampler, samplePos * invTextureSize, 0 );
-
-        return;
-    }
-
-    float4 bilinearCustomWeights = 0;
-
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-}
-
-void BicubicFilterNoCorners(
-    float2 samplePos, float2 invTextureSize,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0,
-    Texture2D<float4> tex1, out float4 c1 )
-{
-    if( !useBicubic )
-    {
-        c0 = tex0.SampleLevel( linearSampler, samplePos * invTextureSize, 0 );
-        c1 = tex1.SampleLevel( linearSampler, samplePos * invTextureSize, 0 );
-
-        return;
-    }
-
-    float4 bilinearCustomWeights = 0;
-
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c1, tex1 );
-}
-
-void BicubicFilterNoCorners(
-    float2 samplePos, float2 invTextureSize,
-    SamplerState linearSampler, bool useBicubic,
-    Texture2D<float> tex0, out float c0 )
-{
-    if( !useBicubic )
-    {
-        c0 = tex0.SampleLevel( linearSampler, samplePos * invTextureSize, 0 );
-
-        return;
-    }
-
-    float4 bilinearCustomWeights = 0;
-
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-}
+#define _BilinearFilterWithCustomWeights_Color( color, tex ) \
+    /* Sampling */ \
+    color = tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0 ) * bilinearCustomWeights.x; \
+    color += tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0, int2( 1, 0 ) ) * bilinearCustomWeights.y; \
+    color += tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0, int2( 0, 1 ) ) * bilinearCustomWeights.z; \
+    color += tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0, int2( 1, 1 ) ) * bilinearCustomWeights.w; \
+    /* Normalize similarly to "STL::Filtering::ApplyBilinearCustomWeights()" */ \
+    sum = dot( bilinearCustomWeights, 1.0 ); \
+    color = sum < 0.0001 ? 0 : color * rcp( sum );
