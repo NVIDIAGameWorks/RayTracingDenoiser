@@ -370,15 +370,14 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
 // - works for "negative x" only
 // - huge error for x < -2, but still applicable for "weight" calculations
 // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJleHAoeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiMS8oeCp4LXgrMSkiLCJjb2xvciI6IiMwRkIwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyItMTAiLCIwIiwiMCIsIjEiXX1d
-// TODO: use for all weights? definitely a must for "noisy" data comparison when confidence is unclear
 #define ExpApprox( x ) \
     rcp( ( x ) * ( x ) - ( x ) + 1.0 )
 
 // Must be used for noisy data
 // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLWFicygoeC0wLjUpLzAuMikiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiZXhwKC0yKmFicygoeC0wLjUpLzAuMikpIiwiY29sb3IiOiIjRkYwMDE1In0seyJ0eXBlIjowLCJlcSI6IjEvKCgtMyphYnMoKHgtMC41KS8wLjIpKV4yLSgtMyphYnMoKHgtMC41KS8wLjIpKSsxKSIsImNvbG9yIjoiIzAwQTgyNyJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIxIiwiMCIsIjEiXX1d
 // scale = 3-5 is needed to match energy in "_ComputeNonExponentialWeight" ( especially when used in a recurrent loop )
-#define _ComputeExponentialWeight( x, px, py, scale ) \
-    ExpApprox( -scale * abs( ( x ) * ( px ) + ( py ) ) )
+#define _ComputeExponentialWeight( x, px, py ) \
+    ExpApprox( -NRD_EXP_WEIGHT_DEFAULT_SCALE * abs( ( x ) * ( px ) + ( py ) ) )
 
 // A good choice for non noisy data
 #define _ComputeNonExponentialWeight( x, px, py ) \
@@ -386,7 +385,7 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
 
 #if( NRD_USE_EXPONENTIAL_WEIGHTS == 1 )
     #define _ComputeWeight( x, px, py ) \
-        _ComputeExponentialWeight( x, px, py, NRD_EXP_WEIGHT_DEFAULT_SCALE )
+        _ComputeExponentialWeight( x, px, py )
 #else
     #define _ComputeWeight( x, px, py ) \
         _ComputeNonExponentialWeight( x, px, py )
@@ -399,7 +398,7 @@ float GetRoughnessWeight( float2 params, float roughness )
 
 float GetHitDistanceWeight( float2 params, float hitDist )
 {
-    return _ComputeExponentialWeight( hitDist, params.x, params.y, NRD_EXP_WEIGHT_DEFAULT_SCALE );
+    return _ComputeExponentialWeight( hitDist, params.x, params.y );
 }
 
 float GetGeometryWeight( float2 params, float3 n0, float3 p )

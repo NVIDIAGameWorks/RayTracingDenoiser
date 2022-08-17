@@ -34,7 +34,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 sum = 1.0;
         float boost = saturate( 1.0 - specInternalData.y / REBLUR_FIXED_FRAME_NUM );
         float radius = gBlurRadius;
-        radius *= ( 1.0 + 2.0 * boost ) / 3.0; // TODO: should "boost" be scaled by "smc"? Not in case, when the entire blur radius is scaled by "smc"
+        radius *= ( 1.0 + 2.0 * boost * GetSpecMagicCurve2( roughness ) ) / 3.0;
 #endif
         radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecLobeTrimmingParams.xyz );
 

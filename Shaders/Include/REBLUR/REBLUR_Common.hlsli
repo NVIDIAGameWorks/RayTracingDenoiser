@@ -189,7 +189,6 @@ float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float 
     float powerScale = 1.0 + parallaxSensitivity * parallax * REBLUR_PARALLAX_SCALE; // TODO: previously was REBLUR_PARALLAX_SCALE => gFramerateScale
     float accumSpeed = GetSpecAccumulatedFrameNum( roughness, powerScale );
 
-    // TODO: high parallax => accumSpeed = 0 => history fix. Should be the same trick as for confidence applied here?
     accumSpeed = min( accumSpeed, maxAccumSpeed );
 
     return accumSpeed * float( gResetHistory == 0 );
@@ -209,28 +208,17 @@ float3 GetViewVectorPrev( float3 Xprev, float3 cameraDelta )
 
 float GetMinAllowedLimitForHitDistNonLinearAccumSpeed( float roughness )
 {
+    // TODO: accelerate hit dist accumulation instead of limiting max number of frames?
     /*
-    (old) If non-exponential weight is used for hit distance:
-        0 can't be used to unblock accumulation of hitDist due to strict hitDist weight and effects
-        of feedback loop color banding (crunched colors) will appear. It can be solved in two ways:
-            - accelerating hitDist accumulation to preserve noise a bit
-            - adding some hitDist input to the output in spatial passes
-
-    (new) If exponential weight is used:
-        Exponential weight allows to accumulate hitT more. But if accumulation speed matches main
-        accumulation it deminishes contact shadowing a bit.
-
-    Previously was:
-        nonLinearAccumSpeed = lerp( 0.2, 0.1, STL::Math::Sqrt01( roughness ) );
+    If hit distance weight is non-exponential:
+        This function can't return 0, because strict hitDist weight and effects of feedback loop lead to color banding (crunched colors)
+    If hit distance weight is exponential:
+        Acceleration is still needed to get better disocclusions from "parallax check"
     */
 
-    #if 1
-        float scale = 1.0;
-    #else
-        float scale = GetSpecMagicCurve2( roughness ); // TODO: should work better, but not in case of noisy ( suboptimal ) hit distances for low roughness
-    #endif
+    float acceleration = 0.5 * GetSpecMagicCurve2( roughness );
 
-    return 1.0 / ( 1.0 + 0.5 * scale * gMaxAccumulatedFrameNum );
+    return 1.0 / ( 1.0 + acceleration * gMaxAccumulatedFrameNum );
 }
 
 float InterpolateAccumSpeeds( float surfaceFrameNum, float virtualFrameNum, float virtualMotionAmount )

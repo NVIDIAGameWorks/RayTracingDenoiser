@@ -115,9 +115,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 float angle = STL::Math::AcosApprox( cosa );
 
                 // These weights have infinite exponential tails, because with strict weights we are reducing a chance to find a valid sample in 3x3 or 5x5 area
-                ww.x *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE );
-                ww.y *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0, NRD_EXP_WEIGHT_DEFAULT_SCALE );
-                ww.y *= _ComputeExponentialWeight( normalAndRoughness.w, roughnessWeightParams.x, roughnessWeightParams.y, NRD_EXP_WEIGHT_DEFAULT_SCALE );
+                ww.x *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
+                ww.y *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
+                ww.y *= _ComputeExponentialWeight( normalAndRoughness.w, roughnessWeightParams.x, roughnessWeightParams.y );
             #endif
 
             center.xy += temp.xy * ww;

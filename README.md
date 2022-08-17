@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.4.0 (NRD)
+# NVIDIA Real-time Denoisers v3.4.1 (NRD)
 
 ## SAMPLE APP
 
@@ -21,7 +21,7 @@ Supported signal types (modulated irradiance can be used instead of radiance):
 - *REBLUR*:
   - Diffuse & specular radiance
   - Diffuse (ambient) & specular occlusion (OCCLUSION variants)
-  - Diffuse & specular radiance in spherical haronics (SH variants)
+  - Diffuse & specular radiance in spherical harmonics (SH variants)
 - *SIGMA*:
   - Shadows from an infinite light source (sun, moon)
   - Shadows from a local light source (omni, spot)
@@ -238,7 +238,7 @@ NRD.Destroy();
 
 ### Integration Method 3: White-box library (using the application-side Render Hardware Interface)
 
-Logically it's close to the Method 1, but the integration takes place in the full source code (only the NRD project is needed). In this case NRD shaders are handled by the application shader compilation pipeline. The application should still use NRD via NRD API to preserve forward compatibility. This method suits best for compilation on other platforms (consoles, ARM), unlocks NRD modification on the application side and increases portability.
+Logically it's close to the Method 1, but the integration takes place in the full source code (only the *NRD* project is needed). In this case *NRD* shaders are handled by the application shader compilation pipeline. The application should still use *NRD* via *NRD API* to preserve forward compatibility. This method suits best for compilation on other platforms (consoles, ARM), unlocks *NRD* modification on the application side and increases portability.
 
 NOTE: this method is WIP. It works, but in the future it will work better out of the box.
 
@@ -247,7 +247,7 @@ NOTE: this method is WIP. It works, but in the future it will work better out of
 * *Denoiser method (or method)* - a method for denoising of a particular signal (for example: `Method::DIFFUSE`)
 * *Denoiser* - a set of methods aggregated into a monolithic entity (the library is free to rearrange passes without dependencies)
 * *Resource* - an input, output or internal resource. Currently can only be a texture
-* *Texture pool (or pool)* - a texture pool that stores permanent or transient resources needed for denoising. Textures from the permanent pool are dedicated to NRD and can not be reused by the application (history buffers are stored here). Textures from the transient pool can be reused by the application right after denoising. NRD doesn’t allocate anything. *NRD* provides resource descriptions, but resource creations are done on the application side.
+* *Texture pool (or pool)* - a texture pool that stores permanent or transient resources needed for denoising. Textures from the permanent pool are dedicated to *NRD* and can not be reused by the application (history buffers are stored here). Textures from the transient pool can be reused by the application right after denoising. *NRD* doesn’t allocate anything. *NRD* provides resource descriptions, but resource creations are done on the application side.
 
 ## NRD API OVERVIEW
 
@@ -278,7 +278,7 @@ Commons inputs:
 
   Supported variants via `ComminSettings::isMotionVectorInWorldSpace`:
   - 3D world space motion (recommended) - camera motion should not be included (it's already in the matrices). In other words, if there are no moving objects all motion vectors = 0. The `.w` channel is unused and can be used by the app
-  - 2D screen space motion - 2D motion doesn't provide information about moving along view direction, it only allows to "get" the direction. NRD can introduce pixels with rejected history on dynamic objects in this case.
+  - 2D screen space motion - 2D motion doesn't provide information about movement along the view direction, it only allows to "get" the direction. *NRD* can introduce pixels with rejected history on dynamic objects in this case.
 
   Motion vector scaling can be provided via `CommonSettings::motionVectorScale`.
 
@@ -294,9 +294,9 @@ Commons inputs:
   - _NRD\_NORMAL\_ENCODING = NRD\_NORMAL\_ENCODING\_UNORM_ - `.xyz` - normal (decoding is `normalize( .xyz * 2 - 1 )`), `.w` - roughness
   - _NRD\_NORMAL\_ENCODING = NRD\_NORMAL\_ENCODING\_OCT_ - `.xy` - normal (octahedron decoding). `.z` - roughness, `.w` - optional material ID (only 2 lower bits are used).
 
-  NRD computes local curvature using provided normals. Less accurate normals can lead to banding in curvature and local flatness. RGBA8 normals is a good baseline, but R10G10B10A10 oct-packed normals improve curvature calculations and specular tracking in the result.
+  *NRD* computes local curvature using provided normals. Less accurate normals can lead to banding in curvature and local flatness. RGBA8 normals is a good baseline, but R10G10B10A10 oct-packed normals improve curvature calculations and specular tracking in the result.
 
-  If `materialID` is provided, NRD diffuse and specular denoisers won't mix up surfaces with different material IDs.
+  If `materialID` is provided, *NRD* diffuse and specular denoisers won't mix up surfaces with different material IDs.
 
 * **IN\_VIEWZ** - `.x` - view-space Z coordinate of the primary hit position (linearized g-buffer depth)
 
@@ -311,10 +311,10 @@ See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
 
 NRD sample is a good start to familiarize yourself with input requirements and best practices, but main requirements can be summarized to:
 
-- Path length must be separated into diffuse and specular paths
+- Signal for *NRD* must be separated into diffuse and specular at primary hit
+- `hitT` must not include primary hit distance
 - Do not pass *sum of lengths of all segments* as `hitT`. A solid baseline is to use hit distance for the 1st bounce only, it works well for diffuse and specular signals
-- `hitT`, passed to NRD, must not include primary hit distance
-- Noisy radiance inputs must not include material information at primary hits, i.e. material de-modulation is needed
+  - *NRD sample* uses more complex method for accumulating `hitT` along the path, which takes into account energy dissipation due to lobe spread and curvature at the current hit
 - Noise in provided hit distances must follow a diffuse or specular lobe. It implies that `hitT` for `roughness = 0` must be clean (if probabilistic sampling is not in use)
 - In case of probabilistic diffuse / specular selection at the primary hit, provided `hitT` must follow the following rules:
   - Should not be divided by `PDF`
@@ -325,7 +325,7 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 
 ## MEMORY REQUIREMENTS
 
-The _Persistent_ column (matches NRD _Permanent pool_) indicates how much of the _Working set_ is required to be left intact for subsequent frames of the application. This memory stores the history resources consumed by NRD. The _Aliasable_ column (matches NRD _Transient pool_) shows how much of the _Working set_ may be aliased by textures or other resources used by the application outside of the operating boundaries of NRD.
+The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the *Working set* is required to be left intact for subsequent frames of the application. This memory stores the history resources consumed by NRD. The *Aliasable* column (matches *NRD Transient pool*) shows how much of the *Working set* may be aliased by textures or other resources used by the application outside of the operating boundaries of NRD.
 
 | Resolution |                             Denoiser | Working set (Mb) |  Persistent (Mb) |   Aliasable (Mb) |
 |------------|--------------------------------------|------------------|------------------|------------------|
@@ -384,7 +384,7 @@ The _Persistent_ column (matches NRD _Permanent pool_) indicates how much of the
 
 Denoising is not a panacea or miracle. Denoising works best with ray tracing results produced by a suitable form of importance sampling. Additionally, *NRD* has its own restrictions. The following suggestions should help to achieve best image quality:
 
-**[NRD]** The NRD API has been designed to support integration into native VULKAN apps. If the RHI you work with is DX11-like, not all provided data will be needed.
+**[NRD]** The *NRD API* has been designed to support integration into native VULKAN apps. If the RHI you work with is DX11-like, not all provided data will be needed.
 
 **[NRD]** Read all comments in `NRDDescs.h`, `NRDSettings.h` and `NRD.hlsli`.
 
@@ -398,13 +398,13 @@ Denoising is not a panacea or miracle. Denoising works best with ray tracing res
 
 **[NRD]** All pixels in floating point textures should be INF / NAN free to avoid propagation, because such values are used in weight calculations and accumulation of a weighted sum. Functions `XXX_FrontEnd_PackRadianceAndHitDist` perform optional NAN / INF clearing of the input signal. There is a boolean to skip these checks.
 
-**[NRD]** All denoisers work with positive RGB inputs (some denoisers can change color space in *front end* functions). For better image quality HDR inputs need to be in a sane range [0; 10-100]. Passing pre-exposured colors (i.e. `color * exposure`) is not recommended, because a significant momentary change in exposure is hard to react to in this case.
+**[NRD]** All denoisers work with positive RGB inputs (some denoisers can change color space in *front end* functions). For better image quality, HDR inputs need to be in a sane range [0; 10-100]. Passing pre-exposured colors (i.e. `color * exposure`) is not recommended, because a significant momentary change in exposure is hard to react to in this case.
 
-**[NRD]** *NRD* can track camera motion internally. For the first time pass all MVs set to 0 (you can use `CommonSettings::motionVectorScale = {0}` for this) and set `CommonSettings::isMotionVectorInWorldSpace = true`, it will allow you to simplify the initial integration. Enable application provided MVs after getting denoising working on static objects.
+**[NRD]** *NRD* can track camera motion internally. For the first time pass all MVs set to 0 (you can use `CommonSettings::motionVectorScale = {0}` for this) and set `CommonSettings::isMotionVectorInWorldSpace = true`, it will allow you to simplify the initial integration. Enable application-provided MVs after getting denoising working on static objects.
 
-**[NRD]** Using of 2D MVs can lead to massive history reset on moving objects, because 2D motion provides information only about pixel screen position but not about real 3D world position. Consider using 3D MVs instead.
+**[NRD]** Using 2D MVs can lead to massive history reset on moving objects, because 2D motion provides information only about pixel screen position but not about real 3D world position. Consider using 3D MVs instead.
 
-**[NRD]** Firstly, try to get correctly working reprojection on a diffuse signal for camera rotations only (without camera motion).
+**[NRD]** Firstly, try to get a working reprojection on a diffuse signal for camera rotations only (without camera motion).
 
 **[NRD]** Diffuse and specular signals must be separated at the start of the path.
 
@@ -436,11 +436,11 @@ A good approximation for pre-integrated specular BRDF can be found *[here](https
 
 **[NRD]** If there are areas (besides sky), which don't require denoising (for example, skipped diffuse rays for true metals). `materialID` and `materialMask` can be used to drive spatial passes.
 
-**[NRD]** Input signal quality can be improved by enabling *pre-pass* via setting `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` to a non-zero value. Usually pre-pass is needed for specular and less needed for diffuse, because pre-pass outputs optimal hit distance for specular tracking (see the sample for more details).
+**[NRD]** Input signal quality can be improved by enabling *pre-pass* via setting `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` to a non-zero value. Pre-pass is needed more for specular and less for diffuse, because pre-pass outputs optimal hit distance for specular tracking (see the sample for more details).
 
 **[NRD]** In case of probabilistic diffuse / specular split at the primary hit, hit distance reconstruction pass must be enabled, if exposed in the denoiser (see `HitDistanceReconstructionMode`).
 
-**[NRD]** In case of probabilistic diffuse / specular split at the primary hit, pre pass must be enabled, if exposed in the denoiser (see `diffusePrepassBlurRadius` and `specularPrepassBlurRadius`).
+**[NRD]** In case of probabilistic diffuse / specular split at the primary hit, pre-pass must be enabled, if exposed in the denoiser (see `diffusePrepassBlurRadius` and `specularPrepassBlurRadius`).
 
 **[NRD]** Maximum number of accumulated frames can be FPS dependent. The following formula can be used on the application side:
 ```
@@ -459,7 +459,7 @@ maxAccumulatedFrameNum = accumulationPeriodInSeconds * FPS
 
 **[REBLUR]** Even if antilag is off, it's recommended to tune `AntilagIntensitySettings::sensitivityToDarkness`, because it is used for error estimation.
 
-**[REBLUR]** `enableAdvancedPrepass` mode offers better quality but requires valid `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details). It can't be used in case of probabilistic split at primary hit (advanced pre-pass assumes that every pixel has valid data, PDF reconstruction is not implemented for performance reasons).
+**[REBLUR]** `enableAdvancedPrepass` mode offers better quality but requires valid `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details). It can't be used in case of a probabilistic split at primary hit (advanced pre-pass assumes that every pixel has valid data, PDF reconstruction is not implemented for performance reasons).
 
 **[RELAX]** *RELAX* works well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 
@@ -504,7 +504,7 @@ float4 shadowTranslucency;
 float2 shadowData = SIGMA_FrontEnd_MultiLightEnd( viewZ, multiLightShadowData, Lsum, shadowTranslucency );
 ```
 
-After denoising final result can be computed as:
+After denoising the final result can be computed as:
 
 *&Sigma;( L[i] &times; S[i] )* = *&Sigma;( L[i] )* &times; *OUT_SHADOW_TRANSLUCENCY.yzw*
 
@@ -518,8 +518,8 @@ In this case, it's better to process the sun and other bright light sources sepa
 
 ## HOW TO REPORT ISSUES
 
-NRD sample has *TESTS* section in the bottom of the UI (`--testMode` required), a new test can be added if needed. The following procedure is recommended:
-- Try to reproduce a problem in the NRD sample first
+NRD sample has *TESTS* section in the bottom of the UI, a new test can be added if needed. The following procedure is recommended:
+- Try to reproduce a problem in the *NRD sample* first
   - if reproducible
     - add a test (by pressing `Add` button)
     - describe the issue and steps to reproduce

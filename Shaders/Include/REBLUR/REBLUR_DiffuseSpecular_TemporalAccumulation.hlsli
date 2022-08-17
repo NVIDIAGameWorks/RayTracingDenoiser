@@ -500,7 +500,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float3 vmbXvirtual = GetXvirtual( NoV, vmbHitDist, curvature, X, Xprev, V, dominantFactor );
         float2 uv2 = STL::Geometry::GetScreenUv( gWorldToClipPrev, vmbXvirtual, false );
 
-        float hitDistDeltaScale = lerp( 10.0, 5.0, saturate( gSpecPrepassBlurRadius / 5.0 ) );
+        float hitDistDeltaScale = min( specAccumSpeed, 10.0 ) * lerp( 1.0, 0.5, saturate( gSpecPrepassBlurRadius / 5.0 ) ); // TODO: is it possible to tune better?
         float deltaParallaxInPixels = length( ( uv1 - uv2 ) * gRectSize );
         float virtualMotionHitDistWeight = saturate( 1.0 - hitDistDeltaScale * deltaParallaxInPixels );
 
@@ -508,7 +508,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float2 virtualMotionDelta = vmbPixelUv - smbPixelUv;
         virtualMotionDelta *= STL::Math::Rsqrt( STL::Math::LengthSquared( virtualMotionDelta ) );
         virtualMotionDelta /= gRectSizePrev;
-        virtualMotionDelta *= 1.0 + smbParallaxInPixels;
+        virtualMotionDelta *= saturate( smbParallaxInPixels / 0.1 ) + smbParallaxInPixels;
 
         float virtualMotionPrevPrevWeight = 1.0;
         [unroll]
@@ -539,8 +539,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float vmbSpecAccumSpeed = GetSpecAccumSpeed( specAccumSpeed, lerp( 1.0, roughnessModified, responsiveAccumulationAmount ), 0.99999, 0.0, 0.0, 1.0 );
 
         float smc = GetSpecMagicCurve2( roughnessModified, 0.97 );
-        float accelerationAmount = lerp( virtualMotionHitDistWeight, 1.0, 1.0 / ( specAccumSpeed + 1.0 ) );
-        vmbSpecAccumSpeed *= lerp( smc, 1.0, accelerationAmount );
+        vmbSpecAccumSpeed *= lerp( smc, 1.0, virtualMotionHitDistWeight );
         vmbSpecAccumSpeed *= virtualMotionPrevPrevWeight;
 
         // Surface motion - allow more accumulation in regions with low virtual motion confidence ( test 9 )
