@@ -346,9 +346,10 @@ float2 GetKernelSampleCoordinates( float4x4 mToClip, float3 offset, float3 X, fl
 
 // Weight parameters
 
-float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight, float3 Xv, float3 Nv, float scale = 1.0 )
+float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight, float3 Xv, float3 Nv, float nonLinearAccumSpeed )
 {
-    float a = scale / ( planeDistSensitivity * frustumHeight + 1e-6 );
+    float relaxation = lerp( 1.0, 0.25, nonLinearAccumSpeed );
+    float a = relaxation / ( planeDistSensitivity * frustumHeight + 1e-6 );
     float b = -dot( Nv, Xv ) * a;
 
     return float2( a, b );

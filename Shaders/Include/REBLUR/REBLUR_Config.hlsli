@@ -18,9 +18,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_HISTORY_FIX                                  1
 #define REBLUR_USE_YCOCG                                        1
 #define REBLUR_USE_FAST_HISTORY                                 1
-#define REBLUR_USE_5X5_ANTI_FIREFLY                             1 // can be 0 for clean signals
 
 // Switches ( default 0 )
+#define REBLUR_USE_5X5_ANTI_FIREFLY                             0 // can be 1 for dirty signals, but will be less useful
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
 #define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             0
 #define REBLUR_USE_ACCUM_SPEED_NONLINEAR_INTERPOLATION          0
@@ -70,10 +70,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_POST_BLUR_FRACTION_SCALE                         0.5
 
 #define REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM       2
-#define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       2.0
+#define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       1.5 // TODO: was 2.0, but we can use even 1.0 because the fast history is noisy, while the main history is denoised
 #define REBLUR_SPEC_ACCUM_BASE_POWER                            ( 0.4 + 0.2 * exp2( -gFramerateScale ) ) // bigger values = more aggressive rejection
 #define REBLUR_SPEC_ACCUM_CURVE                                 ( 1.0 - exp2( -gFramerateScale ) ) // smaller values = more aggressive rejection
-#define REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE                 0.05
 #define REBLUR_TS_SIGMA_AMPLITUDE                               ( 3.0 * gFramerateScale )
 #define REBLUR_TS_ACCUM_TIME                                    ( gFramerateScale * 30.0 * 0.5 ) // = FPS * seconds
 #define REBLUR_PARALLAX_SCALE                                   ( 2.0 * gFramerateScale ) // TODO: is it possible to use 1 with tweaks in other parameters?

@@ -11,8 +11,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w, uint16_t h)
 {
     #define METHOD_NAME REBLUR_DirectionalOcclusion
-    #define DIFF_TEMP1 AsUint(Permanent::DIFF_HISTORY_STABILIZED_PONG), 0, 1, AsUint(Permanent::DIFF_HISTORY_STABILIZED_PING)
-    #define DIFF_TEMP2 AsUint(ResourceType::OUT_DIFF_DIRECTION_HITDIST)
+    #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
+    #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
 
     enum class Permanent
     {
@@ -20,8 +20,6 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
         PREV_NORMAL_ROUGHNESS,
         PREV_ACCUMSPEEDS_MATERIALID,
         DIFF_HISTORY,
-        DIFF_HISTORY_STABILIZED_PING,
-        DIFF_HISTORY_STABILIZED_PONG,
         DIFF_FAST_HISTORY_PING,
         DIFF_FAST_HISTORY_PONG,
     };
@@ -30,8 +28,6 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
     m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
     m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
     m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
     m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
 
@@ -39,11 +35,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
     {
         DATA1 = TRANSIENT_POOL_START,
         DATA2,
-        DIFF_ACCUMULATED,
+        DIFF_TMP1,
+        DIFF_TMP2
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
@@ -136,8 +134,16 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             PushOutput( AsUint(Transient::DATA2) );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+            if (hasConfidenceInputs)
+            {
+                AddDispatch( REBLUR_Diffuse_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+            }
+            else
+            {
+                AddDispatch( REBLUR_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+            }
         }
     }
 
@@ -153,7 +159,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
 
             // Outputs
-            PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
+            PushOutput( DIFF_TEMP1 );
 
             // Shaders
             AddDispatch( REBLUR_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
@@ -168,7 +174,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
-            PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
+            PushInput( DIFF_TEMP1 );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
             // Outputs
@@ -218,6 +224,21 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
         }
     }
 
+    for (int i = 0; i < REBLUR_COPY_STABILIZED_HISTORY_PERMUTATION_NUM; i++)
+    {
+        PushPass("Copy stabilized history");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::OUT_DIFF_DIRECTION_HITDIST) );
+
+            // Outputs
+            PushOutput( DIFF_TEMP2 );
+
+            // Shaders
+            AddDispatch( REBLUR_Diffuse_CopyStabilizedHistory, REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM, REBLUR_COPY_STABILIZED_HISTORY_GROUP_DIM, USE_MAX_DIMS );
+        }
+    }
+
     for (int i = 0; i < REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM; i++)
     {
         PushPass("Temporal stabilization");
@@ -229,11 +250,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             PushInput( AsUint(Transient::DATA1) );
             PushInput( AsUint(Transient::DATA2) );
             PushInput( AsUint(Permanent::DIFF_HISTORY) );
-            PushInput( AsUint(Permanent::DIFF_HISTORY_STABILIZED_PING), 0, 1, AsUint(Permanent::DIFF_HISTORY_STABILIZED_PONG) );
+            PushInput( DIFF_TEMP2 );
 
             // Outputs
             PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
-            PushOutput( AsUint(Permanent::DIFF_HISTORY_STABILIZED_PONG), 0, 1, AsUint(Permanent::DIFF_HISTORY_STABILIZED_PING) );
             PushOutput( AsUint(ResourceType::OUT_DIFF_DIRECTION_HITDIST) );
 
             // Shaders

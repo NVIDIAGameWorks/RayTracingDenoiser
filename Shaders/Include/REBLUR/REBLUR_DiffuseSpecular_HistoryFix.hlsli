@@ -95,14 +95,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     #ifndef REBLUR_PERFORMANCE_MODE
         #ifdef REBLUR_DIFFUSE
-            float diffM1 = s_DiffLuma[ smemPos.y ][ smemPos.x ];
+            float diffCenter = s_DiffLuma[ smemPos.y ][ smemPos.x ];
+            float diffM1 = diffCenter;
             float diffM2 = diffM1 * diffM1;
             float diffMax = -NRD_INF;
             float diffMin = NRD_INF;
         #endif
 
         #ifdef REBLUR_SPECULAR
-            float specM1 = s_SpecLuma[ smemPos.y ][ smemPos.x ];
+            float specCenter = s_SpecLuma[ smemPos.y ][ smemPos.x ];
+            float specM1 = specCenter;
             float specM2 = specM1 * specM1;
             float specMax = -NRD_INF;
             float specMin = NRD_INF;
@@ -153,19 +155,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_DIFFUSE
             float diffLuma = GetLuma( diff );
 
+            // Anti-firefly
+            float diffLumaClamped1 = clamp( diffLuma, diffMin, diffMax );
+            diffLuma = gAntiFirefly ? diffLumaClamped1 : diffLuma;
+
             // Fast history
             #if( REBLUR_USE_FAST_HISTORY == 1 && !defined( REBLUR_OCCLUSION ) )
                 diffM1 *= invSum;
                 diffM2 *= invSum;
                 float diffSigma = GetStdDev( diffM1, diffM2 ) * REBLUR_COLOR_CLAMPING_SIGMA_SCALE;
 
-                float diffLumaClamped1 = STL::Color::Clamp( diffM1, diffSigma, diffLuma );
-                diffLuma = lerp( diffLumaClamped1, diffLuma, 1.0 / ( 1.0 + useFastHistory * frameNumUnclamped.x ) );
-            #endif
+                // Seems that extending clamping range by the center helps to minimize potential bias
+                diffMin = min( diffM1 - diffSigma, diffCenter );
+                diffMax = max( diffM1 + diffSigma, diffCenter );
 
-            // Anti-firefly
-            float diffLumaClamped2 = clamp( diffLuma, diffMin, diffMax );
-            diffLuma = lerp( diffLumaClamped2, diffLuma, 1.0 / ( 1.0 + gAntiFirefly * frameNumUnclamped.x ) );
+                float diffLumaClamped2 = clamp( diffLuma, diffMin, diffMax );
+                diffLuma = lerp( diffLumaClamped2, diffLuma, 1.0 / ( 1.0 + useFastHistory * frameNumUnclamped.x ) );
+            #endif
 
             // Change luma
             diff = ChangeLuma( diff, diffLuma );
@@ -178,19 +184,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SPECULAR
             float specLuma = GetLuma( spec );
 
+            // Anti-firefly
+            float specLumaClamped1 = clamp( specLuma, specMin, specMax );
+            specLuma = gAntiFirefly ? specLumaClamped1 : specLuma;
+
             // Fast history
             #if( REBLUR_USE_FAST_HISTORY == 1 && !defined( REBLUR_OCCLUSION ) )
                 specM1 *= invSum;
                 specM2 *= invSum;
                 float specSigma = GetStdDev( specM1, specM2 ) * REBLUR_COLOR_CLAMPING_SIGMA_SCALE;
 
-                float specLumaClamped1 = STL::Color::Clamp( specM1, specSigma, specLuma );
-                specLuma = lerp( specLumaClamped1, specLuma, 1.0 / ( 1.0 + useFastHistory * frameNumUnclamped.y ) );
-            #endif
+                // Seems that extending clamping range by the center helps to minimize potential bias
+                specMin = min( specM1 - specSigma, specCenter );
+                specMax = max( specM1 + specSigma, specCenter );
 
-            // Anti-firefly
-            float specLumaClamped2 = clamp( specLuma, specMin, specMax );
-            specLuma = lerp( specLumaClamped2, specLuma, 1.0 / ( 1.0 + gAntiFirefly * frameNumUnclamped.y ) );
+                float specLumaClamped2 = clamp( specLuma, specMin, specMax );
+                specLuma = lerp( specLumaClamped2, specLuma, 1.0 / ( 1.0 + useFastHistory * frameNumUnclamped.y ) );
+            #endif
 
             // Change luma
             spec = ChangeLuma( spec, specLuma );
@@ -271,7 +281,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         #ifdef REBLUR_DIFFUSE
             float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.x );
-            float2 diffGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffNonLinearAccumSpeed ) );
+            float2 diffGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, diffNonLinearAccumSpeed );
             float diffNormalWeightParam = GetNormalWeightParams( diffNonLinearAccumSpeed, 1.0 );
         #endif
 
@@ -295,7 +305,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             #endif
             float specNormalWeightParam = rcp( angle * specNonLinearAccumSpeed + NRD_NORMAL_ENCODING_ERROR );
 
-            float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specNonLinearAccumSpeed ) );
+            float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specNonLinearAccumSpeed );
             float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness, 1.0 );
             float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
 

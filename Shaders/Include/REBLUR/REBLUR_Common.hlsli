@@ -103,10 +103,10 @@ float4 UnpackInternalData1( float4 p )
 float4 PackInternalData2( float fbits, float curvature, float virtualHistoryAmount, float hitDistScaleForTracking, float viewZ )
 {
     // BITS:
-    // 0        - free
+    // 0        - free // TODO: can be used to store "skip HistoryFix" bit
     // 1        - CatRom flag
     // 2,3,4,5  - occlusion 2x2
-    // 6        - free
+    // 6        - free // TODO: free!
     // 7        - curvature sign
 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
@@ -436,8 +436,11 @@ float GetBlurRadius(
     float r = lerp( gMinConvergedStateBaseRadiusScale, 1.0, nonLinearAccumSpeed );
 
     // Avoid over-blurring on contact ( tests 76, 95, 120 )
-    hitDistFactor = lerp( hitDistFactor, 1.0, nonLinearAccumSpeed );
-    r *= hitDistFactor; // TODO: reduce influence if reprojection confidence is low?
+    // TODO: reduce "hitDistFactor" influence if reprojection confidence is low?
+    // TODO: if luminance stoppers are used, blur radius should depend less on "hitDistFactor"
+    float relaxedHitDistFactor = lerp( 1.0, hitDistFactor, roughness );
+    hitDistFactor = lerp( hitDistFactor, relaxedHitDistFactor, nonLinearAccumSpeed );
+    r *= hitDistFactor;
 
     // IMPORTANT: do not apply "hitDistFactor" to radiusBias because it is responsible for error compensation
 
@@ -451,7 +454,7 @@ float GetBlurRadius(
     // Disable spatial filtering if radius is 0
     r *= float( radius != 0 );
 
-    return r; // TODO: if luminance stoppers are used, blur radius should depend less on hitDistFactor
+    return r;
 }
 
 float GetBlurRadiusScaleBasingOnTrimming( float roughness, float3 trimmingParams )

@@ -32,9 +32,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #else
         float2 specInternalData = float2( 1.0 / ( 1.0 + internalData1.z ), internalData1.z );
         float2 sum = 1.0;
+
         float boost = saturate( 1.0 - specInternalData.y / REBLUR_FIXED_FRAME_NUM );
-        float radius = gBlurRadius;
-        radius *= ( 1.0 + 2.0 * boost * GetSpecMagicCurve2( roughness ) ) / 3.0;
+        boost *= NoV;
+        boost *= GetSpecMagicCurve2( roughness );
+
+        float radius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
 #endif
         radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecLobeTrimmingParams.xyz );
 
@@ -57,7 +60,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
         // Blur radius
-        float3 Vv = GetViewVector( Xv, true );
         float4 Dv = STL::ImportanceSampling::GetSpecularDominantDirection( Nv, Vv, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
         float NoD = abs( dot( Nv, Dv.xyz ) );
 
@@ -84,7 +86,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Denoising
         float2x3 TvBv = GetKernelBasis( Dv.xyz, Nv, NoD, worldBlurRadius, roughness, specInternalData.x );
-        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, specInternalData.x ) );
+        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specInternalData.x );
         float normalWeightParams = GetNormalWeightParams( specInternalData.x, lobeAngleFractionScale, roughness );
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( spec.w, specInternalData.x, roughness );
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScale );
@@ -98,7 +100,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float3 L = dirPdf.xyz;
         float3 V = STL::Geometry::RotateVector( gViewToWorld, Vv );
         float3 H = normalize( L + V );
-        float NoV = abs( dot( N, V ) );
         float NoL = saturate( dot( N, L ) );
         float NoH = saturate( dot( N, H ) );
         float VoH = saturate( dot( V, H ) );

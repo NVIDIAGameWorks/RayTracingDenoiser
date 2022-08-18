@@ -31,9 +31,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #else
         float2 diffInternalData = float2( 1.0 / ( 1.0 + internalData1.x ), internalData1.x );
         float2 sum = 1.0;
+
         float boost = saturate( 1.0 - diffInternalData.y / REBLUR_FIXED_FRAME_NUM );
-        float radius = gBlurRadius;
-        radius *= ( 1.0 + 2.0 * boost ) / 3.0;
+        boost *= NoV;
+
+        float radius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
 #endif
 
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
@@ -51,8 +53,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
         // Blur radius
-        float3 Vv = GetViewVector( Xv, true );
-
         float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
         float hitDist = diff.w * hitDistScale;
@@ -70,7 +70,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Denoising
         float2x3 TvBv = GetKernelBasis( Nv, Nv, 1.0, worldBlurRadius ); // D = N
-        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, lerp( 1.0, REBLUR_PLANE_DIST_MIN_SENSITIVITY_SCALE, diffInternalData.x ) );
+        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, diffInternalData.x );
         float normalWeightParams = GetNormalWeightParams( diffInternalData.x, lobeAngleFractionScale );
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( diff.w, diffInternalData.x );
 
