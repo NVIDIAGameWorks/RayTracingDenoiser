@@ -52,7 +52,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Output
     gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( normalAndRoughness );
     #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
-        gOut_AccumSpeeds_MaterialID[ pixelPos ] = PackAccumSpeedsMaterialID( internalData1.x, internalData1.z, materialID );
+        gOut_AccumSpeeds_MaterialID[ pixelPos ] = PackAccumSpeedsMaterialID( internalData1.x + 1.0, internalData1.z + 1.0, materialID ); // increment history length
     #endif
 
     // Shared data

@@ -545,8 +545,8 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
 
     AddFloat(data, m_FrameRateScale);
     AddFloat(data, settings.enableReferenceAccumulation ? 0.0f : settings.blurRadius);
-    AddFloat(data, float(maxAccumulatedFrameNum));
-    AddFloat(data, float(settings.maxFastAccumulatedFrameNum));
+    AddFloat(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 0 : float(maxAccumulatedFrameNum));
+    AddFloat(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 0 : float(settings.maxFastAccumulatedFrameNum));
 
     AddFloat(data, settings.enableAntiFirefly ? 1.0f : 0.0f);
     AddFloat(data, settings.minConvergedStateBaseRadiusScale);
@@ -559,7 +559,7 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
 
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
+    AddUint(data, 0); // TODO: unused
     AddUint(data, settings.enableMaterialTestForDiffuse ? 1 : 0);
     AddUint(data, settings.enableMaterialTestForSpecular ? 1 : 0);
 }

@@ -72,29 +72,32 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float4 diff = s_Diff[ smemPos.y ][ smemPos.x ];
         float4 diffM1 = diff;
         float4 diffM2 = diff * diff;
-        float diffMin = NRD_INF;
-        float diffMax = -NRD_INF;
 
         #ifdef REBLUR_SH
             float4 diffSh = s_DiffSh[ smemPos.y ][ smemPos.x ];
             float4 diffShM1 = diffSh;
             float4 diffShM2 = diffSh * diffSh;
         #endif
+
+        float2 diffMin = NRD_INF;
+        float2 diffMax = -NRD_INF;
     #endif
 
     #ifdef REBLUR_SPECULAR
         float4 spec = s_Spec[ smemPos.y ][ smemPos.x ];
         float4 specM1 = spec;
         float4 specM2 = spec * spec;
-        float specMin = NRD_INF;
-        float specMax = -NRD_INF;
-        float hitDistForTracking = spec.w;
 
         #ifdef REBLUR_SH
             float4 specSh = s_SpecSh[ smemPos.y ][ smemPos.x ];
             float4 specShM1 = specSh;
             float4 specShM2 = specSh * specSh;
         #endif
+
+        float2 specMin = NRD_INF;
+        float2 specMax = -NRD_INF;
+
+        float hitDistForTracking = spec.w;
     #endif
 
     [unroll]
@@ -109,37 +112,42 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             int2 pos = threadPos + int2( dx, dy );
 
             #ifdef REBLUR_DIFFUSE
+                // Accumulate moments
                 float4 d = s_Diff[ pos.y ][ pos.x ];
                 diffM1 += d;
                 diffM2 += d * d;
-
-                float diffLuma = GetLuma( d );
-                diffMin = min( diffMin, diffLuma );
-                diffMax = max( diffMax, diffLuma );
 
                 #ifdef REBLUR_SH
                     float4 dh = s_DiffSh[ pos.y ][ pos.x ];
                     diffShM1 += dh;
                     diffShM2 += dh * dh;
                 #endif
+
+                // RCRS
+                float diffLuma = GetLuma( d );
+                diffMin = min( diffMin, float2( diffLuma, d.w ) );
+                diffMax = max( diffMax, float2( diffLuma, d.w ) );
             #endif
 
             #ifdef REBLUR_SPECULAR
+                // Accumulate moments
                 float4 s = s_Spec[ pos.y ][ pos.x ];
                 specM1 += s;
                 specM2 += s * s;
-
-                float specLuma = GetLuma( s );
-                specMin = min( specMin, specLuma );
-                specMax = max( specMax, specLuma );
-
-                hitDistForTracking = min( ExtractHitDist( s ), hitDistForTracking );
 
                 #ifdef REBLUR_SH
                     float4 sh = s_SpecSh[ pos.y ][ pos.x ];
                     specShM1 += sh;
                     specShM2 += sh * sh;
                 #endif
+
+                // RCRS
+                float specLuma = GetLuma( s );
+                specMin = min( specMin, float2( specLuma, s.w ) );
+                specMax = max( specMax, float2( specLuma, s.w ) );
+
+                // Find optimal hitDist for tracking
+                hitDistForTracking = min( ExtractHitDist( s ), hitDistForTracking );
             #endif
         }
     }
@@ -147,37 +155,51 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
 
     #ifdef REBLUR_DIFFUSE
+        // Compute sigma
         diffM1 *= invSum;
         diffM2 *= invSum;
         float4 diffSigma = GetStdDev( diffM1, diffM2 );
-
-        float diffLuma = GetLuma( diff );
-        float diffLumaClamped = clamp( diffLuma, diffMin.x, diffMax.x );
-        diffLumaClamped = lerp( diffLuma, diffLumaClamped, gStabilizationStrength * float( gBlurRadius != 0 ) );
-        diff = ChangeLuma( diff, diffLumaClamped );
 
         #ifdef REBLUR_SH
             diffShM1 *= invSum;
             diffShM2 *= invSum;
             float4 diffShSigma = GetStdDev( diffShM1, diffShM2 );
         #endif
+
+        // RCRS
+        float diffLuma = GetLuma( diff );
+        float diffLumaClamped = clamp( diffLuma, diffMin.x, diffMax.x );
+
+        [flatten]
+        if( gBlurRadius != 0 )
+        {
+            diff = ChangeLuma( diff, diffLumaClamped );
+            diff.w = clamp( diff.w, diffMin.y, diffMax.y );
+        }
     #endif
 
     #ifdef REBLUR_SPECULAR
+        // Compute sigma
         specM1 *= invSum;
         specM2 *= invSum;
         float4 specSigma = GetStdDev( specM1, specM2 );
-
-        float specLuma = GetLuma( spec );
-        float specLumaClamped = clamp( specLuma, specMin.x, specMax.x );
-        specLumaClamped = lerp( specLuma, specLumaClamped, gStabilizationStrength * float( gBlurRadius != 0 ) );
-        spec = ChangeLuma( spec, specLumaClamped );
 
         #ifdef REBLUR_SH
             specShM1 *= invSum;
             specShM2 *= invSum;
             float4 specShSigma = GetStdDev( specShM1, specShM2 );
         #endif
+
+        // RCRS
+        float specLuma = GetLuma( spec );
+        float specLumaClamped = clamp( specLuma, specMin.x, specMax.x );
+
+        [flatten]
+        if( gBlurRadius != 0 )
+        {
+            spec = ChangeLuma( spec, specLumaClamped );
+            spec.w = clamp( spec.w, specMin.y, specMax.y );
+        }
     #endif
 
     // Compute previous pixel position
@@ -194,14 +216,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float virtualHistoryAmount = internalData2.x;
     float hitDistScaleForTracking = internalData2.y;
     float curvature = internalData2.z;
-    float4 occlusion = float4( ( bits & uint4( 4, 8, 16, 32 ) ) != 0 );
+    float4 smbOcclusion = float4( ( bits & uint4( 4, 8, 16, 32 ) ) != 0 );
 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
 
     STL::Filtering::Bilinear smbBilinearFilter = STL::Filtering::GetBilinearFilter( saturate( smbPixelUv ), gRectSizePrev );
 
-    float4 smbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, occlusion ); // TODO: only for "WithMaterialID" even if test is disabled
+    float4 smbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, smbOcclusion ); // TODO: only for "WithMaterialID" even if test is disabled
     bool smbIsCatromAllowed = ( bits & 2 ) != 0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS; // TODO: only for "WithMaterialID" even if test is disabled
+
+    float footprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
+    footprintQuality = STL::Math::Sqrt01( footprintQuality );
 
     // Diffuse
     #ifdef REBLUR_DIFFUSE
@@ -220,19 +245,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Avoid negative values
         smbDiffHistory = ClampNegativeToZero( smbDiffHistory );
 
-        // Antilag
+        // Compute antilag
         float diffAntilag = ComputeAntilagScale(
             smbDiffHistory, diff, diffM1, diffSigma,
             gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
             curvature * pixelSize, internalData1.xy
         );
 
-        float diffMinAccumSpeed = min( internalData1.x, REBLUR_FIXED_FRAME_NUM * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
-        internalData1.x = lerp( diffMinAccumSpeed, internalData1.x, diffAntilag );
-
         // Clamp history and combine with the current frame
         float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, internalData1.x );
-        diffTemporalAccumulationParams.x *= diffAntilag;
 
         smbDiffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
         #ifdef REBLUR_SH
@@ -241,6 +262,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float diffHistoryWeight = REBLUR_TS_ACCUM_TIME / ( 1.0 + REBLUR_TS_ACCUM_TIME );
         diffHistoryWeight *= diffTemporalAccumulationParams.x;
+        diffHistoryWeight *= footprintQuality;
+        diffHistoryWeight *= diffAntilag;
         diffHistoryWeight *= gStabilizationStrength;
         diffHistoryWeight = 1.0 - diffHistoryWeight;
 
@@ -253,10 +276,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #if( REBLUR_DEBUG != 0 )
             uint diffMode = REBLUR_DEBUG;
             if( diffMode == 1 ) // Accumulated frame num
-                diffResult.w = 1.0 - saturate( internalData1.x / ( gMaxAccumulatedFrameNum + 1.0 ) ); // map history reset to red
-            else if( diffMode == 2 ) // Antilag
-                diffResult.w = diffAntilag;
-            else if( diffMode == 3 ) // Error
+                diffResult.w = 1.0 - saturate( internalData1.x / ( 1.0 + gMaxAccumulatedFrameNum ) ); // map history reset to red
+            else if( diffMode == 2 ) // Error
                 diffResult.w = internalData1.y;
 
             // Show how colorization represents 0-1 range on the bottom
@@ -273,6 +294,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SH
             gOut_DiffSh[ pixelPos ] = diffShResult;
         #endif
+
+        // Increment history length
+        internalData1.x += 1.0;
+
+        // Apply anti-lag
+        float diffMinAccumSpeed = min( internalData1.x, REBLUR_FIXED_FRAME_NUM ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
+        internalData1.x = lerp( diffMinAccumSpeed, internalData1.x, diffAntilag );
     #endif
 
     // Specular
@@ -326,18 +354,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float4 specShHistory = lerp( smbSpecShHistory, vmbSpecShHistory, virtualHistoryAmount );
         #endif
 
-        // Antilag
+        // Compute antilag
         float specAntilag = ComputeAntilagScale(
             specHistory, spec, specM1, specSigma,
             gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
             curvature * pixelSize, internalData1.zw, roughness );
 
-        float specMinAccumSpeed = min( internalData1.z, REBLUR_FIXED_FRAME_NUM * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX );
-        internalData1.z = lerp( specMinAccumSpeed, internalData1.z, specAntilag );
-
         // Clamp history and combine with the current frame
         float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, internalData1.z );
-        specTemporalAccumulationParams.x *= specAntilag;
 
         specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
         #ifdef REBLUR_SH
@@ -346,6 +370,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float specHistoryWeight = REBLUR_TS_ACCUM_TIME / ( 1.0 + REBLUR_TS_ACCUM_TIME );
         specHistoryWeight *= specTemporalAccumulationParams.x;
+        specHistoryWeight *= footprintQuality;
+        specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= gStabilizationStrength;
         specHistoryWeight = 1.0 - specHistoryWeight;
 
@@ -358,20 +384,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #if( REBLUR_DEBUG != 0 )
             uint specMode = REBLUR_DEBUG;
             if( specMode == 1 ) // Accumulated frame num
-                specResult.w = 1.0 - saturate( internalData1.z / ( gMaxAccumulatedFrameNum + 1.0 ) ); // map history reset to red
-            else if( specMode == 2 ) // Antilag
-                specResult.w = specAntilag;
-            else if( specMode == 3 ) // Error
+                specResult.w = 1.0 - saturate( internalData1.z / ( 1.0 + gMaxAccumulatedFrameNum ) ); // map history reset to red
+            else if( specMode == 2 ) // Error
                 specResult.w = internalData1.w; // can be > 1.0
-            else if( specMode == 4 ) // Curvature magnitude
+            else if( specMode == 3 ) // Curvature magnitude
                 specResult.w = abs( curvature * pixelSize );
-            else if( specMode == 5 ) // Curvature sign
+            else if( specMode == 4 ) // Curvature sign
                 specResult.w = curvature * pixelSize < 0 ? 1 : 0;
-            else if( specMode == 6 ) // Virtual history amount
+            else if( specMode == 5 ) // Virtual history amount
                 specResult.w = virtualHistoryAmount;
-            else if( specMode == 7 ) // Hit dist scale for tracking
+            else if( specMode == 6 ) // Hit dist scale for tracking
                 specResult.w = hitDistScaleForTracking;
-            else if( specMode == 8 ) // Parallax
+            else if( specMode == 7 ) // Parallax
             {
                 // or
                 specResult.w = ComputeParallax( Xprev - gCameraDelta.xyz, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
@@ -394,6 +418,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SH
             gOut_SpecSh[ pixelPos ] = specShResult;
         #endif
+
+        // Increment history length
+        internalData1.z += 1.0;
+
+        // Apply anti-lag
+        float specMinAccumSpeed = min( internalData1.z, REBLUR_FIXED_FRAME_NUM ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
+        internalData1.z = lerp( specMinAccumSpeed, internalData1.z, specAntilag );
     #endif
 
     gOut_AccumSpeeds_MaterialID[ pixelPos ] = PackAccumSpeedsMaterialID( internalData1.x, internalData1.z, materialID );

@@ -157,14 +157,6 @@ float GetSpecAccumulatedFrameNum( float roughness, float powerScale )
     return REBLUR_MAX_ACCUM_FRAME_NUM * GetSpecMagicCurve( roughness, REBLUR_SPEC_ACCUM_BASE_POWER * powerScale );
 }
 
-float AdvanceAccumSpeed( float4 prevAccumSpeed, float4 weights )
-{
-    float4 accumSpeeds = prevAccumSpeed + 1.0;
-    float accumSpeed = STL::Filtering::ApplyBilinearCustomWeights( accumSpeeds.x, accumSpeeds.y, accumSpeeds.z, accumSpeeds.w, weights );
-
-    return min( accumSpeed, gMaxAccumulatedFrameNum );
-}
-
 float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float parallax, float curvature, float viewZ )
 {
     // Artificially increase roughness if parallax is low to get a few frames of accumulation // TODO: is there a better way?
@@ -191,7 +183,7 @@ float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float 
 
     accumSpeed = min( accumSpeed, maxAccumSpeed );
 
-    return accumSpeed * float( gResetHistory == 0 );
+    return accumSpeed;
 }
 
 // Misc
@@ -239,10 +231,7 @@ float InterpolateAccumSpeeds( float surfaceFrameNum, float virtualFrameNum, floa
 
 float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
 {
-    float fade = 1.0; // previously was "saturate( ( 1.0 - nonLinearAccumSpeed ) / 0.95 )"
-
-    // Ignore reconstructed frames
-    fade *= STL::Math::LinearStep( REBLUR_FIXED_FRAME_NUM - 1, REBLUR_FIXED_FRAME_NUM + 1, accumSpeed );
+    float fade = STL::Math::LinearStep( REBLUR_FIXED_FRAME_NUM - 1, REBLUR_FIXED_FRAME_NUM + 1, accumSpeed );
 
     return fade;
 }
@@ -335,12 +324,13 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
 float2 GetSensitivityToDarkness( float roughness )
 {
     // Artificially increase sensitivity to darkness for low roughness, because specular can be very hot
+    // TODO: should depend on curvature for low roughness?
     float sensitivityToDarknessScale = lerp( 3.0, 1.0, roughness );
 
     #ifdef REBLUR_SH
-        return gSensitivityToDarkness * float2( 0.282095, 1.0 );
+        return gSensitivityToDarkness * sensitivityToDarknessScale * float2( 0.282095, 1.0 );
     #else
-        return gSensitivityToDarkness;
+        return gSensitivityToDarkness * sensitivityToDarknessScale;
     #endif
 }
 
@@ -396,9 +386,6 @@ float ComputeAntilagScale(
     float2 c = float2( GetLuma( m1 ), m1.w ); // using signal leads to bias in test #62
     float2 s = float2( GetLuma( sigma ), sigma.w );
 #endif
-
-    // TODO: if roughness is close to 0, hitDist can be very divergent, antilag potentially can break accumulation
-    // on bumpy surfaces, "sensitivityToDarknessScale" can be increased in this case based on curvature
 
     float2 delta = abs( h - c ) - s * antilagSigmaScale;
     delta /= max( h, c ) + GetSensitivityToDarkness( roughness );
@@ -526,7 +513,6 @@ float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float
     // TODO: should weight depend on "sigma / signal" ratio to avoid stabilization where it's not needed?
     float w = normAccumSpeed * normAccumSpeed;
     w *= isInScreenMulFootprintQuality;
-    w *= float( gResetHistory == 0 );
 
     // TODO: disocclusion regions on stable bumpy surfaces with super low roughness look better with s = 0
     float s = normAccumSpeed;

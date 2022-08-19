@@ -179,14 +179,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Previous accum speed and materialID // TODO: 4x4 materialID footprint is reduced to 2x2 only
     uint4 smbPackedAccumSpeedMaterialID = gIn_Prev_AccumSpeeds_MaterialID.GatherRed( gNearestClamp, smbBilinearGatherUv ).wzxy;
 
-    float3 prevAccumSpeedMaterialID00 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.x );
-    float3 prevAccumSpeedMaterialID10 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.y );
-    float3 prevAccumSpeedMaterialID01 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.z );
-    float3 prevAccumSpeedMaterialID11 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.w );
+    float3 accumSpeedMaterialID00 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.x );
+    float3 accumSpeedMaterialID10 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.y );
+    float3 accumSpeedMaterialID01 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.z );
+    float3 accumSpeedMaterialID11 = UnpackAccumSpeedsMaterialID( smbPackedAccumSpeedMaterialID.w );
 
-    float4 prevDiffAccumSpeeds = float4( prevAccumSpeedMaterialID00.x, prevAccumSpeedMaterialID10.x, prevAccumSpeedMaterialID01.x, prevAccumSpeedMaterialID11.x );
-    float4 prevSpecAccumSpeeds = float4( prevAccumSpeedMaterialID00.y, prevAccumSpeedMaterialID10.y, prevAccumSpeedMaterialID01.y, prevAccumSpeedMaterialID11.y );
-    float4 prevMaterialIDs = float4( prevAccumSpeedMaterialID00.z, prevAccumSpeedMaterialID10.z, prevAccumSpeedMaterialID01.z, prevAccumSpeedMaterialID11.z );
+    float4 diffAccumSpeeds = float4( accumSpeedMaterialID00.x, accumSpeedMaterialID10.x, accumSpeedMaterialID01.x, accumSpeedMaterialID11.x );
+    float4 specAccumSpeeds = float4( accumSpeedMaterialID00.y, accumSpeedMaterialID10.y, accumSpeedMaterialID01.y, accumSpeedMaterialID11.y );
+    float4 prevMaterialIDs = float4( accumSpeedMaterialID00.z, accumSpeedMaterialID10.z, accumSpeedMaterialID01.z, accumSpeedMaterialID11.z );
 
     // Parallax
     float smbParallax = ComputeParallax( Xprev - gCameraDelta.xyz, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
@@ -213,7 +213,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 smbOcclusion3 = step( planeDist3, disocclusionThreshold );
 
     float4 smbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, float4( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x ) );
-    bool smbIsCatromAllowed = dot( smbOcclusion0 + smbOcclusion1 + smbOcclusion2 + smbOcclusion3, 1.0 ) > 11.5 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA;
+    bool smbAllowCatRom = dot( smbOcclusion0 + smbOcclusion1 + smbOcclusion2 + smbOcclusion3, 1.0 ) > 11.5 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA;
 
     float footprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x, smbBilinearFilter );
     footprintQuality = STL::Math::Sqrt01( footprintQuality );
@@ -226,7 +226,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     smbOcclusion3.x *= materialCmps.w;
 
     float4 smbOcclusionWeightsWithMaterialID = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, float4( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x ) );
-    bool smbIsCatromAllowedWithMaterialID = dot( smbOcclusion0 + smbOcclusion1 + smbOcclusion2 + smbOcclusion3, 1.0 ) > 11.5 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA;
+    bool smbAllowCatRomWithMaterialID = smbAllowCatRom && dot( materialCmps, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA;
 
     float footprintQualityWithMaterialID = STL::Filtering::ApplyBilinearFilter( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x, smbBilinearFilter );
     footprintQualityWithMaterialID = STL::Math::Sqrt01( footprintQualityWithMaterialID );
@@ -241,28 +241,36 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     footprintQualityWithMaterialID *= sizeQuality;
 
     // Bits
-    float fbits = smbIsCatromAllowed * 2.0;
+    float fbits = smbAllowCatRom * 2.0;
     fbits += smbOcclusion0.z * 4.0 + smbOcclusion1.y * 8.0 + smbOcclusion2.y * 16.0 + smbOcclusion3.x * 32.0;
 
     // Update accumulation speeds
     #ifdef REBLUR_DIFFUSE
-        float diffAccumSpeed = AdvanceAccumSpeed( prevDiffAccumSpeeds, gDiffMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights );
-        diffAccumSpeed *= lerp( gDiffMaterialMask ? footprintQualityWithMaterialID : footprintQuality, 1.0, 1.0 / ( 1.0 + diffAccumSpeed ) );
+        float4 diffOcclusionWeights = gDiffMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights;
+        float diffHistoryConfidence = gDiffMaterialMask ? footprintQualityWithMaterialID : footprintQuality;
+        float diffAllowCatRom = gDiffMaterialMask ? smbAllowCatRomWithMaterialID : smbAllowCatRom;
 
         #ifdef REBLUR_HAS_CONFIDENCE
-            float diffConfidence = gIn_Diff_Confidence[ pixelPosUser ];
-            diffAccumSpeed *= lerp( diffConfidence, 1.0, 1.0 / ( 1.0 + diffAccumSpeed ) );
+            diffHistoryConfidence *= gIn_Diff_Confidence[ pixelPosUser ];
         #endif
+
+        float diffAccumSpeed = STL::Filtering::ApplyBilinearCustomWeights( diffAccumSpeeds.x, diffAccumSpeeds.y, diffAccumSpeeds.z, diffAccumSpeeds.w, diffOcclusionWeights );
+        diffAccumSpeed *= lerp( diffHistoryConfidence, 1.0, 1.0 / ( 1.0 + diffAccumSpeed ) );
+        diffAccumSpeed = min( diffAccumSpeed, gMaxAccumulatedFrameNum );
     #endif
 
     #ifdef REBLUR_SPECULAR
-        float specAccumSpeed = AdvanceAccumSpeed( prevSpecAccumSpeeds, gSpecMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights );
-        specAccumSpeed *= lerp( gSpecMaterialMask ? footprintQualityWithMaterialID : footprintQuality, 1.0, 1.0 / ( 1.0 + specAccumSpeed ) );
+        float4 specOcclusionWeights = gSpecMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights;
+        float specHistoryConfidence = gSpecMaterialMask ? footprintQualityWithMaterialID : footprintQuality;
+        float specAllowCatRom = gSpecMaterialMask ? smbAllowCatRomWithMaterialID : smbAllowCatRom;
 
         #ifdef REBLUR_HAS_CONFIDENCE
-            float specConfidence = gIn_Spec_Confidence[ pixelPosUser ];
-            specAccumSpeed *= lerp( specConfidence, 1.0, 1.0 / ( 1.0 + specAccumSpeed ) );
+            specHistoryConfidence *= gIn_Spec_Confidence[ pixelPosUser ];
         #endif
+
+        float specAccumSpeed = STL::Filtering::ApplyBilinearCustomWeights( specAccumSpeeds.x, specAccumSpeeds.y, specAccumSpeeds.z, specAccumSpeeds.w, specOcclusionWeights );
+        specAccumSpeed *= lerp( specHistoryConfidence, 1.0, 1.0 / ( 1.0 + specAccumSpeed ) );
+        specAccumSpeed = min( specAccumSpeed, gMaxAccumulatedFrameNum );
     #endif
 
     uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );
@@ -295,7 +303,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float smbDiffFastHistory;
         BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             saturate( smbPixelUv ) * gRectSizePrev, gInvScreenSize,
-            gDiffMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights, gDiffMaterialMask ? smbIsCatromAllowedWithMaterialID : smbIsCatromAllowed,
+            diffOcclusionWeights, diffAllowCatRom,
             gIn_Diff_History, smbDiffHistory
             #ifdef REBLUR_SH
                 , gIn_DiffSh_History, smbDiffShHistory
@@ -320,9 +328,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             }
         #endif
 
-        float diffAccumSpeedNonLinear = 1.0 / ( min( diffAccumSpeed, gMaxAccumulatedFrameNum ) + 1.0 );
+        float diffAccumSpeedNonLinear = 1.0 / ( 1.0 + diffAccumSpeed );
         if( !diffHasData )
-            diffAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * diffAccumSpeed / ( 1.0 + diffAccumSpeed );
+            diffAccumSpeedNonLinear *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, diffAccumSpeedNonLinear );
 
         REBLUR_TYPE diffResult = MixHistoryAndCurrent( smbDiffHistory, diff, diffAccumSpeedNonLinear );
         #ifdef REBLUR_SH
@@ -345,9 +353,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Fast history
         #if( REBLUR_USE_FAST_HISTORY == 1 && !defined( REBLUR_OCCLUSION ) )
             float diffFastAccumSpeed = min( diffAccumSpeed, gMaxFastAccumulatedFrameNum );
-            float diffFastAccumSpeedNonLinear = 1.0 / ( diffFastAccumSpeed + 1.0 );
+            float diffFastAccumSpeedNonLinear = 1.0 / ( 1.0 + diffFastAccumSpeed );
             if( !diffHasData )
-                diffFastAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * diffAccumSpeed / ( 1.0 + diffAccumSpeed );
+                diffFastAccumSpeedNonLinear *= lerp( 0.5, 1.0, diffAccumSpeedNonLinear );
 
             smbDiffFastHistory = diffAccumSpeed < gMaxFastAccumulatedFrameNum ? GetLuma( smbDiffHistory ) : smbDiffFastHistory;
 
@@ -446,13 +454,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float virtualMotionRoughnessWeight = GetEncodingAwareRoughnessWeights( roughness, vmbRoughness, roughnessFraction );
         virtualHistoryAmount *= virtualMotionRoughnessWeight;
 
-        // Sample history  surface motion
+        // Sample history - surface motion
         REBLUR_TYPE smbSpecHistory;
         float4 smbSpecShHistory;
         float smbSpecFastHistory;
         BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             saturate( smbPixelUv ) * gRectSizePrev, gInvScreenSize,
-            gSpecMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights, gSpecMaterialMask ? smbIsCatromAllowedWithMaterialID : smbIsCatromAllowed,
+            specOcclusionWeights, specAllowCatRom,
             gIn_Spec_History, smbSpecHistory
             #ifdef REBLUR_SH
                 , gIn_SpecSh_History, smbSpecShHistory
@@ -465,16 +473,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Sample history - virtual motion
         float4 vmbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( vmbBilinearFilter, vmbOcclusion );
 
-        bool vmbIsCatromAllowed = dot( vmbOcclusion, 1.0 ) > 3.5;
-        vmbIsCatromAllowed = vmbIsCatromAllowed & smbIsCatromAllowed;
-        vmbIsCatromAllowed = vmbIsCatromAllowed & REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA;
+        bool vmbAllowCatRom = dot( vmbOcclusion, 1.0 ) > 3.5;
+        vmbAllowCatRom = vmbAllowCatRom && smbAllowCatRom;
+        vmbAllowCatRom = vmbAllowCatRom && REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA;
 
         REBLUR_TYPE vmbSpecHistory;
         float4 vmbSpecShHistory;
         float vmbSpecFastHistory;
         BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             saturate( vmbPixelUv ) * gRectSizePrev, gInvScreenSize,
-            vmbOcclusionWeights, vmbIsCatromAllowed,
+            vmbOcclusionWeights, vmbAllowCatRom,
             gIn_Spec_History, vmbSpecHistory
             #ifdef REBLUR_SH
                 , gIn_SpecSh_History, vmbSpecShHistory
@@ -554,9 +562,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Accumulation with checkerboard resolve // TODO: materialID support?
         specAccumSpeed = InterpolateAccumSpeeds( smbSpecAccumSpeed, vmbSpecAccumSpeed, virtualHistoryAmount );
 
-        float specAccumSpeedNonLinear = 1.0 / ( min( specAccumSpeed, gMaxAccumulatedFrameNum ) + 1.0 );
+        float specAccumSpeedNonLinear = 1.0 / ( 1.0 + specAccumSpeed );
         if( !specHasData )
-            specAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * specAccumSpeed / ( 1.0 + specAccumSpeed );
+            specAccumSpeedNonLinear *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, specAccumSpeedNonLinear );
 
         REBLUR_TYPE specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
         REBLUR_TYPE specResult = MixHistoryAndCurrent( specHistory, spec, specAccumSpeedNonLinear, roughnessModified );
@@ -602,9 +610,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Fast history
         #if( REBLUR_USE_FAST_HISTORY == 1 && !defined( REBLUR_OCCLUSION ) )
             float specFastAccumSpeed = min( specAccumSpeed, gMaxFastAccumulatedFrameNum );
-            float specFastAccumSpeedNonLinear = 1.0 / ( specFastAccumSpeed + 1.0 );
+            float specFastAccumSpeedNonLinear = 1.0 / ( 1.0 + specFastAccumSpeed );
             if( !specHasData )
-                specFastAccumSpeedNonLinear *= 1.0 - gCheckerboardResolveAccumSpeed * specAccumSpeed / ( 1.0 + specAccumSpeed );
+                specFastAccumSpeedNonLinear *= lerp( 0.5, 1.0, specAccumSpeedNonLinear );
 
             float specFastHistory = lerp( smbSpecFastHistory, vmbSpecFastHistory, virtualHistoryAmount );
             specFastHistory = specAccumSpeed < gMaxFastAccumulatedFrameNum ? GetLuma( specHistory ) : specFastHistory;

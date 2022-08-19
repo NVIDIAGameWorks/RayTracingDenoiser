@@ -120,7 +120,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gSpecPrepassBlurRadius ) \
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
-    NRD_CONSTANT( uint, gResetHistory ) \
+    NRD_CONSTANT( uint, gUnused1 ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
     NRD_CONSTANT( uint, gSpecMaterialMask )
 
