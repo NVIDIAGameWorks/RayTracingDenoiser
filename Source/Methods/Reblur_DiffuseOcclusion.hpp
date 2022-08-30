@@ -21,22 +21,20 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
         PREV_ACCUMSPEEDS_MATERIALID,
     };
 
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} ); // R32f doesn't make sense because .y in data is FP16
-    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
 
     enum class Transient
     {
         DATA1 = TRANSIENT_POOL_START,
-        DIFF_ACCUMULATED,
-        DIFF_TMP1, // single channel for hit dist only
+        DIFF_TMP1,
         DIFF_TMP2,
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
 
@@ -112,9 +110,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( DIFF_TEMP2 );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
             // Outputs
-            PushOutput( AsUint(Transient::DIFF_ACCUMULATED) );
+            PushOutput( DIFF_TEMP1 );
 
             // Shaders
             AddDispatch( REBLUR_DiffuseOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
@@ -129,7 +128,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
-            PushInput( AsUint(Transient::DIFF_ACCUMULATED) );
+            PushInput( DIFF_TEMP1 );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
             // Outputs
             PushOutput( DIFF_TEMP2 );
@@ -149,6 +149,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( DIFF_TEMP2 );
+            PushInput( AsUint(Permanent::PREV_VIEWZ) );
 
             // Outputs
             PushOutput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
@@ -173,7 +174,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
             PushOutput( AsUint(ResourceType::OUT_DIFF_HITDIST) );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseOcclusion_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Diffuse_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
         }
     }
 
@@ -253,7 +254,6 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     AddFloat4x4(data, m_WorldPrevToWorld);
     AddFloat4(data, m_FrustumPrev);
     AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f));
-    AddFloat4(data, m_Rotator[0]);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, disocclusionThreshold );
@@ -266,7 +266,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     passIndex = AsUint(Dispatch::HISTORY_FIX) + (!settings.enableAntiFirefly ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
-    AddFloat(data, settings.historyFixStrength);
+    AddFloat(data, settings.historyFixStrideBetweenSamples);
     ValidateConstants(data);
 
     // BLUR

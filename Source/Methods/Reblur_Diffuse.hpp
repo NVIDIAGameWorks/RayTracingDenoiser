@@ -8,8 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define REBLUR_DUMMY                                                AsUint(ResourceType::IN_VIEWZ)
-
+// Constants
 #define REBLUR_SET_SHARED_CONSTANTS                                 SetSharedConstants(2, 4, 9, 22)
 
 #define REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM                  SumConstants(0, 0, 0, 0)
@@ -18,7 +17,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_PREPASS_CONSTANT_NUM                                 SumConstants(0, 2, 0, 2)
 #define REBLUR_PREPASS_GROUP_DIM                                    16
 
-#define REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM                   SumConstants(4, 3, 1, 5)
+#define REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM                   SumConstants(4, 2, 1, 5)
 #define REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM                      8
 
 #define REBLUR_HISTORY_FIX_CONSTANT_NUM                             SumConstants(0, 0, 0, 1)
@@ -39,6 +38,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SPLIT_SCREEN_CONSTANT_NUM                            SumConstants(0, 0, 0, 3)
 #define REBLUR_SPLIT_SCREEN_GROUP_DIM                               16
 
+// Permutations
 #define REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM               4
 #define REBLUR_PREPASS_PERMUTATION_NUM                              4
 #define REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM                8
@@ -56,6 +56,24 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_OCCLUSION_POST_BLUR_PERMUTATION_NUM                  1
 #define REBLUR_OCCLUSION_SPLIT_SCREEN_PERMUTATION_NUM               1
 
+// Formats
+#define REBLUR_FORMAT                                               Format::RGBA16_SFLOAT
+#define REBLUR_FORMAT_FAST_HISTORY                                  Format::R16_SFLOAT
+
+#define REBLUR_FORMAT_OCCLUSION                                     Format::R16_UNORM
+
+#define REBLUR_FORMAT_DIRECTIONAL_OCCLUSION                         Format::RGBA16_SNORM
+#define REBLUR_FORMAT_DIRECTIONAL_OCCLUSION_FAST_HISTORY            REBLUR_FORMAT_OCCLUSION
+
+#define REBLUR_FORMAT_PREV_VIEWZ                                    Format::R32_SFLOAT
+#define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                         Format::RGBA8_UNORM
+#define REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID                   Format::R16_UINT
+
+#define REBLUR_FORMAT_MIN_HITDIST                                   REBLUR_FORMAT_OCCLUSION
+
+// Other
+#define REBLUR_DUMMY                                                AsUint(ResourceType::IN_VIEWZ)
+
 size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
 {
     #define METHOD_NAME REBLUR_Diffuse
@@ -72,12 +90,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
         DIFF_FAST_HISTORY_PONG,
     };
 
-    m_PermanentPool.push_back( {Format::R32_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
 
     enum class Transient
     {
@@ -89,8 +107,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
 
@@ -436,7 +454,6 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
     AddFloat4x4(data, m_WorldPrevToWorld);
     AddFloat4(data, m_FrustumPrev);
     AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f));
-    AddFloat4(data, m_Rotator[0]);
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, disocclusionThreshold);
@@ -449,7 +466,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
     passIndex = AsUint(Dispatch::HISTORY_FIX) + (settings.enablePerformanceMode ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
-    AddFloat(data, settings.historyFixStrength);
+    AddFloat(data, settings.historyFixStrideBetweenSamples);
     ValidateConstants(data);
 
     // BLUR
@@ -556,10 +573,10 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
     AddFloat(data, settings.responsiveAccumulationRoughnessThreshold);
     AddFloat(data, settings.diffusePrepassBlurRadius);
     AddFloat(data, settings.specularPrepassBlurRadius);
-    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
+    AddFloat(data, (float)ml::Max(settings.historyFixFrameNum, 1u));
 
+    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, 0); // TODO: unused
     AddUint(data, settings.enableMaterialTestForDiffuse ? 1 : 0);
     AddUint(data, settings.enableMaterialTestForSpecular ? 1 : 0);
 }

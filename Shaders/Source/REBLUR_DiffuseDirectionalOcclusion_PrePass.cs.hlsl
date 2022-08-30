@@ -12,11 +12,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "../Include/NRD.hlsli"
 
 #define REBLUR_DIFFUSE
-#define REBLUR_OCCLUSION
+#define REBLUR_DIRECTIONAL_OCCLUSION
 
 #include "../Include/REBLUR/REBLUR_Config.hlsli"
-#include "../Resources/REBLUR_DiffuseSpecular_SplitScreen.resources.hlsli"
+#include "../Resources/REBLUR_DiffuseSpecular_PrePass.resources.hlsli"
 
 #include "../Include/Common.hlsli"
 #include "../Include/REBLUR/REBLUR_Common.hlsli"
-#include "../Include/REBLUR/REBLUR_DiffuseSpecular_SplitScreen.hlsli"
+#include "../Include/REBLUR/REBLUR_DiffuseSpecular_PrePass.hlsli"

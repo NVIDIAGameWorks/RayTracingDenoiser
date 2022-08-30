@@ -59,12 +59,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     int2 offseti = int2( BORDER, BORDER );
 
     [unroll]
-    for( int dy = 0; dy <= BORDER * 2; dy++ )
+    for( j = 0; j <= BORDER * 2; j++ )
     {
         [unroll]
-        for( int dx = 0; dx <= BORDER * 2; dx++ )
+        for( i = 0; i <= BORDER * 2; i++ )
         {
-            int2 pos = threadPos + int2( dx, dy );
+            int2 pos = threadPos + int2( i, j );
             float2 data = s_Data[ pos.y ][ pos.x ];
 
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
@@ -72,18 +72,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float z = data.y;
 
             float w = 1.0;
-            if( dx == BORDER && dy == BORDER )
+            if( i == BORDER && j == BORDER )
                 input = s;
             else
             {
                 w = GetBilateralWeight( z, viewZ );
                 w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
 
-                int2 t1 = int2( dx, dy ) - BORDER;
+                int2 t1 = int2( i, j ) - BORDER;
                 if( ( abs( t1.x ) + abs( t1.y ) == 1 ) && z < viewZnearest )
                 {
                     viewZnearest = z;
-                    offseti = int2( dx, dy );
+                    offseti = int2( i, j );
                 }
             }
 

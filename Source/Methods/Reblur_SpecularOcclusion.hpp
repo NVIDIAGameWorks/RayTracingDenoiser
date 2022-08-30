@@ -21,22 +21,20 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
         PREV_ACCUMSPEEDS_MATERIALID,
     };
 
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} ); // R32f doesn't make sense because .y in data is FP16
-    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
 
     enum class Transient
     {
         DATA1 = TRANSIENT_POOL_START,
-        SPEC_ACCUMULATED,
-        SPEC_TMP1, // single channel for hit dist only
+        SPEC_TMP1,
         SPEC_TMP2,
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
 
@@ -113,9 +111,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( SPEC_TEMP2 );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
             // Outputs
-            PushOutput( AsUint(Transient::SPEC_ACCUMULATED) );
+            PushOutput( SPEC_TEMP1 );
 
             // Shaders
             AddDispatch( REBLUR_SpecularOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
@@ -130,7 +129,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
-            PushInput( AsUint(Transient::SPEC_ACCUMULATED) );
+            PushInput( SPEC_TEMP1 );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
             // Outputs
             PushOutput( SPEC_TEMP2 );
@@ -150,6 +150,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( SPEC_TEMP2 );
+            PushInput( AsUint(Permanent::PREV_VIEWZ) );
 
             // Outputs
             PushOutput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
@@ -174,7 +175,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
             PushOutput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
 
             // Shaders
-            AddDispatch( REBLUR_SpecularOcclusion_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Specular_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
         }
     }
 

@@ -18,9 +18,9 @@ NRD_SAMPLER_END
 NRD_CONSTANTS_START
     RELAX_SHARED_CB_DATA
     NRD_CONSTANT( float, gDepthThreshold )
-    NRD_CONSTANT( float, gDisocclusionFixEdgeStoppingNormalPower )
-    NRD_CONSTANT( float, gMaxRadius )
-    NRD_CONSTANT( float, gFramesToFix )
+    NRD_CONSTANT( float, gHistoryFixEdgeStoppingNormalPower )
+    NRD_CONSTANT( float, gHistoryFixStrideBetweenSamples )
+    NRD_CONSTANT( float, gHistoryFixFrameNum )
 NRD_CONSTANTS_END
 
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )

@@ -96,12 +96,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     SIGMA_TYPE result = 0;
 
     [unroll]
-    for( int dy = 0; dy <= BORDER * 2; dy++ )
+    for( j = 0; j <= BORDER * 2; j++ )
     {
         [unroll]
-        for( int dx = 0; dx <= BORDER * 2; dx++ )
+        for( i = 0; i <= BORDER * 2; i++ )
         {
-            int2 pos = threadPos + int2( dx, dy );
+            int2 pos = threadPos + int2( i, j );
             float2 data = s_Data[ pos.y ][ pos.x ];
 
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
@@ -110,7 +110,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float z = data.y;
 
             float w = 1.0;
-            if( !(dx == BORDER && dy == BORDER) )
+            if( !( i == BORDER && j == BORDER ) )
             {
                 w = GetBilateralWeight( z, viewZ );
                 w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
@@ -155,10 +155,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, 1.0 );
 
     [unroll]
-    for( uint i = 0; i < SIGMA_POISSON_SAMPLE_NUM; i++ )
+    for( uint n = 0; n < SIGMA_POISSON_SAMPLE_NUM; n++ )
     {
         // Sample coordinates
-        float3 offset = SIGMA_POISSON_SAMPLES[ i ];
+        float3 offset = SIGMA_POISSON_SAMPLES[ n ];
         float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, Tv, Bv, rotator );
 
         // Fetch data

@@ -72,3 +72,16 @@ This guide has been designed to simplify migration to a newer version.
   - exposed `confidenceDrivenRelaxationMultiplier`
   - exposed `confidenceDrivenLuminanceEdgeStoppingRelaxation`
   - exposed `confidenceDrivenNormalEdgeStoppingRelaxation`
+
+## To v3.5
+
+- *NRD.hlsli*:
+  - `REBLUR_FrontEnd_PackDirectionAndNormHitDist` renamed to `REBLUR_FrontEnd_PackDirectionalOcclusion`
+- *REBLUR*:
+  - exposed `historyFixFrameNum`
+  - exposed `historyFixStrideBetweenSamples`
+  - removed `historyFixStrength`
+- *RELAX*:
+  - `disocclusionFixEdgeStoppingNormalPower` renamed to `historyFixEdgeStoppingNormalPower`
+  - `disocclusionFixMaxRadius` renamed to `historyFixStrideBetweenSamples`
+  - `disocclusionFixNumFramesToFix` renamed to `historyFixFrameNum`

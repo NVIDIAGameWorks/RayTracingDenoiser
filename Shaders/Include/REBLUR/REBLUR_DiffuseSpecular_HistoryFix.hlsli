@@ -48,39 +48,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     int2 pixelPosUser = gRectOrigin + pixelPos;
 
     // Center data
-    #ifdef REBLUR_OCCLUSION
-        float viewZ;
-
-        #ifdef REBLUR_DIFFUSE
-            float2 diffTemp = gIn_Diff[ pixelPos ];
-            float diff = diffTemp.x;
-            viewZ = diffTemp.y;
+    #ifdef REBLUR_DIFFUSE
+        REBLUR_TYPE diff = gIn_Diff[ pixelPos ];
+        #ifdef REBLUR_SH
+            float4 diffSh = gIn_DiffSh[ pixelPos ];
         #endif
-
-        #ifdef REBLUR_SPECULAR
-            float2 specTemp = gIn_Spec[ pixelPos ];
-            float spec = specTemp.x;
-            viewZ = specTemp.y;
-        #endif
-
-        viewZ = UnpackViewZ( viewZ );
-    #else
-        #ifdef REBLUR_DIFFUSE
-            float4 diff = gIn_Diff[ pixelPos ];
-            #ifdef REBLUR_SH
-                float4 diffSh = gIn_DiffSh[ pixelPos ];
-            #endif
-        #endif
-
-        #ifdef REBLUR_SPECULAR
-            float4 spec = gIn_Spec[ pixelPos ];
-            #ifdef REBLUR_SH
-                float4 specSh = gIn_SpecSh[ pixelPos ];
-            #endif
-        #endif
-
-        float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
     #endif
+
+    #ifdef REBLUR_SPECULAR
+        REBLUR_TYPE spec = gIn_Spec[ pixelPos ];
+        #ifdef REBLUR_SH
+            float4 specSh = gIn_SpecSh[ pixelPos ];
+        #endif
+    #endif
+
+    float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
 
     // Preload
     PRELOAD_INTO_SMEM;
@@ -111,17 +93,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         [unroll]
-        for( int y = 0; y <= BORDER * 2; y++ )
+        for( j = 0; j <= BORDER * 2; j++ )
         {
             [unroll]
-            for( int x = 0; x <= BORDER * 2; x++ )
+            for( i = 0; i <= BORDER * 2; i++ )
             {
                 // Skip center
-                if( x == BORDER && y == BORDER )
+                if( i == BORDER && j == BORDER )
                     continue;
 
-                int2 pos = threadPos + int2( x, y );
-                float2 o = float2( x, y ) - BORDER;
+                int2 pos = threadPos + int2( i, j );
+                float2 o = float2( i, j ) - BORDER;
 
                 #ifdef REBLUR_DIFFUSE
                     float d = s_DiffLuma[ pos.y ][ pos.x ];
@@ -177,7 +159,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             diff = ChangeLuma( diff, diffLuma );
 
             #ifdef REBLUR_SH
-                diffSh.xyz *= ( diffLuma / 0.282095 ) / ( length( diffSh.xyz ) / 0.488603 + 1e-6 );
+                diffSh.xyz *= ( diffLuma + NRD_EPS ) / ( length( diffSh.xyz ) + NRD_EPS );
             #endif
         #endif
 
@@ -206,39 +188,34 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             spec = ChangeLuma( spec, specLuma );
 
             #ifdef REBLUR_SH
-                specSh.xyz *= ( specLuma / 0.282095 ) / ( length( specSh.xyz ) / 0.488603 + 1e-6 );
+                specSh.xyz *= ( specLuma + NRD_EPS ) / ( length( specSh.xyz ) + NRD_EPS );
             #endif
         #endif
     #endif
 
-    // Smooth internal data // TODO: move this to TA to store smoothed accum speed in "internal data", but
-    // due to SMEM preloading limitations edge pixels will have to clamp to the CTA size, but still:
-    // - a corner pixel will get 3 neighbors
-    // - an edge pixel will get 5 neighbors
-    // - all other will get 8 neighbors
-    // - it shouldn't affect IQ and even logic
-    float2 frameNum = saturate( frameNumUnclamped / REBLUR_FIXED_FRAME_NUM );
+    // Smooth internal data
+    float2 frameNum = saturate( frameNumUnclamped / gHistoryFixFrameNum );
     float2 c = frameNum;
     float2 sum = 1.0;
 
     [unroll]
-    for( int dy = 0; dy <= BORDER * 2; dy++ )
+    for( j = 0; j <= BORDER * 2; j++ )
     {
         [unroll]
-        for( int dx = 0; dx <= BORDER * 2; dx++ )
+        for( i = 0; i <= BORDER * 2; i++ )
         {
             // Skip center
-            if( dx == BORDER && dy == BORDER )
+            if( i == BORDER && j == BORDER )
                 continue;
 
             // Only 3x3 needed
-            float2 o = float2( dx, dy ) - BORDER;
+            float2 o = float2( i, j ) - BORDER;
             if( any( abs( o ) > 1 ) )
                 continue;
 
-            int2 pos = threadPos + int2( dx, dy );
+            int2 pos = threadPos + int2( i, j );
 
-            float2 s = saturate( s_FrameNum[ pos.y ][ pos.x ] / REBLUR_FIXED_FRAME_NUM );
+            float2 s = saturate( s_FrameNum[ pos.y ][ pos.x ] / gHistoryFixFrameNum );
             float2 w = step( c, s );
 
             frameNum += s * w;
@@ -273,11 +250,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
         float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
 
-        float3 Vv = GetViewVector( Xv, true );
-        float NoV = abs( dot( Vv, Nv ) );
-        stepSize *= lerp( 1.0, 0.5, STL::BRDF::Pow5( NoV ) );
-        stepSize *= REBLUR_HISTORY_FIX_STEP;
-        stepSize *= gHistoryFixStrength;
+        stepSize *= gHistoryFixStrideBetweenSamples;
 
         #ifdef REBLUR_DIFFUSE
             float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.x );
@@ -327,10 +300,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Slow path
         [unroll]
-        for( int i = -2; i <= 2; i++ )
+        for( j = -2; j <= 2; j++ )
         {
             [unroll]
-            for( int j = -2; j <= 2; j++ )
+            for( i = -2; i <= 2; i++ )
             {
                 // Skip center
                 if( i == 0 && j == 0 )
@@ -345,28 +318,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 float2 uv = pixelUv + tap * gInvRectSize * stepSize;
                 float2 uvScaled = uv * gResolutionScale;
 
-                #ifdef REBLUR_OCCLUSION
-                    float z;
-                    #ifdef REBLUR_DIFFUSE
-                        float2 diffTemp = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
-                        float d = diffTemp.x;
-                        z = diffTemp.y;
-                    #endif
-                    #ifdef REBLUR_SPECULAR
-                        float2 specTemp = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
-                        float s = specTemp.x;
-                        z = specTemp.y;
-                    #endif
-                    z = UnpackViewZ( z );
-                #else
-                    #ifdef REBLUR_DIFFUSE
-                        float4 d = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
-                    #endif
-                    #ifdef REBLUR_SPECULAR
-                        float4 s = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
-                    #endif
-                    float z = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 ) );
+                #ifdef REBLUR_DIFFUSE
+                    REBLUR_TYPE d = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
                 #endif
+                #ifdef REBLUR_SPECULAR
+                    REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
+                #endif
+                float z = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 ) );
 
                 float materialIDs;
                 float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 );
@@ -425,22 +383,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Output
     #ifdef REBLUR_DIFFUSE
-        #ifdef REBLUR_OCCLUSION
-            gOut_Diff[ pixelPos ] = float2( diff * sum.x, PackViewZ( viewZ ) );
-        #else
-            gOut_Diff[ pixelPos ] = diff * sum.x;
-        #endif
+        gOut_Diff[ pixelPos ] = diff * sum.x;
         #ifdef REBLUR_SH
             gOut_DiffSh[ pixelPos ] = diffSh * sum.x;
         #endif
     #endif
 
     #ifdef REBLUR_SPECULAR
-        #ifdef REBLUR_OCCLUSION
-            gOut_Spec[ pixelPos ] = float2( spec * sum.y, PackViewZ( viewZ ) );
-        #else
-            gOut_Spec[ pixelPos ] = spec * sum.y;
-        #endif
+        gOut_Spec[ pixelPos ] = spec * sum.y;
         #ifdef REBLUR_SH
             gOut_SpecSh[ pixelPos ] = specSh * sum.y;
         #endif

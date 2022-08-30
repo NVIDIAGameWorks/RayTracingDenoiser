@@ -71,33 +71,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float diffNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, 1.0 );
     float specNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, roughness );
 
-    #ifdef REBLUR_DIFFUSE
-        #ifndef REBLUR_OCCLUSION
-            float3 diff = gIn_Diff[ pixelPos ].xyz;
-        #endif
-    #endif
-
-    #ifdef REBLUR_SPECULAR
-        #ifndef REBLUR_OCCLUSION
-            float3 spec = gIn_Spec[ pixelPos ].xyz;
-        #endif
-    #endif
-
     // Hit distance reconstruction
     float2 sum = 1000.0 * float2( center.xy != 0.0 );
     center.xy *= sum;
 
     [unroll]
-    for( int dy = 0; dy <= BORDER * 2; dy++ )
+    for( j = 0; j <= BORDER * 2; j++ )
     {
         [unroll]
-        for( int dx = 0; dx <= BORDER * 2; dx++ )
+        for( i = 0; i <= BORDER * 2; i++ )
         {
-            float2 o = float2( dx, dy ) - BORDER;
+            float2 o = float2( i, j ) - BORDER;
             if( o.x == 0.0 && o.y == 0.0 )
                 continue;
 
-            int2 pos = threadPos + int2( dx, dy );
+            int2 pos = threadPos + int2( i, j );
             float3 temp = s_HitDist_ViewZ[ pos.y ][ pos.x ];
 
             float w = IsInScreen( pixelUv + o * gInvRectSize );
@@ -126,7 +114,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     }
 
     // Normalize weighted sum
-    center.xy /= max( sum, 1e-6 );
+    center.xy /= max( sum, NRD_EPS ); // IMPORTANT: if all conditions are met, "sum" can't be 0
 
     // Return back to normalized hit distances
     #if( REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION == 1 )
@@ -139,6 +127,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_OCCLUSION
             gOut_Diff[ pixelPos ] = center.x;
         #else
+            float3 diff = gIn_Diff[ pixelPos ].xyz;
             gOut_Diff[ pixelPos ] = float4( diff, center.x );
         #endif
     #endif
@@ -147,6 +136,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_OCCLUSION
             gOut_Spec[ pixelPos ] = center.y;
         #else
+            float3 spec = gIn_Spec[ pixelPos ].xyz;
             gOut_Spec[ pixelPos ] = float4( spec, center.y );
         #endif
     #endif

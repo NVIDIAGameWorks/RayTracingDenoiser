@@ -23,65 +23,61 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_5X5_ANTI_FIREFLY                             0 // can be 1 for dirty signals, but will be less useful
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
 #define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             0
-#define REBLUR_USE_ACCUM_SPEED_NONLINEAR_INTERPOLATION          0
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
 
-// Experimental kernels
-#ifndef __cplusplus
+// Kernels
+static const float3 g_Special6[ 6 ] =
+{
     // https://www.desmos.com/calculator/e5mttzlg6v
-    static const float3 g_Special6[ 6 ] =
-    {
-        float3( -0.50 * sqrt(3.0) , -0.50             , 1.0 ),
-        float3(  0.00             ,  1.00             , 1.0 ),
-        float3(  0.50 * sqrt(3.0) , -0.50             , 1.0 ),
-        float3(  0.00             , -0.30             , 0.3 ),
-        float3(  0.15 * sqrt(3.0) ,  0.15             , 0.3 ),
-        float3( -0.15 * sqrt(3.0) ,  0.15             , 0.3 ),
-    };
+    float3( -0.50 * sqrt(3.0) , -0.50             , 1.0 ),
+    float3(  0.00             ,  1.00             , 1.0 ),
+    float3(  0.50 * sqrt(3.0) , -0.50             , 1.0 ),
+    float3(  0.00             , -0.30             , 0.3 ),
+    float3(  0.15 * sqrt(3.0) ,  0.15             , 0.3 ),
+    float3( -0.15 * sqrt(3.0) ,  0.15             , 0.3 ),
+};
 
+static const float3 g_Special8[ 8 ] =
+{
     // https://www.desmos.com/calculator/abaqyvswem
-    static const float3 g_Special8[ 8 ] =
-    {
-        float3( -1.00             ,  0.00             , 1.0 ),
-        float3(  0.00             ,  1.00             , 1.0 ),
-        float3(  1.00             ,  0.00             , 1.0 ),
-        float3(  0.00             , -1.00             , 1.0 ),
-        float3( -0.25 * sqrt(2.0) ,  0.25 * sqrt(2.0) , 0.5 ),
-        float3(  0.25 * sqrt(2.0) ,  0.25 * sqrt(2.0) , 0.5 ),
-        float3(  0.25 * sqrt(2.0) , -0.25 * sqrt(2.0) , 0.5 ),
-        float3( -0.25 * sqrt(2.0) , -0.25 * sqrt(2.0) , 0.5 )
-    };
-#endif
+    float3( -1.00             ,  0.00             , 1.0 ),
+    float3(  0.00             ,  1.00             , 1.0 ),
+    float3(  1.00             ,  0.00             , 1.0 ),
+    float3(  0.00             , -1.00             , 1.0 ),
+    float3( -0.25 * sqrt(2.0) ,  0.25 * sqrt(2.0) , 0.5 ),
+    float3(  0.25 * sqrt(2.0) ,  0.25 * sqrt(2.0) , 0.5 ),
+    float3(  0.25 * sqrt(2.0) , -0.25 * sqrt(2.0) , 0.5 ),
+    float3( -0.25 * sqrt(2.0) , -0.25 * sqrt(2.0) , 0.5 )
+};
 
 // Other
-#define REBLUR_POISSON_SAMPLE_NUM                               8
-#define REBLUR_POISSON_SAMPLES( i )                             g_Poisson8[ i ]
 #define REBLUR_PRE_BLUR_POISSON_SAMPLE_NUM                      8
-#define REBLUR_PRE_BLUR_POISSON_SAMPLES( i )                    g_Poisson8[ i ]
+#define REBLUR_PRE_BLUR_POISSON_SAMPLES( i )                    g_Special8[ i ]
+
+#define REBLUR_POISSON_SAMPLE_NUM                               8
+#define REBLUR_POISSON_SAMPLES( i )                             g_Special8[ i ]
 
 #define REBLUR_PRE_BLUR_ROTATOR_MODE                            NRD_FRAME
-#define REBLUR_PRE_BLUR_INTERNAL_DATA                           float2( 1.0 / ( 1.0 + 8.0 ), 8.0 ) // TODO: 15-30?
+#define REBLUR_PRE_BLUR_FRACTION_SCALE                          2.0
+#define REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED                  ( 1.0 / ( 1.0 + 8.0 ) ) // TODO: 10-20?
 
 #define REBLUR_BLUR_ROTATOR_MODE                                NRD_FRAME
-#define REBLUR_BLUR_FRACTION_SCALE                              2.0
+#define REBLUR_BLUR_FRACTION_SCALE                              1.0
 
 #define REBLUR_POST_BLUR_ROTATOR_MODE                           NRD_FRAME
-#define REBLUR_POST_BLUR_RADIUS_SCALE                           3.0
 #define REBLUR_POST_BLUR_FRACTION_SCALE                         0.5
+#define REBLUR_POST_BLUR_RADIUS_SCALE                           2.0
 
 #define REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM       2
 #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       1.5 // TODO: was 2.0, but we can use even 1.0 because the fast history is noisy, while the main history is denoised
 #define REBLUR_SPEC_ACCUM_BASE_POWER                            ( 0.4 + 0.2 * exp2( -gFramerateScale ) ) // bigger values = more aggressive rejection
 #define REBLUR_SPEC_ACCUM_CURVE                                 ( 1.0 - exp2( -gFramerateScale ) ) // smaller values = more aggressive rejection
 #define REBLUR_TS_SIGMA_AMPLITUDE                               ( 3.0 * gFramerateScale )
-#define REBLUR_TS_ACCUM_TIME                                    ( gFramerateScale * 30.0 * 0.5 ) // = FPS * seconds
+#define REBLUR_TS_ACCUM_TIME                                    ( gFramerateScale * 30.0 * 0.5 ) // = FPS * seconds // TODO: make it "gMaxAccumulatedFrameNum" dependent, like: clamp( gFramerateScale * 30.0 - gMaxAccumulatedFrameNum * 0.5, 0.0, 63.0 )
 #define REBLUR_PARALLAX_SCALE                                   ( 2.0 * gFramerateScale ) // TODO: is it possible to use 1 with tweaks in other parameters?
-#define REBLUR_FIXED_FRAME_NUM                                  3.0 // TODO: move to settings
-#define REBLUR_HISTORY_FIX_STEP                                 ( 10.0 * ( gRectSize.y / 1440.0 ) )  // pixels // TODO: gBlurRadius dependent if != 0?
 #define REBLUR_HISTORY_FIX_THRESHOLD_1                          0.111 // was 0.01
 #define REBLUR_HISTORY_FIX_THRESHOLD_2                          0.333 // was 0.25
 #define REBLUR_HIT_DIST_MIN_WEIGHT                              0.1 // TODO: reduce?
-#define REBLUR_MIN_PDF                                          0.001
 #define REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY                   float2( 10.0, 1.1 )
 
 // Shared data
@@ -118,9 +114,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gResponsiveAccumulationRoughnessThreshold ) \
     NRD_CONSTANT( float, gDiffPrepassBlurRadius ) \
     NRD_CONSTANT( float, gSpecPrepassBlurRadius ) \
+    NRD_CONSTANT( float, gHistoryFixFrameNum ) \
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
-    NRD_CONSTANT( uint, gUnused1 ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
     NRD_CONSTANT( uint, gSpecMaterialMask )
 

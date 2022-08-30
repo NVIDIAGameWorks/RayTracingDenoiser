@@ -486,10 +486,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float minHitDist5x5 = minHitDist3x3;
 
     [unroll]
-    for (int i = -2; i <= 2; i++)
+    for (i = -2; i <= 2; i++)
     {
         [unroll]
-        for (int j = -2; j <= 2; j++)
+        for (j = -2; j <= 2; j++)
         {
             // Skipping center pixel
             if ((i == 0) && (j == 0))

@@ -504,9 +504,9 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)
     data = PushDispatch(methodData, AsUint(Dispatch::DISOCCLUSION_FIX));
     AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE);
     AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
-    AddFloat(data, settings.disocclusionFixEdgeStoppingNormalPower);
-    AddFloat(data, settings.disocclusionFixMaxRadius);
-    AddFloat(data, float(settings.disocclusionFixNumFramesToFix));
+    AddFloat(data, settings.historyFixEdgeStoppingNormalPower);
+    AddFloat(data, settings.historyFixStrideBetweenSamples);
+    AddFloat(data, float(settings.historyFixFrameNum));
     ValidateConstants(data);
 
     if (settings.enableAntiFirefly)
@@ -515,7 +515,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)
         data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING));
         AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
-        AddFloat(data, float(settings.disocclusionFixNumFramesToFix));
+        AddFloat(data, float(settings.historyFixFrameNum));
         AddUint(data, settings.diffuseMaxFastAccumulatedFrameNum < settings.diffuseMaxAccumulatedFrameNum ? 1 : 0);
         ValidateConstants(data);
 
@@ -530,7 +530,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)
         data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING_NO_FIREFLY));
         AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_DIFFUSE);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
-        AddFloat(data, float(settings.disocclusionFixNumFramesToFix));
+        AddFloat(data, float(settings.historyFixFrameNum));
         AddUint(data, settings.diffuseMaxFastAccumulatedFrameNum < settings.diffuseMaxAccumulatedFrameNum ? 1 : 0);
         ValidateConstants(data);
     }

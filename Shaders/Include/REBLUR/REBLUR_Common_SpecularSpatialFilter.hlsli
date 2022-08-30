@@ -21,74 +21,96 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 {
-#if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-    float2 sum = hasData.y;
+    float smc = GetSpecMagicCurve2( roughness );
 
-    float2 specInternalData = REBLUR_PRE_BLUR_INTERNAL_DATA;
-    float minHitDist = spec.w;
+#if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+    float2 sum = hasData;
 
     if( radius != 0.0 )
     {
+        float specNonLinearAccumSpeed = REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED;
 #else
-        float2 specInternalData = float2( 1.0 / ( 1.0 + internalData1.z ), internalData1.z );
         float2 sum = 1.0;
 
-        float boost = saturate( 1.0 - specInternalData.y / REBLUR_FIXED_FRAME_NUM );
-        boost *= NoV;
-        boost *= GetSpecMagicCurve2( roughness );
+        // IMPORTANT: keep an eye on tests:
+        // - 51 and 128: outlines without TAA
+        // - 81 and 117: cleanness in disoccluded regions
+        float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( internalData1.z );
+        boost *= 1.0 - STL::BRDF::Pow5( NoV );
+        boost *= smc;
 
+        float specNonLinearAccumSpeed = 1.0 / ( 1.0 + ( 1.0 - boost ) * internalData1.z );
         float radius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
 #endif
         radius *= GetBlurRadiusScaleBasingOnTrimming( roughness, gSpecLobeTrimmingParams.xyz );
 
+        float fractionScale = 1.0;
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            float lobeAngleFractionScale = 1.0;
-            float roughnessFractionScale = 1.0;
-        #else
-            float lobeAngleFractionScale = lerp( 1.0, gLobeAngleFraction, roughness );
-            float roughnessFractionScale = 0.333;
-        #endif
+        fractionScale = REBLUR_PRE_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
         float radiusScale = 1.0;
-        float lobeAngleFractionScale = gLobeAngleFraction * REBLUR_BLUR_FRACTION_SCALE;
-        float roughnessFractionScale = gRoughnessFraction * REBLUR_BLUR_FRACTION_SCALE;
+        fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
         float radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
-        float lobeAngleFractionScale = gLobeAngleFraction * REBLUR_POST_BLUR_FRACTION_SCALE;
-        float roughnessFractionScale = gRoughnessFraction * REBLUR_POST_BLUR_FRACTION_SCALE;
+        fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #endif
 
-        // Blur radius
+        float lobeAngleFractionScale = gLobeAngleFraction * fractionScale;
+        float roughnessFractionScale = gRoughnessFraction * fractionScale;
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        #ifdef REBLUR_HAS_DIRECTION_PDF
+            lobeAngleFractionScale = 1.0;
+            roughnessFractionScale = 1.0;
+        #endif
+    #endif
+
+        float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
+        float hitDist = ExtractHitDist( spec ) * hitDistScale;
+
+        // Min blur radius
         float4 Dv = STL::ImportanceSampling::GetSpecularDominantDirection( Nv, Vv, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
         float NoD = abs( dot( Nv, Dv.xyz ) );
-
-        float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
-        float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
-        float hitDist = spec.w * hitDistScale;
-
-    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR ) // TODO: explore using unnnormalized (real) hit distance
-        float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumHeight );
-
-        float blurRadius = radius * hitDistFactor * GetSpecMagicCurve2( roughness );
         float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness );
         float lobeRadius = hitDist * NoD * lobeTanHalfAngle;
         float minBlurRadius = lobeRadius / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ + hitDist * Dv.w );
 
-        blurRadius = min( blurRadius, minBlurRadius );
+        // Hit distance factor ( tests 76, 95, 120 )
+        // TODO: reduce "hitDistFactor" influence if reprojection confidence is low?
+        // TODO: if luminance stoppers are used, blur radius should depend less on "hitDistFactor"
+        float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumHeight ); // this version beter follows the lobe...
     #else
-        float radiusBias = internalData1.w * gBlurRadiusScale;
-        float hitDistFactor = GetHitDistFactor( hitDist, frustumHeight );
-        float blurRadius = GetBlurRadius( radius, radiusBias, radiusScale, hitDistFactor, specInternalData.x, roughness );
+        float hitDistFactor = GetHitDistFactor( hitDist, frustumHeight ); // TODO: ...but this one is needed to avoid under-blurring
+
+        float relaxedHitDistFactor = lerp( 1.0, hitDistFactor, roughness );
+        hitDistFactor = lerp( hitDistFactor, relaxedHitDistFactor, specNonLinearAccumSpeed );
     #endif
 
-        float worldBlurRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
+        // Blur radius
+        float blurRadius = radius * hitDistFactor * smc;
+    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
+        blurRadius *= lerp( gMinConvergedStateBaseRadiusScale, 1.0, specNonLinearAccumSpeed );
+    #endif
+        blurRadius = min( blurRadius, minBlurRadius );
+
+        // Blur bias and scale
+    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
+        blurRadius += max( internalData1.w * gBlurRadiusScale, 2.0 * roughness ) * smc; // TODO: 2.0 * roughness * hitDistFactor?
+        blurRadius *= radiusScale;
+        blurRadius *= float( radius != 0 );
+    #endif
 
         // Denoising
-        float2x3 TvBv = GetKernelBasis( Dv.xyz, Nv, NoD, worldBlurRadius, roughness, specInternalData.x );
-        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specInternalData.x );
-        float normalWeightParams = GetNormalWeightParams( specInternalData.x, lobeAngleFractionScale, roughness );
-        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( spec.w, specInternalData.x, roughness );
+        float2x3 TvBv = GetKernelBasis( Dv.xyz, Nv, NoD, roughness, specNonLinearAccumSpeed );
+
+        float worldRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
+        TvBv[ 0 ] *= worldRadius;
+        TvBv[ 1 ] *= worldRadius;
+
+        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specNonLinearAccumSpeed );
+        float normalWeightParams = GetNormalWeightParams( specNonLinearAccumSpeed, lobeAngleFractionScale, roughness );
+        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScale );
 
     #ifdef REBLUR_HAS_DIRECTION_PDF
@@ -107,30 +129,29 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float G = STL::BRDF::GeometryTermMod_SmithUncorrelated( roughness, NoL, NoV, VoH, NoH );
 
         // IMPORTANT: no F at least because we don't know Rf0, PDF should not include it too
-        sum *= D * G * NoL / ( dirPdf.w + REBLUR_MIN_PDF );
+        sum *= D * G * NoL / dirPdf.w;
     #endif
 
-    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        float2 minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * 2.0;
-    #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT );
-    #else
-        float2 minHitDistWeight = float2( 0.0, REBLUR_HIT_DIST_MIN_WEIGHT * 0.5 );
+        float2 minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * fractionScale;
+    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
+        minHitDistWeight.x = 0.0; // TODO: review
     #endif
 
         // TODO: previosuly "minHitDistWeight" was adjusted by specular reprojection confidence
         //minHitDistWeight = lerp( lerp( minHitDistWeight, 1.0, hitDistFactor ), minHitDistWeight, confidence );
 
         // Sampling
-        spec *= sum.xxxy;
+        float minHitDist = ExtractHitDist( spec );
+
+        spec *= Xxxy( sum );
     #ifdef REBLUR_SH
-        specSh *= sum.xxxy;
+        specSh *= Xxxy( sum );
     #endif
 
         [unroll]
-        for( uint i = 0; i < POISSON_SAMPLE_NUM; i++ )
+        for( uint n = 0; n < POISSON_SAMPLE_NUM; n++ )
         {
-            float3 offset = POISSON_SAMPLES( i );
+            float3 offset = POISSON_SAMPLES( n );
 
             // Sample coordinates
         #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
@@ -139,38 +160,31 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
         #endif
 
-            // Handle half res input in the checkerboard mode
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 checkerboardUv = uv;
             if( gSpecCheckerboard != 2 )
-                checkerboardUv = ApplyCheckerboard( uv, gSpecCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex );
+                uv = ApplyCheckerboardShift( uv, gSpecCheckerboard, n, gRectSize, gInvRectSize, gFrameIndex );
         #endif
 
-            // Fetch data
             float2 uvScaled = uv * gResolutionScale;
 
-        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
+            // Fetch data
+        #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
+            float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) );
+        #else
             float zs = abs( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 ) );
-            float4 s = gIn_Spec.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
+        #endif
+
+        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+            float2 checkerboardUvScaled = float2( uvScaled.x * ( gSpecCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y ) + gRectOffset;
+            REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
             #ifdef REBLUR_SH
                 float4 sh = gIn_SpecSh.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
             #endif
         #else
-            #ifdef REBLUR_OCCLUSION
-                float2 data = gIn_Spec.SampleLevel( gNearestMirror, uvScaled, 0 );
-                float zs = data.y;
-                float4 s = data.x;
-            #else
-                float zs = gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled, 0 );
-                float4 s = gIn_Spec.SampleLevel( gNearestMirror, uvScaled, 0 );
-                #ifdef REBLUR_SH
-                    float4 sh = gIn_SpecSh.SampleLevel( gNearestMirror, uvScaled, 0 );
-                #endif
+            REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestMirror, uvScaled, 0 );
+            #ifdef REBLUR_SH
+                float4 sh = gIn_SpecSh.SampleLevel( gNearestMirror, uvScaled, 0 );
             #endif
-        #endif
-        #if( defined( REBLUR_OCCLUSION ) || REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
-            zs = UnpackViewZ( zs );
         #endif
 
             float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
@@ -188,6 +202,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             #ifdef REBLUR_HAS_DIRECTION_PDF
                 float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Spec_DirectionPdf.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 ) );
+            #endif
+            #ifdef REBLUR_SH
+                float4 dirPdf = float4( sh.xyz * rsqrt( dot( sh.xyz, sh.xyz ) + 1e-7 ), sh.w );
+            #endif
+            #if( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_HAS_DIRECTION_PDF )
                 float3 L = dirPdf.xyz;
                 float3 H = normalize( L + V );
                 float NoL = saturate( dot( N, L ) );
@@ -197,29 +216,29 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
                 float G = STL::BRDF::GeometryTermMod_SmithUncorrelated( roughness, NoL, NoV, VoH, NoH );
 
                 // IMPORTANT: no F at least because we don't know Rf0, PDF should not include it too
-                w *= D * G * NoL / ( dirPdf.w + REBLUR_MIN_PDF );
+                w *= D * G * NoL / dirPdf.w;
             #endif
 
             // Decrease weight for samples that most likely are very close to reflection contact which should not be blurred
             float d = length( Xvs - Xv );
-            float h = s.w * hitDistScale; // roughness weight will handle the rest
-            float t = h * rcp( hitDist + d + 1e-6 );
+            float h = ExtractHitDist( s ) * hitDistScale; // roughness weight will handle the rest
+            float t = h / ( hitDist + d + frustumHeight * gInvRectSize.y );
             w *= lerp( saturate( t ), 1.0, STL::Math::LinearStep( 0.5, 1.0, roughness ) );
 
             // Adjust blur radius "on the fly" if taps have short hit distances
             float hitDistFactorAtSample = GetHitDistFactor( h, frustumHeight );
             float blurRadiusScale = lerp( hitDistFactorAtSample, 1.0, NoD );
-            blurRadius *= lerp( 1.0, blurRadiusScale, i / ( 1.0 + i ) );
+            blurRadius *= lerp( 1.0, blurRadiusScale, n / ( 1.0 + n ) );
 
             // Min hit distance for tracking
             if( w != 0.0 )
-                minHitDist = min( s.w, minHitDist ); // TODO: use weighted sum with weight = w * ( 1.0 - s.w )?
+                minHitDist = min( ExtractHitDist( s ), minHitDist ); // TODO: is there something better than "min"?
         #endif
 
             // Weight separation - radiance and hitDist
             float2 ww = w;
         #ifndef REBLUR_HAS_DIRECTION_PDF
-            ww *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, s.w ) );
+            ww *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
         #endif
 
             // Get rid of potentially bad values outside of the screen
@@ -227,21 +246,21 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Accumulate
             sum += ww;
-            spec += s * ww.xxxy;
+            spec += s * Xxxy( ww );
         #ifdef REBLUR_SH
-            specSh += sh * ww.xxxy;
+            specSh += sh * Xxxy( ww );
         #endif
         }
 
         float2 invSum = STL::Math::PositiveRcp( sum );
-        spec *= invSum.xxxy;
+        spec *= Xxxy( invSum );
     #ifdef REBLUR_SH
-        specSh *= invSum.xxxy;
+        specSh *= Xxxy( invSum );
     #endif
 
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         // Min hit distance modification
-        minHitDist = lerp( minHitDist, spec.w, STL::BRDF::Pow5( NoD ) );
+        minHitDist = lerp( minHitDist, ExtractHitDist( spec ), STL::BRDF::Pow5( NoD ) );
 
         // Output
         gOut_Spec_MinHitDist[ pixelPos ] = minHitDist;
@@ -249,10 +268,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     // Checkerboard resolve ( if pre-pass failed )
     [branch]
-    if( !hasData.y && sum.x == 0.0 )
+    if( !hasData && sum.x == 0.0 )
     {
-        float4 s0 = gIn_Spec[ checkerboardPos.xy ];
-        float4 s1 = gIn_Spec[ checkerboardPos.zy ];
+        REBLUR_TYPE s0 = gIn_Spec[ checkerboardPos.xy ];
+        REBLUR_TYPE s1 = gIn_Spec[ checkerboardPos.zy ];
 
         spec *= saturate( 1.0 - wc.x - wc.y );
         spec += s0 * wc.x + s1 * wc.y;
@@ -268,18 +287,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
     // Output
-#ifdef REBLUR_OCCLUSION
-    #if( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        gOut_Spec[ pixelPos ] = float2( spec.w, PackViewZ( viewZ ) );
-    #else
-        gOut_Spec[ pixelPos ] = spec.w;
-    #endif
-#else
     gOut_Spec[ pixelPos ] = spec;
     #ifdef REBLUR_SH
         gOut_SpecSh[ pixelPos ] = specSh;
     #endif
-#endif
 }
 
 #undef POISSON_SAMPLE_NUM

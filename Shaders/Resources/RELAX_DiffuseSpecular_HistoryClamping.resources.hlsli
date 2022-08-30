@@ -18,7 +18,7 @@ NRD_SAMPLER_END
 NRD_CONSTANTS_START
     RELAX_SHARED_CB_DATA
     NRD_CONSTANT( float, gColorBoxSigmaScale )
-    NRD_CONSTANT( float, gFramesToFix )
+    NRD_CONSTANT( float, gHistoryFixFrameNum )
     #if( defined RELAX_SPECULAR )
         NRD_CONSTANT( uint, gSpecFastHistory )
     #endif

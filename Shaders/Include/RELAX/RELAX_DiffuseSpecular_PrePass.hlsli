@@ -149,18 +149,16 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             // Sample coordinates
             float2 uv = pixelUv + STL::Geometry::RotateVector(rotator, offset.xy) * gInvResourceSize * blurRadius;
 
-            // Handle half res input in the checkerboard mode
-            float2 checkerboardUv = uv;
             if (gDiffuseCheckerboard != 2)
-                checkerboardUv = ApplyCheckerboard(uv, gDiffuseCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
+                uv = ApplyCheckerboardShift(uv, gDiffuseCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
 
             // Fetch data
-            float2 uvScaled = uv * gResolutionScale + gRectOffset;
+            float2 uvScaled = uv * gResolutionScale;
+            float2 checkerboardUvScaled = float2( uvScaled.x * ( gDiffuseCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y ) + gRectOffset;
 
             float sampleMaterialID;
             float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestMirror, uvScaled, 0), sampleMaterialID).rgb;
 
-            float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
             float4 sampleDiffuseIllumination = gDiffuseIllumination.SampleLevel(gNearestMirror, checkerboardUvScaled, 0);
             float sampleViewZ = abs(gViewZ.SampleLevel(gNearestMirror, uvScaled, 0));
 
@@ -264,16 +262,15 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             // Sample coordinates
             float2 uv = pixelUv + STL::Geometry::RotateVector(rotator, offset.xy) * gInvResourceSize * blurRadius;
 
-            // Handle half res input in the checkerboard mode
-            float2 checkerboardUv = uv;
             if (gSpecularCheckerboard != 2)
-                checkerboardUv = ApplyCheckerboard(uv, gSpecularCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
+                uv = ApplyCheckerboardShift(uv, gSpecularCheckerboard, i, gRectSize, gInvRectSize, gFrameIndex);
+
+            float2 uvScaled = uv * gResolutionScale;
+            float2 checkerboardUvScaled = float2( uvScaled.x * ( gSpecularCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y ) + gRectOffset;
 
             // Fetch data
-            float2 checkerboardUvScaled = checkerboardUv * gResolutionScale + gRectOffset;
             float4 sampleSpecularIllumination = gSpecularIllumination.SampleLevel(gNearestMirror, checkerboardUvScaled, 0);
 
-            float2 uvScaled = uv * gResolutionScale + gRectOffset;
             float sampleMaterialID;
             float4 sampleNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestMirror, uvScaled, 0), sampleMaterialID);
             float3 sampleNormal = sampleNormalRoughness.rgb;

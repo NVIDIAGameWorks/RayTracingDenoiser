@@ -12,9 +12,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Constants
 
-#define NRD_FRAME                                               0
-#define NRD_PIXEL                                               1
-#define NRD_RANDOM                                              2 // for experiments only
+#define NRD_NONE                                                0
+#define NRD_FRAME                                               1
+#define NRD_PIXEL                                               2
+#define NRD_RANDOM                                              3 // for experiments only
 
 #define NRD_INF                                                 1e6
 
@@ -33,7 +34,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 //==================================================================================================================
-// DEFAULT SETTINGS (can be modified)
+// DEFAULT SETTINGS ( can be modified )
 //==================================================================================================================
 
 #define NRD_USE_QUADRATIC_DISTRIBUTION                          0 // bool
@@ -82,7 +83,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         if( stage == 0 || virtualIndex < BUFFER_X * BUFFER_Y ) \
             Preload( newId, groupBase + newId ); \
     } \
-    GroupMemoryBarrierWithGroupSync( )
+    GroupMemoryBarrierWithGroupSync( ); \
+    /* Not an elegant way to solve loop variables declaration duplication problem */ \
+    int i, j
 
 //==================================================================================================================
 // SHARED FUNCTIONS
@@ -111,7 +114,9 @@ float GetHitDistFactor( float hitDist, float frustumHeight, float scale = 1.0 )
 
 float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float4 baseRotator, uint frameIndex )
 {
-    if( mode == NRD_PIXEL )
+    if( mode == NRD_NONE )
+        return STL::Geometry::GetRotator( 0.0 );
+    else if( mode == NRD_PIXEL )
     {
         float angle = STL::Sequence::Bayer4x4( pixelPos, frameIndex );
         float4 rotator = STL::Geometry::GetRotator( angle * STL::Math::Pi( 2.0 ) );
@@ -137,15 +142,14 @@ float IsInScreen( float2 uv )
     return float( all( saturate( uv ) == uv ) );
 }
 
-float2 ApplyCheckerboard( inout float2 uv, uint mode, uint counter, float2 screenSize, float2 invScreenSize, uint frameIndex )
+float2 ApplyCheckerboardShift( float2 uv, uint mode, uint counter, float2 screenSize, float2 invScreenSize, uint frameIndex )
 {
     int2 uvi = int2( uv * screenSize );
     bool hasData = STL::Sequence::CheckerBoard( uvi, frameIndex ) == mode;
     if( !hasData )
         uvi.x += ( ( counter & 0x1 ) == 0 ) ? -1 : 1;
-    uv = ( float2( uvi ) + 0.5 ) * invScreenSize;
 
-    return float2( uv.x * 0.5, uv.y );
+    return ( float2( uvi ) + 0.5 ) * invScreenSize;
 }
 
 float GetSpecMagicCurve( float roughness, float power = 0.25 )
@@ -293,7 +297,7 @@ float3 GetXvirtual(
     float hitDistFocused = ApplyThinLensEquation( NoV, hitDist, curvature );
 
     // "saturate" is needed to clamp values > 1 if curvature is negative
-    float compressionRatio = saturate( ( abs( hitDistFocused ) + 1e-6 ) / ( hitDist + 1e-6 ) );
+    float compressionRatio = saturate( ( abs( hitDistFocused ) + NRD_EPS ) / ( hitDist + NRD_EPS ) );
 
     float3 Xvirtual = lerp( Xprev, X, compressionRatio * dominantFactor ) - V * hitDistFocused * dominantFactor;
 
@@ -301,29 +305,6 @@ float3 GetXvirtual(
 }
 
 // Kernel
-
-float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float worldRadius, float roughness = 1.0, float anisoFade = 1.0 )
-{
-    float3x3 basis = STL::Geometry::GetBasis( N );
-
-    float3 T = basis[ 0 ];
-    float3 B = basis[ 1 ];
-
-    if( roughness < 0.95 && NoD < 0.999 )
-    {
-        float3 R = reflect( -D, N );
-        T = normalize( cross( N, R ) );
-        B = cross( R, T );
-
-        float skewFactor = lerp( roughness, 1.0, NoD );
-        T *= lerp( skewFactor, 1.0, anisoFade );
-    }
-
-    T *= worldRadius;
-    B *= worldRadius;
-
-    return float2x3( T, B );
-}
 
 float2 GetKernelSampleCoordinates( float4x4 mToClip, float3 offset, float3 X, float3 T, float3 B, float4 rotator = float4( 1, 0, 0, 1 ) )
 {
@@ -349,7 +330,7 @@ float2 GetKernelSampleCoordinates( float4x4 mToClip, float3 offset, float3 X, fl
 float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight, float3 Xv, float3 Nv, float nonLinearAccumSpeed )
 {
     float relaxation = lerp( 1.0, 0.25, nonLinearAccumSpeed );
-    float a = relaxation / ( planeDistSensitivity * frustumHeight + 1e-6 );
+    float a = relaxation / ( planeDistSensitivity * frustumHeight );
     float b = -dot( Nv, Xv ) * a;
 
     return float2( a, b );
@@ -358,7 +339,7 @@ float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight,
 float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, float roughness = 1.0 )
 {
     float smc = GetSpecMagicCurve2( roughness );
-    float norm = min( nonLinearAccumSpeed, smc * 0.97 + 0.03 );
+    float norm = lerp( 0.03, 1.0, min( nonLinearAccumSpeed, smc ) );
     float a = 1.0 / norm;
     float b = hitDist * a;
 
@@ -381,8 +362,9 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
     ExpApprox( -NRD_EXP_WEIGHT_DEFAULT_SCALE * abs( ( x ) * ( px ) + ( py ) ) )
 
 // A good choice for non noisy data
+// IMPORTANT: cutoffs are needed to minimize floating point precision drifting
 #define _ComputeNonExponentialWeight( x, px, py ) \
-    STL::Math::SmoothStep01( 1.0 - abs( ( x ) * ( px ) + ( py ) ) )
+    STL::Math::SmoothStep( 0.999, 0.001, abs( ( x ) * ( px ) + ( py ) ) )
 
 #if( NRD_USE_EXPONENTIAL_WEIGHTS == 1 )
     #define _ComputeWeight( x, px, py ) \
@@ -425,7 +407,7 @@ float GetGaussianWeight( float r )
 // Only for checkerboard resolve and some "lazy" comparisons
 
 #define GetBilateralWeight( z, zc ) \
-    STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) + 1e-6 ) )
+    STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) ) )
 
 // Upsampling
 

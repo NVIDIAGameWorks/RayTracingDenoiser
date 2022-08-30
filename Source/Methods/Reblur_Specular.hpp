@@ -24,12 +24,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
         SPEC_FAST_HISTORY_PONG,
     };
 
-    m_PermanentPool.push_back( {Format::R32_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
 
     enum class Transient
     {
@@ -42,9 +42,9 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_MIN_HITDIST, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
 
@@ -159,8 +159,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( SPEC_TEMP2 );
-            PushInput( AsUint(Transient::DATA2) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( AsUint(Transient::DATA2) );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
 
             // Outputs

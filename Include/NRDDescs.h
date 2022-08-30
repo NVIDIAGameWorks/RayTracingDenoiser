@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 4
+#define NRD_DESCS_VERSION_MINOR 5
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -165,7 +165,7 @@ namespace nrd
         IN_SPEC_HITDIST,
 
         // Noisy bent normal and normalized hit distance (RGBA8+)
-        //      REBLUR: use "REBLUR_FrontEnd_PackDirectionAndNormHitDist" for encoding
+        //      REBLUR: use "REBLUR_FrontEnd_PackDirectionalOcclusion" for encoding
         IN_DIFF_DIRECTION_HITDIST,
 
         // Noisy SH data (2x RGBA16f+)
@@ -222,7 +222,7 @@ namespace nrd
         OUT_SPEC_HITDIST,
 
         // Denoised bent normal and normalized hit distance (RGBA8+)
-        //      REBLUR: use "REBLUR_BackEnd_UnpackDirectionAndNormHitDist" for decoding
+        //      REBLUR: use "REBLUR_BackEnd_UnpackDirectionalOcclusion" for decoding
         OUT_DIFF_DIRECTION_HITDIST,
 
         // Denoised shadow and optional transcluceny (R8+ or RGBA8+)

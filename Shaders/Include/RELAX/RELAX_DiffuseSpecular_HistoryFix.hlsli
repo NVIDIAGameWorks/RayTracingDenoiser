@@ -11,12 +11,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // Helper functions
 float getDiffuseNormalWeight(float3 centerNormal, float3 pointNormal)
 {
-    return pow(max(0.01, dot(centerNormal, pointNormal)), max(gDisocclusionFixEdgeStoppingNormalPower, 0.01));
+    return pow(max(0.01, dot(centerNormal, pointNormal)), max(gHistoryFixEdgeStoppingNormalPower, 0.01));
 }
 
 float getRadius(float numFramesInHistory)
 {
-    return gMaxRadius / (numFramesInHistory + 1.0);
+    return gHistoryFixStrideBetweenSamples / (numFramesInHistory + 1.0);
 }
 
 // Main
@@ -30,7 +30,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     // Early out if linearZ is beyond denoising range
     // Early out if no disocclusion detected
     [branch]
-    if ((centerViewZ > gDenoisingRange) || (historyLength > gFramesToFix))
+    if ((centerViewZ > gDenoisingRange) || (historyLength > gHistoryFixFrameNum))
         return;
 
 #ifdef RELAX_DIFFUSE

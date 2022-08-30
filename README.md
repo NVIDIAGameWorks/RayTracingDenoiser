@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.4.3 (NRD)
+# NVIDIA Real-time Denoisers v3.5.0 (NRD)
 
 ## SAMPLE APP
 
@@ -99,7 +99,7 @@ The pseudo code below demonstrates how *NRD integration* and *NRI* can be used t
 
 ```cpp
 //====================================================================================================================
-// STEP 1 - DECLARATIONS
+// INITIALIZATION - DECLARATIONS
 //====================================================================================================================
 
 #include "NRIDescs.hpp"
@@ -107,6 +107,7 @@ The pseudo code below demonstrates how *NRD integration* and *NRI* can be used t
 #include "Extensions/NRIHelper.h"
 
 #include "NRD.h"
+#include "NRDIntegration.hpp"
 
 NrdIntegration NRD = NrdIntegration(maxNumberOfFramesInFlight);
 
@@ -117,36 +118,35 @@ struct NriInterface
 {};
 NriInterface NRI;
 
-nri::Device* nriDevice = nullptr;
-
 //====================================================================================================================
-// STEP 2 - WRAP NATIVE DEVICE
+// INITIALIZATION - WRAP NATIVE DEVICE
 //====================================================================================================================
 
+// Wrap the device
 nri::DeviceCreationD3D12Desc deviceDesc = {};
 deviceDesc.d3d12Device = ...;
 deviceDesc.d3d12PhysicalAdapter = ...;
 deviceDesc.d3d12GraphicsQueue = ...;
 deviceDesc.enableNRIValidation = false;
 
-// Wrap the device
-nri::Result result = nri::CreateDeviceFromD3D12Device(deviceDesc, nriDevice);
+nri::Device* nriDevice = nullptr;
+nri::Result nriResult = nri::CreateDeviceFromD3D12Device(deviceDesc, nriDevice);
 
-// Get needed functionality
-result = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI);
-result = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI);
+// Get core functionality
+nriResult = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI);
+nriResult = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI);
 
-// Get needed "wrapper" extension, XXX - can be D3D11, D3D12 or VULKAN
-result = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::WrapperXXXInterface), (nri::WrapperXXXInterface*)&NRI);
+// Get appropriate "wrapper" extension (XXX - can be D3D11, D3D12 or VULKAN)
+nriResult = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::WrapperXXXInterface), (nri::WrapperXXXInterface*)&NRI);
 
 //====================================================================================================================
-// STEP 3 - INITIALIZE NRD
+// INITIALIZATION - INITIALIZE NRD
 //====================================================================================================================
 
 const nrd::MethodDesc methodDescs[] =
 {
-    // put neeeded methods here, like:
-    { nrd::Method::REBLUR_DIFFUSE_SPECULAR, renderResolution.x, renderResolution.y },
+    // Put neeeded methods here, like:
+    { nrd::Method::XXX, renderResolution.x, renderResolution.y },
 };
 
 nrd::DenoiserCreationDesc denoiserCreationDesc = {};
@@ -156,16 +156,18 @@ denoiserCreationDesc.requestedMethodNum = methodNum;
 bool result = NRD.Initialize(*nriDevice, NRI, NRI, denoiserCreationDesc);
 
 //====================================================================================================================
-// STEP 4 - WRAP NATIVE POINTERS
+// INITIALIZATION or RENDER - WRAP NATIVE POINTERS
 //====================================================================================================================
 
 // Wrap the command buffer
-nri::CommandBufferD3D12Desc cmdDesc = {};
-cmdDesc.d3d12CommandList = (ID3D12GraphicsCommandList*)&d3d12CommandList;
-cmdDesc.d3d12CommandAllocator = nullptr; // Not needed for NRD integration layer
+nri::CommandBufferD3D12Desc commandBufferDesc = {};
+commandBufferDesc.d3d12CommandList = (ID3D12GraphicsCommandList*)d3d12CommandList;
 
-nri::CommandBuffer* cmdBuffer = nullptr;
-NRI.CreateCommandBufferD3D12(*nriDevice, cmdDesc, cmdBuffer);
+// Not needed for NRD integration layer, but needed for NRI validation layer
+commandBufferDesc.d3d12CommandAllocator = (ID3D12CommandAllocator*)d3d12CommandAllocatorOrJustNonNull;
+
+nri::CommandBuffer* nriCommandBuffer = nullptr;
+NRI.CreateCommandBufferD3D12(*nriDevice, commandBufferDesc, nriCommandBuffer);
 
 // Wrap required textures
 nri::TextureTransitionBarrierDesc entryDescs[N] = {};
@@ -190,7 +192,7 @@ for (uint32_t i = 0; i < N; i++)
 }
 
 //====================================================================================================================
-// STEP 5 - DENOISE
+// RENDER - DENOISE
 //====================================================================================================================
 
 // Populate common settings
@@ -199,11 +201,11 @@ for (uint32_t i = 0; i < N; i++)
 nrd::CommonSettings commonSettings = {};
 PopulateCommonSettings(commonSettings);
 
-// Set settings for each denoiser
-nrd::NrdXxxSettings settings = {};
-PopulateDenoiserSettings(settings);
+// Set settings for each method in the NRD instance
+nrd::XxxSettings settings = {};
+PopulateXxxSettings(settings);
 
-NRD.SetMethodSettings(nrd::Method::NRD_XXX, &settings);
+NRD.SetMethodSettings(nrd::Method::XXX, &settings);
 
 // Fill up the user pool
 NrdUserPool userPool = {};
@@ -215,24 +217,27 @@ NrdUserPool userPool = {};
     NrdIntegration_SetResource(userPool, ...);
 };
 
-NRD.Denoise(*cmdBuffer, commonSettings, userPool);
+NRD.Denoise(*nriCommandBuffer, commonSettings, userPool);
 
-// !!! IMPORTANT !!!
-// NRD integration layer binds its own descriptor pool, don't forget to re-bind back your own descriptor pool (heap)
+// IMPORTANT: NRD integration binds own descriptor pool, don't forget to re-bind back your descriptor pool (heap)
 
 //====================================================================================================================
-// STEP 6 - CLEANUP
+// SHUTDOWN or RENDER - CLEANUP
 //====================================================================================================================
 
 for (uint32_t i = 0; i < N; i++)
     NRI.DestroyTexture(entryDescs[i].texture);
 
-NRI.DestroyCommandBuffer(*cmdBuffer);
+NRI.DestroyCommandBuffer(*nriCommandBuffer);
 
 //====================================================================================================================
-// STEP 7 - DESTROY
+// SHUTDOWN - DESTROY
 //====================================================================================================================
 
+// Release wrapped device
+NRI.DestroyDevice(*nriDevice);
+
+// Also NRD needs to be recreated on "resize"
 NRD.Destroy();
 ```
 
@@ -262,13 +267,11 @@ NOTE: this method is WIP. It works, but in the future it will work better out of
 
 ## HOW TO RUN DENOISING?
 
-*NRD* doesn't make any graphics API calls. The application is supposed to invoke a set of compute Dispatch() calls to actually denoise input signals. Please, refer to `NrdIntegration::Denoise()` and `NrdIntegration::Dispatch()` calls in NRDIntegration.hpp file as an example of an integration using low level RHI.
+*NRD* doesn't make any graphics API calls. The application is supposed to invoke a set of compute *Dispatch* calls to actually denoise input signals. Please, refer to `NrdIntegration::Denoise()` and `NrdIntegration::Dispatch()` calls in `NRDIntegration.hpp` file as an example of an integration using low level RHI.
 
-*NRD* doesn’t have a "resize" functionality. On resolution change the old denoiser needs to be destroyed and a new one needs to be created with new parameters.
+*NRD* doesn’t have a "resize" functionality. On resolution change the old denoiser needs to be destroyed and a new one needs to be created with new parameters. But *NRD* supports dynamic resolution scaling via `CommonSettings::resolutionScale`.
 
-NOTE: `XXX` below is a replacement for a denoiser you choose from *REBLUR*, *RELAX* or *SIGMA*.
-
-The following textures can be requested as inputs or outputs for a method. Required resources are specified near a method declaration in `Method`.
+The following textures can be requested as inputs or outputs for a method. Required resources are specified near a method declaration inside the `Method` enum class. Also `NRD.hlsli` has a comment near each front-end or back-end function, clarifying which resources this function is for.
 
 ### NRD INPUTS & OUTPUTS
 
@@ -327,18 +330,20 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 
 The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the *Working set* is required to be left intact for subsequent frames of the application. This memory stores the history resources consumed by NRD. The *Aliasable* column (matches *NRD Transient pool*) shows how much of the *Working set* may be aliased by textures or other resources used by the application outside of the operating boundaries of NRD.
 
+Creating borderless window (2560, 1440)
+Loading...
 | Resolution |                             Denoiser | Working set (Mb) |  Persistent (Mb) |   Aliasable (Mb) |
 |------------|--------------------------------------|------------------|------------------|------------------|
 |      1080p |                       REBLUR_DIFFUSE |            88.75 |            46.50 |            42.25 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |            42.31 |            16.94 |            25.38 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |            33.88 |            21.12 |            12.75 |
 |            |                    REBLUR_DIFFUSE_SH |           139.38 |            63.38 |            76.00 |
 |            |                      REBLUR_SPECULAR |            97.19 |            46.50 |            50.69 |
-|            |            REBLUR_SPECULAR_OCCLUSION |            42.31 |            16.94 |            25.38 |
+|            |            REBLUR_SPECULAR_OCCLUSION |            33.88 |            21.12 |            12.75 |
 |            |                   REBLUR_SPECULAR_SH |           147.81 |            63.38 |            84.44 |
 |            |              REBLUR_DIFFUSE_SPECULAR |           160.50 |            71.88 |            88.62 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            67.62 |            16.94 |            50.69 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            46.56 |            21.12 |            25.44 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |           261.75 |           105.62 |           156.12 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           105.62 |            80.25 |            25.38 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            88.75 |            46.50 |            42.25 |
 |            |                         SIGMA_SHADOW |            23.38 |             0.00 |            23.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            42.31 |             0.00 |            42.31 |
 |            |                        RELAX_DIFFUSE |           120.31 |            65.44 |            54.88 |
@@ -347,15 +352,15 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |                            REFERENCE |            33.75 |            33.75 |             0.00 |
 |            |                                      |                  |                  |                  |
 |      1440p |                       REBLUR_DIFFUSE |           157.50 |            82.50 |            75.00 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |            75.00 |            30.00 |            45.00 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |            60.00 |            37.50 |            22.50 |
 |            |                    REBLUR_DIFFUSE_SH |           247.50 |           112.50 |           135.00 |
 |            |                      REBLUR_SPECULAR |           172.50 |            82.50 |            90.00 |
-|            |            REBLUR_SPECULAR_OCCLUSION |            75.00 |            30.00 |            45.00 |
+|            |            REBLUR_SPECULAR_OCCLUSION |            60.00 |            37.50 |            22.50 |
 |            |                   REBLUR_SPECULAR_SH |           262.50 |           112.50 |           150.00 |
 |            |              REBLUR_DIFFUSE_SPECULAR |           285.00 |           127.50 |           157.50 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           120.00 |            30.00 |            90.00 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            82.50 |            37.50 |            45.00 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |           465.00 |           187.50 |           277.50 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           187.50 |           142.50 |            45.00 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           157.50 |            82.50 |            75.00 |
 |            |                         SIGMA_SHADOW |            41.38 |             0.00 |            41.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            75.12 |             0.00 |            75.12 |
 |            |                        RELAX_DIFFUSE |           213.75 |           116.25 |            97.50 |
@@ -364,15 +369,15 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |                            REFERENCE |            60.00 |            60.00 |             0.00 |
 |            |                                      |                  |                  |                  |
 |      2160p |                       REBLUR_DIFFUSE |           334.69 |           175.31 |           159.38 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |           159.38 |            63.75 |            95.62 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |           127.50 |            79.69 |            47.81 |
 |            |                    REBLUR_DIFFUSE_SH |           525.94 |           239.06 |           286.88 |
 |            |                      REBLUR_SPECULAR |           366.56 |           175.31 |           191.25 |
-|            |            REBLUR_SPECULAR_OCCLUSION |           159.38 |            63.75 |            95.62 |
+|            |            REBLUR_SPECULAR_OCCLUSION |           127.50 |            79.69 |            47.81 |
 |            |                   REBLUR_SPECULAR_SH |           557.81 |           239.06 |           318.75 |
 |            |              REBLUR_DIFFUSE_SPECULAR |           605.62 |           270.94 |           334.69 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           255.00 |            63.75 |           191.25 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           175.31 |            79.69 |            95.62 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |           988.12 |           398.44 |           589.69 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           398.44 |           302.81 |            95.62 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           334.69 |           175.31 |           159.38 |
 |            |                         SIGMA_SHADOW |            87.94 |             0.00 |            87.94 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |           159.56 |             0.00 |           159.56 |
 |            |                        RELAX_DIFFUSE |           454.31 |           247.12 |           207.19 |
@@ -442,9 +447,14 @@ A good approximation for pre-integrated specular BRDF can be found *[here](https
 
 **[NRD]** In case of probabilistic diffuse / specular split at the primary hit, pre-pass must be enabled, if exposed in the denoiser (see `diffusePrepassBlurRadius` and `specularPrepassBlurRadius`).
 
-**[NRD]** Maximum number of accumulated frames can be FPS dependent. The following formula can be used on the application side:
+**[NRD]** Maximum number of accumulated frames can be FPS dependent. The following formula can be used on the application side to adjust `maxAccumulatedFrameNum`, `maxFastAccumulatedFrameNum` and potentially `historyFixFrameNum` too:
 ```
 maxAccumulatedFrameNum = accumulationPeriodInSeconds * FPS
+```
+
+**[NRD]** The number of accumulated frames in the fast history needs to be carefully tuned to avoid introducing significant bias and dirt. Initial integration should be done by setting `maxFastAccumulatedFrameNum` to `maxAccumulatedFrameNum`. Bare in mind the following recommendation:
+```
+maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 ```
 
 **[REBLUR]** In case of *REBLUR* ensure that `enableReferenceAccumulation = true` works properly first. It's not mandatory, but will help to simplify debugging of potential issues by implicitly disabling spatial filtering entirely.
@@ -462,8 +472,6 @@ maxAccumulatedFrameNum = accumulationPeriodInSeconds * FPS
 **[REBLUR]** `enableAdvancedPrepass` mode offers better quality but requires valid `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details). It can't be used in case of a probabilistic split at primary hit (advanced pre-pass assumes that every pixel has valid data, PDF reconstruction is not implemented for performance reasons).
 
 **[RELAX]** *RELAX* works well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
-
-**[RELAX]** The number of accumulated frames in fast history needs to be carefully tuned to avoid introducing significant bias and dirt. Initial integration should be done by setting `maxFastAccumulatedFrameNum` to `maxAccumulatedFrameNum`.
 
 **[SIGMA]** Using "blue" noise can help to avoid shadow shimmering, it works best if the pattern is static on the screen. Additionally, `blurRadiusScale` can be set to `2-4` to mitigate such problems in complicated cases.
 

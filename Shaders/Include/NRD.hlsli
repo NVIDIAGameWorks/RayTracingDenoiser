@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.4
+// NRD v3.5
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -216,6 +216,8 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 #define NRD_FP16_MAX                                                                    65504.0
 #define NRD_FP16_VIEWZ_SCALE                                                            0.125 // TODO: tuned for meters, needs to be scaled down for cm and mm
 #define NRD_PI                                                                          3.14159265358979323846
+#define NRD_EPS                                                                         1e-6
+#define NRD_MIN_PDF                                                                     0.005 // a requirement for UNORM 8-bit
 
 // ViewZ packing into FP16
 float _NRD_PackViewZ( float z )
@@ -284,6 +286,8 @@ float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, fl
 //=================================================================================================================================
 
 // Spherical harmonics
+// https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf
+
 struct NRD_SH
 {
     float3 c0_chroma;
@@ -296,20 +300,20 @@ NRD_SH NRD_SH_Create( float3 color, float3 direction )
     float3 YCoCg = _NRD_LinearToYCoCg( color );
 
     NRD_SH sh;
-    sh.c0_chroma = 0.282095 * YCoCg;
-    sh.c1 = 0.488603 * YCoCg.x * direction;
+    sh.c0_chroma = YCoCg;
+    sh.c1 = YCoCg.x * direction;
 
     return sh;
 }
 
 float3 NRD_SH_ExtractColor( NRD_SH sh )
 {
-    return _NRD_YCoCgToLinear( sh.c0_chroma / 0.282095 );
+    return _NRD_YCoCgToLinear( sh.c0_chroma );
 }
 
 float3 NRD_SH_ExtractDirection( NRD_SH sh )
 {
-    return sh.c1 * rsqrt( dot( sh.c1, sh.c1 ) + 1e-7 );
+    return sh.c1 / max( length( sh.c1 ), NRD_EPS );
 }
 
 void NRD_SH_Add( inout NRD_SH result, NRD_SH x )
@@ -324,19 +328,17 @@ void NRD_SH_Mul( inout NRD_SH result, float x )
     result.c1 *= x;
 }
 
-// https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf
-float3 NRD_SH_ResolveColor( NRD_SH sh, float3 N, float cosHalfAngle = 0.0 )
+float3 NRD_SH_ResolveColor( NRD_SH sh, float3 N )
 {
-    float d = dot( N, sh.c1 );
-    float Y = 1.023326 * max( d, 0.0 ) + 0.886226 * max( sh.c0_chroma.x, 0.0 );
+    float Y = 0.5 * dot( N, sh.c1 ) + 0.25 * sh.c0_chroma.x;
 
-    // Pages 45-53 ( Y *= 2.0 - hemisphere, Y *= 4.0 - sphere )
-    float solidAngle = 2.0 * NRD_PI * ( 1.0 - cosHalfAngle );
-    Y *= solidAngle / NRD_PI;
+    // 2 - hemisphere, 4 - sphere
+    Y *= 2.0;
 
     // Corrected color reproduction
-    float eps = 1e-6;
-    float modifier = ( Y + eps ) / ( sh.c0_chroma.x + eps );
+    Y = max( Y, 0.0 );
+
+    float modifier = ( Y + NRD_EPS ) / ( sh.c0_chroma.x + NRD_EPS );
     float2 CoCg = sh.c0_chroma.yz * modifier;
 
     return _NRD_YCoCgToLinear( float3( Y, CoCg ) );
@@ -416,14 +418,18 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint mate
 // X => IN_SPEC_DIRECTION_PDF
 float4 NRD_FrontEnd_PackDirectionAndPdf( float3 direction, float pdf )
 {
-    return float4( direction, pdf );
+    return float4( direction, max( pdf, NRD_MIN_PDF ) );
 }
 
 // IN_DIFF_DIRECTION_PDF => X
 // IN_SPEC_DIRECTION_PDF => X
 float4 NRD_FrontEnd_UnpackDirectionAndPdf( float4 directionAndPdf )
 {
-    return directionAndPdf;
+    float4 r;
+    r.xyz = normalize( directionAndPdf.xyz );
+    r.w = directionAndPdf.w;
+
+    return r;
 }
 
 //========
@@ -458,23 +464,6 @@ float4 REBLUR_FrontEnd_PackRadianceAndNormHitDist( float3 radiance, float normHi
     return float4( radiance, normHitDist );
 }
 
-// X => IN_DIFF_DIRECTION_HITDIST
-// normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
-float4 REBLUR_FrontEnd_PackDirectionAndNormHitDist( float3 direction, float normHitDist, bool sanitize = true )
-{
-    if( sanitize )
-    {
-        direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : direction;
-        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
-    }
-
-    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
-    if( normHitDist != 0 )
-        normHitDist = max( normHitDist, NRD_FP16_MIN );
-
-    return float4( direction * 0.5 + 0.5, normHitDist );
-}
-
 // X => IN_DIFF_SH0 and IN_DIFF_SH1
 // X => IN_SPEC_SH0 and IN_SPEC_SH1
 // normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
@@ -496,9 +485,28 @@ float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direct
     float4 out0 = float4( sh.c0_chroma, normHitDist );
 
     // IN_DIFF_SH1 / IN_SPEC_SH1
-    out1 = float4( sh.c1, pdf );
+    out1 = float4( sh.c1, max( pdf, NRD_MIN_PDF ) );
 
     return out0;
+}
+
+// X => IN_DIFF_DIRECTION_HITDIST
+// normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
+float4 REBLUR_FrontEnd_PackDirectionalOcclusion( float3 direction, float normHitDist, bool sanitize = true )
+{
+    if( sanitize )
+    {
+        direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : direction;
+        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
+    }
+
+    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
+    if( normHitDist != 0 )
+        normHitDist = max( normHitDist, NRD_FP16_MIN );
+
+    NRD_SH sh = NRD_SH_Create( normHitDist, direction );
+
+    return float4( sh.c1, sh.c0_chroma.x );
 }
 
 //========
@@ -589,12 +597,12 @@ void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float 
 float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE multiLightShadowData, float3 Lsum, out float4 out2 )
 {
     // IN_SHADOW_TRANSLUCENCY
-    out2.yzw = multiLightShadowData[ 0 ] / max( Lsum, 1e-6 );
+    out2.yzw = multiLightShadowData[ 0 ] / max( Lsum, NRD_EPS );
     out2.x = _NRD_Luminance( out2.yzw );
 
     // IN_SHADOWDATA
     float2 out1;
-    out1.x = multiLightShadowData[ 1 ].x / max( multiLightShadowData[ 1 ].y, 1e-6 );
+    out1.x = multiLightShadowData[ 1 ].x / max( multiLightShadowData[ 1 ].y, NRD_EPS );
     out1.y = _NRD_PackViewZ( viewZ );
 
     return out1;
@@ -610,19 +618,11 @@ float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE mult
 
 // OUT_DIFF_RADIANCE_HITDIST => X
 // OUT_SPEC_RADIANCE_HITDIST => X
-float4 REBLUR_BackEnd_UnpackRadianceAndNormHitDist( float4 color )
+float4 REBLUR_BackEnd_UnpackRadianceAndNormHitDist( float4 data )
 {
-    color.xyz = _NRD_YCoCgToLinear( color.xyz );
+    data.xyz = _NRD_YCoCgToLinear( data.xyz );
 
-    return color;
-}
-
-// OUT_DIFF_DIRECTION_HITDIST => X
-float4 REBLUR_BackEnd_UnpackDirectionAndNormHitDist( float4 color )
-{
-    color.xyz = color.xyz * 2.0 - 1.0;
-
-    return color;
+    return data;
 }
 
 // OUT_DIFF_SH0 and OUT_DIFF_SH1 => X
@@ -633,6 +633,17 @@ NRD_SH REBLUR_BackEnd_UnpackSh( float4 data0, float4 data1 )
     sh.c0_chroma = data0.xyz;
     sh.c1 = data1.xyz;
     sh.normHitDist = data0.w;
+
+    return sh;
+}
+
+// OUT_DIFF_DIRECTION_HITDIST => X
+NRD_SH REBLUR_BackEnd_UnpackDirectionalOcclusion( float4 data )
+{
+    NRD_SH sh;
+    sh.c0_chroma = float3( data.w, 0.0, 0.0 );
+    sh.c1 = data.xyz;
+    sh.normHitDist = NRD_SH_ExtractColor( sh ).x;
 
     return sh;
 }

@@ -22,8 +22,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Checkerboard resolve
-    bool2 hasData = true;
-    uint2 checkerboardPixelPos = pixelPos.xx;
     uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );
 
     float viewZ0 = abs( gIn_ViewZ[ pixelPosUser + int2( -1, 0 ) ] );
@@ -33,7 +31,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     int3 checkerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
     checkerboardPos.xz >>= 1;
-    checkerboardPos += int3( gRectOrigin.xyx );
+    checkerboardPos += gRectOrigin.xyx;
 
     // Normal and roughness
     float materialID;
@@ -53,17 +51,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     #ifdef REBLUR_DIFFUSE
     {
+        uint2 pos = pixelPos;
+        bool hasData = true;
         if( gDiffCheckerboard != 2 )
         {
-            hasData.x = checkerboard == gDiffCheckerboard;
-            checkerboardPixelPos.x >>= 1;
+            hasData = checkerboard == gDiffCheckerboard;
+            pos.x >>= 1;
         }
-        uint2 pos = gRectOrigin + uint2( checkerboardPixelPos.x, pixelPos.y );
+        pos += gRectOrigin;
 
-        float4 diff = gIn_Diff[ pos ];
         float radius = gDiffPrepassBlurRadius;
-        float diffData = 1.0;
 
+        REBLUR_TYPE diff = gIn_Diff[ pos ];
         #ifdef REBLUR_SH
             float4 diffSh = gIn_DiffSh[ pos ];
         #endif
@@ -74,17 +73,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     #ifdef REBLUR_SPECULAR
     {
+        uint2 pos = pixelPos;
+        bool hasData = true;
         if( gSpecCheckerboard != 2 )
         {
-            hasData.y = checkerboard == gSpecCheckerboard;
-            checkerboardPixelPos.y >>= 1;
+            hasData = checkerboard == gSpecCheckerboard;
+            pos.x >>= 1;
         }
-        uint2 pos = gRectOrigin + uint2( checkerboardPixelPos.y, pixelPos.y );
+        pos += gRectOrigin;
 
-        float4 spec = gIn_Spec[ pos ];
         float radius = gSpecPrepassBlurRadius;
-        float2 specData = 1.0;
 
+        REBLUR_TYPE spec = gIn_Spec[ pos ];
         #ifdef REBLUR_SH
             float4 specSh = gIn_SpecSh[ pos ];
         #endif

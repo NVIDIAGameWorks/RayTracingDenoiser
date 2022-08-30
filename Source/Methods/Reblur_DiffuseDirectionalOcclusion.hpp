@@ -14,6 +14,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
     #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
 
+    // IMPORTANT: uses SNORM / UNORM 16-bit textures to maximize bits utilization and uniformity
+
     enum class Permanent
     {
         PREV_VIEWZ = PERMANENT_POOL_START,
@@ -24,12 +26,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
         DIFF_FAST_HISTORY_PONG,
     };
 
-    m_PermanentPool.push_back( {Format::R32_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION_FAST_HISTORY, w, h, 1} );
 
     enum class Transient
     {
@@ -41,8 +43,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
 
@@ -77,7 +79,6 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
 
     for (int i = 0; i < REBLUR_PREPASS_PERMUTATION_NUM; i++)
     {
-        bool isAdvanced = ( ( ( i >> 1 ) & 0x1 ) != 0 );
         bool isAfterReconstruction = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Pre-pass");
@@ -87,23 +88,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( isAfterReconstruction ? DIFF_TEMP2 : AsUint(ResourceType::IN_DIFF_DIRECTION_HITDIST) );
 
-            if (isAdvanced)
-                PushInput( AsUint(ResourceType::IN_DIFF_DIRECTION_PDF) );
-
             // Outputs
             PushOutput( DIFF_TEMP1 );
 
             // Shaders
-            if (isAdvanced)
-            {
-                AddDispatch( REBLUR_Diffuse_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-            }
-            else
-            {
-                AddDispatch( REBLUR_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-            }
+            AddDispatch( REBLUR_DiffuseDirectionalOcclusion_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
         }
     }
 
@@ -136,13 +126,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             // Shaders
             if (hasConfidenceInputs)
             {
-                AddDispatch( REBLUR_Diffuse_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
             }
             else
             {
-                AddDispatch( REBLUR_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
             }
         }
     }
@@ -162,8 +152,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             PushOutput( DIFF_TEMP1 );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_DiffuseDirectionalOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
         }
     }
 
@@ -182,8 +172,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             PushOutput( AsUint(Permanent::PREV_VIEWZ) );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_DiffuseDirectionalOcclusion_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
         }
     }
 
@@ -213,13 +203,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             // Shaders
             if (isTemporalStabilization)
             {
-                AddDispatch( REBLUR_Diffuse_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_DiffuseDirectionalOcclusion_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
             }
             else
             {
-                AddDispatch( REBLUR_Diffuse_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
             }
         }
     }
@@ -257,8 +247,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
             PushOutput( AsUint(ResourceType::OUT_DIFF_DIRECTION_HITDIST) );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
         }
     }
 

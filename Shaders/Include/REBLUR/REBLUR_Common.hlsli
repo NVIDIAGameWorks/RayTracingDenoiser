@@ -208,43 +208,30 @@ float GetMinAllowedLimitForHitDistNonLinearAccumSpeed( float roughness )
         Acceleration is still needed to get better disocclusions from "parallax check"
     */
 
-    float acceleration = 0.5 * GetSpecMagicCurve2( roughness );
+    float frameNum = 0.5 * GetSpecMagicCurve2( roughness ) * gMaxAccumulatedFrameNum;
 
-    return 1.0 / ( 1.0 + acceleration * gMaxAccumulatedFrameNum );
-}
-
-float InterpolateAccumSpeeds( float surfaceFrameNum, float virtualFrameNum, float virtualMotionAmount )
-{
-    // Comparison:
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiI1KigxLXgqeCkrMzEqeCp4IiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IjEvKCgxLXgpLygxKzUpK3gvKDErMzEpKS0xIiwiY29sb3IiOiIjRjcwQTBBIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMzEiXX1d
-
-    #if( REBLUR_USE_ACCUM_SPEED_NONLINEAR_INTERPOLATION == 0 )
-        return lerp( surfaceFrameNum, virtualFrameNum, virtualMotionAmount * virtualMotionAmount );
-    #endif
-
-    float a = 1.0 / ( 1.0 + surfaceFrameNum );
-    float b = 1.0 / ( 1.0 + virtualFrameNum );
-    float c = lerp( a, b, virtualMotionAmount );
-
-    return 1.0 / c - 1.0;
+    return 1.0 / ( 1.0 + frameNum );
 }
 
 float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
 {
-    float fade = STL::Math::LinearStep( REBLUR_FIXED_FRAME_NUM - 1, REBLUR_FIXED_FRAME_NUM + 1, accumSpeed );
+    float fade = STL::Math::LinearStep( gHistoryFixFrameNum, gHistoryFixFrameNum * 2.0, accumSpeed );
 
     return fade;
 }
 
 // Misc ( templates )
 
+float ClampNegativeHitDistToZero( float hitDist )
+{ return saturate( hitDist ); } // hit distance is normalized
+
 #ifdef REBLUR_OCCLUSION
 
     #define REBLUR_TYPE float
 
-    float MixHistoryAndCurrent( float history, float current, float nonLinearAccumSpeed, float roughness = 1.0 )
+    float MixHistoryAndCurrent( float history, float current, float f, float roughness = 1.0 )
     {
-        float r = lerp( history, current, max( nonLinearAccumSpeed, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
+        float r = lerp( history, current, max( f, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
 
         return r;
     }
@@ -252,17 +239,6 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
     float ExtractHitDist( float input )
     { return input; }
 
-    // float2
-    float GetLuma( float2 input )
-    { return input.x; }
-
-    float2 ChangeLuma( float2 input, float newLuma )
-    { return float2( newLuma, input.y ); }
-
-    float2 ClampNegativeToZero( float2 input )
-    { return float2( max( input.x, 0.0 ), input.y ); }
-
-    // float
     float GetLuma( float input )
     { return input; }
 
@@ -270,19 +246,66 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
     { return newLuma; }
 
     float ClampNegativeToZero( float input )
-    { return max( input.x, 0.0 ); }
+    { return ClampNegativeHitDistToZero( input ); }
+
+    float Xxxy( float2 w )
+    { return w.y; }
+
+#elif( defined REBLUR_DIRECTIONAL_OCCLUSION )
+
+    #define REBLUR_TYPE float4
+
+    float4 MixHistoryAndCurrent( float4 history, float4 current, float f, float roughness = 1.0 )
+    {
+        float4 r;
+        r.xyz = lerp( history.xyz, current.xyz, f );
+        r.w = lerp( history.w, current.w, max( f, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
+
+        return r;
+    }
+
+    float MixFastHistoryAndCurrent( float history, float current, float f )
+    {
+        return lerp( history, current, f );
+    }
+
+    float ExtractHitDist( float4 input )
+    { return input.w; }
+
+    float GetLuma( float4 input )
+    { return input.w; }
+
+    float4 ChangeLuma( float4 input, float newLuma )
+    {
+        float currLuma = GetLuma( input );
+        input.xyz *= ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS );
+        input.w = newLuma;
+
+        return input;
+    }
+
+    float4 ClampNegativeToZero( float4 input )
+    { return ChangeLuma( input, ClampNegativeHitDistToZero( input.w ) ); }
+
+    float4 Xxxy( float2 w )
+    { return w.xxxy; }
 
 #else
 
     #define REBLUR_TYPE float4
 
-    float4 MixHistoryAndCurrent( float4 history, float4 current, float nonLinearAccumSpeed, float roughness = 1.0 )
+    float4 MixHistoryAndCurrent( float4 history, float4 current, float f, float roughness = 1.0 )
     {
         float4 r;
-        r.xyz = lerp( history.xyz, current.xyz, nonLinearAccumSpeed );
-        r.w = lerp( history.w, current.w, max( nonLinearAccumSpeed, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
+        r.xyz = lerp( history.xyz, current.xyz, f );
+        r.w = lerp( history.w, current.w, max( f, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
 
         return r;
+    }
+
+    float MixFastHistoryAndCurrent( float history, float current, float f )
+    {
+        return lerp( history, current, f );
     }
 
     float ExtractHitDist( float4 input )
@@ -300,7 +323,7 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
     float4 ChangeLuma( float4 input, float newLuma )
     {
         float currLuma = GetLuma( input );
-        input.xyz *= newLuma / ( currLuma + 1e-6 );
+        input.xyz *= ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS );
 
         return input;
     }
@@ -314,10 +337,13 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
             input.xyz = max( input.xyz, 0.0 );
         #endif
 
-        input.w = max( input.w, 0.0 );
+        input.w = ClampNegativeHitDistToZero( input.w );
 
         return input;
     }
+
+    float4 Xxxy( float2 w )
+    { return w.xxxy; }
 
 #endif
 
@@ -327,27 +353,13 @@ float2 GetSensitivityToDarkness( float roughness )
     // TODO: should depend on curvature for low roughness?
     float sensitivityToDarknessScale = lerp( 3.0, 1.0, roughness );
 
-    #ifdef REBLUR_SH
-        return gSensitivityToDarkness * sensitivityToDarknessScale * float2( 0.282095, 1.0 );
-    #else
-        return gSensitivityToDarkness * sensitivityToDarknessScale;
-    #endif
+    return gSensitivityToDarkness * sensitivityToDarknessScale;
 }
 
-#ifdef REBLUR_OCCLUSION
-    float GetColorErrorForAdaptiveRadiusScale( float curr, float prev, float accumSpeed, float roughness = 1.0 )
-#else
-    float GetColorErrorForAdaptiveRadiusScale( float4 curr, float4 prev, float accumSpeed, float roughness = 1.0 )
-#endif
+float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, float accumSpeed, float roughness = 1.0 )
 {
-#ifdef REBLUR_OCCLUSION
-    float2 p = float2( 0, prev );
-    float2 c = float2( 0, curr );
-#else
-    float2 p = float2( GetLuma( prev ), prev.w );
-    float2 c = float2( GetLuma( curr ), curr.w );
-#endif
-
+    float2 p = float2( GetLuma( prev ), ExtractHitDist( prev ) );
+    float2 c = float2( GetLuma( curr ), ExtractHitDist( curr ) );
     float2 f = abs( c - p ) / ( max( c, p ) + GetSensitivityToDarkness( roughness ) );
 
     float smc = GetSpecMagicCurve2( roughness );
@@ -364,11 +376,7 @@ float2 GetSensitivityToDarkness( float roughness )
 }
 
 float ComputeAntilagScale(
-    #ifdef REBLUR_OCCLUSION
-        float history, float signal, float m1, float sigma,
-    #else
-        float4 history, float4 signal, float4 m1, float4 sigma,
-    #endif
+    REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE m1, REBLUR_TYPE sigma,
     float4 antilagMinMaxThreshold, float2 antilagSigmaScale, float stabilizationStrength,
     float curvatureMulPixelSize, float2 internalData1, float roughness = 1.0
 )
@@ -377,15 +385,9 @@ float ComputeAntilagScale(
     m1 = lerp( m1, signal, abs( curvatureMulPixelSize ) );
 
     // Antilag
-#ifdef REBLUR_OCCLUSION
-    float2 h = float2( 0, history );
-    float2 c = float2( 0, m1 ); // using signal leads to bias in test #62
-    float2 s = float2( 0, sigma );
-#else
-    float2 h = float2( GetLuma( history ), history.w );
-    float2 c = float2( GetLuma( m1 ), m1.w ); // using signal leads to bias in test #62
-    float2 s = float2( GetLuma( sigma ), sigma.w );
-#endif
+    float2 h = float2( GetLuma( history ), ExtractHitDist( history ) );
+    float2 c = float2( GetLuma( m1 ), ExtractHitDist( m1 ) ); // using signal leads to bias in test #62
+    float2 s = float2( GetLuma( sigma ), ExtractHitDist( sigma ) );
 
     float2 delta = abs( h - c ) - s * antilagSigmaScale;
     delta /= max( h, c ) + GetSensitivityToDarkness( roughness );
@@ -408,40 +410,29 @@ float ComputeAntilagScale(
 
 float GetResponsiveAccumulationAmount( float roughness )
 {
-    float amount = 1.0 - ( roughness + 1e-6 ) / ( gResponsiveAccumulationRoughnessThreshold + 1e-6 );
+    float amount = 1.0 - ( roughness + NRD_EPS ) / ( gResponsiveAccumulationRoughnessThreshold + NRD_EPS );
 
     return STL::Math::SmoothStep01( amount );
 }
 
-float GetBlurRadius(
-    float radius, float radiusBias, float radiusScale,
-    float hitDistFactor, float nonLinearAccumSpeed,
-    float roughness = 1.0
-)
+float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, float anisoFade = 1.0 )
 {
-    // Scale down if accumulation goes well, keeping some non-zero scale to avoid under-blurring
-    float r = lerp( gMinConvergedStateBaseRadiusScale, 1.0, nonLinearAccumSpeed );
+    float3x3 basis = STL::Geometry::GetBasis( N );
 
-    // Avoid over-blurring on contact ( tests 76, 95, 120 )
-    // TODO: reduce "hitDistFactor" influence if reprojection confidence is low?
-    // TODO: if luminance stoppers are used, blur radius should depend less on "hitDistFactor"
-    float relaxedHitDistFactor = lerp( 1.0, hitDistFactor, roughness );
-    hitDistFactor = lerp( hitDistFactor, relaxedHitDistFactor, nonLinearAccumSpeed );
-    r *= hitDistFactor;
+    float3 T = basis[ 0 ];
+    float3 B = basis[ 1 ];
 
-    // IMPORTANT: do not apply "hitDistFactor" to radiusBias because it is responsible for error compensation
+    if( NoD < 0.999 )
+    {
+        float3 R = reflect( -D, N );
+        T = normalize( cross( N, R ) );
+        B = cross( R, T );
 
-    // Main composition
-    r = radius * r + max( radiusBias, 2.0 * roughness ); // TODO: it would be good to get rid of "max"
-    r *= radiusScale;
+        float skewFactor = lerp( 0.5 + 0.5 * roughness, 1.0, NoD );
+        T *= lerp( skewFactor, 1.0, anisoFade );
+    }
 
-    // Modify by lobe spread
-    r *= GetSpecMagicCurve2( roughness ); // TODO: roughness at hit needed
-
-    // Disable spatial filtering if radius is 0
-    r *= float( radius != 0 );
-
-    return r;
+    return float2x3( T, B );
 }
 
 float GetBlurRadiusScaleBasingOnTrimming( float roughness, float3 trimmingParams )

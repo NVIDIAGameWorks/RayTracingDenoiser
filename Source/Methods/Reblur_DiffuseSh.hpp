@@ -27,13 +27,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(uint16_t w, uint16_t h)
         DIFF_SH_HISTORY,
     };
 
-    m_PermanentPool.push_back( {Format::R32_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_UINT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
 
     enum class Transient
     {
@@ -47,10 +47,10 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(uint16_t w, uint16_t h)
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
 

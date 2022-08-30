@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 4
+#define NRD_SETTINGS_VERSION_MINOR 5
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -222,15 +222,21 @@ namespace nrd
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames (= FPS * "time of accumulation")
         uint32_t maxAccumulatedFrameNum = 30;
 
-        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history
+        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history (less than "maxAccumulatedFrameNum")
         uint32_t maxFastAccumulatedFrameNum = 6;
+
+        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
+        uint32_t historyFixFrameNum = 3;
 
         // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of probabilistic sampling)
         float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
 
-        // (pixels) - base (worst case) denoising radius (30 is a baseline for 1440p)
+        // (pixels) - base denoising radius (30 is a baseline for 1440p)
         float blurRadius = 30.0f;
+
+        // (pixels) - base stride between samples in history reconstruction pass
+        float historyFixStrideBetweenSamples = 14.0f;
 
         // (normalized %) - defines base blur radius shrinking when number of accumulated frames increases
         float minConvergedStateBaseRadiusScale = 0.25f;
@@ -239,19 +245,16 @@ namespace nrd
         float maxAdaptiveRadiusScale = 5.0f;
 
         // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
-        float lobeAngleFraction = 0.1f;
+        float lobeAngleFraction = 0.13f;
 
         // (normalized %) - base fraction of center roughness used to drive roughness based rejection
-        float roughnessFraction = 0.05f;
+        float roughnessFraction = 0.15f;
 
         // [0; 1] - if roughness < this, temporal accumulation becomes responsive and driven by roughness (useful for animated water)
         float responsiveAccumulationRoughnessThreshold = 0.0f;
 
         // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
         float stabilizationStrength = 1.0f;
-
-        // (normalized %) - aggresiveness of history reconstruction in disoccluded regions (0 - no reconstruction)
-        float historyFixStrength = 1.0f;
 
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
@@ -304,9 +307,12 @@ namespace nrd
         uint32_t diffuseMaxAccumulatedFrameNum = 30;
         uint32_t specularMaxAccumulatedFrameNum = 30;
 
-        // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history
+        // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history (less than "maxAccumulatedFrameNum")
         uint32_t diffuseMaxFastAccumulatedFrameNum = 6;
         uint32_t specularMaxFastAccumulatedFrameNum = 6;
+
+        // [0; RELAX_MAX_HISTORY_FRAME_NUM] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
+        uint32_t historyFixFrameNum = 3;
 
         // A-trous edge stopping Luminance sensitivity
         float diffusePhiLuminance = 2.0f;
@@ -325,14 +331,11 @@ namespace nrd
         // (degrees) - slack for the specular lobe angle used in normal based rejection of specular during A-Trous passes
         float specularLobeAngleSlack = 0.3f;
 
-        // (> 0) - normal edge stopper for cross-bilateral sparse filter
-        float disocclusionFixEdgeStoppingNormalPower = 8.0f;
+        // (pixels) - base stride between samples in history reconstruction pass
+        float historyFixStrideBetweenSamples = 14.0f;
 
-        // Maximum radius for sparse bilateral filter, expressed in pixels
-        float disocclusionFixMaxRadius = 14.0f;
-
-        // Cross-bilateral sparse filter will be applied to frames with history length shorter than this value
-        uint32_t disocclusionFixNumFramesToFix = 3;
+        // (> 0) - normal edge stopper for history reconstruction pass
+        float historyFixEdgeStoppingNormalPower = 8.0f;
 
         // [1; 3] - standard deviation scale of color box for clamping main "slow" history to responsive "fast" history
         float historyClampingColorBoxSigmaScale = 2.0f;
@@ -391,13 +394,13 @@ namespace nrd
 
         uint32_t diffuseMaxAccumulatedFrameNum = 30;
         uint32_t diffuseMaxFastAccumulatedFrameNum = 6;
+        uint32_t historyFixFrameNum = 3;
 
         float diffusePhiLuminance = 2.0f;
         float diffuseLobeAngleFraction = 0.5f;
 
-        float disocclusionFixEdgeStoppingNormalPower = 8.0f;
-        float disocclusionFixMaxRadius = 14.0f;
-        uint32_t disocclusionFixNumFramesToFix = 3;
+        float historyFixEdgeStoppingNormalPower = 8.0f;
+        float historyFixStrideBetweenSamples = 14.0f;
 
         float historyClampingColorBoxSigmaScale = 2.0f;
 
@@ -426,6 +429,7 @@ namespace nrd
 
         uint32_t specularMaxAccumulatedFrameNum = 30;
         uint32_t specularMaxFastAccumulatedFrameNum = 6;
+        uint32_t historyFixFrameNum = 3;
 
         float specularPhiLuminance = 1.0f;
         float diffuseLobeAngleFraction = 0.5f;
@@ -435,9 +439,8 @@ namespace nrd
         float specularVarianceBoost = 0.0f;
         float specularLobeAngleSlack = 0.3f;
 
-        float disocclusionFixEdgeStoppingNormalPower = 8.0f;
-        float disocclusionFixMaxRadius = 14.0f;
-        uint32_t disocclusionFixNumFramesToFix = 3;
+        float historyFixEdgeStoppingNormalPower = 8.0f;
+        float historyFixStrideBetweenSamples = 14.0f;
 
         float historyClampingColorBoxSigmaScale = 2.0f;
 

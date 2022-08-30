@@ -36,13 +36,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float k = 1.01 / ( s_Tile[ threadPos.y + 1 ][ threadPos.x + 1 ].y + 0.01 );
 
     [unroll]
-    for( int i = 0; i <= BORDER * 2; i++ )
+    for( j = 0; j <= BORDER * 2; j++ )
     {
         [unroll]
-        for( int j = 0; j <= BORDER * 2; j++ )
+        for( i = 0; i <= BORDER * 2; i++ )
         {
-            float x = length( float2( i, j ) - BORDER );
-            float w = exp2( -k * x * x );
+            float d = length( float2( i, j ) - BORDER );
+            float w = exp2( -k * d * d );
 
             blurry += s_Tile[ threadPos.y + j ][ threadPos.x + i ].x * w;
             sum += w;

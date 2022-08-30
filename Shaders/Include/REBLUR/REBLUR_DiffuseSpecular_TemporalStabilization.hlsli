@@ -101,15 +101,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     [unroll]
-    for( int dy = 0; dy <= BORDER * 2; dy++ )
+    for( j = 0; j <= BORDER * 2; j++ )
     {
         [unroll]
-        for( int dx = 0; dx <= BORDER * 2; dx++ )
+        for( i = 0; i <= BORDER * 2; i++ )
         {
-            if( dx == BORDER && dy == BORDER )
+            if( i == BORDER && j == BORDER )
                 continue;
 
-            int2 pos = threadPos + int2( dx, dy );
+            int2 pos = threadPos + int2( i, j );
 
             #ifdef REBLUR_DIFFUSE
                 // Accumulate moments
@@ -265,11 +265,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         diffHistoryWeight *= footprintQuality;
         diffHistoryWeight *= diffAntilag;
         diffHistoryWeight *= gStabilizationStrength;
-        diffHistoryWeight = 1.0 - diffHistoryWeight;
 
-        float4 diffResult = MixHistoryAndCurrent( smbDiffHistory, diff, diffHistoryWeight );
+        float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight );
         #ifdef REBLUR_SH
-            float4 diffShResult = MixHistoryAndCurrent( smbDiffShHistory, diffSh, diffHistoryWeight );
+            float4 diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
         #endif
 
         // Debug output
@@ -299,7 +298,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         internalData1.x += 1.0;
 
         // Apply anti-lag
-        float diffMinAccumSpeed = min( internalData1.x, REBLUR_FIXED_FRAME_NUM ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
+        float diffMinAccumSpeed = min( internalData1.x, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
         internalData1.x = lerp( diffMinAccumSpeed, internalData1.x, diffAntilag );
     #endif
 
@@ -373,11 +372,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         specHistoryWeight *= footprintQuality;
         specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= gStabilizationStrength;
-        specHistoryWeight = 1.0 - specHistoryWeight;
 
-        float4 specResult = MixHistoryAndCurrent( specHistory, spec, specHistoryWeight, roughness );
+        float4 specResult = lerp( spec, specHistory, specHistoryWeight );
         #ifdef REBLUR_SH
-            float4 specShResult = MixHistoryAndCurrent( specShHistory, specSh, specHistoryWeight, roughness );
+            float4 specShResult = lerp( specSh, specShHistory, specHistoryWeight );
         #endif
 
         // Debug output
@@ -423,7 +421,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         internalData1.z += 1.0;
 
         // Apply anti-lag
-        float specMinAccumSpeed = min( internalData1.z, REBLUR_FIXED_FRAME_NUM ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
+        float specMinAccumSpeed = min( internalData1.z, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
         internalData1.z = lerp( specMinAccumSpeed, internalData1.z, specAntilag );
     #endif
 

@@ -23,7 +23,7 @@ NRD_CONSTANTS_START
 NRD_CONSTANTS_END
 
 #ifdef REBLUR_OCCLUSION
-    #define DATA_TYPE float2
+    #define DATA_TYPE float
 #else
     #define DATA_TYPE float4
 #endif
@@ -35,9 +35,7 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 3 )
-        #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 4 )
-        #endif
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 4 )
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 5 )
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 6 )
@@ -60,9 +58,7 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff, t, 2 )
-        #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
-        #endif
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 4 )
         #endif
@@ -82,9 +78,7 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 2 )
-        #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
-        #endif
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 4 )
         #endif

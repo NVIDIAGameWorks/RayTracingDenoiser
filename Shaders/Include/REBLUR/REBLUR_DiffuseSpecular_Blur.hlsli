@@ -14,28 +14,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
-    // Early out
-    #ifdef REBLUR_OCCLUSION
-        float viewZ;
-
-        #ifdef REBLUR_DIFFUSE
-            float2 diffTemp = gIn_Diff[ pixelPos ];
-            viewZ = diffTemp.y;
-        #endif
-
-        #ifdef REBLUR_SPECULAR
-            float2 specTemp = gIn_Spec[ pixelPos ];
-            viewZ = specTemp.y;
-        #endif
-
-        viewZ = UnpackViewZ( viewZ );
-    #else
-        float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
-    #endif
-
     // Output
+    float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
     gOut_ViewZ[ pixelPos ] = PackViewZ( viewZ );
 
+    // Early out
     [branch]
     if( viewZ > gDenoisingRange )
         return;
@@ -61,12 +44,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #define REBLUR_SPATIAL_MODE REBLUR_BLUR
 
     #ifdef REBLUR_DIFFUSE
-        #ifdef REBLUR_OCCLUSION
-            float4 diff = diffTemp.x;
-        #else
-            float4 diff = gIn_Diff[ pixelPos ];
-        #endif
-
+        REBLUR_TYPE diff = gIn_Diff[ pixelPos ];
         #ifdef REBLUR_SH
             float4 diffSh = gIn_DiffSh[ pixelPos ];
         #endif
@@ -75,12 +53,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     #ifdef REBLUR_SPECULAR
-        #ifdef REBLUR_OCCLUSION
-            float4 spec = specTemp.x;
-        #else
-            float4 spec = gIn_Spec[ pixelPos ];
-        #endif
-
+        REBLUR_TYPE spec = gIn_Spec[ pixelPos ];
         #ifdef REBLUR_SH
             float4 specSh = gIn_SpecSh[ pixelPos ];
         #endif

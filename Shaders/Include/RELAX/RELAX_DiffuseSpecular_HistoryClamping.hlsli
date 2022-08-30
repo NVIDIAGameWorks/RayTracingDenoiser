@@ -97,13 +97,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         specularYCoCg = clamp(specularYCoCg, specularColorMinYCoCg, specularColorMaxYCoCg);
     float3 clampedSpecular = STL::Color::YCoCgToLinear(specularYCoCg);
 
-    // If history length is less than gFramesToFix,
+    // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
     // so data from responsive history needs to be copied to normal history,
     // and no history clamping is needed.
     float4 outSpecular = float4(clampedSpecular, specularIlluminationAnd2ndMoment.a);
     float4 outSpecularResponsive = float4(STL::Color::YCoCgToLinear(specularCenterYCoCg.rgb), specularCenterYCoCg.a);
-    if (historyLength <= gFramesToFix)
+    if (historyLength <= gHistoryFixFrameNum)
         outSpecular = outSpecularResponsive;
 
     // Writing out the results
@@ -129,13 +129,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         diffuseYCoCg = clamp(diffuseYCoCg, diffuseColorMinYCoCg, diffuseColorMaxYCoCg);
     float3 clampedDiffuse = STL::Color::YCoCgToLinear(diffuseYCoCg);
 
-    // If history length is less than gFramesToFix,
+    // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
     // so data from responsive history needs to be copied to normal history,
     // and no history clamping is needed.
     float4 outDiffuse = float4(clampedDiffuse, diffuseIlluminationAnd2ndMoment.a);
     float4 outDiffuseResponsive = float4(STL::Color::YCoCgToLinear(diffuseCenterYCoCg.rgb), diffuseCenterYCoCg.a);
-    if (historyLength <= gFramesToFix)
+    if (historyLength <= gHistoryFixFrameNum)
         outDiffuse = outDiffuseResponsive;
 
     // Writing out the results

@@ -221,12 +221,11 @@ nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserC
     for (size_t textureIndex = 0; textureIndex < m_PermanentPool.size(); textureIndex++)
     {
         const TextureDesc& texture = m_PermanentPool[textureIndex];
-
         for (uint16_t mip = 0; mip < texture.mipNum; mip++)
         {
             _PushPass("Clear");
             {
-                PushOutput((uint16_t)(textureIndex + PERMANENT_POOL_START), mip, 1);
+                PushOutput((uint16_t)(PERMANENT_POOL_START + textureIndex), mip, 1);
                 if (g_IsIntegerFormat[(size_t)texture.format])
                     AddDispatch( Clear_ui, 0, 16, 1 );
                 else
@@ -239,13 +238,11 @@ nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserC
     for (size_t textureIndex = 0; textureIndex < m_TransientPool.size(); textureIndex++)
     {
         const TextureDesc& texture = m_TransientPool[textureIndex];
-        if (g_IsIntegerFormat[(size_t)texture.format])
-
         for (uint16_t mip = 0; mip < texture.mipNum; mip++)
         {
             _PushPass("Clear");
             {
-                PushOutput((uint16_t)(textureIndex + TRANSIENT_POOL_START), mip, 1);
+                PushOutput((uint16_t)(TRANSIENT_POOL_START + textureIndex), mip, 1);
                 if (g_IsIntegerFormat[(size_t)texture.format])
                     AddDispatch( Clear_ui, 0, 16, 1 );
                 else
@@ -544,16 +541,20 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
     // Rotators
-    float whiteNoise = ml::Rand::uf1(&m_FastRandState) * ml::DegToRad(360.0f);
-    float ca = ml::Cos( whiteNoise );
-    float sa = ml::Sin( whiteNoise );
-    m_Rotator[0] = ml::float4( ca, sa, -sa, ca );
+    ml::float4 rndScale = ml::float4(1.0f) + ml::Rand::sf4(&m_FastRandState) * 0.25f;
+    ml::float4 rndAngle = ml::Rand::uf4(&m_FastRandState) * ml::DegToRad(360.0f);
 
-    whiteNoise = ml::Rand::uf1(&m_FastRandState) * ml::DegToRad(360.0f);
-    ca = ml::Cos( whiteNoise );
-    sa = ml::Sin( whiteNoise );
-    m_Rotator[1] = ml::float4( -sa, ca, -ca, -sa );
-    m_Rotator[2] = ml::float4( ca, sa, -sa, ca );
+    float ca = ml::Cos( rndAngle.x );
+    float sa = ml::Sin( rndAngle.x );
+    m_Rotator[0] = ml::float4( ca, sa, -sa, ca ) * rndScale.x;
+
+    ca = ml::Cos( rndAngle.y );
+    sa = ml::Sin( rndAngle.y );
+    m_Rotator[1] = ml::float4( ca, sa, -sa, ca ) * rndScale.y;
+
+    ca = ml::Cos( rndAngle.z );
+    sa = ml::Sin( rndAngle.z );
+    m_Rotator[2] = ml::float4( ca, sa, -sa, ca ) * rndScale.z;
 
     // Main matrices
     m_ViewToClip = ml::float4x4
@@ -690,7 +691,7 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
 #ifdef NRD_USE_PRECOMPILED_SHADERS
 
-    // REBLUR_DIFFUSE & REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
+    // REBLUR_DIFFUSE
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
         #include "REBLUR_Diffuse_HitDistReconstruction.cs.dxbc.h"
         #include "REBLUR_Diffuse_HitDistReconstruction.cs.dxil.h"
@@ -785,8 +786,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseOcclusion_Blur.cs.dxil.h"
         #include "REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.dxbc.h"
         #include "REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h"
-        #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxbc.h"
-        #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.dxil.h"
 
         #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.dxil.h"
@@ -811,7 +810,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
-    #include "REBLUR_DiffuseOcclusion_SplitScreen.cs.spirv.h"
 
     #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
@@ -977,8 +975,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_SpecularOcclusion_Blur.cs.dxil.h"
         #include "REBLUR_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxbc.h"
         #include "REBLUR_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h"
-        #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxbc.h"
-        #include "REBLUR_SpecularOcclusion_SplitScreen.cs.dxil.h"
 
         #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
         #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.dxil.h"
@@ -1003,7 +999,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_SpecularOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
-    #include "REBLUR_SpecularOcclusion_SplitScreen.cs.spirv.h"
 
     #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
@@ -1169,8 +1164,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h"
-        #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxbc.h"
-        #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.dxil.h"
 
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxil.h"
@@ -1195,7 +1188,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
-    #include "REBLUR_DiffuseSpecularOcclusion_SplitScreen.cs.spirv.h"
 
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
@@ -1265,6 +1257,61 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_DiffuseSpecularSh_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularSh_PostBlur.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.spirv.h"
+
+    // REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.dxil.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_PostBlur.cs.dxil.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization.cs.dxil.h"
+
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization.cs.dxbc.h"
+        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization.cs.dxil.h"
+    #endif
+
+    #include "REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.spirv.h"
+    #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
+    #include "REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_DiffuseDirectionalOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization.cs.spirv.h"
+    #include "REBLUR_DiffuseDirectionalOcclusion_PostBlur.cs.spirv.h"
+    #include "REBLUR_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
+
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur.cs.spirv.h"
+    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
 
     // SIGMA_SHADOW
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE

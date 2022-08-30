@@ -135,8 +135,8 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
     static std::array<const char*, 3> typeNames             = {"Diffuse", "Specular", "DiffuseSpecular"};
     static std::array<const char*, 3> typeMacros            = {"#define REBLUR_DIFFUSE\n", "#define REBLUR_SPECULAR\n", "#define REBLUR_DIFFUSE\n#define REBLUR_SPECULAR\n"};
 
-    static std::array<const char*, 3> permutationNames      = {"", "Occlusion", "Sh"};
-    static std::array<const char*, 3> permutationMacros     = {"", "#define REBLUR_OCCLUSION\n", "#define REBLUR_SH\n"};
+    static std::array<const char*, 4> permutationNames      = {"", "Occlusion", "Sh", "DirectionalOcclusion"};
+    static std::array<const char*, 4> permutationMacros     = {"", "#define REBLUR_OCCLUSION\n", "#define REBLUR_SH\n", "#define REBLUR_DIRECTIONAL_OCCLUSION\n"};
 
     static std::array<const char*, 9> passNames             = {"HitDistReconstruction", "PrePass", "TemporalAccumulation", "HistoryFix", "Blur", "PostBlur", "CopyStabilizedHistory", "TemporalStabilization", "SplitScreen"};
     static std::array<size_t, 9> passPermutationNums        = {2, 2, 2, 1, 1, 2, 1, 1, 1};
@@ -155,8 +155,8 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
                     {
                         for (uint32_t perf = 0; perf < 2; perf++)
                         {
-                            // Skip "PrePass_Advanced" for "Sh" denoisers
-                            if (permutation == 2 && pass == 1 && passPermutation == 1)
+                            // Skip "PrePass_Advanced" for "Sh" & "DirectionalOcclusion" denoisers denoisers
+                            if (permutation > 1 && pass == 1 && passPermutation == 1)
                                 continue;
 
                             // Skip "PostBlur" for "Occlusion" denoisers
@@ -167,16 +167,28 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
                             if (permutation == 1 && pass == 7)
                                 continue;
 
-                            // Skip "CopyStabilizedHistory" for "Occlusion" denoisers
-                            if (permutation == 1 && pass == 6)
+                            // Skip "CopyStabilizedHistory" for "Occlusion" & "DirectionalOcclusion" denoisers
+                            if ((permutation == 1 || permutation == 3) && pass == 6)
                                 continue;
 
                             // Skip "CopyStabilizedHistory" for performance mode
                             if (pass == 6 && perf == 1)
                                 continue;
 
-                            // Skip "HitDistReconstruction" for "Sh" denoisers
-                            if (permutation == 2 && pass == 0)
+                            // Skip "HitDistReconstruction" for "Sh" & "DirectionalOcclusion" denoisers
+                            if (permutation > 1 && pass == 0)
+                                continue;
+
+                            // Skip non-diffuse "DirectionalOcclusion" denoisers
+                            if (type != 0 && permutation == 3)
+                                continue;
+
+                            // Skip "SplitScreen" for "Occlusion" & "DirectionalOcclusion" denoisers
+                            if ((permutation == 1 || permutation == 3) && pass == 8)
+                                continue;
+
+                            // Skip "SplitScreen" for performance mode
+                            if (pass == 8 && perf == 1)
                                 continue;
 
                             char filename[256];

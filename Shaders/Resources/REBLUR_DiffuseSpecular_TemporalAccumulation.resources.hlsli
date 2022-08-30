@@ -23,7 +23,6 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float4x4, gWorldPrevToWorld )
     NRD_CONSTANT( float4, gFrustumPrev )
     NRD_CONSTANT( float4, gCameraDelta )
-    NRD_CONSTANT( float4, gRotator )
     NRD_CONSTANT( float2, gMotionVectorScale )
     NRD_CONSTANT( float, gCheckerboardResolveAccumSpeed )
     NRD_CONSTANT( float, gDisocclusionThreshold )
@@ -33,11 +32,9 @@ NRD_CONSTANTS_START
 NRD_CONSTANTS_END
 
 #ifdef REBLUR_OCCLUSION
-    #define DATA_TYPE_IN float
-    #define DATA_TYPE_OUT float2
+    #define DATA_TYPE float
 #else
-    #define DATA_TYPE_IN float4
-    #define DATA_TYPE_OUT float4
+    #define DATA_TYPE float4
 #endif
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
@@ -52,10 +49,10 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_MinHitDist, t, 6 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Diff_Confidence, t, 7 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_Confidence, t, 8 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 9 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 10 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff_History, t, 11 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec_History, t, 12 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 10 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff_History, t, 11 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec_History, t, 12 )
         #ifndef REBLUR_OCCLUSION
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffFast_History, t, 13 )
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecFast_History, t, 14 )
@@ -69,8 +66,8 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Diff, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Spec, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Diff, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Spec, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 2 )
         #ifndef REBLUR_OCCLUSION
             NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_DiffFast, u, 3 )
@@ -93,8 +90,8 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_AccumSpeeds_MaterialID, t, 5 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Diff_Confidence, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Diff_History, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff_History, t, 8 )
         #ifndef REBLUR_OCCLUSION
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffFast_History, t, 9 )
         #endif
@@ -105,7 +102,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Diff, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Diff, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 1 )
         #ifndef REBLUR_OCCLUSION
             NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_DiffFast, u, 2 )
@@ -127,8 +124,8 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_AccumSpeeds_MaterialID, t, 5 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_MinHitDist, t, 6 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_Confidence, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec, t, 8 )
-        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE_IN>, gIn_Spec_History, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec_History, t, 9 )
         #ifndef REBLUR_OCCLUSION
             NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecFast_History, t, 10 )
         #endif
@@ -139,7 +136,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE_OUT>, gOut_Spec, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Spec, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 1 )
         #ifndef REBLUR_OCCLUSION
             NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_SpecFast, u, 2 )
