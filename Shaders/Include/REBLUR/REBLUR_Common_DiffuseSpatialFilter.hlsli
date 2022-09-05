@@ -22,22 +22,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 {
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-    float2 sum = hasData;
+    float sum = hasData;
 
-    if( radius != 0.0 )
+    if( gDiffPrepassBlurRadius != 0.0 )
     {
         float diffNonLinearAccumSpeed = REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED;
 #else
-        float2 sum = 1.0;
-
-        // IMPORTANT: keep an eye on tests:
-        // - 51 and 128: outlines without TAA
-        // - 81 and 117: cleanness in disoccluded regions
-        float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( internalData1.x );
-        boost *= 1.0 - STL::BRDF::Pow5( NoV );
-
-        float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + ( 1.0 - boost ) * internalData1.x );
-        float radius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
+        float sum = 1.0;
 #endif
 
         float fractionScale = 1.0;
@@ -67,51 +58,67 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float hitDistFactor = GetHitDistFactor( hitDist, frustumHeight );
 
         // Blur radius
-        float blurRadius = radius * hitDistFactor;
-    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        // Blur radius - main
+        float blurRadius = gDiffPrepassBlurRadius;
+        blurRadius *= hitDistFactor;
+    #else
+        // IMPORTANT: keep an eye on tests:
+        // - 51 and 128: outlines without TAA
+        // - 81 and 117: cleanness in disoccluded regions
+        float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.x );
+        boost *= 1.0 - STL::BRDF::Pow5( NoV );
+
+        float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + ( 1.0 - boost ) * data1.x );
+
+        // Blur radius - main
+        float blurRadius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
+        blurRadius *= hitDistFactor;
+
+        // Blur radius - convergence
         blurRadius *= lerp( gMinConvergedStateBaseRadiusScale, 1.0, diffNonLinearAccumSpeed );
-    #endif
 
-        // Blur bias and scale
-    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
-        blurRadius += max( internalData1.y * gBlurRadiusScale, 2.0 ); // TODO: 2.0 * hitDsitFactor?
+        // Blur radius - adaptivity
+        blurRadius += max( data1.y * gBlurRadiusScale, 1.0 ); // TODO: hitDistFactor?
+
+        // Blur radius - scaling
         blurRadius *= radiusScale;
-        blurRadius *= float( radius != 0 );
+        blurRadius *= float( gBlurRadius != 0 );
     #endif
 
-        // Denoising
+        // Weights
+        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, diffNonLinearAccumSpeed );
+        float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed, lobeAngleFractionScale );
+        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed );
+        float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * fractionScale;
+
+        // Sampling
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        #ifdef REBLUR_HAS_DIRECTION_PDF
+            float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Diff_DirectionPdf[ pos ] );
+        #endif
+        #ifdef REBLUR_SH
+            float4 dirPdf = diffSh;
+            diffSh *= diff.x;
+        #endif
+        #if( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_SH )
+            float3 L = dirPdf.xyz;
+            float NoL = saturate( dot( N, L ) );
+
+            sum *= NoL / ( dirPdf.w + NRD_EPS );
+        #endif
+    #endif
+
+        diff *= sum;
+    #ifdef REBLUR_SH
+        diffSh *= sum;
+    #endif
+
         float2x3 TvBv = GetKernelBasis( Nv, Nv, 1.0 ); // D = N
 
         float worldRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
         TvBv[ 0 ] *= worldRadius;
         TvBv[ 1 ] *= worldRadius;
-
-        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, diffNonLinearAccumSpeed );
-        float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed, lobeAngleFractionScale );
-        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed );
-
-    #ifdef REBLUR_HAS_DIRECTION_PDF
-        uint2 p = pixelPos;
-        if( gDiffCheckerboard != 2 )
-            p.x >>= 1;
-
-        float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Diff_DirectionPdf[ gRectOrigin + p ] );
-        float3 L = dirPdf.xyz;
-        float NoL = saturate( dot( N, L ) );
-
-        sum *= NoL / dirPdf.w;
-    #endif
-
-        float2 minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * fractionScale;
-    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR )
-        minHitDistWeight.x = 0.0; // TODO: review
-    #endif
-
-        // Sampling
-        diff *= Xxxy( sum );
-    #ifdef REBLUR_SH
-        diffSh *= Xxxy( sum );
-    #endif
 
         [unroll]
         for( uint n = 0; n < POISSON_SAMPLE_NUM; n++ )
@@ -134,72 +141,65 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Fetch data
         #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
-            float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled, 0 ) );
+            float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled, 0 ) );
         #else
-            float zs = abs( gIn_ViewZ.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 ) );
+            float zs = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 ) );
         #endif
 
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             float2 checkerboardUvScaled = float2( uvScaled.x * ( gDiffCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y ) + gRectOffset;
-            REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
-            #ifdef REBLUR_SH
-                float4 sh = gIn_DiffSh.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 );
-            #endif
         #else
-            REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestMirror, uvScaled, 0 );
-            #ifdef REBLUR_SH
-                float4 sh = gIn_DiffSh.SampleLevel( gNearestMirror, uvScaled, 0 );
-            #endif
+            float2 checkerboardUvScaled = uvScaled;
         #endif
+
+            REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
+            #ifdef REBLUR_SH
+                float4 sh = gIn_DiffSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
+            #endif
 
             float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
             float materialIDs;
-            float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestMirror, uvScaled + gRectOffset, 0 );
+            float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 );
             Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
-            // Sample weight
-            float w = IsInScreen( uv );
-            w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+            // Sample weights
+            float w = CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
             w *= GetGaussianWeight( offset.z );
             w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns );
 
-        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            #ifdef REBLUR_HAS_DIRECTION_PDF
-                float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Diff_DirectionPdf.SampleLevel( gNearestMirror, checkerboardUvScaled, 0 ) );
-            #endif
+        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR && ( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_SH ) )
             #ifdef REBLUR_SH
-                float4 dirPdf = float4( sh.xyz * rsqrt( dot( sh.xyz, sh.xyz ) + 1e-7 ), sh.w );
+                float4 dirPdf = sh;
+                sh *= s.x;
+            #else
+                float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Diff_DirectionPdf.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 ) );
             #endif
-            #if( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_HAS_DIRECTION_PDF )
-                float3 L = dirPdf.xyz;
-                float NoL = saturate( dot( N, L ) );
 
-                w *= NoL / dirPdf.w;
-            #endif
+            float3 L = dirPdf.xyz;
+            float NoL = saturate( dot( N, L ) );
+
+            w *= NoL / ( dirPdf.w + NRD_EPS );
+        #else
+            w *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
         #endif
 
-            // Weight separation - radiance and hitDist
-            float2 ww = w;
-        #ifndef REBLUR_HAS_DIRECTION_PDF
-            ww *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
-        #endif
-
-            // Get rid of potentially bad values outside of the screen
-            s = w ? s : 0;
+            // Get rid of potentially bad values outside of the screen ( important for checkerboard )
+            w = IsInScreen( uv ) ? w : 0.0;
+            s = w ? s : 0.0;
 
             // Accumulate
-            sum += ww;
-            diff += s * Xxxy( ww );
+            sum += w;
+            diff += s * w;
         #ifdef REBLUR_SH
-            diffSh += sh * Xxxy( ww );
+            diffSh += sh * w;
         #endif
         }
 
-        float2 invSum = STL::Math::PositiveRcp( sum );
-        diff *= Xxxy( invSum );
+        float invSum = STL::Math::PositiveRcp( sum );
+        diff *= invSum;
     #ifdef REBLUR_SH
-        diffSh *= Xxxy( invSum );
+        diffSh *= invSum;
     #endif
 
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
@@ -207,20 +207,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     // Checkerboard resolve ( if pre-pass failed )
     [branch]
-    if( !hasData && sum.x == 0.0 )
+    if( !hasData && sum == 0.0 )
     {
         REBLUR_TYPE s0 = gIn_Diff[ checkerboardPos.xy ];
         REBLUR_TYPE s1 = gIn_Diff[ checkerboardPos.zy ];
 
-        diff *= saturate( 1.0 - wc.x - wc.y );
-        diff += s0 * wc.x + s1 * wc.y;
+        diff = s0 * wc.x + s1 * wc.y;
 
     #ifdef REBLUR_SH
-        float4 sh0 = gIn_DiffSh[ checkerboardPos.xy ];
-        float4 sh1 = gIn_DiffSh[ checkerboardPos.zy ];
+        float4 sh0 = s0.x * gIn_DiffSh[ checkerboardPos.xy ];
+        float4 sh1 = s1.x * gIn_DiffSh[ checkerboardPos.zy ];
 
-        diffSh *= saturate( 1.0 - wc.x - wc.y );
-        diffSh += sh0 * wc.x + sh1 * wc.y;
+        diffSh = sh0 * wc.x + sh1 * wc.y;
     #endif
     }
 #endif

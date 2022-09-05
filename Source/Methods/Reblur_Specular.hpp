@@ -18,7 +18,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
     {
         PREV_VIEWZ = PERMANENT_POOL_START,
         PREV_NORMAL_ROUGHNESS,
-        PREV_ACCUMSPEEDS_MATERIALID,
+        PREV_INTERNAL_DATA,
         SPEC_HISTORY,
         SPEC_FAST_HISTORY_PING,
         SPEC_FAST_HISTORY_PONG,
@@ -26,7 +26,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
 
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
@@ -124,7 +124,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
             PushInput( AsUint(ResourceType::IN_MV) );
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
             PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushInput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushInput( AsUint(Transient::SPEC_MIN_HITDIST) );
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterPrepass ? SPEC_TEMP1 : AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
@@ -211,7 +211,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
             else
             {
                 PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
-                PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+                PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             }
 
             // Shaders
@@ -257,7 +257,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
             PushInput( SPEC_TEMP2 );
 
             // Outputs
-            PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
 
             // Shaders

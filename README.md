@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.5.0 (NRD)
+# NVIDIA Real-time Denoisers v3.6.0 (NRD)
 
 ## SAMPLE APP
 
@@ -169,7 +169,7 @@ commandBufferDesc.d3d12CommandAllocator = (ID3D12CommandAllocator*)d3d12CommandA
 nri::CommandBuffer* nriCommandBuffer = nullptr;
 NRI.CreateCommandBufferD3D12(*nriDevice, commandBufferDesc, nriCommandBuffer);
 
-// Wrap required textures
+// Wrap required textures (better do it only once on initialization)
 nri::TextureTransitionBarrierDesc entryDescs[N] = {};
 nri::Format entryFormat[N] = {};
 
@@ -217,7 +217,10 @@ NrdUserPool userPool = {};
     NrdIntegration_SetResource(userPool, ...);
 };
 
-NRD.Denoise(*nriCommandBuffer, commonSettings, userPool);
+// Better use "true" if NRI texture wrappers are non-volatile between frames
+bool enableDescriptorCaching = true;
+
+NRD.Denoise(frameIndex, *nriCommandBuffer, commonSettings, userPool, enableDescriptorCaching);
 
 // IMPORTANT: NRD integration binds own descriptor pool, don't forget to re-bind back your descriptor pool (heap)
 
@@ -225,6 +228,7 @@ NRD.Denoise(*nriCommandBuffer, commonSettings, userPool);
 // SHUTDOWN or RENDER - CLEANUP
 //====================================================================================================================
 
+// Better do it only once on shutdown
 for (uint32_t i = 0; i < N; i++)
     NRI.DestroyTexture(entryDescs[i].texture);
 
@@ -307,6 +311,8 @@ Commons inputs:
   - reconstruct world position using special matrices for "hands"
   - project on screen using matrices passed to NRD
   - `.w` component is positive view Z (or just transform world space position to main view space and take `.z` component)
+
+**IMPORTANT**: All textures should be *NaN* free at each pixel, even at pixels outside of denoising range.
 
 See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
 

@@ -107,9 +107,9 @@ float PixelRadiusToWorld( float unproject, float orthoMode, float pixelRadius, f
      return pixelRadius * unproject * lerp( viewZ, 1.0, abs( orthoMode ) );
 }
 
-float GetHitDistFactor( float hitDist, float frustumHeight, float scale = 1.0 )
+float GetHitDistFactor( float hitDist, float frustumHeight )
 {
-    return saturate( hitDist / ( hitDist * scale + frustumHeight ) );
+    return saturate( hitDist / frustumHeight );
 }
 
 float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float4 baseRotator, uint frameIndex )
@@ -152,10 +152,10 @@ float2 ApplyCheckerboardShift( float2 uv, uint mode, uint counter, float2 screen
     return ( float2( uvi ) + 0.5 ) * invScreenSize;
 }
 
+// Comparison of two methods:
+// https://www.desmos.com/calculator/xwq1nrawho
 float GetSpecMagicCurve( float roughness, float power = 0.25 )
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuMDEpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IigxLTJeKC0yMDAqeCp4KSkqKHheMC4xKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuMjUpIiwiY29sb3IiOiIjMDBGRjA5In0seyJ0eXBlIjowLCJlcSI6IigxLTJeKC0yMDAqeCp4KSkqKHheMC4zKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiNENjIwMDAifSx7InR5cGUiOjAsImVxIjoiKDEtMl4oLTIwMCp4KngpKSooeF4wLjcpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IigxLTJeKC0yMDAqeCp4KSkqKHheMC45KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuOTkpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMS4xIl0sInNpemUiOlsxMDAwLDUwMF19XQ--
-
     float f = 1.0 - exp2( -200.0 * roughness * roughness );
     f *= STL::Math::Pow01( roughness, power );
 
@@ -164,9 +164,6 @@ float GetSpecMagicCurve( float roughness, float power = 0.25 )
 
 float GetSpecMagicCurve2( float roughness, float percentOfVolume = 0.987 )
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJhdGFuKDAuOTkqeCp4LygxLTAuOTkpKS8oYXRhbigwLjk5LygxLTAuOTkpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjk4Nyp4KngvKDEtMC45ODcpKS8oYXRhbigwLjk4Ny8oMS0wLjk4NykpKSIsImNvbG9yIjoiIzE5QkEwMCJ9LHsidHlwZSI6MCwiZXEiOiJhdGFuKDAuOTcqeCp4LygxLTAuOTcpKS8oYXRhbigwLjk3LygxLTAuOTcpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjk1KngqeC8oMS0wLjk1KSkvKGF0YW4oMC45NS8oMS0wLjk1KSkpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6ImF0YW4oMC45KngqeC8oMS0wLjkpKS8oYXRhbigwLjkvKDEtMC45KSkpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6ImF0YW4oMC44NSp4KngvKDEtMC44NSkpLyhhdGFuKDAuODUvKDEtMC44NSkpKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiJhdGFuKDAuOCp4KngvKDEtMC44KSkvKGF0YW4oMC44LygxLTAuOCkpKSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiJhdGFuKDAuNzUqeCp4LygxLTAuNzUpKS8oYXRhbigwLjc1LygxLTAuNzUpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjcqeCp4LygxLTAuNykpLyhhdGFuKDAuNy8oMS0wLjcpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxLjEiXSwic2l6ZSI6WzEwMDAsNTAwXX1d
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS0yXigtMjAwKngqeCkpKih4XjAuMjUpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6ImF0YW4oMC45ODcqeCp4LygxLTAuOTg3KSkvKGF0YW4oMC45ODcvKDEtMC45ODcpKSkiLCJjb2xvciI6IiMxREQ2MDAifSx7InR5cGUiOjAsImVxIjoiYXRhbigwLjk3KngqeC8oMS0wLjk3KSkvKGF0YW4oMC45Ny8oMS0wLjk3KSkpIiwiY29sb3IiOiIjQ0MzMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiMS4xIl0sInNpemUiOlsxMDAwLDUwMF19XQ--
-
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, percentOfVolume );
     float almostHalfPi = STL::ImportanceSampling::GetSpecularLobeHalfAngle( 1.0, percentOfVolume );
 
@@ -203,8 +200,6 @@ float GetColorCompressionExposureForSpatialPasses( float roughness )
     // - to minimize biasing the results compression for high roughness should be avoided (diffuse signal compression can lead to darker image)
     // - the compression function must be monotonic for full roughness range
     // - returned exposure must be used with colors in the HDR range used in tonemapping, i.e. "color * exposure"
-
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIwLjUvKDErNTAqeCkiLCJjb2xvciI6IiNGNzBBMEEifSx7InR5cGUiOjAsImVxIjoiMC41KigxLXgpLygxKzYwKngpIiwiY29sb3IiOiIjMkJGRjAwIn0seyJ0eXBlIjowLCJlcSI6IjAuNSooMS14KS8oMSsxMDAwKngqeCkrKDEteF4wLjUpKjAuMDMiLCJjb2xvciI6IiMwMDU1RkYifSx7InR5cGUiOjAsImVxIjoiMC42KigxLXgqeCkvKDErNDAwKngqeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIxIl0sInNpemUiOlsyOTUwLDk1MF19XQ--
 
     // Moderate compression
     #if( NRD_RADIANCE_COMPRESSION_MODE == 1 )
@@ -338,8 +333,10 @@ float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight,
 
 float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, float roughness = 1.0 )
 {
+    // IMPORTANT: since this weight is exponential, 3% can lead to leaks from bright objects in reflections.
+    // Eeven 1% is not enough in some cases, but using a lower value makes things even more fragile
     float smc = GetSpecMagicCurve2( roughness );
-    float norm = lerp( 0.03, 1.0, min( nonLinearAccumSpeed, smc ) );
+    float norm = lerp( 0.01, 1.0, min( nonLinearAccumSpeed, smc ) );
     float a = 1.0 / norm;
     float b = hitDist * a;
 
@@ -351,12 +348,12 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
 // IMPORTANT:
 // - works for "negative x" only
 // - huge error for x < -2, but still applicable for "weight" calculations
-// http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJleHAoeCkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiMS8oeCp4LXgrMSkiLCJjb2xvciI6IiMwRkIwMDAifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyItMTAiLCIwIiwiMCIsIjEiXX1d
+// https://www.desmos.com/calculator/cd3mvg1gfo
 #define ExpApprox( x ) \
     rcp( ( x ) * ( x ) - ( x ) + 1.0 )
 
 // Must be used for noisy data
-// http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIxLWFicygoeC0wLjUpLzAuMikiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiZXhwKC0yKmFicygoeC0wLjUpLzAuMikpIiwiY29sb3IiOiIjRkYwMDE1In0seyJ0eXBlIjowLCJlcSI6IjEvKCgtMyphYnMoKHgtMC41KS8wLjIpKV4yLSgtMyphYnMoKHgtMC41KS8wLjIpKSsxKSIsImNvbG9yIjoiIzAwQTgyNyJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIxIiwiMCIsIjEiXX1d
+// https://www.desmos.com/calculator/9yoyc3is2g
 // scale = 3-5 is needed to match energy in "_ComputeNonExponentialWeight" ( especially when used in a recurrent loop )
 #define _ComputeExponentialWeight( x, px, py ) \
     ExpApprox( -NRD_EXP_WEIGHT_DEFAULT_SCALE * abs( ( x ) * ( px ) + ( py ) ) )

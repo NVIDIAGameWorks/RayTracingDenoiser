@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 5
+#define NRD_DESCS_VERSION_MINOR 6
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -353,8 +353,8 @@ namespace nrd
         uint8_t versionMajor;
         uint8_t versionMinor;
         uint8_t versionBuild;
-        uint8_t maxSupportedMaterialBitNum;
-        bool isCompiledWithOctPackNormalEncoding : 1;
+        uint8_t maxSupportedMaterialBitNum; // if 0, compiled with NRD_USE_MATERIAL_ID = 0
+        bool isCompiledWithOctPackNormalEncoding : 1; // if 0, compield with NRD_USE_OCT_NORMAL_ENCODING = 0
     };
 
     struct MethodDesc

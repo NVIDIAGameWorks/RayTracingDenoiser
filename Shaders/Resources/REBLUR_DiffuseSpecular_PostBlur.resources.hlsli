@@ -18,7 +18,6 @@ NRD_SAMPLER_END
 NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
     NRD_CONSTANT( float4, gRotator )
-    NRD_CONSTANT( float3, gSpecLobeTrimmingParams )
     NRD_CONSTANT( float, gBlurRadiusScale )
 NRD_CONSTANTS_END
 
@@ -47,7 +46,7 @@ NRD_CONSTANTS_END
         NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Diff, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Spec, u, 2 )
         #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 3 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 3 )
             #ifdef REBLUR_SH
                 NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_DiffSh, u, 4 )
                 NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecSh, u, 5 )
@@ -76,7 +75,7 @@ NRD_CONSTANTS_END
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Diff, u, 1 )
         #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 2 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 2 )
             #ifdef REBLUR_SH
                 NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_DiffSh, u, 3 )
             #endif
@@ -103,7 +102,7 @@ NRD_CONSTANTS_END
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Normal_Roughness, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<DATA_TYPE>, gOut_Spec, u, 1 )
         #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 2 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 2 )
             #ifdef REBLUR_SH
                 NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecSh, u, 3 )
             #endif

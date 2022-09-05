@@ -157,10 +157,10 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             float2 checkerboardUvScaled = float2( uvScaled.x * ( gDiffuseCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y ) + gRectOffset;
 
             float sampleMaterialID;
-            float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestMirror, uvScaled, 0), sampleMaterialID).rgb;
+            float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestClamp, uvScaled, 0), sampleMaterialID).rgb;
 
-            float4 sampleDiffuseIllumination = gDiffuseIllumination.SampleLevel(gNearestMirror, checkerboardUvScaled, 0);
-            float sampleViewZ = abs(gViewZ.SampleLevel(gNearestMirror, uvScaled, 0));
+            float4 sampleDiffuseIllumination = gDiffuseIllumination.SampleLevel(gNearestClamp, checkerboardUvScaled, 0);
+            float sampleViewZ = abs(gViewZ.SampleLevel(gNearestClamp, uvScaled, 0));
 
             float3 sampleWorldPos = GetCurrentWorldPosFromClipSpaceXY(uv * 2.0 - 1.0, sampleViewZ);
 
@@ -269,13 +269,13 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             float2 checkerboardUvScaled = float2( uvScaled.x * ( gSpecularCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y ) + gRectOffset;
 
             // Fetch data
-            float4 sampleSpecularIllumination = gSpecularIllumination.SampleLevel(gNearestMirror, checkerboardUvScaled, 0);
+            float4 sampleSpecularIllumination = gSpecularIllumination.SampleLevel(gNearestClamp, checkerboardUvScaled, 0);
 
             float sampleMaterialID;
-            float4 sampleNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestMirror, uvScaled, 0), sampleMaterialID);
+            float4 sampleNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestClamp, uvScaled, 0), sampleMaterialID);
             float3 sampleNormal = sampleNormalRoughness.rgb;
             float sampleRoughness = sampleNormalRoughness.a;
-            float sampleViewZ = abs(gViewZ.SampleLevel(gNearestMirror, uvScaled, 0));
+            float sampleViewZ = abs(gViewZ.SampleLevel(gNearestClamp, uvScaled, 0));
 
             // Sample weight
             float sampleWeight = IsInScreen(uv);

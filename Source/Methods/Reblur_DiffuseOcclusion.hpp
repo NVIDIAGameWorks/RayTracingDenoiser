@@ -18,12 +18,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
     {
         PREV_VIEWZ = PERMANENT_POOL_START,
         PREV_NORMAL_ROUGHNESS,
-        PREV_ACCUMSPEEDS_MATERIALID,
+        PREV_INTERNAL_DATA,
     };
 
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
 
     enum class Transient
     {
@@ -79,7 +79,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
             PushInput( AsUint(ResourceType::IN_MV) );
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
             PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushInput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterReconstruction ? DIFF_TEMP1 : AsUint(ResourceType::IN_DIFF_HITDIST) );
             PushInput( AsUint(ResourceType::OUT_DIFF_HITDIST) );
@@ -154,7 +154,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t 
             // Outputs
             PushOutput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
             PushOutput( AsUint(ResourceType::OUT_DIFF_HITDIST) );
-            PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
 
             // Shaders
             AddDispatch( REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
@@ -253,10 +253,9 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     AddFloat4x4(data, m_WorldToClip);
     AddFloat4x4(data, m_WorldPrevToWorld);
     AddFloat4(data, m_FrustumPrev);
-    AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f));
+    AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, disocclusionThreshold));
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
-    AddFloat(data, disocclusionThreshold );
     AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);
     AddUint(data, 0);
@@ -266,6 +265,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     passIndex = AsUint(Dispatch::HISTORY_FIX) + (!settings.enableAntiFirefly ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
+    AddFloat4(data, m_Rotator_HistoryFix);
     AddFloat(data, settings.historyFixStrideBetweenSamples);
     ValidateConstants(data);
 
@@ -273,16 +273,16 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     passIndex = AsUint(Dispatch::BLUR) + (settings.enablePerformanceMode ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
-    AddFloat4(data, m_Rotator[1]);
-    AddFloat4(data, ml::float4(settings.specularLobeTrimmingParameters.A, settings.specularLobeTrimmingParameters.B, settings.specularLobeTrimmingParameters.C, settings.maxAdaptiveRadiusScale));
+    AddFloat4(data, m_Rotator_Blur);
+    AddFloat(data, settings.maxAdaptiveRadiusScale);
     ValidateConstants(data);
 
     // POST_BLUR
     passIndex = AsUint(Dispatch::POST_BLUR) + (settings.enablePerformanceMode ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
-    AddFloat4(data, m_Rotator[2]);
-    AddFloat4(data, ml::float4(settings.specularLobeTrimmingParameters.A, settings.specularLobeTrimmingParameters.B, settings.specularLobeTrimmingParameters.C, settings.maxAdaptiveRadiusScale));
+    AddFloat4(data, m_Rotator_PostBlur);
+    AddFloat(data, settings.maxAdaptiveRadiusScale);
     ValidateConstants(data);
 
     // SPLIT_SCREEN

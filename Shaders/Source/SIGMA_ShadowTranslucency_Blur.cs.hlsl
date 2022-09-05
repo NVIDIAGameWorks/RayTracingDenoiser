@@ -12,6 +12,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "../Include/NRD.hlsli"
 
 #define SIGMA_TRANSLUCENT
+#define SIGMA_FIRST_PASS
 
 #include "../Include/SIGMA/SIGMA_Config.hlsli"
 #include "../Resources/SIGMA_Shadow_Blur.resources.hlsli"

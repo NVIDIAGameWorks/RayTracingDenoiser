@@ -60,8 +60,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         }
         pos += gRectOrigin;
 
-        float radius = gDiffPrepassBlurRadius;
-
         REBLUR_TYPE diff = gIn_Diff[ pos ];
         #ifdef REBLUR_SH
             float4 diffSh = gIn_DiffSh[ pos ];
@@ -81,8 +79,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             pos.x >>= 1;
         }
         pos += gRectOrigin;
-
-        float radius = gSpecPrepassBlurRadius;
 
         REBLUR_TYPE spec = gIn_Spec[ pos ];
         #ifdef REBLUR_SH

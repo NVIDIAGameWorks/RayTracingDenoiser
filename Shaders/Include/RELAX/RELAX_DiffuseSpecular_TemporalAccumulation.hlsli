@@ -18,7 +18,6 @@ groupshared float4 sharedNormalRoughness[BUFFER_Y][BUFFER_X];
 #if (defined RELAX_SPECULAR)
 float GetSpecAccumulatedFrameNum(float roughness, float powerScale)
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIzMSooeF4wLjY2KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIzMSooMS0yXigtMjAwKngqeCkpKih4XjAuNSkiLCJjb2xvciI6IiNGQTBEMEQifSx7InR5cGUiOjEwMDAsIndpbmRvdyI6WyIwIiwiMSIsIjAiLCIzMSJdfV0-
     float f = 1.0 - exp2(-200.0 * roughness * roughness);
     f *= STL::Math::Pow01(roughness, RELAX_SPEC_ACCUM_BASE_POWER * powerScale);
 
@@ -29,7 +28,6 @@ float GetSpecAccumSpeed(float maxAccumSpeed, float roughness, float NoV, float p
 {
     float acos01sq = saturate(1.0 - NoV); // see AcosApprox()
 
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS4wNSsoeCp4KV4xLjApLygxLjA1LSh4KngpXjEuMCkiLCJjb2xvciI6IiM1MkExMDgifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC42NikvKDEuMDUtKHgqeCleMC42NikiLCJjb2xvciI6IiNFM0Q4MDkifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC41KS8oMS4wNS0oeCp4KV4wLjUpIiwiY29sb3IiOiIjRjUwQTMxIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNDIiXSwic2l6ZSI6WzE5MDAsNzAwXX1d
     float a = STL::Math::Pow01(acos01sq, RELAX_SPEC_ACCUM_CURVE);
     float b = 1.1 + roughness * roughness;
     float parallaxSensitivity = (b + a) / (b - a);
@@ -116,7 +114,7 @@ float loadSurfaceMotionBasedPrevData(
     // bc bl bl bc
     // -- bc bc --
 
-    /// Fetching previous viewZs and materialIDs 
+    /// Fetching previous viewZs and materialIDs
     float2 gatherOrigin00 = (float2(bilinearOrigin) + float2(0.0, 0.0)) * gInvResourceSize;
     float2 gatherOrigin10 = (float2(bilinearOrigin) + float2(2.0, 0.0)) * gInvResourceSize;
     float2 gatherOrigin01 = (float2(bilinearOrigin) + float2(0.0, 2.0)) * gInvResourceSize;
@@ -132,10 +130,10 @@ float loadSurfaceMotionBasedPrevData(
 
     // Calculating validity of 12 bicubic taps, 4 of those are bilinear taps
     float3 prevViewPos = STL::Geometry::AffineTransform(gPrevWorldToView, prevWorldPos);
-    float3 planeDist0 = abs(prevViewZs00.yzw - prevViewPos.zzz) * NdotV; 
-    float3 planeDist1 = abs(prevViewZs10.xzw - prevViewPos.zzz) * NdotV; 
-    float3 planeDist2 = abs(prevViewZs01.xyw - prevViewPos.zzz) * NdotV; 
-    float3 planeDist3 = abs(prevViewZs11.xyz - prevViewPos.zzz) * NdotV; 
+    float3 planeDist0 = abs(prevViewZs00.yzw - prevViewPos.zzz) * NdotV;
+    float3 planeDist1 = abs(prevViewZs10.xzw - prevViewPos.zzz) * NdotV;
+    float3 planeDist2 = abs(prevViewZs01.xyw - prevViewPos.zzz) * NdotV;
+    float3 planeDist3 = abs(prevViewZs11.xyz - prevViewPos.zzz) * NdotV;
     float3 tapsValid0 = step(planeDist0, disocclusionThreshold);
     float3 tapsValid1 = step(planeDist1, disocclusionThreshold);
     float3 tapsValid2 = step(planeDist2, disocclusionThreshold);
@@ -352,7 +350,7 @@ float loadVirtualMotionBasedPrevData(
     // Weighted bilinear (or bicubic optionally) for prev specular data based on virtual motion.
     if (any(bilinearTapsValid))
     {
-        // Calculating bilinear weights in advance 
+        // Calculating bilinear weights in advance
         STL::Filtering::Bilinear bilinear;
         bilinear.weights = bilinearWeights;
         float4 bilinearWeightsWithValidity = STL::Filtering::GetBilinearCustomWeights(bilinear, float4(bilinearTapsValid.x, bilinearTapsValid.y, bilinearTapsValid.z, bilinearTapsValid.w));
@@ -758,7 +756,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         hitDistFocused,
         hitDist,
         currentViewVector,
-        prevWorldPos, 
+        prevWorldPos,
         surfaceMotionBasedReprojectionFound == 2.0 ? true : false,
         currentMaterialID,
         gSpecMaterialMask,

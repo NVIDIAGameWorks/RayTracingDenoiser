@@ -394,7 +394,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
     // PREPASS
     Constant* data = PushDispatch(methodData, AsUint(enableHitDistanceReconstruction ? Dispatch::PREPASS_AFTER_HITDIST_RECONSTRUCTION : Dispatch::PREPASS));
     AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
-    AddFloat4(data, m_Rotator[0]);
+    AddFloat4(data, m_Rotator_PrePass);
     AddUint(data, specularCheckerboard);
     AddFloat(data, settings.prepassBlurRadius);
     AddFloat(data, 1.0f);

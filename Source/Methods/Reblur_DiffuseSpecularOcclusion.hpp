@@ -20,12 +20,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, u
     {
         PREV_VIEWZ = PERMANENT_POOL_START,
         PREV_NORMAL_ROUGHNESS,
-        PREV_ACCUMSPEEDS_MATERIALID,
+        PREV_INTERNAL_DATA,
     };
 
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
 
     enum class Transient
     {
@@ -87,7 +87,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, u
             PushInput( AsUint(ResourceType::IN_MV) );
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
             PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushInput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushInput( REBLUR_DUMMY ); // TODO: should be SPEC_MIN_HITDIST, but there is no pre-pass in occlusion-only denoisers
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : REBLUR_DUMMY );
@@ -173,7 +173,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, u
             PushOutput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
             PushOutput( AsUint(ResourceType::OUT_DIFF_HITDIST) );
             PushOutput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
-            PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
 
             // Shaders
             AddDispatch( REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );

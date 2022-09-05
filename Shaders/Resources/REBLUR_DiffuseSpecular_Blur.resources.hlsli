@@ -18,7 +18,6 @@ NRD_SAMPLER_END
 NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
     NRD_CONSTANT( float4, gRotator )
-    NRD_CONSTANT( float3, gSpecLobeTrimmingParams )
     NRD_CONSTANT( float, gBlurRadiusScale )
 NRD_CONSTANTS_END
 

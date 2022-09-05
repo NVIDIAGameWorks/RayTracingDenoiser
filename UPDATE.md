@@ -85,3 +85,10 @@ This guide has been designed to simplify migration to a newer version.
   - `disocclusionFixEdgeStoppingNormalPower` renamed to `historyFixEdgeStoppingNormalPower`
   - `disocclusionFixMaxRadius` renamed to `historyFixStrideBetweenSamples`
   - `disocclusionFixNumFramesToFix` renamed to `historyFixFrameNum`
+
+## To v3.6
+
+- *REBLUR*:
+  - Removed `SpecularLobeTrimmingParameters`
+- *NRD.hlsli*:
+  - Removed `NRD_GetTrimmingFactor`

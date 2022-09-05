@@ -22,7 +22,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_ROUGHNESS_ULP                            ( 1.0 / 255.0 )
 #define REBLUR_NORMAL_ULP                               STL::Math::DegToRad( 0.05 )
 
-// Data packing for the next frame
+// Internal data ( from the previous frame )
 
 #define PackViewZ( p )      min( p * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX )
 #define UnpackViewZ( p )    ( p / NRD_FP16_VIEWZ_SCALE )
@@ -42,17 +42,17 @@ float4 UnpackNormalAndRoughness( float4 p, bool isNormalized = true )
     return p;
 }
 
-uint PackAccumSpeedsMaterialID( float diffAccumSpeed, float specAccumSpeed, float materialID )
+uint PackInternalData( float diffAccumSpeed, float specAccumSpeed, float materialID )
 {
     float3 t = float3( diffAccumSpeed, specAccumSpeed, materialID );
-    t.xy /= REBLUR_MAX_ACCUM_FRAME_NUM;
+    t.xy = min( t.xy, gMaxAccumulatedFrameNum ) / REBLUR_MAX_ACCUM_FRAME_NUM;
 
     uint p = STL::Packing::RgbaToUint( t.xyzz, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 );
 
     return p;
 }
 
-float3 UnpackAccumSpeedsMaterialID( uint p )
+float3 UnpackInternalData( uint p )
 {
     float3 t = STL::Packing::UintToRgba( p, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 ).xyz;
     t.xy *= REBLUR_MAX_ACCUM_FRAME_NUM;
@@ -60,9 +60,9 @@ float3 UnpackAccumSpeedsMaterialID( uint p )
     return t;
 }
 
-// Internal data
+// Intermediate data ( in the current frame )
 
-float4 PackInternalData1( float diffAccumSpeed, float diffRadiusScale, float specAccumSpeed, float specRadiusScale )
+float4 PackData1( float diffAccumSpeed, float diffRadiusScale, float specAccumSpeed, float specRadiusScale )
 {
     float4 r;
     r.x = saturate( diffAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
@@ -81,7 +81,7 @@ float4 PackInternalData1( float diffAccumSpeed, float diffRadiusScale, float spe
     return r;
 }
 
-float4 UnpackInternalData1( float4 p )
+float4 UnpackData1( float4 p )
 {
     // Allow RG8_UNORM for specular only denoiser
     #ifndef REBLUR_DIFFUSE
@@ -100,7 +100,7 @@ float4 UnpackInternalData1( float4 p )
     return r;
 }
 
-float4 PackInternalData2( float fbits, float curvature, float virtualHistoryAmount, float hitDistScaleForTracking, float viewZ )
+float4 PackData2( float fbits, float curvature, float virtualHistoryAmount, float hitDistScaleForTracking, float viewZ )
 {
     // BITS:
     // 0        - free // TODO: can be used to store "skip HistoryFix" bit
@@ -126,7 +126,7 @@ float4 PackInternalData2( float fbits, float curvature, float virtualHistoryAmou
     return r;
 }
 
-float3 UnpackInternalData2( float4 p, float viewZ, out uint bits )
+float3 UnpackData2( float4 p, float viewZ, out uint bits )
 {
     // Optional
     p.yzw *= p.yzw;
@@ -145,15 +145,13 @@ float3 UnpackInternalData2( float4 p, float viewZ, out uint bits )
 float SaturateParallax( float parallax )
 {
     // A smooth version of "saturate"
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiJtaW4oeCwxKSIsImNvbG9yIjoiI0YyMDkwOSJ9LHsidHlwZSI6MCwiZXEiOiIxLTJeKC0zLjUqeCp4KSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MTAwMCwid2luZG93IjpbIjAiLCIyIiwiMCIsIjEuMSJdfV0-
+    // https://www.desmos.com/calculator/mjv79pn0rp
 
     return saturate( 1.0 - exp2( -3.5 * parallax * parallax ) );
 }
 
 float GetSpecAccumulatedFrameNum( float roughness, float powerScale )
 {
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiI2MyooeF4wLjUpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IjYzKigxLTJeKC0yMDAqeCp4KSkqKHheMC41KSIsImNvbG9yIjoiIzIyRkYwMCJ9LHsidHlwZSI6MCwiZXEiOiI2MyooMS0yXigtMjAwKngqeCkpKih4XjAuNjYpIiwiY29sb3IiOiIjRkMwMzAzIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNjMiXX1d
-
     return REBLUR_MAX_ACCUM_FRAME_NUM * GetSpecMagicCurve( roughness, REBLUR_SPEC_ACCUM_BASE_POWER * powerScale );
 }
 
@@ -172,7 +170,7 @@ float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float 
 
     roughness = lerp( roughness, 1.0, roughnessFromCurvatureAngle );
 
-    // http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS4wNSsoeCp4KV4xLjApLygxLjA1LSh4KngpXjEuMCkiLCJjb2xvciI6IiM1MkExMDgifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC42NikvKDEuMDUtKHgqeCleMC42NikiLCJjb2xvciI6IiNFM0Q4MDkifSx7InR5cGUiOjAsImVxIjoiKDEuMDUrKHgqeCleMC41KS8oMS4wNS0oeCp4KV4wLjUpIiwiY29sb3IiOiIjRjUwQTMxIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMCIsIjEiLCIwIiwiNDIiXSwic2l6ZSI6WzE5MDAsNzAwXX1d
+    // https://www.desmos.com/calculator/aaqg3a7dnz
     float acos01sq = saturate( 1.0 - NoV * 0.99999 ); // see AcosApprox()
     float a = STL::Math::Pow01( acos01sq, REBLUR_SPEC_ACCUM_CURVE );
     float b = 1.1 + roughness * roughness;
@@ -378,7 +376,7 @@ float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, f
 float ComputeAntilagScale(
     REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE m1, REBLUR_TYPE sigma,
     float4 antilagMinMaxThreshold, float2 antilagSigmaScale, float stabilizationStrength,
-    float curvatureMulPixelSize, float2 internalData1, float roughness = 1.0
+    float curvatureMulPixelSize, float2 data1, float roughness = 1.0
 )
 {
     // On-edge strictness
@@ -396,8 +394,8 @@ float ComputeAntilagScale(
 
     float antilag = min( delta.x, delta.y );
     antilag = lerp( 1.0, antilag, stabilizationStrength );
-    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( internalData1.x ) );
-    antilag = lerp( antilag, 1.0, saturate( internalData1.y ) );
+    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( data1.x ) );
+    antilag = lerp( antilag, 1.0, saturate( data1.y ) );
 
     #if( REBLUR_DEBUG != 0 )
         antilag = 1.0;
@@ -433,16 +431,6 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
     }
 
     return float2x3( T, B );
-}
-
-float GetBlurRadiusScaleBasingOnTrimming( float roughness, float3 trimmingParams )
-{
-    float trimmingFactor = NRD_GetTrimmingFactor( roughness, trimmingParams );
-    float maxScale = 1.0 + 4.0 * roughness * roughness;
-    float scale = lerp( maxScale, 1.0, trimmingFactor );
-
-    // TODO: for roughness ~0.2 and trimming = 0 blur radius will be so large and amount of accumulation will be so small that a strobbing effect can appear under motion
-    return scale;
 }
 
 // Encoding precision aware weight functions ( for reprojection )

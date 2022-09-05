@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.5
+// NRD v3.6
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -192,12 +192,12 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
 // UNORM or OCT-packed normals
 #ifndef NRD_USE_OCT_NORMAL_ENCODING
-    #error "NRD_USE_OCT_NORMAL_ENCODING needs to be defined as 0 or 1."
+    #error "NRD_USE_OCT_NORMAL_ENCODING needs to be defined as 0 or 1. You can check 'LibraryDesc::isCompiledWithOctPackNormalEncoding' at runtime to know it."
 #endif
 
 // Material ID support
 #ifndef NRD_USE_MATERIAL_ID
-    #error "NRD_USE_MATERIAL_ID needs to be defined as 0 or 1."
+    #error "NRD_USE_MATERIAL_ID needs to be defined as 0 or 1. You can check 'LibraryDesc::maxSupportedMaterialBitNum' at runtime to know it."
 #endif
 
 // [Optional] Rarely needed
@@ -230,7 +230,7 @@ float2 _NRD_EncodeUnitVector( float3 v, const bool bSigned = false )
 {
     v /= dot( abs( v ), 1.0 );
 
-    float2 octWrap = ( 1.0 - abs( v.yx ) ) * ( v.xy >= 0.0 ? 1.0 : -1.0 );
+    float2 octWrap = ( 1.0 - abs( v.yx ) ) * ( step( 0.0, v.xy ) * 2.0 - 1.0 );
     v.xy = v.z >= 0.0 ? v.xy : octWrap;
 
     return bSigned ? v.xy : v.xy * 0.5 + 0.5;
@@ -243,7 +243,7 @@ float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool b
     // https://twitter.com/Stubbesaurus/status/937994790553227264
     float3 n = float3( p.xy, 1.0 - abs( p.x ) - abs( p.y ) );
     float t = saturate( -n.z );
-    n.xy += n.xy >= 0.0 ? -t : t;
+    n.xy -= t * ( step( 0.0, n.xy ) * 2.0 - 1.0 );
 
     return bNormalize ? normalize( n ) : n;
 }
@@ -301,7 +301,10 @@ NRD_SH NRD_SH_Create( float3 color, float3 direction )
 
     NRD_SH sh;
     sh.c0_chroma = YCoCg;
-    sh.c1 = YCoCg.x * direction;
+
+    // IMPORTANT: "direction" is not multiplied by "YCoCg.x"!
+    // It's needed to get "unbiased" direction in pre-pass, NRD respects SH math internally
+    sh.c1 = direction;
 
     return sh;
 }
@@ -506,7 +509,8 @@ float4 REBLUR_FrontEnd_PackDirectionalOcclusion( float3 direction, float normHit
 
     NRD_SH sh = NRD_SH_Create( normHitDist, direction );
 
-    return float4( sh.c1, sh.c0_chroma.x );
+    // Multiply by Y here, because NRD has post multiplication implemented only for SH variant
+    return float4( sh.c1 * sh.c0_chroma.x, sh.c0_chroma.x );
 }
 
 //========
@@ -677,14 +681,6 @@ float4 RELAX_BackEnd_UnpackRadiance( float4 color )
 //=================================================================================================================================
 // MISC
 //=================================================================================================================================
-
-// Returns lobe trimming factor for use during tracing
-float NRD_GetTrimmingFactor( float roughness, float3 trimmingParams )
-{
-    float trimmingFactor = trimmingParams.x * smoothstep( trimmingParams.y, trimmingParams.z, roughness );
-
-    return trimmingFactor;
-}
 
 // Needs to be used to avoid summing up NAN/INF values in many rays per pixel scenarios
 float NRD_GetSampleWeight( float3 radiance )

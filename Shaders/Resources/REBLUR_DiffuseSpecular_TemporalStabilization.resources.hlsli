@@ -19,11 +19,11 @@ NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
     NRD_CONSTANT( float4x4, gWorldToClip )
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
-    NRD_CONSTANT( float4, gCameraDelta )
     NRD_CONSTANT( float4, gAntilagMinMaxThreshold )
+    NRD_CONSTANT( float3, gCameraDelta )
+    NRD_CONSTANT( float, gStabilizationStrength )
     NRD_CONSTANT( float2, gAntilagSigmaScale )
     NRD_CONSTANT( float2, gMotionVectorScale )
-    NRD_CONSTANT( float, gStabilizationStrength )
 NRD_CONSTANTS_END
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
@@ -47,7 +47,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 2 )
         #ifdef REBLUR_SH
@@ -73,7 +73,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 1 )
         #ifdef REBLUR_SH
             NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_DiffSh, u, 2 )
@@ -97,7 +97,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_AccumSpeeds_MaterialID, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 1 )
         #ifdef REBLUR_SH
             NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_SpecSh, u, 2 )

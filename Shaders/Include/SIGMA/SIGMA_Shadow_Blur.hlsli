@@ -167,14 +167,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             uvScaled += gRectOffset;
         #endif
 
-        float2 data = gIn_Hit_ViewZ.SampleLevel( gNearestMirror, uvScaled, 0 );
+        float2 data = gIn_Hit_ViewZ.SampleLevel( gNearestClamp, uvScaled, 0 );
         float h = data.x;
         float signNoL = float( data.x != 0.0 );
         float z = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
 
         SIGMA_TYPE s;
         #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
-            s = gIn_Shadow_Translucency.SampleLevel( gNearestMirror, uvScaled, 0 );
+            s = gIn_Shadow_Translucency.SampleLevel( gNearestClamp, uvScaled, 0 );
         #else
             s = float( h == NRD_FP16_MAX );
         #endif

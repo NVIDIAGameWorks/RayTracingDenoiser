@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRDIntegration.h"
 
-static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 4, "Unsupported NRD version!");
+static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 6, "Unsupported NRD version!");
 
 #if _WIN32
     #define NRD_INTEGRATION_ALLOCA _alloca
@@ -449,7 +449,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
             {
                 nrdTexture = (NrdIntegrationTexture*)&userPool[(uint32_t)nrdResource.type];
 
-                NRD_INTEGRATION_ASSERT( nrdTexture && nrdTexture->subresourceStates && nrdTexture->subresourceStates->texture, "IN_XXX can't be NULL if it's in use!");
+                NRD_INTEGRATION_ASSERT( nrdTexture && nrdTexture->subresourceStates && nrdTexture->subresourceStates->texture, "'userPool' entry can't be NULL if it's in use!");
                 NRD_INTEGRATION_ASSERT( nrdTexture->format != nri::Format::UNKNOWN, "Format must be a valid format!");
             }
 

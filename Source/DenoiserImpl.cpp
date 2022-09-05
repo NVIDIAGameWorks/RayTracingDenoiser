@@ -543,18 +543,23 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     // Rotators
     ml::float4 rndScale = ml::float4(1.0f) + ml::Rand::sf4(&m_FastRandState) * 0.25f;
     ml::float4 rndAngle = ml::Rand::uf4(&m_FastRandState) * ml::DegToRad(360.0f);
+    rndAngle.w = ml::DegToRad( 120.0f * float(m_CommonSettings.frameIndex % 3) );
 
     float ca = ml::Cos( rndAngle.x );
     float sa = ml::Sin( rndAngle.x );
-    m_Rotator[0] = ml::float4( ca, sa, -sa, ca ) * rndScale.x;
+    m_Rotator_PrePass = ml::float4( ca, sa, -sa, ca ) * rndScale.x;
 
     ca = ml::Cos( rndAngle.y );
     sa = ml::Sin( rndAngle.y );
-    m_Rotator[1] = ml::float4( ca, sa, -sa, ca ) * rndScale.y;
+    m_Rotator_Blur = ml::float4( ca, sa, -sa, ca ) * rndScale.y;
 
     ca = ml::Cos( rndAngle.z );
     sa = ml::Sin( rndAngle.z );
-    m_Rotator[2] = ml::float4( ca, sa, -sa, ca ) * rndScale.z;
+    m_Rotator_PostBlur = ml::float4( ca, sa, -sa, ca ) * rndScale.z;
+
+    ca = ml::Cos( rndAngle.w );
+    sa = ml::Sin( rndAngle.w );
+    m_Rotator_HistoryFix = ml::float4( ca, sa, -sa, ca ) * rndScale.w;
 
     // Main matrices
     m_ViewToClip = ml::float4x4
@@ -1319,10 +1324,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "SIGMA_Shadow_ClassifyTiles.cs.dxil.h"
         #include "SIGMA_Shadow_SmoothTiles.cs.dxbc.h"
         #include "SIGMA_Shadow_SmoothTiles.cs.dxil.h"
-        #include "SIGMA_Shadow_PrePass.cs.dxbc.h"
-        #include "SIGMA_Shadow_PrePass.cs.dxil.h"
         #include "SIGMA_Shadow_Blur.cs.dxbc.h"
         #include "SIGMA_Shadow_Blur.cs.dxil.h"
+        #include "SIGMA_Shadow_PostBlur.cs.dxbc.h"
+        #include "SIGMA_Shadow_PostBlur.cs.dxil.h"
         #include "SIGMA_Shadow_TemporalStabilization.cs.dxbc.h"
         #include "SIGMA_Shadow_TemporalStabilization.cs.dxil.h"
         #include "SIGMA_Shadow_SplitScreen.cs.dxbc.h"
@@ -1331,8 +1336,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "SIGMA_Shadow_ClassifyTiles.cs.spirv.h"
     #include "SIGMA_Shadow_SmoothTiles.cs.spirv.h"
-    #include "SIGMA_Shadow_PrePass.cs.spirv.h"
     #include "SIGMA_Shadow_Blur.cs.spirv.h"
+    #include "SIGMA_Shadow_PostBlur.cs.spirv.h"
     #include "SIGMA_Shadow_TemporalStabilization.cs.spirv.h"
     #include "SIGMA_Shadow_SplitScreen.cs.spirv.h"
 
@@ -1340,10 +1345,10 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
         #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxbc.h"
         #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxil.h"
-        #include "SIGMA_ShadowTranslucency_PrePass.cs.dxbc.h"
-        #include "SIGMA_ShadowTranslucency_PrePass.cs.dxil.h"
         #include "SIGMA_ShadowTranslucency_Blur.cs.dxbc.h"
         #include "SIGMA_ShadowTranslucency_Blur.cs.dxil.h"
+        #include "SIGMA_ShadowTranslucency_PostBlur.cs.dxbc.h"
+        #include "SIGMA_ShadowTranslucency_PostBlur.cs.dxil.h"
         #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxbc.h"
         #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxil.h"
         #include "SIGMA_ShadowTranslucency_SplitScreen.cs.dxbc.h"
@@ -1351,8 +1356,8 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #endif
 
     #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.spirv.h"
-    #include "SIGMA_ShadowTranslucency_PrePass.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_Blur.cs.spirv.h"
+    #include "SIGMA_ShadowTranslucency_PostBlur.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_SplitScreen.cs.spirv.h"
 

@@ -72,7 +72,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_Shadow_PrePass, SIGMA_BLUR_SET_CONSTANTS, 16, USE_MAX_DIMS );
+        AddDispatch( SIGMA_Shadow_Blur, SIGMA_BLUR_SET_CONSTANTS, 16, USE_MAX_DIMS );
     }
 
     PushPass("Post-blur");
@@ -84,7 +84,7 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
         PushOutput( AsUint(Transient::DATA_2) );
         PushOutput( AsUint(Transient::TEMP_2) );
 
-        AddDispatch( SIGMA_Shadow_Blur, SIGMA_BLUR_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_Shadow_PostBlur, SIGMA_BLUR_SET_CONSTANTS, 16, 1 );
     }
 
     PushPass("Temporal stabilization");
@@ -120,8 +120,8 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     {
         CLASSIFY_TILES,
         SMOOTH_TILES,
-        PRE_BLUR,
         BLUR,
+        POST_BLUR,
         TEMPORAL_STABILIZATION,
         SPLIT_SCREEN,
     };
@@ -155,18 +155,18 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     AddUint2(data, tilesW, tilesH);
     ValidateConstants(data);
 
-    // PRE_BLUR
-    data = PushDispatch(methodData, AsUint(Dispatch::PRE_BLUR));
-    AddSharedConstants_Sigma(methodData, settings, data);
-    AddFloat4x4(data, m_WorldToView);
-    AddFloat4(data, m_Rotator[0]);
-    ValidateConstants(data);
-
     // BLUR
     data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
     AddSharedConstants_Sigma(methodData, settings, data);
     AddFloat4x4(data, m_WorldToView);
-    AddFloat4(data, m_Rotator[1]);
+    AddFloat4(data, m_Rotator_Blur);
+    ValidateConstants(data);
+
+    // POST_BLUR
+    data = PushDispatch(methodData, AsUint(Dispatch::POST_BLUR));
+    AddSharedConstants_Sigma(methodData, settings, data);
+    AddFloat4x4(data, m_WorldToView);
+    AddFloat4(data, m_Rotator_PostBlur);
     ValidateConstants(data);
 
     // TEMPORAL_STABILIZATION

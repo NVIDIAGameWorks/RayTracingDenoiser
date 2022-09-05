@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 5
+#define NRD_SETTINGS_VERSION_MINOR 6
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -157,20 +157,6 @@ namespace nrd
         float D = -25.0f;
     };
 
-    // Optional specular lobe trimming = A * smoothstep( B, C, roughness )
-    // Recommended settings if lobe trimming is needed = { 0.85f, 0.04f, 0.11f }
-    struct SpecularLobeTrimmingParameters
-    {
-        // [0; 1] - main level  (0 - GGX dominant direction, 1 - full lobe)
-        float A = 1.0f;
-
-        // [0; 1] - max trimming if roughness is less than this threshold
-        float B = 0.0f;
-
-        // [0; 1] - main level if roughness is greater than this threshold
-        float C = 0.0001f;
-    };
-
     // Antilag logic:
     //    delta = ( abs( old - new ) - localVariance * sigmaScale ) / ( max( old, new ) + localVariance * sigmaScale + sensitivityToDarkness )
     //    delta = LinearStep( thresholdMax, thresholdMin, delta )
@@ -214,7 +200,6 @@ namespace nrd
 
     struct ReblurSettings
     {
-        SpecularLobeTrimmingParameters specularLobeTrimmingParameters = {};
         HitDistanceParameters hitDistanceParameters = {};
         AntilagIntensitySettings antilagIntensitySettings = {};
         AntilagHitDistanceSettings antilagHitDistanceSettings = {};

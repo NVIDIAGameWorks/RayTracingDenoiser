@@ -31,21 +31,20 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
     float roughness = normalAndRoughness.w;
 
-    // Internal data
-    float4 internalData1 = UnpackInternalData1( gIn_Data1[ pixelPos ] );
-
-    // Output
-    gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( normalAndRoughness );
-    #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
-        gOut_AccumSpeeds_MaterialID[ pixelPos ] = PackAccumSpeedsMaterialID( internalData1.x + 1.0, internalData1.z + 1.0, materialID ); // increment history length
-    #endif
-
     // Shared data
+    float4 data1 = UnpackData1( gIn_Data1[ pixelPos ] );
+
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float4 rotator = GetBlurKernelRotation( REBLUR_POST_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     float3 Vv = GetViewVector( Xv, true );
     float NoV = abs( dot( Nv, Vv ) );
+
+    // Output
+    gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( normalAndRoughness );
+    #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
+        gOut_InternalData[ pixelPos ] = PackInternalData( data1.x + 1.0, data1.z + 1.0, materialID ); // increment history length
+    #endif
 
     // Spatial filtering
     #define REBLUR_SPATIAL_MODE REBLUR_POST_BLUR

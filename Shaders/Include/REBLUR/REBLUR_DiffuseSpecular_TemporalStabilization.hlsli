@@ -208,14 +208,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float isInScreen = IsInScreen( smbPixelUv );
     float3 Xprev = X + motionVector * float( gIsWorldSpaceMotionEnabled != 0 );
 
-    // Internal data
+    // Shared data
     uint bits;
-    float4 internalData1 = UnpackInternalData1( gIn_Data1[ pixelPos ] );
-    float3 internalData2 = UnpackInternalData2( gIn_Data2[ pixelPos ], viewZ, bits );
+    float4 data1 = UnpackData1( gIn_Data1[ pixelPos ] );
+    float3 data2 = UnpackData2( gIn_Data2[ pixelPos ], viewZ, bits );
 
-    float virtualHistoryAmount = internalData2.x;
-    float hitDistScaleForTracking = internalData2.y;
-    float curvature = internalData2.z;
+    float virtualHistoryAmount = data2.x;
+    float hitDistScaleForTracking = data2.y;
+    float curvature = data2.z;
     float4 smbOcclusion = float4( ( bits & uint4( 4, 8, 16, 32 ) ) != 0 );
 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
@@ -249,11 +249,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float diffAntilag = ComputeAntilagScale(
             smbDiffHistory, diff, diffM1, diffSigma,
             gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
-            curvature * pixelSize, internalData1.xy
+            curvature * pixelSize, data1.xy
         );
 
         // Clamp history and combine with the current frame
-        float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, internalData1.x );
+        float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, data1.x );
 
         smbDiffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
         #ifdef REBLUR_SH
@@ -275,9 +275,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #if( REBLUR_DEBUG != 0 )
             uint diffMode = REBLUR_DEBUG;
             if( diffMode == 1 ) // Accumulated frame num
-                diffResult.w = 1.0 - saturate( internalData1.x / ( 1.0 + gMaxAccumulatedFrameNum ) ); // map history reset to red
+                diffResult.w = 1.0 - saturate( data1.x / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
             else if( diffMode == 2 ) // Error
-                diffResult.w = internalData1.y;
+                diffResult.w = data1.y;
 
             // Show how colorization represents 0-1 range on the bottom
             diffResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.96 ? pixelUv.x : diffResult.w );
@@ -295,11 +295,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Increment history length
-        internalData1.x += 1.0;
+        data1.x += 1.0;
 
         // Apply anti-lag
-        float diffMinAccumSpeed = min( internalData1.x, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
-        internalData1.x = lerp( diffMinAccumSpeed, internalData1.x, diffAntilag );
+        float diffMinAccumSpeed = min( data1.x, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
+        data1.x = lerp( diffMinAccumSpeed, data1.x, diffAntilag );
     #endif
 
     // Specular
@@ -357,10 +357,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specAntilag = ComputeAntilagScale(
             specHistory, spec, specM1, specSigma,
             gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
-            curvature * pixelSize, internalData1.zw, roughness );
+            curvature * pixelSize, data1.zw, roughness );
 
         // Clamp history and combine with the current frame
-        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, internalData1.z );
+        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, data1.z );
 
         specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
         #ifdef REBLUR_SH
@@ -382,9 +382,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #if( REBLUR_DEBUG != 0 )
             uint specMode = REBLUR_DEBUG;
             if( specMode == 1 ) // Accumulated frame num
-                specResult.w = 1.0 - saturate( internalData1.z / ( 1.0 + gMaxAccumulatedFrameNum ) ); // map history reset to red
+                specResult.w = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
             else if( specMode == 2 ) // Error
-                specResult.w = internalData1.w; // can be > 1.0
+                specResult.w = data1.w; // can be > 1.0
             else if( specMode == 3 ) // Curvature magnitude
                 specResult.w = abs( curvature * pixelSize );
             else if( specMode == 4 ) // Curvature sign
@@ -396,10 +396,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             else if( specMode == 7 ) // Parallax
             {
                 // or
-                specResult.w = ComputeParallax( Xprev - gCameraDelta.xyz, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
+                specResult.w = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
 
                 // or
-                //specResult.w = ComputeParallax( Xprev + gCameraDelta.xyz, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize, gUnproject, gOrthoMode );
+                //specResult.w = ComputeParallax( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize, gUnproject, gOrthoMode );
             }
 
             // Show how colorization represents 0-1 range on the bottom
@@ -418,12 +418,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Increment history length
-        internalData1.z += 1.0;
+        data1.z += 1.0;
 
         // Apply anti-lag
-        float specMinAccumSpeed = min( internalData1.z, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
-        internalData1.z = lerp( specMinAccumSpeed, internalData1.z, specAntilag );
+        float specMinAccumSpeed = min( data1.z, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
+        data1.z = lerp( specMinAccumSpeed, data1.z, specAntilag );
     #endif
 
-    gOut_AccumSpeeds_MaterialID[ pixelPos ] = PackAccumSpeedsMaterialID( internalData1.x, internalData1.z, materialID );
+    gOut_InternalData[ pixelPos ] = PackInternalData( data1.x, data1.z, materialID );
 }

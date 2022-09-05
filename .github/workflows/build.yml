@@ -41,7 +41,7 @@ jobs:
       - 
         name: Prepare NRD SDK
         run: |
-          &'.\3-Prepare NRD SDK.bat' --no-pause --copy-shaders
+          &'.\3-Prepare NRD SDK.bat' --no-pause --shaders
       - 
         name: Upload NRD SDK as artefact
         uses: actions/upload-artifact@v3

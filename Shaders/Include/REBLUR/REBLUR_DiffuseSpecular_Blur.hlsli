@@ -30,10 +30,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
     float roughness = normalAndRoughness.w;
 
-    // Internal data
-    float4 internalData1 = UnpackInternalData1( gIn_Data1[ pixelPos ] );
-
     // Shared data
+    float4 data1 = UnpackData1( gIn_Data1[ pixelPos ] );
+
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float4 rotator = GetBlurKernelRotation( REBLUR_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 

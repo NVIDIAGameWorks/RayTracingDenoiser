@@ -14,25 +14,25 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM                  SumConstants(0, 0, 0, 0)
 #define REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM                     8
 
-#define REBLUR_PREPASS_CONSTANT_NUM                                 SumConstants(0, 2, 0, 2)
+#define REBLUR_PREPASS_CONSTANT_NUM                                 SumConstants(0, 1, 0, 2)
 #define REBLUR_PREPASS_GROUP_DIM                                    16
 
-#define REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM                   SumConstants(4, 2, 1, 5)
+#define REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM                   SumConstants(4, 2, 1, 4)
 #define REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM                      8
 
-#define REBLUR_HISTORY_FIX_CONSTANT_NUM                             SumConstants(0, 0, 0, 1)
+#define REBLUR_HISTORY_FIX_CONSTANT_NUM                             SumConstants(0, 1, 0, 1)
 #define REBLUR_HISTORY_FIX_GROUP_DIM                                16
 
-#define REBLUR_BLUR_CONSTANT_NUM                                    SumConstants(0, 2, 0, 0)
+#define REBLUR_BLUR_CONSTANT_NUM                                    SumConstants(0, 1, 0, 1)
 #define REBLUR_BLUR_GROUP_DIM                                       8
 
-#define REBLUR_POST_BLUR_CONSTANT_NUM                               SumConstants(0, 2, 0, 0)
+#define REBLUR_POST_BLUR_CONSTANT_NUM                               SumConstants(0, 1, 0, 1)
 #define REBLUR_POST_BLUR_GROUP_DIM                                  8
 
 #define REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM                 SumConstants(0, 0, 0, 0, false)
 #define REBLUR_COPY_STABILIZED_HISTORY_GROUP_DIM                    16
 
-#define REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM                  SumConstants(2, 2, 2, 1)
+#define REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM                  SumConstants(2, 2, 2, 0)
 #define REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM                     8
 
 #define REBLUR_SPLIT_SCREEN_CONSTANT_NUM                            SumConstants(0, 0, 0, 3)
@@ -67,7 +67,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_FORMAT_PREV_VIEWZ                                    Format::R32_SFLOAT
 #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                         Format::RGBA8_UNORM
-#define REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID                   Format::R16_UINT
+#define REBLUR_FORMAT_PREV_INTERNAL_DATA                            Format::R16_UINT
 
 #define REBLUR_FORMAT_MIN_HITDIST                                   REBLUR_FORMAT_OCCLUSION
 
@@ -84,7 +84,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
     {
         PREV_VIEWZ = PERMANENT_POOL_START,
         PREV_NORMAL_ROUGHNESS,
-        PREV_ACCUMSPEEDS_MATERIALID,
+        PREV_INTERNAL_DATA,
         DIFF_HISTORY,
         DIFF_FAST_HISTORY_PING,
         DIFF_FAST_HISTORY_PONG,
@@ -92,7 +92,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
 
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_ACCUMSPEEDS_MATERIALID, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
@@ -187,7 +187,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
             PushInput( AsUint(ResourceType::IN_MV) );
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
             PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushInput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterPrepass ? DIFF_TEMP1 : AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_HISTORY) : AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
@@ -273,7 +273,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
             else
             {
                 PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
-                PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+                PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             }
 
             // Shaders
@@ -319,7 +319,7 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
             PushInput( DIFF_TEMP2 );
 
             // Outputs
-            PushOutput( AsUint(Permanent::PREV_ACCUMSPEEDS_MATERIALID) );
+            PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
 
             // Shaders
@@ -437,8 +437,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
         uint32_t passIndex = AsUint(Dispatch::PREPASS) + (settings.enableAdvancedPrepass ? 4 : 0) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
         Constant* data = PushDispatch(methodData, passIndex);
         AddSharedConstants_Reblur(methodData, settings, data);
-        AddFloat4(data, m_Rotator[0]);
-        AddFloat4(data, ml::float4(settings.specularLobeTrimmingParameters.A, settings.specularLobeTrimmingParameters.B, settings.specularLobeTrimmingParameters.C, 0.0f));
+        AddFloat4(data, m_Rotator_PrePass);
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
         ValidateConstants(data);
@@ -453,10 +452,9 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
     AddFloat4x4(data, m_WorldToClip);
     AddFloat4x4(data, m_WorldPrevToWorld);
     AddFloat4(data, m_FrustumPrev);
-    AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f));
+    AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, disocclusionThreshold));
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
-    AddFloat(data, disocclusionThreshold);
     AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);
     AddUint(data, skipPrePass ? 0 : 1);
@@ -466,6 +464,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
     passIndex = AsUint(Dispatch::HISTORY_FIX) + (settings.enablePerformanceMode ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
+    AddFloat4(data, m_Rotator_HistoryFix);
     AddFloat(data, settings.historyFixStrideBetweenSamples);
     ValidateConstants(data);
 
@@ -473,16 +472,16 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
     passIndex = AsUint(Dispatch::BLUR) + (settings.enablePerformanceMode ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
-    AddFloat4(data, m_Rotator[1]);
-    AddFloat4(data, ml::float4(settings.specularLobeTrimmingParameters.A, settings.specularLobeTrimmingParameters.B, settings.specularLobeTrimmingParameters.C, settings.maxAdaptiveRadiusScale));
+    AddFloat4(data, m_Rotator_Blur);
+    AddFloat(data, settings.maxAdaptiveRadiusScale);
     ValidateConstants(data);
 
     // POST_BLUR
     passIndex = AsUint(Dispatch::POST_BLUR) + (skipTemporalStabilization ? 0 : 2) + (settings.enablePerformanceMode ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
-    AddFloat4(data, m_Rotator[2]);
-    AddFloat4(data, ml::float4(settings.specularLobeTrimmingParameters.A, settings.specularLobeTrimmingParameters.B, settings.specularLobeTrimmingParameters.C, settings.maxAdaptiveRadiusScale));
+    AddFloat4(data, m_Rotator_PostBlur);
+    AddFloat(data, settings.maxAdaptiveRadiusScale);
     ValidateConstants(data);
 
     // COPY_STABILIZED_HISTORY
@@ -501,11 +500,10 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
         AddSharedConstants_Reblur(methodData, settings, data);
         AddFloat4x4(data, m_WorldToClip);
         AddFloat4x4(data, m_WorldToClipPrev);
-        AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f));
         AddFloat4(data, antilagMinMaxThreshold );
+        AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, settings.stabilizationStrength));
         AddFloat2(data, settings.antilagIntensitySettings.sigmaScale, settings.antilagHitDistanceSettings.sigmaScale);
         AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
-        AddFloat(data, settings.stabilizationStrength);
         ValidateConstants(data);
     }
 
