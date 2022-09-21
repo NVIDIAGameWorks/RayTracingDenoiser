@@ -91,12 +91,10 @@ nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserC
 
     m_EnableValidation = denoiserCreationDesc.enableValidation;
 
+    // Collect all possible dispatches
     for (uint32_t i = 0; i < denoiserCreationDesc.requestedMethodNum; i++)
     {
         const MethodDesc& methodDesc = denoiserCreationDesc.requestedMethods[i];
-
-        const uint16_t w = methodDesc.fullResolutionWidth;
-        const uint16_t h = methodDesc.fullResolutionHeight;
 
         uint32_t j = 0;
         for (; j < libraryDesc.supportedMethodNum; j++)
@@ -113,202 +111,169 @@ nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserC
         MethodData methodData = {};
         methodData.desc = methodDesc;
         methodData.dispatchOffset = m_Dispatches.size();
-        methodData.textureOffset = m_Resources.size();
         methodData.pingPongOffset = m_PingPongs.size();
 
+        size_t resourceOffset = m_Resources.size();
+
         if (methodDesc.method == Method::REBLUR_DIFFUSE)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurDiffuse(w, h);
-        }
+            AddMethod_ReblurDiffuse(methodData);
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_OCCLUSION)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurDiffuseOcclusion(w, h);
-        }
+            AddMethod_ReblurDiffuseOcclusion(methodData);
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_SH)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurDiffuseSh(w, h);
-        }
+            AddMethod_ReblurDiffuseSh(methodData);
         else if (methodDesc.method == Method::REBLUR_SPECULAR)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurSpecular(w, h);
-        }
+            AddMethod_ReblurSpecular(methodData);
         else if (methodDesc.method == Method::REBLUR_SPECULAR_OCCLUSION)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurSpecularOcclusion(w, h);
-        }
+            AddMethod_ReblurSpecularOcclusion(methodData);
         else if (methodDesc.method == Method::REBLUR_SPECULAR_SH)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurSpecularSh(w, h);
-        }
+            AddMethod_ReblurSpecularSh(methodData);
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurDiffuseSpecular(w, h);
-        }
+            AddMethod_ReblurDiffuseSpecular(methodData);
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurDiffuseSpecularOcclusion(w, h);
-        }
+            AddMethod_ReblurDiffuseSpecularOcclusion(methodData);
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_SPECULAR_SH)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurDiffuseSpecularSh(w, h);
-        }
+            AddMethod_ReblurDiffuseSpecularSh(methodData);
         else if (methodDesc.method == Method::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION)
-        {
-            methodData.settings.reblur = ReblurSettings();
-            methodData.settingsSize = AddMethod_ReblurDiffuseDirectionalOcclusion(w, h);
-        }
+            AddMethod_ReblurDiffuseDirectionalOcclusion(methodData);
         else if (methodDesc.method == Method::SIGMA_SHADOW)
-        {
-            methodData.settings.sigma = SigmaSettings();
-            methodData.settingsSize = AddMethod_SigmaShadow(w, h);
-        }
+            AddMethod_SigmaShadow(methodData);
         else if (methodDesc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
-        {
-            methodData.settings.sigma = SigmaSettings();
-            methodData.settingsSize = AddMethod_SigmaShadowTranslucency(w, h);
-        }
+            AddMethod_SigmaShadowTranslucency(methodData);
         else if (methodDesc.method == Method::RELAX_DIFFUSE)
-        {
-            methodData.settings.diffuseRelax = RelaxDiffuseSettings();
-            methodData.settingsSize = AddMethod_RelaxDiffuse(w, h);
-        }
+            AddMethod_RelaxDiffuse(methodData);
         else if (methodDesc.method == Method::RELAX_SPECULAR)
-        {
-            methodData.settings.specularRelax = RelaxSpecularSettings();
-            methodData.settingsSize = AddMethod_RelaxSpecular(w, h);
-        }
+            AddMethod_RelaxSpecular(methodData);
         else if (methodDesc.method == Method::RELAX_DIFFUSE_SPECULAR)
-        {
-            methodData.settings.diffuseSpecularRelax = RelaxDiffuseSpecularSettings();
-            methodData.settingsSize = AddMethod_RelaxDiffuseSpecular(w, h);
-        }
+            AddMethod_RelaxDiffuseSpecular(methodData);
         else if (methodDesc.method == Method::REFERENCE)
-        {
-            methodData.settings.reference = ReferenceSettings();
-            methodData.settingsSize = AddMethod_Reference(w, h);
-        }
+            AddMethod_Reference(methodData);
         else if (methodDesc.method == Method::SPECULAR_REFLECTION_MV)
-        {
-            methodData.settings.specularReflectionMv = SpecularReflectionMvSettings();
-            methodData.settingsSize = AddMethod_SpecularReflectionMv();
-        }
+            AddMethod_SpecularReflectionMv(methodData);
         else if (methodDesc.method == Method::SPECULAR_DELTA_MV)
-        {
-            methodData.settings.specularDeltaMv = SpecularDeltaMvSettings();
-            methodData.settingsSize = AddMethod_SpecularDeltaMv(w, h);
-        }
+            AddMethod_SpecularDeltaMv(methodData);
         else
             return Result::INVALID_ARGUMENT;
 
         methodData.pingPongNum = m_PingPongs.size() - methodData.pingPongOffset;
 
+        // Loop through all resources and find all used as STORAGE (i.e. ignore read-only user provided inputs)
+        size_t resourceNum = m_Resources.size() - resourceOffset;
+        for (size_t r = 0; r < resourceNum; r++)
+        {
+            const Resource& resource = m_Resources[resourceOffset + r];
+
+            if (resource.stateNeeded == DescriptorType::STORAGE_TEXTURE)
+            {
+                bool isFound = false;
+                for(const Resource& temp : m_UniqueStorageResources)
+                {
+                    if (temp.stateNeeded == resource.stateNeeded &&
+                        temp.type == resource.type &&
+                        temp.indexInPool == resource.indexInPool &&
+                        temp.mipOffset == resource.mipOffset &&
+                        temp.mipNum == resource.mipNum)
+                    {
+                        isFound = true;
+                        break;
+                    }
+                }
+
+                if (!isFound)
+                {
+                    m_UniqueStorageResources.push_back(resource);
+
+                    // Add "evil twin" resource if PING-PONG is used
+                    uint32_t resourceIndex = uint32_t(resourceOffset + r);
+                    for (uint32_t p = 0; p < methodData.pingPongNum; p++)
+                    {
+                        const PingPong& pingPong = m_PingPongs[methodData.pingPongOffset + p];
+                        if (pingPong.resourceIndex == resourceIndex)
+                        {
+                            m_UniqueStorageResources.push_back( {resource.stateNeeded, resource.type, pingPong.indexInPoolToSwapWith, resource.mipOffset, resource.mipNum} );
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         m_MethodData.push_back(methodData);
     }
 
-    // Clear
-    m_ClearDispatchOffset = m_Dispatches.size();
-
-    m_PermanentPoolOffset = 0;
-    for (size_t textureIndex = 0; textureIndex < m_PermanentPool.size(); textureIndex++)
+    // Add "clear" dispatches
+    m_DispatchClearIndex[0] = m_Dispatches.size();
+    _PushPass("Clear (f)");
     {
-        const TextureDesc& texture = m_PermanentPool[textureIndex];
-        for (uint16_t mip = 0; mip < texture.mipNum; mip++)
-        {
-            _PushPass("Clear");
-            {
-                PushOutput((uint16_t)(PERMANENT_POOL_START + textureIndex), mip, 1);
-                if (g_IsIntegerFormat[(size_t)texture.format])
-                    AddDispatch( Clear_ui, 0, 16, 1 );
-                else
-                    AddDispatch( Clear_f, 0, 16, 1 );
-            }
-        }
+        PushOutput(0, 0, 1);
+        AddDispatch( Clear_f, 0, 16, 1 );
     }
 
-    m_TransientPoolOffset = 0;
-    for (size_t textureIndex = 0; textureIndex < m_TransientPool.size(); textureIndex++)
+    m_DispatchClearIndex[1] = m_Dispatches.size();
+    _PushPass("Clear (ui)");
     {
-        const TextureDesc& texture = m_TransientPool[textureIndex];
-        for (uint16_t mip = 0; mip < texture.mipNum; mip++)
-        {
-            _PushPass("Clear");
-            {
-                PushOutput((uint16_t)(TRANSIENT_POOL_START + textureIndex), mip, 1);
-                if (g_IsIntegerFormat[(size_t)texture.format])
-                    AddDispatch( Clear_ui, 0, 16, 1 );
-                else
-                    AddDispatch( Clear_f, 0, 16, 1 );
-            }
-        }
+        PushOutput(0, 0, 1);
+        AddDispatch( Clear_ui, 0, 16, 1 );
     }
 
     Optimize();
     PrepareDesc();
+
+    // IMPORTANT: since now all std::vectors become "locked" (no reallocations)
 
     return Result::SUCCESS;
 }
 
 nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const nrd::CommonSettings& commonSettings, const nrd::DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
 {
-    const bool updatePingPong = commonSettings.frameIndex != m_CommonSettings.frameIndex;
-
     UpdateCommonSettings(commonSettings);
 
     m_ActiveDispatches.clear();
 
-    // Clear
-    if (m_CommonSettings.accumulationMode == AccumulationMode::CLEAR_AND_RESTART)
-    {
-        for (size_t i = m_ClearDispatchOffset; i < m_Dispatches.size(); i++)
-        {
-            const InternalDispatchDesc& internalDispatchDesc = m_Dispatches[i];
-            const Resource& resource = *internalDispatchDesc.resources;
-
-            size_t textureIndex = resource.indexInPool;
-            TextureDesc& textureDesc = resource.type == ResourceType::PERMANENT_POOL ? m_PermanentPool[textureIndex] : m_TransientPool[textureIndex];
-            uint32_t w = textureDesc.width >> resource.mipOffset;
-            uint32_t h = textureDesc.height >> resource.mipOffset;
-
-            DispatchDesc dispatchDesc = {};
-            dispatchDesc.name = internalDispatchDesc.name;
-            dispatchDesc.resources = internalDispatchDesc.resources;
-            dispatchDesc.resourceNum = internalDispatchDesc.resourceNum;
-            dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
-            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDimX);
-            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDimY);
-
-            m_ActiveDispatches.push_back(dispatchDesc);
-        }
-    }
-
     for (const MethodData& methodData : m_MethodData)
     {
-        if (updatePingPong)
-            UpdatePingPong(methodData);
+        UpdatePingPong(methodData);
 
-        if (methodData.desc.method == Method::REBLUR_DIFFUSE || methodData.desc.method == Method::REBLUR_DIFFUSE_SH)
-            UpdateMethod_Reblur(methodData, true, false);
-        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_OCCLUSION)
+        // Inject "clear" calls if needed
+        if (m_CommonSettings.accumulationMode == AccumulationMode::CLEAR_AND_RESTART)
+        {
+            for (const Resource& resource : m_UniqueStorageResources)
+            {
+                uint32_t w = methodData.desc.fullResolutionWidth;
+                uint32_t h = methodData.desc.fullResolutionHeight;
+                bool isInteger = false;
+
+                if (resource.type == ResourceType::PERMANENT_POOL || resource.type == ResourceType::TRANSIENT_POOL)
+                {
+                    TextureDesc& textureDesc = resource.type == ResourceType::PERMANENT_POOL ? m_PermanentPool[resource.indexInPool] : m_TransientPool[resource.indexInPool];
+                    w = textureDesc.width >> resource.mipOffset;
+                    h = textureDesc.height >> resource.mipOffset;
+                    isInteger = g_IsIntegerFormat[(size_t)textureDesc.format];
+                }
+
+                const InternalDispatchDesc& internalDispatchDesc = m_Dispatches[ m_DispatchClearIndex[isInteger ? 1 : 0] ];
+
+                DispatchDesc dispatchDesc = {};
+                dispatchDesc.name = internalDispatchDesc.name;
+                dispatchDesc.resources = &resource;
+                dispatchDesc.resourceNum = 1;
+                dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
+                dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDimX);
+                dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDimY);
+
+                m_ActiveDispatches.push_back(dispatchDesc);
+            }
+        }
+
+        // Collect active dispatches
+        if( methodData.desc.method == Method::REBLUR_DIFFUSE || methodData.desc.method == Method::REBLUR_DIFFUSE_SH ||
+            methodData.desc.method == Method::REBLUR_SPECULAR || methodData.desc.method == Method::REBLUR_SPECULAR_SH ||
+            methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR || methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR_SH ||
+            methodData.desc.method == Method::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION )
+            UpdateMethod_Reblur(methodData);
+        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_OCCLUSION ||
+            methodData.desc.method == Method::REBLUR_SPECULAR_OCCLUSION ||
+            methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION )
             UpdateMethod_ReblurOcclusion(methodData);
-        else if (methodData.desc.method == Method::REBLUR_SPECULAR || methodData.desc.method == Method::REBLUR_SPECULAR_SH)
-            UpdateMethod_Reblur(methodData, false, true);
-        else if (methodData.desc.method == Method::REBLUR_SPECULAR_OCCLUSION)
-            UpdateMethod_ReblurOcclusion(methodData);
-        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR || methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR_SH)
-            UpdateMethod_Reblur(methodData, true, true);
-        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
-            UpdateMethod_ReblurOcclusion(methodData);
-        else if (methodData.desc.method == Method::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION)
-            UpdateMethod_Reblur(methodData, true, false);
         else if (methodData.desc.method == Method::SIGMA_SHADOW || methodData.desc.method == Method::SIGMA_SHADOW_TRANSLUCENCY)
             UpdateMethod_SigmaShadow(methodData);
         else if (methodData.desc.method == Method::RELAX_DIFFUSE)
@@ -374,6 +339,7 @@ void nrd::DenoiserImpl::PrepareDesc()
 
     m_Desc.constantBufferDesc.registerIndex = 0;
 
+    // Calculate descriptor heap (sets) requirements
     for (InternalDispatchDesc& dispatchDesc : m_Dispatches)
     {
         size_t textureOffset = (size_t)dispatchDesc.resources;
@@ -398,6 +364,12 @@ void nrd::DenoiserImpl::PrepareDesc()
         }
     }
 
+    // For potential clears
+    uint32_t clearNum = (uint32_t)m_UniqueStorageResources.size();
+    m_Desc.descriptorSetDesc.storageTextureMaxNum += clearNum;
+    m_Desc.descriptorSetDesc.setMaxNum += clearNum;
+    m_Desc.descriptorSetDesc.staticSamplerMaxNum += clearNum * m_Desc.staticSamplerNum; // TODO: because the API assumes that each dispatch uses "static samplers"
+
     m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline = 0;
     for (PipelineDesc& pipelineDesc : m_Pipelines)
     {
@@ -406,8 +378,6 @@ void nrd::DenoiserImpl::PrepareDesc()
 
         m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline = std::max(pipelineDesc.descriptorRangeNum, m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline);
     }
-
-    // Since now all std::vectors become "locked" (no reallocations)
 }
 
 void nrd::DenoiserImpl::AddComputeDispatchDesc
@@ -423,7 +393,7 @@ void nrd::DenoiserImpl::AddComputeDispatchDesc
     const nrd::ComputeShader& spirv
 )
 {
-    // Pipeline
+    // Pipeline (unique only)
     size_t pipelineIndex = 0;
     for (; pipelineIndex < m_Pipelines.size(); pipelineIndex++)
     {
@@ -524,11 +494,9 @@ void nrd::DenoiserImpl::UpdatePingPong(const nrd::MethodData& methodData)
     for (uint32_t i = 0; i < methodData.pingPongNum; i++)
     {
         PingPong& pingPong = m_PingPongs[methodData.pingPongOffset + i];
-        Resource& resource = m_Resources[pingPong.textureIndex];
+        Resource& resource = m_Resources[pingPong.resourceIndex];
 
-        uint16_t t = pingPong.indexInPoolToSwapWith;
-        pingPong.indexInPoolToSwapWith = resource.indexInPool;
-        resource.indexInPool = t;
+        ml::Swap(resource.indexInPool, pingPong.indexInPoolToSwapWith);
     }
 }
 
@@ -704,8 +672,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Diffuse_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Diffuse_PrePass.cs.dxbc.h"
         #include "REBLUR_Diffuse_PrePass.cs.dxil.h"
-        #include "REBLUR_Diffuse_PrePass_Advanced.cs.dxbc.h"
-        #include "REBLUR_Diffuse_PrePass_Advanced.cs.dxil.h"
         #include "REBLUR_Diffuse_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Diffuse_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Diffuse_TemporalAccumulation_Confidence.cs.dxbc.h"
@@ -731,8 +697,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_PrePass.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_PrePass.cs.dxil.h"
-        #include "REBLUR_Perf_Diffuse_PrePass_Advanced.cs.dxbc.h"
-        #include "REBLUR_Perf_Diffuse_PrePass_Advanced.cs.dxil.h"
         #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence.cs.dxbc.h"
@@ -752,7 +716,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Diffuse_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Diffuse_PrePass.cs.spirv.h"
-    #include "REBLUR_Diffuse_PrePass_Advanced.cs.spirv.h"
     #include "REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Diffuse_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Diffuse_HistoryFix.cs.spirv.h"
@@ -766,7 +729,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_Diffuse_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_PrePass.cs.spirv.h"
-    #include "REBLUR_Perf_Diffuse_PrePass_Advanced.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_HistoryFix.cs.spirv.h"
@@ -893,8 +855,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Specular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Specular_PrePass.cs.dxbc.h"
         #include "REBLUR_Specular_PrePass.cs.dxil.h"
-        #include "REBLUR_Specular_PrePass_Advanced.cs.dxbc.h"
-        #include "REBLUR_Specular_PrePass_Advanced.cs.dxil.h"
         #include "REBLUR_Specular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Specular_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Specular_TemporalAccumulation_Confidence.cs.dxbc.h"
@@ -920,8 +880,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_Specular_PrePass.cs.dxbc.h"
         #include "REBLUR_Perf_Specular_PrePass.cs.dxil.h"
-        #include "REBLUR_Perf_Specular_PrePass_Advanced.cs.dxbc.h"
-        #include "REBLUR_Perf_Specular_PrePass_Advanced.cs.dxil.h"
         #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Perf_Specular_TemporalAccumulation_Confidence.cs.dxbc.h"
@@ -941,7 +899,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Specular_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Specular_PrePass.cs.spirv.h"
-    #include "REBLUR_Specular_PrePass_Advanced.cs.spirv.h"
     #include "REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Specular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Specular_HistoryFix.cs.spirv.h"
@@ -955,7 +912,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_Specular_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_Specular_PrePass.cs.spirv.h"
-    #include "REBLUR_Perf_Specular_PrePass_Advanced.cs.spirv.h"
     #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Perf_Specular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_Specular_HistoryFix.cs.spirv.h"
@@ -1082,8 +1038,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_PrePass.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_PrePass.cs.dxil.h"
-        #include "REBLUR_DiffuseSpecular_PrePass_Advanced.cs.dxbc.h"
-        #include "REBLUR_DiffuseSpecular_PrePass_Advanced.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_TemporalAccumulation_Confidence.cs.dxbc.h"
@@ -1109,8 +1063,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.dxil.h"
-        #include "REBLUR_Perf_DiffuseSpecular_PrePass_Advanced.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseSpecular_PrePass_Advanced.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation_Confidence.cs.dxbc.h"
@@ -1130,7 +1082,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecular_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PrePass.cs.spirv.h"
-    #include "REBLUR_DiffuseSpecular_PrePass_Advanced.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h"
@@ -1144,7 +1095,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.spirv.h"
-    #include "REBLUR_Perf_DiffuseSpecular_PrePass_Advanced.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.spirv.h"

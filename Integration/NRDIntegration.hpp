@@ -10,7 +10,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRDIntegration.h"
 
-static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 6, "Unsupported NRD version!");
+static_assert(NRD_VERSION_MAJOR >= 3 && NRD_VERSION_MINOR >= 7, "Unsupported NRD version!");
+static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 86, "Unsupported NRI version!");
 
 #if _WIN32
     #define NRD_INTEGRATION_ALLOCA _alloca
@@ -71,12 +72,12 @@ static inline nri::Format NRD_GetNriFormat(nrd::Format format)
     return g_NRD_NrdToNriFormat[(uint32_t)format];
 }
 
-static inline uint64_t NRD_CreateDescriptorKey(const nri::Texture* texture, bool isStorage, uint8_t mipOffset, uint8_t mipNum)
+static inline uint64_t NRD_CreateDescriptorKey(uint64_t texture, bool isStorage, uint8_t mipOffset, uint8_t mipNum)
 {
-    uint64_t key = uint64_t(isStorage ? 1 : 0) << 48ull;
-    key |= uint64_t(mipOffset & 127) << 49ull;
-    key |= uint64_t(mipNum) << 56ull;
-    key |= uint64_t(texture);
+    uint64_t key = uint64_t(isStorage ? 1 : 0) << 49ull;
+    key |= uint64_t(mipOffset & 127) << 50ull;
+    key |= uint64_t(mipNum & 127) << 57ull;
+    key |= texture & ((1ull << 49ull) - 1);
 
     return key;
 }
@@ -86,7 +87,8 @@ template<typename T, typename A> constexpr T NRD_GetAlignedSize(const T& size, A
     return T(((size + alignment - 1) / alignment) * alignment);
 }
 
-bool NrdIntegration::Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper, const nrd::DenoiserCreationDesc& denoiserCreationDesc)
+bool NrdIntegration::Initialize(const nrd::DenoiserCreationDesc& denoiserCreationDesc, nri::Device& nriDevice,
+    const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper)
 {
     const nri::DeviceDesc& deviceDesc = nriCore.GetDeviceDesc(nriDevice);
     if (deviceDesc.nriVersionMajor != NRI_VERSION_MAJOR || deviceDesc.nriVersionMinor != NRI_VERSION_MINOR)
@@ -383,7 +385,7 @@ bool NrdIntegration::SetMethodSettings(nrd::Method method, const void* methodSet
 void NrdIntegration::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer, const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool, bool enableDescriptorCaching)
 {
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("%s (Frame %u) ==============================================================================\n", m_Name, consecutiveFrameIndex);
+        printf("%s (frame %u) ==============================================================================\n\n", m_Name, consecutiveFrameIndex);
     #endif
 
     const nrd::DispatchDesc* dispatchDescs = nullptr;
@@ -409,6 +411,7 @@ void NrdIntegration::Denoise(uint32_t consecutiveFrameIndex, nri::CommandBuffer&
 
 void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool, bool enableDescriptorCaching)
 {
+    const nri::DeviceDesc& deviceDesc = m_NRI->GetDeviceDesc(*m_Device);
     const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_Denoiser);
     const nrd::PipelineDesc& pipelineDesc = denoiserDesc.pipelines[dispatchDesc.pipelineIndex];
 
@@ -432,6 +435,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     for (uint32_t i = 0; i < pipelineDesc.descriptorRangeNum; i++)
     {
         const nrd::DescriptorRangeDesc& descriptorRangeDesc = pipelineDesc.descriptorRanges[i];
+        const bool isStorage = descriptorRangeDesc.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE;
 
         descriptorRangeUpdateDescs[i].descriptors = descriptors + n;
         descriptorRangeUpdateDescs[i].descriptorNum = descriptorRangeDesc.descriptorNum;
@@ -464,8 +468,8 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
                     transitions[transitionBarriers.textureNum++] = nri::TextureTransition(*state, nextAccess, nextLayout, nrdResource.mipOffset + mip, 1);
             }
 
-            const bool isStorage = descriptorRangeDesc.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE;
-            uint64_t key = NRD_CreateDescriptorKey(nrdTexture->subresourceStates->texture, isStorage, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum);
+            uint64_t resource = m_NRI->GetTextureNativeObject(*nrdTexture->subresourceStates->texture, 0);
+            uint64_t key = NRD_CreateDescriptorKey(resource, isStorage, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum);
             const auto& entry = enableDescriptorCaching ? m_Descriptors.find(key) : m_Descriptors.end();
 
             nri::Descriptor* descriptor = nullptr;

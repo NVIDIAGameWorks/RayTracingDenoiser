@@ -11,7 +11,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 {
-    // TODO: if gRectSize < gRectSizePrev not all pixels will be copied
     // TODO: is it possible to introduce "CopyResource" in NRD API?
 
     #ifdef REBLUR_DIFFUSE

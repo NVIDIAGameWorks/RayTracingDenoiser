@@ -8,11 +8,17 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(nrd::MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_DirectionalOcclusion
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
     #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
+
+    methodData.settings.reblur = ReblurSettings();
+    methodData.settingsSize = sizeof(methodData.settings.reblur);
+            
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     // IMPORTANT: uses SNORM / UNORM 16-bit textures to maximize bits utilization and uniformity
 
@@ -271,6 +277,4 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w
     #undef METHOD_NAME
     #undef DIFF_TEMP1
     #undef DIFF_TEMP2
-
-    return sizeof(ReblurSettings);
 }

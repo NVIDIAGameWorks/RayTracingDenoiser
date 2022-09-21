@@ -18,7 +18,7 @@ float getNormalWeightParams(float nonLinearAccumSpeed, float roughness = 1.0, fl
     s *= strictness;
     s = lerp(s, 1.0, nonLinearAccumSpeed);
     angle *= s;
-    angle = 1.0 / max(angle, NRD_NORMAL_ENCODING_ERROR);
+    angle = 1.0 / max(angle, RELAX_NORMAL_ENCODING_ERROR);
 
     return angle;
 }
@@ -106,7 +106,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float4 d0 = gDiffuseIllumination[DiffCheckerboard(pixelPos + int2(-1, 0) + gRectOrigin)];
         float4 d1 = gDiffuseIllumination[DiffCheckerboard(pixelPos + int2(1, 0) + gRectOrigin)];
         float2 diffCheckerboardResolveWeights = checkerboardResolveWeights;
-#if( NRD_USE_MATERIAL_ID == 1 )
+#if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
         float materialID0;
         float materialID1;
         NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos + int2(-1, 0) + gRectOrigin], materialID0);
@@ -203,7 +203,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float4 s0 = gSpecularIllumination[SpecCheckerboard(pixelPos + int2(-1, 0) + gRectOrigin)];
         float4 s1 = gSpecularIllumination[SpecCheckerboard(pixelPos + int2(1, 0) + gRectOrigin)];
         float2 specCheckerboardResolveWeights = checkerboardResolveWeights;
-#if( NRD_USE_MATERIAL_ID == 1 )
+#if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
         float materialID0;
         float materialID1;
         NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos + int2(-1, 0) + gRectOrigin], materialID0);

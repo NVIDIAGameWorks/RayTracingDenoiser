@@ -19,8 +19,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_MAX_ACCUM_FRAME_NUM                      63.0
 #define REBLUR_ACCUMSPEED_BITS                          7 // "( 1 << REBLUR_ACCUMSPEED_BITS ) - 1" must be >= REBLUR_MAX_ACCUM_FRAME_NUM
 #define REBLUR_MATERIALID_BITS                          ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
+
 #define REBLUR_ROUGHNESS_ULP                            ( 1.0 / 255.0 )
-#define REBLUR_NORMAL_ULP                               STL::Math::DegToRad( 0.05 )
+#define REBLUR_NORMAL_ULP                               atan( 1.0 / 255.0 )
+#define REBLUR_CURVATURE_PACKING_SCALE                  0.1
 
 // Internal data ( from the previous frame )
 
@@ -110,7 +112,7 @@ float4 PackData2( float fbits, float curvature, float virtualHistoryAmount, floa
     // 7        - curvature sign
 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float packedCurvature = curvature * pixelSize; // to fit into 8-bits
+    float packedCurvature = curvature * pixelSize * REBLUR_CURVATURE_PACKING_SCALE; // to fit into 8-bits
 
     fbits += 128.0 * ( packedCurvature < 0.0 ? 1 : 0 );
 
@@ -135,7 +137,7 @@ float3 UnpackData2( float4 p, float viewZ, out uint bits )
 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
     float sgn = ( bits & 128 ) != 0 ? -1.0 : 1.0;
-    float curvature = p.y * sgn / pixelSize;
+    float curvature = p.y * sgn / ( pixelSize * REBLUR_CURVATURE_PACKING_SCALE );
 
     return float3( p.zw, curvature );
 }
@@ -220,8 +222,13 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
 
 // Misc ( templates )
 
+// Hit distance is normalized
 float ClampNegativeHitDistToZero( float hitDist )
-{ return saturate( hitDist ); } // hit distance is normalized
+{ return saturate( hitDist ); }
+
+// Doesn't allow to increase luma
+float GetLumaScale( float currLuma, float newLuma )
+{ return saturate( ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS ) ); }
 
 #ifdef REBLUR_OCCLUSION
 
@@ -241,7 +248,7 @@ float ClampNegativeHitDistToZero( float hitDist )
     { return input; }
 
     float ChangeLuma( float input, float newLuma )
-    { return newLuma; }
+    { return input * GetLumaScale( input, newLuma ); }
 
     float ClampNegativeToZero( float input )
     { return ClampNegativeHitDistToZero( input ); }
@@ -275,11 +282,7 @@ float ClampNegativeHitDistToZero( float hitDist )
 
     float4 ChangeLuma( float4 input, float newLuma )
     {
-        float currLuma = GetLuma( input );
-        input.xyz *= ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS );
-        input.w = newLuma;
-
-        return input;
+        return input * GetLumaScale( GetLuma( input ), newLuma );
     }
 
     float4 ClampNegativeToZero( float4 input )
@@ -320,8 +323,7 @@ float ClampNegativeHitDistToZero( float hitDist )
 
     float4 ChangeLuma( float4 input, float newLuma )
     {
-        float currLuma = GetLuma( input );
-        input.xyz *= ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS );
+        input.xyz *= GetLumaScale( GetLuma( input ), newLuma );
 
         return input;
     }
@@ -443,14 +445,19 @@ float GetEncodingAwareRoughnessWeights( float roughnessCurr, float roughnessPrev
     return STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_ROUGHNESS_ULP ) * a );
 }
 
-float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle )
+float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0 )
 {
     float a = 1.0 / maxAngle;
     float cosa = saturate( dot( Ncurr, Nprev ) );
     float d = STL::Math::AcosApprox( cosa );
 
-    float w = STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_NORMAL_ULP ) * a );
-    w = saturate( w / 0.95 ); // needed because prev normals are RGBA8 ( test 3, 43 if roughness is low )
+    angleThreshold += REBLUR_NORMAL_ULP;
+
+    // Anything below "angleThreshold" is ignored
+    float w = STL::Math::SmoothStep01( 1.0 - ( d - angleThreshold ) * a );
+
+    // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
+    w = saturate( w / 0.95 );
 
     return w;
 }
@@ -459,14 +466,10 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle )
 
 float GetNormalWeightParams( float nonLinearAccumSpeed, float fraction, float roughness = 1.0 )
 {
-    // TODO: "pixelRadiusNorm" can be used to estimate how many samples from a potentially bumpy normal map fit into
-    // a pixel, i.e. to increase "fraction" a bit if "pixelRadiusNorm" is close to 1. It was used before. Now it's a
-    // backup plan. See "GetBlurRadius".
-
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
     angle *= lerp( saturate( fraction ), 1.0, nonLinearAccumSpeed ); // TODO: use as "percentOfVolume" instead?
 
-    return 1.0 / max( angle, NRD_NORMAL_ENCODING_ERROR );
+    return 1.0 / max( angle, REBLUR_NORMAL_ULP );
 }
 
 float2 GetRoughnessWeightParams( float roughness, float fraction )

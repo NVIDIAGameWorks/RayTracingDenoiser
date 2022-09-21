@@ -8,11 +8,17 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(nrd::MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_SpecularOcclusion
     #define SPEC_TEMP1 AsUint(Transient::SPEC_TMP1)
     #define SPEC_TEMP2 AsUint(Transient::SPEC_TMP2)
+
+    methodData.settings.reblur = ReblurSettings();
+    methodData.settingsSize = sizeof(methodData.settings.reblur);
+
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     enum class Permanent
     {
@@ -182,6 +188,4 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t
     #undef METHOD_NAME
     #undef SPEC_TEMP1
     #undef SPEC_TEMP2
-
-    return sizeof(ReblurSettings);
 }

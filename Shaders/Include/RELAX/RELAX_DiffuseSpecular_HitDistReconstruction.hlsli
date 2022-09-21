@@ -25,7 +25,7 @@ float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float rou
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);
     angle *= lerp(saturate(fraction), 1.0, nonLinearAccumSpeed); // TODO: use as "percentOfVolume" instead?
 
-    return 1.0 / max(angle, NRD_NORMAL_ENCODING_ERROR);
+    return 1.0 / max(angle, RELAX_NORMAL_ENCODING_ERROR);
 }
 
 void Preload(uint2 sharedPos, int2 globalPos)

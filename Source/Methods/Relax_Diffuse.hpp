@@ -109,9 +109,15 @@ void nrd::DenoiserImpl::AddSharedConstants_Relax(const MethodData& methodData, C
     AddUint(data, (m_WorldPrevToWorld != ml::float4x4::Identity()) ? 1 : 0);
 }
 
-size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuse(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_RelaxDiffuse(nrd::MethodData& methodData)
 {
     #define METHOD_NAME RELAX_Diffuse
+
+    methodData.settings.diffuseRelax = RelaxDiffuseSettings();
+    methodData.settingsSize = sizeof(methodData.settings.diffuseRelax);
+            
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     enum class Permanent
     {
@@ -380,8 +386,6 @@ size_t nrd::DenoiserImpl::AddMethod_RelaxDiffuse(uint16_t w, uint16_t h)
     }
 
     #undef METHOD_NAME
-
-    return sizeof(RelaxDiffuseSpecularSettings);
 }
 
 void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuse(const MethodData& methodData)

@@ -8,9 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(nrd::MethodData& methodData)
 {
     #define METHOD_NAME SpecularDeltaMv
+
+    methodData.settings.specularDeltaMv = SpecularDeltaMvSettings();
+    methodData.settingsSize = sizeof(methodData.settings.specularDeltaMv);
+            
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     enum class Permanent
     {
@@ -37,8 +43,6 @@ size_t nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(uint16_t w, uint16_t h)
     }
 
     #undef METHOD_NAME
-
-    return sizeof(SpecularDeltaMvSettings);
 }
 
 void nrd::DenoiserImpl::UpdateMethod_SpecularDeltaMv(const MethodData& methodData)

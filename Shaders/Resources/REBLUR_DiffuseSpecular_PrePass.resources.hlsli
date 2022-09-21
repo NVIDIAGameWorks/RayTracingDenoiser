@@ -35,10 +35,6 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 3 )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_DirectionPdf, t, 4 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_DirectionPdf, t, 5 )
-        #endif
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 4 )
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 5 )
@@ -61,9 +57,6 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Diff, t, 2 )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_DirectionPdf, t, 3 )
-        #endif
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 3 )
         #endif
@@ -82,9 +75,6 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 2 )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_DirectionPdf, t, 3 )
-        #endif
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 3 )
         #endif

@@ -4,8 +4,8 @@ message("Processing 'NRD'...")
 
 set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "Custom DXC to use if Vulkan SDK is not installed")
 set(NRD_SHADER_OUTPUT_PATH "" CACHE STRING "Shader output path override")
-set(NRD_USE_OCT_NORMAL_ENCODING "0" CACHE STRING "NRD_USE_OCT_NORMAL_ENCODING")
-set(NRD_USE_MATERIAL_ID "0" CACHE STRING "NRD_USE_MATERIAL_ID")
+set(NRD_NORMAL_ENCODING "2" CACHE STRING "Normal encoding variant (0-4, matches nrd::NormalEncoding)")
+set(NRD_ROUGHNESS_ENCODING "1" CACHE STRING "Roughness encoding variant (0-2, matches nrd::RoughnessEncoding)")
 
 # Settings
 option(NRD_DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
@@ -50,7 +50,7 @@ if ("${NRD_SHADER_OUTPUT_PATH}" STREQUAL "")
     set(NRD_SHADER_OUTPUT_PATH "${PROJECT_BINARY_DIR}/Shaders")
 endif()
 message(STATUS "NRD shaders output path: '${NRD_SHADER_OUTPUT_PATH}'")
-message(STATUS "NRD.hlsli definitions: NRD_USE_OCT_NORMAL_ENCODING = ${NRD_USE_OCT_NORMAL_ENCODING}; NRD_USE_MATERIAL_ID = ${NRD_USE_MATERIAL_ID}")
+message(STATUS "NRD.hlsli definitions: NRD_NORMAL_ENCODING = ${NRD_NORMAL_ENCODING}; NRD_ROUGHNESS_ENCODING = ${NRD_ROUGHNESS_ENCODING}")
 
 if (NOT NRD_DISABLE_SHADER_COMPILATION)
     # Non-NRD include paths
@@ -111,9 +111,8 @@ if (NRD_USE_PRECOMPILED_SHADERS)
     target_include_directories(${PROJECT_NAME} PRIVATE "${NRD_SHADER_OUTPUT_PATH}")
 endif()
 
-if (NRD_USE_OCT_NORMAL_ENCODING)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_USE_OCT_NORMAL_ENCODING)
-endif()
+target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING})
+target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING})
 
 if(WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS _UNICODE UNICODE)

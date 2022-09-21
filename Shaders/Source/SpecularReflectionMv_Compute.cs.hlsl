@@ -84,10 +84,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float roughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance( roughness, Navg );
 
     // Curvature
-    float3 cameraMotion3d = Xprev - X - gCameraDelta;
-    float2 cameraMotion2d = STL::Geometry::RotateVectorInverse( gViewToWorld, cameraMotion3d ).xy;
-    float mvLen = length( cameraMotion2d );
-    cameraMotion2d = mvLen > 1e-7 ? cameraMotion2d / mvLen : float2( 1, 0 );
+    float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta, false );
+    float2 cameraMotion2d = ( pixelUv - motionUv ) * gRectSize;
+    cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );
     cameraMotion2d *= 0.5 * gInvRectSize;
 
     float curvature = 0;
@@ -111,7 +110,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float3 x = STL::Geometry::RotateVector( gViewToWorld, xv );
         float3 v = GetViewVector( x );
 
-        curvature += EstimateCurvature( n, v, N, X );
+        // Values below this threshold get turned into garbage due to numerical imprecision
+        float d = STL::Math::ManhattanDistance( N, n );
+        float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
+
+        curvature += EstimateCurvature( n, v, N, X ) * s;
     }
 
     curvature *= 0.5;

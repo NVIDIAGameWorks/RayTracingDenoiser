@@ -98,14 +98,13 @@ namespace nrd
         Settings settings;
         size_t settingsSize;
         size_t dispatchOffset;
-        size_t textureOffset;
         size_t pingPongOffset;
         size_t pingPongNum;
     };
 
     struct PingPong
     {
-        size_t textureIndex;
+        size_t resourceIndex;
         uint16_t indexInPoolToSwapWith;
     };
 
@@ -128,48 +127,49 @@ namespace nrd
     // Add methods here
     public:
         // Reblur
-        size_t AddMethod_ReblurDiffuse(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurDiffuseOcclusion(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurDiffuseSh(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurSpecular(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurSpecularOcclusion(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurSpecularSh(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurDiffuseSpecular(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurDiffuseSpecularOcclusion(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurDiffuseSpecularSh(uint16_t w, uint16_t h);
-        size_t AddMethod_ReblurDiffuseDirectionalOcclusion(uint16_t w, uint16_t h);
+        void AddMethod_ReblurDiffuse(MethodData& methodData);
+        void AddMethod_ReblurDiffuseOcclusion(MethodData& methodData);
+        void AddMethod_ReblurDiffuseSh(MethodData& methodData);
+        void AddMethod_ReblurSpecular(MethodData& methodData);
+        void AddMethod_ReblurSpecularOcclusion(MethodData& methodData);
+        void AddMethod_ReblurSpecularSh(MethodData& methodData);
+        void AddMethod_ReblurDiffuseSpecular(MethodData& methodData);
+        void AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& methodData);
+        void AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData);
+        void AddMethod_ReblurDiffuseDirectionalOcclusion(MethodData& methodData);
 
-        void UpdateMethod_Reblur(const MethodData& methodData, bool isDiffuse, bool isSpecular);
+        void UpdateMethod_Reblur(const MethodData& methodData);
         void UpdateMethod_ReblurOcclusion(const MethodData& methodData);
 
         void AddSharedConstants_Reblur(const MethodData& methodData, const ReblurSettings& settings, Constant*& data);
 
         // Sigma
-        size_t AddMethod_SigmaShadow(uint16_t w, uint16_t h);
+        void AddMethod_SigmaShadow(MethodData& methodData);
+        void AddMethod_SigmaShadowTranslucency(MethodData& methodData);
+
         void UpdateMethod_SigmaShadow(const MethodData& methodData);
+
         void AddSharedConstants_Sigma(const MethodData& methodData, const SigmaSettings& settings, Constant*& data);
 
-        size_t AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h);
-
         // Relax
-        void AddSharedConstants_Relax(const MethodData& methodData, Constant*& data, nrd::Method method);
+        void AddMethod_RelaxDiffuse(MethodData& methodData);
+        void AddMethod_RelaxSpecular(MethodData& methodData);
+        void AddMethod_RelaxDiffuseSpecular(MethodData& methodData);
 
-        size_t AddMethod_RelaxDiffuse(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxDiffuse(const MethodData& methodData);
-
-        size_t AddMethod_RelaxSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxSpecular(const MethodData& methodData);
-
-        size_t AddMethod_RelaxDiffuseSpecular(uint16_t w, uint16_t h);
         void UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodData);
 
-        size_t AddMethod_Reference(uint16_t w, uint16_t h);
+        void AddSharedConstants_Relax(const MethodData& methodData, Constant*& data, nrd::Method method);
+
+        // Other
+        void AddMethod_Reference(MethodData& methodData);
         void UpdateMethod_Reference(const MethodData& methodData);
 
-        size_t AddMethod_SpecularReflectionMv();
+        void AddMethod_SpecularReflectionMv(MethodData& methodData);
         void UpdateMethod_SpecularReflectionMv(const MethodData& methodData);
 
-        size_t AddMethod_SpecularDeltaMv(uint16_t w, uint16_t h);
+        void AddMethod_SpecularDeltaMv(MethodData& methodData);
         void UpdateMethod_SpecularDeltaMv(const MethodData& methodData);
 
     // Internal
@@ -180,6 +180,7 @@ namespace nrd
             m_PermanentPool(GetStdAllocator()),
             m_TransientPool(GetStdAllocator()),
             m_Resources(GetStdAllocator()),
+            m_UniqueStorageResources(GetStdAllocator()),
             m_PingPongs(GetStdAllocator()),
             m_DescriptorRanges(GetStdAllocator()),
             m_Pipelines(GetStdAllocator()),
@@ -191,6 +192,7 @@ namespace nrd
             m_PermanentPool.reserve(32);
             m_TransientPool.reserve(32);
             m_Resources.reserve(128);
+            m_UniqueStorageResources.reserve(32);
             m_PingPongs.reserve(32);
             m_DescriptorRanges.reserve(64);
             m_Pipelines.reserve(32);
@@ -302,6 +304,7 @@ namespace nrd
         Vector<TextureDesc> m_PermanentPool;
         Vector<TextureDesc> m_TransientPool;
         Vector<Resource> m_Resources;
+        Vector<Resource> m_UniqueStorageResources;
         Vector<PingPong> m_PingPongs;
         Vector<DescriptorRangeDesc> m_DescriptorRanges;
         Vector<PipelineDesc> m_Pipelines;
@@ -339,7 +342,7 @@ namespace nrd
         uint8_t* m_ConstantData = nullptr;
         size_t m_ConstantDataOffset = 0;
         size_t m_ResourceOffset = 0;
-        size_t m_ClearDispatchOffset = 0;
+        size_t m_DispatchClearIndex[2] = {};
         float m_IsOrtho = 0.0f;
         float m_CheckerboardResolveAccumSpeed = 0.0f;
         float m_JitterDelta = 0.0f;

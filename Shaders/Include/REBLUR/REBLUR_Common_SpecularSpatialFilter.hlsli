@@ -46,12 +46,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         float lobeAngleFractionScale = gLobeAngleFraction * fractionScale;
         float roughnessFractionScale = gRoughnessFraction * fractionScale;
-    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            lobeAngleFractionScale = 1.0;
-            roughnessFractionScale = 1.0;
-        #endif
-    #endif
 
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         float hitDist = ExtractHitDist( spec ) * hitDistScale;
@@ -79,6 +73,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // IMPORTANT: keep an eye on tests:
         // - 51 and 128: outlines without TAA
         // - 81 and 117: cleanness in disoccluded regions
+        // - 62: dirty look on curved thin objects
+        // TODO: try to store blur radius in data1.w, but scale by "hitDistFactor" here
         float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.z );
         boost *= 1.0 - STL::BRDF::Pow5( NoV );
         boost *= smc;
@@ -117,29 +113,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // Sampling
         float minHitDist = ExtractHitDist( spec );
         float minHitDistLuma = GetLuma( spec );
-
-    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Spec_DirectionPdf[ pos ] );
-        #endif
-        #ifdef REBLUR_SH
-            float4 dirPdf = specSh;
-            specSh *= spec.x;
-        #endif
-        #if( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_SH )
-            float3 L = dirPdf.xyz;
-            float3 V = STL::Geometry::RotateVector( gViewToWorld, Vv );
-            float3 H = normalize( L + V );
-            float NoL = saturate( dot( N, L ) );
-            float NoH = saturate( dot( N, H ) );
-            float VoH = saturate( dot( V, H ) );
-            float D = STL::BRDF::DistributionTerm( roughness, NoH );
-            float G = STL::BRDF::GeometryTermMod_SmithUncorrelated( roughness, NoL, NoV, VoH, NoH );
-
-            // IMPORTANT: no F at least because we don't know Rf0, PDF should not include it too
-            sum *= D * G * NoL / ( dirPdf.w + NRD_EPS );
-        #endif
-    #endif
 
         spec *= sum;
     #ifdef REBLUR_SH
@@ -185,9 +158,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         #endif
 
             REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
-            #ifdef REBLUR_SH
-                float4 sh = gIn_SpecSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
-            #endif
 
             float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
@@ -199,28 +169,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float w = CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
             w *= GetGaussianWeight( offset.z );
             w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, roughnessWeightParams );
-
-        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR && ( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_SH ) )
-            #ifdef REBLUR_SH
-                float4 dirPdf = sh;
-                sh *= s.x;
-            #else
-                float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Spec_DirectionPdf.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 ) );
-            #endif
-
-            float3 L = dirPdf.xyz;
-            float3 H = normalize( L + V );
-            float NoL = saturate( dot( N, L ) );
-            float NoH = saturate( dot( N, H ) );
-            float VoH = saturate( dot( V, H ) );
-            float D = STL::BRDF::DistributionTerm( roughness, NoH );
-            float G = STL::BRDF::GeometryTermMod_SmithUncorrelated( roughness, NoL, NoV, VoH, NoH );
-
-            // IMPORTANT: no F at least because we don't know Rf0, PDF should not include it too
-            w *= D * G * NoL / ( dirPdf.w + NRD_EPS );
-        #else
             w *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
-        #endif
 
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             // Decrease weight for samples that most likely are very close to reflection contact which should not be blurred
@@ -250,6 +199,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             sum += w;
             spec += s * w;
         #ifdef REBLUR_SH
+            float4 sh = gIn_SpecSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
             specSh += sh * w;
         #endif
         }
@@ -275,8 +225,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         spec = s0 * wc.x + s1 * wc.y;
 
     #ifdef REBLUR_SH
-        float4 sh0 = s0.x * gIn_SpecSh[ checkerboardPos.xy ];
-        float4 sh1 = s1.x * gIn_SpecSh[ checkerboardPos.zy ];
+        float4 sh0 = gIn_SpecSh[ checkerboardPos.xy ];
+        float4 sh1 = gIn_SpecSh[ checkerboardPos.zy ];
 
         specSh = sh0 * wc.x + sh1 * wc.y;
     #endif

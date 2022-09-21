@@ -15,9 +15,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS    SumConstants(2, 0, 0, 1)
 #define SIGMA_SPLIT_SCREEN_SET_CONSTANTS              SumConstants(0, 0, 0, 1)
 
-size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
 {
     #define METHOD_NAME SIGMA_Shadow
+
+    methodData.settings.sigma = SigmaSettings();
+    methodData.settingsSize = sizeof(methodData.settings.sigma);
+            
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
+    uint16_t tilesW = DivideUp(w, 16);
+    uint16_t tilesH = DivideUp(h, 16);
 
     enum class Transient
     {
@@ -35,9 +43,6 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     m_TransientPool.push_back( {Format::R8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, w, h, 1} );
-
-    uint16_t tilesW = DivideUp(w, 16);
-    uint16_t tilesH = DivideUp(h, 16);
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
@@ -110,8 +115,6 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadow(uint16_t w, uint16_t h)
     }
 
     #undef METHOD_NAME
-
-    return sizeof(SigmaSettings);
 }
 
 void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)

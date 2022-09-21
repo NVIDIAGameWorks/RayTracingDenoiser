@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(nrd::MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_DiffuseSpecularSh
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
@@ -19,6 +19,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(uint16_t w, uint16_t
     #define SPEC_TEMP2 AsUint(Transient::SPEC_TMP2)
     #define SPEC_SH_TEMP1 AsUint(Transient::SPEC_SH_TMP1)
     #define SPEC_SH_TEMP2 AsUint(Transient::SPEC_SH_TMP2)
+
+    methodData.settings.reblur = ReblurSettings();
+    methodData.settingsSize = sizeof(methodData.settings.reblur);
+            
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     enum class Permanent
     {
@@ -158,8 +164,8 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(uint16_t w, uint16_t
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_SH0) );
             PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PONG) );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PONG) );
-            PushInput( DIFF_SH_TEMP1 );
-            PushInput( SPEC_SH_TEMP1 );
+            PushInput( isAfterPrepass ? DIFF_SH_TEMP1 : AsUint(ResourceType::IN_DIFF_SH1) );
+            PushInput( isAfterPrepass ? SPEC_SH_TEMP1 : AsUint(ResourceType::IN_SPEC_SH1) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_SH_HISTORY) : AsUint(ResourceType::OUT_DIFF_SH1) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_SH_HISTORY) : AsUint(ResourceType::OUT_SPEC_SH1) );
 
@@ -373,6 +379,4 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(uint16_t w, uint16_t
     #undef SPEC_TEMP2
     #undef SPEC_SH_TEMP1
     #undef SPEC_SH_TEMP2
-
-    return sizeof(ReblurSettings);
 }

@@ -92,3 +92,13 @@ This guide has been designed to simplify migration to a newer version.
   - Removed `SpecularLobeTrimmingParameters`
 - *NRD.hlsli*:
   - Removed `NRD_GetTrimmingFactor`
+
+## To v3.7
+
+`NRD_USE_OCT_NORMAL_ENCODING` and `NRD_USE_MATERIAL_ID` replaced with more explicit `NRD_NORMAL_ENCODING` and `NRD_ROUGHNESS_ENCODING` to offer more encoding variants out of the box.
+
+- *API*:
+  - removed `maxSupportedMaterialBitNum` and `isCompiledWithOctPackNormalEncoding` from `LibraryDesc`
+  - added `normalEncoding` and `roughnessEncoding` to `LibraryDesc`
+- *REBLUR*:
+  - Removed `enableAdvancedPrepass`

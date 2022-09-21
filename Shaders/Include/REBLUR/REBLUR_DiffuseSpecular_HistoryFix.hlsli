@@ -159,7 +159,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             diff = ChangeLuma( diff, diffLuma );
 
             #ifdef REBLUR_SH
-                diffSh.xyz *= ( diffLuma + NRD_EPS ) / ( length( diffSh.xyz ) + NRD_EPS );
+                diffSh.xyz *= GetLumaScale( length( diffSh.xyz ), diffLuma );
             #endif
         #endif
 
@@ -188,7 +188,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             spec = ChangeLuma( spec, specLuma );
 
             #ifdef REBLUR_SH
-                specSh.xyz *= ( specLuma + NRD_EPS ) / ( length( specSh.xyz ) + NRD_EPS );
+                specSh.xyz *= GetLumaScale( length( specSh.xyz ), specLuma );
             #endif
         #endif
     #endif
@@ -261,7 +261,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float2 sums = 1.0;
             float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.y );
 
-            float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, 0.95 );
+            float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, 0.95 );
             #ifndef REBLUR_OCCLUSION
                 uint unused;
                 float3 data2 = UnpackData2( gIn_Data2[ pixelPos ], viewZ, unused );
@@ -272,11 +272,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
                 float curvatureAngleTan = stepSize * curvature;
                 float curvatureAngle = STL::Math::AtanApprox( saturate( curvatureAngleTan ) );
-                angle += curvatureAngle;
+                lobeHalfAngle += curvatureAngle;
             #else
                 float curvature = 0;
             #endif
-            float specNormalWeightParam = rcp( angle * specNonLinearAccumSpeed + NRD_NORMAL_ENCODING_ERROR );
+            lobeHalfAngle *= specNonLinearAccumSpeed;
+
+            float specNormalWeightParam = 1.0 / max( lobeHalfAngle, REBLUR_NORMAL_ULP );
             float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specNonLinearAccumSpeed );
             float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness, 1.0 );
             float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );

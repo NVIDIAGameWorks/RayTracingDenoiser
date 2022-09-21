@@ -8,13 +8,19 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(nrd::MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_DiffuseSh
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
     #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
     #define DIFF_SH_TEMP1 AsUint(Transient::DIFF_SH_TMP1)
     #define DIFF_SH_TEMP2 AsUint(Transient::DIFF_SH_TMP2)
+
+    methodData.settings.reblur = ReblurSettings();
+    methodData.settingsSize = sizeof(methodData.settings.reblur);
+
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     enum class Permanent
     {
@@ -300,6 +306,4 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(uint16_t w, uint16_t h)
     #undef DIFF_TEMP2
     #undef DIFF_SH_TEMP1
     #undef DIFF_SH_TEMP2
-
-    return sizeof(ReblurSettings);
 }

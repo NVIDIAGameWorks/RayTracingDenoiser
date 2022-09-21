@@ -41,10 +41,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_USE_EXPONENTIAL_WEIGHTS                             0 // bool
 #define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03
 #define NRD_CATROM_SHARPNESS                                    0.5 // [ 0; 1 ], 0.5 matches Catmull-Rom
-#define NRD_NORMAL_ENCODING_ERROR                               STL::Math::DegToRad( 0.5 )
 #define NRD_PARALLAX_NORMALIZATION                              30.0
 #define NRD_RADIANCE_COMPRESSION_MODE                           3 // 0-4, specular color compression for spatial passes
 #define NRD_EXP_WEIGHT_DEFAULT_SCALE                            3.0
+
+#if( NRD_NORMAL_ENCODING < NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 256.0 )
+#elif( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 1024.0 )
+#else
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 65536.0 )
+#endif
 
 //==================================================================================================================
 // CTA & preloading
@@ -96,7 +103,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // sigma = standard deviation, variance = sigma ^ 2
 #define GetStdDev( m1, m2 )                     sqrt( abs( ( m2 ) - ( m1 ) * ( m1 ) ) ) // sqrt( max( m2 - m1 * m1, 0.0 ) )
 
-#if( NRD_USE_MATERIAL_ID == 1 )
+#if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     #define CompareMaterials( m0, m, mask )     ( ( mask ) == 0 ? 1.0 : ( ( m0 ) == ( m ) ) )
 #else
     #define CompareMaterials( m0, m, mask )     1.0
@@ -221,15 +228,15 @@ float GetColorCompressionExposureForSpatialPasses( float roughness )
 
 // Thin lens
 
-float EstimateCurvature( float3 Ni, float3 Vi, float3 N, float3 X )
+float EstimateCurvature( float3 n, float3 v, float3 N, float3 X )
 {
     // https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
 
-    float NoV = dot( Vi, N );
-    float3 Xi = 0 + Vi * dot( X - 0, N ) / NoV;
-    float3 edge = Xi - X;
+    float NoV = dot( N, v );
+    float3 x = 0 + v * dot( X - 0, N ) / NoV;
+    float3 edge = x - X;
     float edgeLenSq = STL::Math::LengthSquared( edge );
-    float curvature = dot( Ni - N, edge ) / edgeLenSq;
+    float curvature = dot( n - N, edge ) * STL::Math::PositiveRcp( edgeLenSq );
 
     return curvature;
 }
@@ -237,20 +244,37 @@ float EstimateCurvature( float3 Ni, float3 Vi, float3 N, float3 X )
 float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
 {
     /*
+    Thin lens equation:
+        1 / F = 1 / O + 1 / I
+        F = R / 2 - focal distance
+        C = 1 / R - curvature
+
+    Sign convention:
+        convex  : O(-), I(+), C(+)
+        concave : O(+), I(-), C(-)
+
     Why NoV?
-
-    hitDist is not O, we need to find projection to the axis:
-        O = hitDist * NoV
-
-    hitDistFocused is not I, we need to reproject it back to the view direction:
-        hitDistFocused = I / NoV
+        hitDist is not O, we need to find projection to the axis:
+            O = hitDist * NoV
+        hitDistFocused is not I, we need to reproject it back to the view direction:
+            hitDistFocused = I / NoV
 
     Combine:
-        I = 0.5 * O / ( 0.5 + C * O )
-        hitDistFocused = [ 0.5 * NoV * hitDist / ( 0.5 + C * NoV * hitDist ) ] / NoV
+        2C = 1 / O + 1 / I
+        1 / I = 2C - 1 / O
+        1 / I = ( 2CO - 1 ) / O
+        I = O / ( 2CO - 1 )
+
+        I = [ ( O * NoV ) / ( 2CO * NoV - 1 ) ] / NoV
+        I = O / ( 2CO * NoV - 1 )
     */
 
-    float hitDistFocused = 0.5 * hitDist / ( 0.5 + curvature * NoV * hitDist );
+    float hitDistFocused = hitDist;
+    hitDistFocused *= -STL::Math::Sign( curvature );
+    hitDistFocused /= 2.0 * curvature * NoV * hitDistFocused - 1.0;
+
+    // A mystical fix for silhouettes of convex surfaces observed under a grazing angle
+    hitDistFocused *= lerp( NoV, 1.0, 1.0 / ( 1.0 + max( curvature * hitDist, 0.0 ) ) );
 
     return hitDistFocused;
 }

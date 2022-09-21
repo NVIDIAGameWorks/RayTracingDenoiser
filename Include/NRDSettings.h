@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 6
+#define NRD_SETTINGS_VERSION_MINOR 7
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -252,9 +252,6 @@ namespace nrd
 
         // Adds bias in case of badly defined signals, but tries to fight with fireflies
         bool enableAntiFirefly = false;
-
-        // A requiring IN_DIFF_DIRECTION_PDF / IN_SPEC_DIRECTION_PDF spatial reuse pass (can't be used with probabilistic sampling)
-        bool enableAdvancedPrepass = false;
 
         // Turns off spatial filtering and virtual motion based specular tracking
         bool enableReferenceAccumulation = false;

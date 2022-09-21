@@ -8,11 +8,17 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_ReblurSpecular(nrd::MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_Specular
     #define SPEC_TEMP1 AsUint(Transient::SPEC_TMP1)
     #define SPEC_TEMP2 AsUint(Transient::SPEC_TMP2)
+
+    methodData.settings.reblur = ReblurSettings();
+    methodData.settingsSize = sizeof(methodData.settings.reblur);
+
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     enum class Permanent
     {
@@ -79,7 +85,6 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
 
     for (int i = 0; i < REBLUR_PREPASS_PERMUTATION_NUM; i++)
     {
-        bool isAdvanced = ( ( ( i >> 1 ) & 0x1 ) != 0 );
         bool isAfterReconstruction  = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Pre-pass");
@@ -89,24 +94,13 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( isAfterReconstruction ? SPEC_TEMP2 : AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
 
-            if (isAdvanced)
-                PushInput( AsUint(ResourceType::IN_SPEC_DIRECTION_PDF) );
-
             // Outputs
             PushOutput( SPEC_TEMP1 );
             PushOutput( AsUint(Transient::SPEC_MIN_HITDIST) );
 
             // Shaders
-            if (isAdvanced)
-            {
-                AddDispatch( REBLUR_Specular_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Specular_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-            }
-            else
-            {
-                AddDispatch( REBLUR_Specular_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Specular_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-            }
+            AddDispatch( REBLUR_Specular_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_Specular_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
         }
     }
 
@@ -285,6 +279,4 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurSpecular(uint16_t w, uint16_t h)
     #undef METHOD_NAME
     #undef SPEC_TEMP1
     #undef SPEC_TEMP2
-
-    return sizeof(ReblurSettings);
 }

@@ -8,10 +8,13 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_SpecularReflectionMv()
+void nrd::DenoiserImpl::AddMethod_SpecularReflectionMv(nrd::MethodData& methodData)
 {
     #define METHOD_NAME SpecularReflectionMv
 
+    methodData.settings.specularReflectionMv = SpecularReflectionMvSettings();
+    methodData.settingsSize = sizeof(methodData.settings.specularReflectionMv);
+            
     SetSharedConstants(0, 0, 0, 0);
 
     PushPass("Compute");
@@ -27,8 +30,6 @@ size_t nrd::DenoiserImpl::AddMethod_SpecularReflectionMv()
     }
 
     #undef METHOD_NAME
-
-    return sizeof(SpecularReflectionMvSettings);
 }
 
 void nrd::DenoiserImpl::UpdateMethod_SpecularReflectionMv(const MethodData& methodData)

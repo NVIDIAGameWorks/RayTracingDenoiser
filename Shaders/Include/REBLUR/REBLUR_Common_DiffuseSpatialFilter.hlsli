@@ -43,11 +43,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
         float lobeAngleFractionScale = gLobeAngleFraction * fractionScale;
-    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            lobeAngleFractionScale = 1.0;
-        #endif
-    #endif
 
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
         float hitDist = ExtractHitDist( diff ) * hitDistScale;
@@ -66,6 +61,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // IMPORTANT: keep an eye on tests:
         // - 51 and 128: outlines without TAA
         // - 81 and 117: cleanness in disoccluded regions
+        // - 62: dirty look on curved thin objects
+        // TODO: try to store blur radius in data1.y, but scale by "hitDistFactor" here
         float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.x );
         boost *= 1.0 - STL::BRDF::Pow5( NoV );
 
@@ -93,22 +90,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * fractionScale;
 
         // Sampling
-    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        #ifdef REBLUR_HAS_DIRECTION_PDF
-            float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Diff_DirectionPdf[ pos ] );
-        #endif
-        #ifdef REBLUR_SH
-            float4 dirPdf = diffSh;
-            diffSh *= diff.x;
-        #endif
-        #if( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_SH )
-            float3 L = dirPdf.xyz;
-            float NoL = saturate( dot( N, L ) );
-
-            sum *= NoL / ( dirPdf.w + NRD_EPS );
-        #endif
-    #endif
-
         diff *= sum;
     #ifdef REBLUR_SH
         diffSh *= sum;
@@ -153,9 +134,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         #endif
 
             REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
-            #ifdef REBLUR_SH
-                float4 sh = gIn_DiffSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
-            #endif
 
             float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
@@ -167,22 +145,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float w = CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
             w *= GetGaussianWeight( offset.z );
             w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns );
-
-        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR && ( defined REBLUR_HAS_DIRECTION_PDF || defined REBLUR_SH ) )
-            #ifdef REBLUR_SH
-                float4 dirPdf = sh;
-                sh *= s.x;
-            #else
-                float4 dirPdf = NRD_FrontEnd_UnpackDirectionAndPdf( gIn_Diff_DirectionPdf.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 ) );
-            #endif
-
-            float3 L = dirPdf.xyz;
-            float NoL = saturate( dot( N, L ) );
-
-            w *= NoL / ( dirPdf.w + NRD_EPS );
-        #else
             w *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
-        #endif
 
             // Get rid of potentially bad values outside of the screen ( important for checkerboard )
             w = IsInScreen( uv ) ? w : 0.0;
@@ -192,6 +155,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             sum += w;
             diff += s * w;
         #ifdef REBLUR_SH
+            float4 sh = gIn_DiffSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
             diffSh += sh * w;
         #endif
         }
@@ -215,8 +179,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         diff = s0 * wc.x + s1 * wc.y;
 
     #ifdef REBLUR_SH
-        float4 sh0 = s0.x * gIn_DiffSh[ checkerboardPos.xy ];
-        float4 sh1 = s1.x * gIn_DiffSh[ checkerboardPos.zy ];
+        float4 sh0 = gIn_DiffSh[ checkerboardPos.xy ];
+        float4 sh1 = gIn_DiffSh[ checkerboardPos.zy ];
 
         diffSh = sh0 * wc.x + sh1 * wc.y;
     #endif

@@ -8,9 +8,17 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t h)
+void nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(nrd::MethodData& methodData)
 {
     #define METHOD_NAME SIGMA_ShadowTranslucency
+
+    methodData.settings.sigma = SigmaSettings();
+    methodData.settingsSize = sizeof(methodData.settings.sigma);
+            
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
+    uint16_t tilesW = DivideUp(w, 16);
+    uint16_t tilesH = DivideUp(h, 16);
 
     enum class Transient
     {
@@ -28,9 +36,6 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-
-    uint16_t tilesW = DivideUp(w, 16);
-    uint16_t tilesH = DivideUp(h, 16);
     m_TransientPool.push_back( {Format::RG8_UNORM, tilesW, tilesH, 1} );
     m_TransientPool.push_back( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
@@ -106,6 +111,4 @@ size_t nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(uint16_t w, uint16_t
     }
 
     #undef METHOD_NAME
-
-    return sizeof(SigmaSettings);
 }

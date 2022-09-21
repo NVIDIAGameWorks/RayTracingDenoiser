@@ -340,7 +340,6 @@ float loadVirtualMotionBasedPrevData(
     bilinearTapsValid *= IsInScreen(prevUVVMB);
 
     // Applying reprojection
-    float reprojectionFound = 0;
     prevSpecularIllumAnd2ndMoment = 0;
     prevSpecularResponsiveIllum = 0;
     prevNormal = currentNormal;
@@ -376,14 +375,14 @@ float loadVirtualMotionBasedPrevData(
         prevSpecularResponsiveIllum = spec.rgb;
 
         // Fitering previous data that does not need bicubic
-        float4 prevNormalRoughness = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, prevUVVMB, 0));
+        prevReflectionHitT = gPrevReflectionHitT.SampleLevel(gLinearClamp, prevUVVMB, 0).x;
+        prevReflectionHitT = max(0.001, prevReflectionHitT);
+
+        float2 prevUVVMBforGBuffer = prevUVVMB * gRectSizePrev * gInvResourceSize;
+        float4 prevNormalRoughness = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, prevUVVMBforGBuffer, 0));
         prevNormal = prevNormalRoughness.xyz;
         prevNormal = gUseWorldPrevToWorld ? STL::Geometry::RotateVector(gWorldPrevToWorld, prevNormal) : prevNormal;
         prevRoughness = prevNormalRoughness.w;
-
-        prevReflectionHitT = gPrevReflectionHitT.SampleLevel(gLinearClamp, prevUVVMB, 0).x;
-        prevReflectionHitT = max(0.001, prevReflectionHitT);
-        reprojectionFound = 1.0;
     }
     // Using all() marks entire virtual motion based specular history footprint
     // invalid for specular reprojection logic down the shader code even if at least one bilinear tap is invalid.
@@ -543,16 +542,15 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Calculating curvature along the direction of motion
 #ifdef RELAX_SPECULAR
     float curvature = 0;
-    float3 cameraMotion3d = prevWorldPos - currentWorldPos - gPrevCameraPosition.xyz;
-    float2 mv = STL::Geometry::RotateVectorInverse(gViewToWorld, cameraMotion3d).xy;
-    float mvLen = length(mv);
-    mv = mvLen > 1e-7 ? mv / mvLen : float2(1, 0);
-    mv *= 0.5 * gInvRectSize;
+    float2 motionUv = STL::Geometry::GetScreenUv(gWorldToClip, prevWorldPos - gPrevCameraPosition.xyz, false);
+    float2 cameraMotion2d = ( pixelUv - motionUv ) * gRectSize;
+    cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / ( 1.0 + gSpecularMaxAccumulatedFrameNum ) );
+    cameraMotion2d *= 0.5 * gInvRectSize;
 
     [unroll]
     for (int dir = -1; dir <= 1; dir += 2)
     {
-        float2 uv = pixelUv + dir * mv;
+        float2 uv = pixelUv + dir * cameraMotion2d;
         STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter(uv, gRectSize);
 
         sharedMemoryIndex = threadPos + BORDER + uint2(f.origin) - pixelPos;
@@ -566,7 +564,12 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
         float3 x = GetCurrentWorldPosFromClipSpaceXY(uv * 2.0 - 1.0, 1.0);
         float3 v = normalize(gOrthoMode ? gFrustumForward.xyz : x);
-        curvature += EstimateCurvature(pNormal, v, currentNormal, currentWorldPos);
+
+        // Values below this threshold get turned into garbage due to numerical imprecision
+        float d = STL::Math::ManhattanDistance(pNormal, currentNormal);
+        float s = STL::Math::LinearStep(NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d);
+
+        curvature += EstimateCurvature(pNormal, v, currentNormal, currentWorldPos) * s;
     }
     curvature *= 0.5;
 
@@ -722,15 +725,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 accumulatedSpecularSMBResponsive = lerp(prevSpecularIlluminationAnd2ndMomentSMBResponsive, specularIllumination.xyz, specSurfaceResponsiveAlpha);
     float accumulatedSpecularM2SMB = lerp(prevSpecularIlluminationAnd2ndMomentSMB.a, specular2ndMoment, specSurfaceAlpha);
 
-    // Thin lens equation for adjusting reflection HitT
+    // Picking hitDist as minimal value in 3x3 or 5x5 area depending on roughness
+    // and clamping to M1 with 3 sigma to avoid picking too small values
     float hitDist = specularIllumination.a;
     hitDist = lerp(minHitDist3x3, minHitDist5x5, STL::Math::SmoothStep(0.04, 0.08, currentRoughnessModified));
     hitDist = clamp(hitDist, specM1.a - specSigma.a * 3.0, specM1.a + specSigma.a * 3.0);
-    float divider = 0.5 + curvature * hitDist * NoV;
-    float hitDistFocused = 0.5 * hitDist / (divider == 0 ? 0.5 : divider);
 
-    // Adjusting for the highly sloped angles with curvature
-    hitDistFocused *= lerp(1.0, NoV, saturate(curvature * hitDist));
+    // Thin lens equation for adjusting reflection HitT
+    float hitDistFocused = ApplyThinLensEquation(NoV, hitDist, curvature);
 
     // Limiting hitDist in ortho case to avoid extreme amounts of motion in reflection
     if (gOrthoMode != 0)
@@ -781,7 +783,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(currentRoughnessModified);
     lobeHalfAngle *= virtualLobeScale;
     lobeHalfAngle += curvatureAngle;
-    lobeHalfAngle += NRD_NORMAL_ENCODING_ERROR + STL::Math::DegToRad(1.5); // TODO: tune better?
+    lobeHalfAngle += RELAX_NORMAL_ENCODING_ERROR + STL::Math::DegToRad(1.5); // TODO: tune better?
     float virtualNormalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, lobeHalfAngle);
     virtualHistoryConfidence *= lerp(virtualNormalWeight, 1.0, saturate(fresnelFactor * parallax));
 

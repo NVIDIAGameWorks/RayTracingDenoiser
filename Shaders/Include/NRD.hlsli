@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.6
+// NRD v3.7
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -187,29 +187,27 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 #endif
 
 //=================================================================================================================================
-// SETTINGS
-//=================================================================================================================================
-
-// UNORM or OCT-packed normals
-#ifndef NRD_USE_OCT_NORMAL_ENCODING
-    #error "NRD_USE_OCT_NORMAL_ENCODING needs to be defined as 0 or 1. You can check 'LibraryDesc::isCompiledWithOctPackNormalEncoding' at runtime to know it."
-#endif
-
-// Material ID support
-#ifndef NRD_USE_MATERIAL_ID
-    #error "NRD_USE_MATERIAL_ID needs to be defined as 0 or 1. You can check 'LibraryDesc::maxSupportedMaterialBitNum' at runtime to know it."
-#endif
-
-// [Optional] Rarely needed
-#define NRD_USE_SQRT_LINEAR_ROUGHNESS                                                   0
-
-//=================================================================================================================================
 // PRIVATE
 //=================================================================================================================================
 
-#if( NRD_USE_OCT_NORMAL_ENCODING == 0 )
-    #undef NRD_USE_MATERIAL_ID
-    #define NRD_USE_MATERIAL_ID 0
+// Normal encoding variants ( match NormalEncoding )
+#define NRD_NORMAL_ENCODING_RGBA8_UNORM         0
+#define NRD_NORMAL_ENCODING_RGBA8_SNORM         1
+#define NRD_NORMAL_ENCODING_R10G10B10A2_UNORM   2 // supports material ID bits
+#define NRD_NORMAL_ENCODING_RGBA16_UNORM        3
+#define NRD_NORMAL_ENCODING_RGBA16_SNORM        4 // also can be used with FP formats
+
+#ifndef NRD_NORMAL_ENCODING
+    #error "NRD_NORMAL_ENCODING must be defined as 0-4. You can check 'LibraryDesc::normalEncoding' at runtime to know it."
+#endif
+
+// Roughness encoding variants ( match RoughnessEncoding )
+#define NRD_ROUGHNESS_ENCODING_SQ_LINEAR        0 // linearRoughness * linearRoughness
+#define NRD_ROUGHNESS_ENCODING_LINEAR           1 // linearRoughness
+#define NRD_ROUGHNESS_ENCODING_SQRT_LINEAR      2 // sqrt( linearRoughness )
+
+#ifndef NRD_ROUGHNESS_ENCODING
+    #error "NRD_ROUGHNESS_ENCODING must be defined 0-2. You can check 'LibraryDesc::roughnessEncoding' at runtime to know it."
 #endif
 
 #define NRD_FP16_MIN                                                                    1e-7 // min allowed hitDist (0 = no data)
@@ -217,7 +215,6 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 #define NRD_FP16_VIEWZ_SCALE                                                            0.125 // TODO: tuned for meters, needs to be scaled down for cm and mm
 #define NRD_PI                                                                          3.14159265358979323846
 #define NRD_EPS                                                                         1e-6
-#define NRD_MIN_PDF                                                                     0.005 // a requirement for UNORM 8-bit
 
 // ViewZ packing into FP16
 float _NRD_PackViewZ( float z )
@@ -295,16 +292,14 @@ struct NRD_SH
     float normHitDist;
 };
 
-NRD_SH NRD_SH_Create( float3 color, float3 direction )
+NRD_SH NRD_SH_Create( float3 color, float3 direction, float normHitDist = 1.0 )
 {
     float3 YCoCg = _NRD_LinearToYCoCg( color );
 
     NRD_SH sh;
     sh.c0_chroma = YCoCg;
-
-    // IMPORTANT: "direction" is not multiplied by "YCoCg.x"!
-    // It's needed to get "unbiased" direction in pre-pass, NRD respects SH math internally
-    sh.c1 = direction;
+    sh.c1 = direction * YCoCg.x;
+    sh.normHitDist = normHitDist;
 
     return sh;
 }
@@ -359,25 +354,29 @@ float3 NRD_SH_ResolveColor( NRD_SH sh, float3 N )
 // IN_NORMAL_ROUGHNESS => X
 float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
 {
-    materialID = 0;
-
     float4 r;
-    #if( NRD_USE_OCT_NORMAL_ENCODING == 1 )
+    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
         r.xyz = _NRD_DecodeUnitVector( p.xy, false, false );
         r.w = p.z;
 
-        #if( NRD_USE_MATERIAL_ID == 1 )
-            materialID = p.w;
-        #endif
+        materialID = p.w;
     #else
-        r.xyz = p.xyz * 2.0 - 1.0;
+        #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_RGBA8_UNORM || NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_RGBA16_UNORM )
+            p.xyz = p.xyz * 2.0 - 1.0;
+        #endif
+
+        r.xyz = p.xyz;
         r.w = p.w;
+
+        materialID = 0;
     #endif
 
     r.xyz = normalize( r.xyz );
 
-    #if( NRD_USE_SQRT_LINEAR_ROUGHNESS == 1 )
+    #if( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQRT_LINEAR )
         r.w *= r.w;
+    #elif( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQ_LINEAR )
+        r.w = sqrt( r.w );
     #endif
 
     return r;
@@ -397,11 +396,13 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint mate
 {
     float4 p;
 
-    #if( NRD_USE_SQRT_LINEAR_ROUGHNESS == 1 )
+    #if( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQRT_LINEAR )
         roughness = STL::Math::Sqrt01( roughness );
+    #elif( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQ_LINEAR )
+        roughness *= roughness;
     #endif
 
-    #if( NRD_USE_OCT_NORMAL_ENCODING == 1 )
+    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
         p.xy = _NRD_EncodeUnitVector( N, false );
         p.z = roughness;
         p.w = saturate( ( materialID + 0.5 ) / 3.0 );
@@ -409,30 +410,15 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint mate
         // Best fit ( optional )
         N /= max( abs( N.x ), max( abs( N.y ), abs( N.z ) ) );
 
-        p.xyz = N * 0.5 + 0.5;
+        #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_RGBA8_UNORM || NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_RGBA16_UNORM )
+            N = N * 0.5 + 0.5;
+        #endif
+
+        p.xyz = N;
         p.w = roughness;
     #endif
 
     return p;
-}
-
-// Helper functions to pack / unpack ray direction and PDF ( can be averaged for some samples )
-// X => IN_DIFF_DIRECTION_PDF
-// X => IN_SPEC_DIRECTION_PDF
-float4 NRD_FrontEnd_PackDirectionAndPdf( float3 direction, float pdf )
-{
-    return float4( direction, max( pdf, NRD_MIN_PDF ) );
-}
-
-// IN_DIFF_DIRECTION_PDF => X
-// IN_SPEC_DIRECTION_PDF => X
-float4 NRD_FrontEnd_UnpackDirectionAndPdf( float4 directionAndPdf )
-{
-    float4 r;
-    r.xyz = normalize( directionAndPdf.xyz );
-    r.w = directionAndPdf.w;
-
-    return r;
 }
 
 //========
@@ -470,7 +456,7 @@ float4 REBLUR_FrontEnd_PackRadianceAndNormHitDist( float3 radiance, float normHi
 // X => IN_DIFF_SH0 and IN_DIFF_SH1
 // X => IN_SPEC_SH0 and IN_SPEC_SH1
 // normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
-float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direction, float pdf, out float4 out1, bool sanitize = true )
+float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direction, out float4 out1, bool sanitize = true )
 {
     if( sanitize )
     {
@@ -482,13 +468,13 @@ float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direct
     if( normHitDist != 0 )
         normHitDist = max( normHitDist, NRD_FP16_MIN );
 
-    NRD_SH sh = NRD_SH_Create( radiance, direction );
+    NRD_SH sh = NRD_SH_Create( radiance, direction, normHitDist );
 
     // IN_DIFF_SH0 / IN_SPEC_SH0
-    float4 out0 = float4( sh.c0_chroma, normHitDist );
+    float4 out0 = float4( sh.c0_chroma, sh.normHitDist );
 
     // IN_DIFF_SH1 / IN_SPEC_SH1
-    out1 = float4( sh.c1, max( pdf, NRD_MIN_PDF ) );
+    out1 = float4( sh.c1, 0.0 );
 
     return out0;
 }
@@ -509,8 +495,7 @@ float4 REBLUR_FrontEnd_PackDirectionalOcclusion( float3 direction, float normHit
 
     NRD_SH sh = NRD_SH_Create( normHitDist, direction );
 
-    // Multiply by Y here, because NRD has post multiplication implemented only for SH variant
-    return float4( sh.c1 * sh.c0_chroma.x, sh.c0_chroma.x );
+    return float4( sh.c1, sh.c0_chroma.x );
 }
 
 //========

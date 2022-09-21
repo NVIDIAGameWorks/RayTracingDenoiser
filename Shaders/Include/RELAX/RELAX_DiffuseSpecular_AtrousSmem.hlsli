@@ -111,8 +111,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     // Repacking normal and roughness to prev normal roughness to be used in the next frame
     float4 normalRoughness = sharedNormalRoughness[sharedMemoryIndex.y][sharedMemoryIndex.x];
     gOutNormalRoughness[pixelPos] = PackPrevNormalRoughness(normalRoughness);
-    
-#if( NRD_USE_MATERIAL_ID == 1 )
+
+#if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     gOutMaterialID[pixelPos] = floor(centerMaterialID * 3.0 + 0.5) / 255.0; // IMPORTANT: properly repack 2-bits to 8-bits
 #endif
 

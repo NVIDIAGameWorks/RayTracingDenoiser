@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 6
+#define NRD_DESCS_VERSION_MINOR 7
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -36,7 +36,7 @@ namespace nrd
         // =============================================================================================================================
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST,
-        // OPTIONAL INPUTS - IN_DIFF_DIRECTION_PDF, IN_DIFF_CONFIDENCE
+        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
         REBLUR_DIFFUSE,
 
@@ -64,7 +64,7 @@ namespace nrd
         REBLUR_SPECULAR_SH,
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST,
-        // OPTIONAL INPUTS - IN_DIFF_DIRECTION_PDF, IN_SPEC_DIRECTION_PDF, IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
+        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, OUT_SPEC_RADIANCE_HITDIST
         REBLUR_DIFFUSE_SPECULAR,
 
@@ -78,7 +78,7 @@ namespace nrd
         REBLUR_DIFFUSE_SPECULAR_SH,
 
         // INPUTS - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ, IN_DIFF_DIRECTION_HITDIST,
-        // OPTIONAL INPUTS - IN_DIFF_DIRECTION_PDF, IN_DIFF_CONFIDENCE
+        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
         // OUTPUTS - OUT_DIFF_DIRECTION_HITDIST
         REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
 
@@ -175,12 +175,6 @@ namespace nrd
         IN_SPEC_SH0,
         IN_SPEC_SH1,
 
-        // (Optional) Ray direction and sample PDF (RGBA8+)
-        // These inputs are needed only for PrePassMode::ADVANCED
-        //      REBLUR: use "NRD_FrontEnd_PackDirectionAndPdf" for encoding
-        IN_DIFF_DIRECTION_PDF,
-        IN_SPEC_DIRECTION_PDF,
-
         // (Optional) User-provided history confidence in range 0-1, i.e. antilag (R8+)
         // Used only if "CommonSettings::isHistoryConfidenceInputsAvailable = true"
         IN_DIFF_CONFIDENCE,
@@ -202,7 +196,7 @@ namespace nrd
         // OUTPUTS
         //=============================================================================================================================
 
-        // IMPORTANT: These textures can potentially be used as history buffers!
+        // IMPORTANT: These textures can be potentially used as history buffers!
 
         // Denoised radiance and hit distance
         //      REBLUR: use "REBLUR_BackEnd_UnpackRadianceAndNormHitDist" for decoding (RGBA16f+)
@@ -329,6 +323,38 @@ namespace nrd
         MAX_NUM
     };
 
+    // NRD_NORMAL_ENCODING variants
+    enum class NormalEncoding : uint8_t
+    {
+        // Worst IQ on curved (not bumpy) surfaces
+        RGBA8_UNORM,
+        RGBA8_SNORM,
+
+        // Moderate IQ on curved (not bumpy) surfaces, but offers optional materialID support
+        R10_G10_B10_A2_UNORM,
+
+        // Best IQ on curved (not bumpy) surfaces
+        RGBA16_UNORM,
+        RGBA16_SNORM, // can be used with FP formats
+
+        MAX_NUM
+    };
+
+    // NRD_ROUGHNESS_ENCODING variants
+    enum class RoughnessEncoding : uint8_t
+    {
+        // Alpha (m)
+        SQ_LINEAR,
+
+        // Linear roughness (best choice)
+        LINEAR,
+
+        // Sqrt(linear roughness)
+        SQRT_LINEAR,
+
+        MAX_NUM
+    };
+
     struct MemoryAllocatorInterface
     {
         void* (*Allocate)(void* userArg, size_t size, size_t alignment);
@@ -353,8 +379,8 @@ namespace nrd
         uint8_t versionMajor;
         uint8_t versionMinor;
         uint8_t versionBuild;
-        uint8_t maxSupportedMaterialBitNum; // if 0, compiled with NRD_USE_MATERIAL_ID = 0
-        bool isCompiledWithOctPackNormalEncoding : 1; // if 0, compield with NRD_USE_OCT_NORMAL_ENCODING = 0
+        NormalEncoding normalEncoding;
+        RoughnessEncoding roughnessEncoding;
     };
 
     struct MethodDesc

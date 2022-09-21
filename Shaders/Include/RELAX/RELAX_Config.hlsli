@@ -15,6 +15,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define RELAX_HIT_DIST_MIN_ACCUM_SPEED( r )                 lerp( 0.1, 0.2, STL::Math::Sqrt01( r ) )
 #define RELAX_SPEC_DOMINANT_DIRECTION                       STL_SPECULAR_DOMINANT_DIRECTION_G2
 #define RELAX_NORMAL_ULP                                    STL::Math::DegToRad( 0.05 )
+#define RELAX_NORMAL_ENCODING_ERROR                         STL::Math::DegToRad( 0.5 )
 
 // Shared constants common to all ReLAX denoisers
 #define RELAX_SHARED_CB_DATA \

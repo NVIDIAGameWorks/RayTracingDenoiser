@@ -128,7 +128,7 @@ float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
 {
     // This is the main parameter - cone angle
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness, angleFraction);
-    angle = 1.0 / max(angle, NRD_NORMAL_ENCODING_ERROR);
+    angle = 1.0 / max(angle, RELAX_NORMAL_ENCODING_ERROR);
 
     return angle;
 }

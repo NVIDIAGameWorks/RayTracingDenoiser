@@ -10,10 +10,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-// IMPORTANT: these files must be included beforehand
+// IMPORTANT: these files must be included beforehand:
 //    NRD.h
 //    NRIDescs.hpp
 //    Extensions/NRIHelper.h
+//    Extensions/NRIWrapperD3D11.h
+//    Extensions/NRIWrapperD3D12.h
+//    Extensions/NRIWrapperVK.h
 
 #include <array>
 #include <vector>
@@ -21,31 +24,29 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define NRD_INTEGRATION 1
 #define NRD_INTEGRATION_MAJOR 3
-#define NRD_INTEGRATION_MINOR 2
-#define NRD_INTEGRATION_DATE "6 September 2022"
+#define NRD_INTEGRATION_MINOR 4
+#define NRD_INTEGRATION_DATE "19 September 2022"
 
-// Settings
+#define NRD_INTEGRATION_DEBUG_LOGGING 0
+
 #ifndef NRD_INTEGRATION_ASSERT
     #include <assert.h>
     #define NRD_INTEGRATION_ASSERT(expr, msg) (assert(expr && msg))
 #endif
 
-#define NRD_INTEGRATION_DEBUG_LOGGING 0
-#define NRD_INTEGRATION_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_INTEGRATION_ASSERT(false, "Abort on failure!")
-
 // User inputs / outputs are not mipmapped, thus only 1 entry is needed.
 // "TextureTransitionBarrierDesc::texture" is used to store the resource.
-// "TextureTransitionBarrierDesc::next..." are used to represent current state of the subresource.
+// "TextureTransitionBarrierDesc::next..." are used to represent the current state of the subresource.
 struct NrdIntegrationTexture
 {
     nri::TextureTransitionBarrierDesc* subresourceStates;
     nri::Format format;
 };
 
-// Ensure to fill all slots even unused ones because the order is predefined
-constexpr uint32_t NRD_USER_POOL_SIZE = (uint32_t)nrd::ResourceType::MAX_NUM - 2;
-typedef std::array<NrdIntegrationTexture, NRD_USER_POOL_SIZE> NrdUserPool;
+typedef std::array<NrdIntegrationTexture, (size_t)nrd::ResourceType::MAX_NUM - 2> NrdUserPool;
 
+// User pool must contain valid entries only for resources, which are required for requested denoising methods, but
+// the entire pool must be zero-ed during initialization
 inline void NrdIntegration_SetResource(NrdUserPool& pool, nrd::ResourceType slot, const NrdIntegrationTexture& texture)
 {
     NRD_INTEGRATION_ASSERT( texture.subresourceStates->texture != nullptr, "Invalid texture!" );
@@ -58,7 +59,7 @@ class NrdIntegration
 {
 public:
     // The application must provide number of buffered frames, it's needed to guarantee that
-    // constants data and descriptor sets are not overwritten while being executed on the GPU.
+    // constant data and descriptor sets are not overwritten while being executed on the GPU.
     // Usually it's 2-3 frames.
     NrdIntegration(uint32_t bufferedFrameMaxNum, const char* persistentName = "") :
         m_Name(persistentName)
@@ -68,25 +69,25 @@ public:
     ~NrdIntegration()
     { NRD_INTEGRATION_ASSERT( m_NRI == nullptr, "m_NRI must be NULL at this point!" ); }
 
-    // There is no "Resize" functionallity, because NRD full recreation costs nothing.
+    // There is no "Resize" functionality, because NRD full recreation costs nothing.
     // The main cost comes from render targets resizing, which needs to be done in any case
     // (call Destroy beforehand)
-    bool Initialize(nri::Device& nriDevice, const nri::CoreInterface& nriCore,
-        const nri::HelperInterface& nriHelper, const nrd::DenoiserCreationDesc& denoiserCreationDesc);
+    bool Initialize(const nrd::DenoiserCreationDesc& denoiserCreationDesc, nri::Device& nriDevice,
+        const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
 
     // Just calls "nrd::SetMethodSettings"
     bool SetMethodSettings(nrd::Method method, const void* methodSettings);
 
-    // User pool must contain valid entries only for resources which required for the set of
-    // requested resources
+    // Better use "enableDescriptorCaching = true" if resources are not changing between frames
+    // (i.e. are not suballocated from a heap)
     void Denoise
     (
         uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer,
         const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool,
-        bool enableDescriptorCaching = true
+        bool enableDescriptorCaching
     );
 
-    // This function assums that the device is in the IDLE state, i.e. there is no work in flight
+    // This function assumes that the device is in the IDLE state, i.e. there is no work in flight
     void Destroy();
 
     // Should not be called explicitly, unless you want to reload pipelines
@@ -137,3 +138,5 @@ private:
     uint32_t m_BufferedFrameMaxNum = 0;
     bool m_IsShadersReloadRequested = false;
 };
+
+#define NRD_INTEGRATION_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_INTEGRATION_ASSERT(false, "Abort on failure!")

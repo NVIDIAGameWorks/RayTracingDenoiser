@@ -266,7 +266,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         diffHistoryWeight *= diffAntilag;
         diffHistoryWeight *= gStabilizationStrength;
 
-        float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight );
+        float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight ); // TODO: mix with diffM1 if history is discarded?
         #ifdef REBLUR_SH
             float4 diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
         #endif
@@ -373,7 +373,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= gStabilizationStrength;
 
-        float4 specResult = lerp( spec, specHistory, specHistoryWeight );
+        float4 specResult = lerp( spec, specHistory, specHistoryWeight ); // TODO: mix with specM1 if history is discarded?
         #ifdef REBLUR_SH
             float4 specShResult = lerp( specSh, specShHistory, specHistoryWeight );
         #endif
@@ -388,7 +388,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             else if( specMode == 3 ) // Curvature magnitude
                 specResult.w = abs( curvature * pixelSize );
             else if( specMode == 4 ) // Curvature sign
-                specResult.w = curvature * pixelSize < 0 ? 1 : 0;
+                specResult.w = curvature < 0.0 ? 1 : 0;
             else if( specMode == 5 ) // Virtual history amount
                 specResult.w = virtualHistoryAmount;
             else if( specMode == 6 ) // Hit dist scale for tracking

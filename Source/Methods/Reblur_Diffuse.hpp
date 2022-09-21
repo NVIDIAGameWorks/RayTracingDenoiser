@@ -40,7 +40,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Permutations
 #define REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM               4
-#define REBLUR_PREPASS_PERMUTATION_NUM                              4
+#define REBLUR_PREPASS_PERMUTATION_NUM                              2
 #define REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM                8
 #define REBLUR_HISTORY_FIX_PERMUTATION_NUM                          1
 #define REBLUR_BLUR_PERMUTATION_NUM                                 1
@@ -74,11 +74,37 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // Other
 #define REBLUR_DUMMY                                                AsUint(ResourceType::IN_VIEWZ)
 
-size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
+struct ReblurProps
+{
+    bool hasDiffuse;
+    bool hasSpecular;
+};
+
+constexpr std::array<ReblurProps, 10> g_ReblurProps =
+{{
+    {true, false},      // REBLUR_DIFFUSE
+    {true, false},      // REBLUR_DIFFUSE_OCCLUSION
+    {true, false},      // REBLUR_DIFFUSE_SH
+    {false, true},      // REBLUR_SPECULAR
+    {false, true},      // REBLUR_SPECULAR_OCCLUSION
+    {false, true},      // REBLUR_SPECULAR_SH
+    {true, true},       // REBLUR_DIFFUSE_SPECULAR
+    {true, true},       // REBLUR_DIFFUSE_SPECULAR_OCCLUSION
+    {true, true},       // REBLUR_DIFFUSE_SPECULAR_SH
+    {true, false},      // REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
+}};
+
+void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_Diffuse
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
     #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
+
+    methodData.settings.reblur = ReblurSettings();
+    methodData.settingsSize = sizeof(methodData.settings.reblur);
+
+    uint16_t w = methodData.desc.fullResolutionWidth;
+    uint16_t h = methodData.desc.fullResolutionHeight;
 
     enum class Permanent
     {
@@ -143,7 +169,6 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
 
     for (int i = 0; i < REBLUR_PREPASS_PERMUTATION_NUM; i++)
     {
-        bool isAdvanced = ( ( ( i >> 1 ) & 0x1 ) != 0 );
         bool isAfterReconstruction = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
         PushPass("Pre-pass");
@@ -153,23 +178,12 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( isAfterReconstruction ? DIFF_TEMP2 : AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
 
-            if (isAdvanced)
-                PushInput( AsUint(ResourceType::IN_DIFF_DIRECTION_PDF) );
-
             // Outputs
             PushOutput( DIFF_TEMP1 );
 
             // Shaders
-            if (isAdvanced)
-            {
-                AddDispatch( REBLUR_Diffuse_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PrePass_Advanced, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-            }
-            else
-            {
-                AddDispatch( REBLUR_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-            }
+            AddDispatch( REBLUR_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Perf_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
         }
     }
 
@@ -347,11 +361,9 @@ size_t nrd::DenoiserImpl::AddMethod_ReblurDiffuse(uint16_t w, uint16_t h)
     #undef METHOD_NAME
     #undef DIFF_TEMP1
     #undef DIFF_TEMP2
-
-    return sizeof(ReblurSettings);
 }
 
-void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool isDiffuse, bool isSpecular)
+void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
 {
     enum class Dispatch
     {
@@ -367,10 +379,11 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
     };
 
     const ReblurSettings& settings = methodData.settings.reblur;
+    const ReblurProps& props = g_ReblurProps[ size_t(methodData.desc.method) - size_t(Method::REBLUR_DIFFUSE) ];
 
     bool skipTemporalStabilization = settings.stabilizationStrength == 0.0f;
-    bool skipPrePass = (settings.diffusePrepassBlurRadius == 0.0f || !isDiffuse) &&
-        (settings.specularPrepassBlurRadius == 0.0f || !isSpecular) &&
+    bool skipPrePass = (settings.diffusePrepassBlurRadius == 0.0f || !props.hasDiffuse) &&
+        (settings.specularPrepassBlurRadius == 0.0f || !props.hasSpecular) &&
         settings.checkerboardMode == CheckerboardMode::OFF;
 
     bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
@@ -434,7 +447,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData, bool i
     // PREPASS
     if (!skipPrePass)
     {
-        uint32_t passIndex = AsUint(Dispatch::PREPASS) + (settings.enableAdvancedPrepass ? 4 : 0) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+        uint32_t passIndex = AsUint(Dispatch::PREPASS) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
         Constant* data = PushDispatch(methodData, passIndex);
         AddSharedConstants_Reblur(methodData, settings, data);
         AddFloat4(data, m_Rotator_PrePass);

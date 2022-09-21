@@ -48,11 +48,8 @@ constexpr nrd::LibraryDesc g_NrdLibraryDesc =
     VERSION_MAJOR,
     VERSION_MINOR,
     VERSION_BUILD,
-#ifdef NRD_USE_OCT_NORMAL_ENCODING
-    2, true
-#else
-    0, false
-#endif
+    (nrd::NormalEncoding)NRD_NORMAL_ENCODING,
+    (nrd::RoughnessEncoding)NRD_ROUGHNESS_ENCODING
 };
 
 constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResourceTypeNames =
@@ -69,8 +66,6 @@ constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResou
     "IN_DIFF_SH1",
     "IN_SPEC_SH0",
     "IN_SPEC_SH1",
-    "IN_DIFF_DIRECTION_PDF",
-    "IN_SPEC_DIRECTION_PDF",
     "IN_DIFF_CONFIDENCE",
     "IN_SPEC_CONFIDENCE",
     "IN_SHADOWDATA",
@@ -139,10 +134,10 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
     static std::array<const char*, 4> permutationMacros     = {"", "#define REBLUR_OCCLUSION\n", "#define REBLUR_SH\n", "#define REBLUR_DIRECTIONAL_OCCLUSION\n"};
 
     static std::array<const char*, 9> passNames             = {"HitDistReconstruction", "PrePass", "TemporalAccumulation", "HistoryFix", "Blur", "PostBlur", "CopyStabilizedHistory", "TemporalStabilization", "SplitScreen"};
-    static std::array<size_t, 9> passPermutationNums        = {2, 2, 2, 1, 1, 2, 1, 1, 1};
-    static std::array<const char*, 9> passPermutationNames  = {"_5x5", "_Advanced", "_Confidence", "", "", "_NoTemporalStabilization", "", "", ""};
-    static std::array<const char*, 9> passPermutationMacros = {"#define REBLUR_HITDIST_RECONSTRUCTION_5X5\n", "#define REBLUR_HAS_DIRECTION_PDF\n", "#define REBLUR_HAS_CONFIDENCE\n", "", "", "#define REBLUR_NO_TEMPORAL_STABILIZATION\n", "", "", ""};
-    
+    static std::array<size_t, 9> passPermutationNums        = {2, 1, 2, 1, 1, 2, 1, 1, 1};
+    static std::array<const char*, 9> passPermutationNames  = {"_5x5", "", "_Confidence", "", "", "_NoTemporalStabilization", "", "", ""};
+    static std::array<const char*, 9> passPermutationMacros = {"#define REBLUR_HITDIST_RECONSTRUCTION_5X5\n", "", "#define REBLUR_HAS_CONFIDENCE\n", "", "", "#define REBLUR_NO_TEMPORAL_STABILIZATION\n", "", "", ""};
+
     if( !_wmkdir(L"_Temp") )
     {
         for (size_t type = 0; type < typeNames.size(); type++)
@@ -155,10 +150,6 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
                     {
                         for (uint32_t perf = 0; perf < 2; perf++)
                         {
-                            // Skip "PrePass_Advanced" for "Sh" & "DirectionalOcclusion" denoisers denoisers
-                            if (permutation > 1 && pass == 1 && passPermutation == 1)
-                                continue;
-
                             // Skip "PostBlur" for "Occlusion" denoisers
                             if (permutation == 1 && pass == 5 && passPermutation == 0)
                                 continue;

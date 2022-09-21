@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.6.0 (NRD)
+# NVIDIA Real-time Denoisers v3.7.0 (NRD)
 
 ## SAMPLE APP
 
@@ -49,8 +49,8 @@ Supported signal types (modulated irradiance can be used instead of radiance):
 
 - `NRD_DXC_CUSTOM_PATH = "custom/path/to/dxc"` - custom DXC to use if Vulkan SDK is not installed
 - `NRD_SHADER_OUTPUT_PATH` - shader output path override
-- `NRD_USE_OCT_NORMAL_ENCODING` - `NRD_USE_OCT_NORMAL_ENCODING` value for *NRD.hlsli*
-- `NRD_USE_MATERIAL_ID` - `NRD_USE_MATERIAL_ID` value for *NRD.hlsli*
+- `NRD_NORMAL_ENCODING` - `NRD_NORMAL_ENCODING` value for *NRD.hlsli*
+- `NRD_ROUGHNESS_ENCODING` - `NRD_ROUGHNESS_ENCODING` value for *NRD.hlsli*
 - `NRD_DISABLE_SHADER_COMPILATION` - disable shader compilation (shaders can be compiled on another platform)
 - `NRD_USE_PRECOMPILED_SHADERS` -  use precompiled shaders (will be embedded into the library)
 - `NRD_STATIC_LIBRARY` - build static library
@@ -217,7 +217,7 @@ NrdUserPool userPool = {};
     NrdIntegration_SetResource(userPool, ...);
 };
 
-// Better use "true" if NRI texture wrappers are non-volatile between frames
+// Better use "true" if resources are not changing between frames (i.e. are not suballocated from a heap)
 bool enableDescriptorCaching = true;
 
 NRD.Denoise(frameIndex, *nriCommandBuffer, commonSettings, userPool, enableDescriptorCaching);
@@ -474,8 +474,6 @@ maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 **[REBLUR]** Intensity antilag parameters need to be carefully tuned. The defaults are good but `AntilagIntensitySettings::sensitivityToDarkness` needs to be tuned for a given HDR range. Initial integration should work with intensity antilag turned off.
 
 **[REBLUR]** Even if antilag is off, it's recommended to tune `AntilagIntensitySettings::sensitivityToDarkness`, because it is used for error estimation.
-
-**[REBLUR]** `enableAdvancedPrepass` mode offers better quality but requires valid `IN_DIFF_DIRECTION_PDF` and / or `IN_SPEC_DIRECTION_PDF` inputs (see sample for more details). It can't be used in case of a probabilistic split at primary hit (advanced pre-pass assumes that every pixel has valid data, PDF reconstruction is not implemented for performance reasons).
 
 **[RELAX]** *RELAX* works well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 
