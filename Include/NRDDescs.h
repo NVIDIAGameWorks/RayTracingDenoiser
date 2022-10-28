@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 7
+#define NRD_DESCS_VERSION_MINOR 8
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -180,6 +180,11 @@ namespace nrd
         IN_DIFF_CONFIDENCE,
         IN_SPEC_CONFIDENCE,
 
+        // (Optional) User-provided disocclusion threshold selector in range 0-1 (R8+)
+        // Disocclusion threshold is mixed between "disocclusionThreshold" and "disocclusionThresholdAlternate"
+        // Used only if "CommonSettings::isDisocclusionThresholdMixAvailable = true"
+        IN_DISOCCLUSION_THRESHOLD_MIX,
+
         // Noisy shadow data and optional translucency (RG16f+ and RGBA8+ for optional translucency)
         //      SIGMA: use "SIGMA_FrontEnd_PackShadow" for encoding
         IN_SHADOWDATA,
@@ -330,7 +335,7 @@ namespace nrd
         RGBA8_UNORM,
         RGBA8_SNORM,
 
-        // Moderate IQ on curved (not bumpy) surfaces, but offers optional materialID support
+        // Moderate IQ on curved (not bumpy) surfaces, but offers optional materialID support (normals are oct-packed)
         R10_G10_B10_A2_UNORM,
 
         // Best IQ on curved (not bumpy) surfaces

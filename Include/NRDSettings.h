@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 7
+#define NRD_SETTINGS_VERSION_MINOR 8
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -109,8 +109,11 @@ namespace nrd
         // (units) > 0 - use TLAS or tracing range (max value = NRD_FP16_MAX / NRD_FP16_VIEWZ_SCALE - 1 = 524031)
         float denoisingRange = 500000.0f;
 
-        // (normalized %) - if relative distance difference is greater than threshold, history gets reset (0.25-1.5% works well)
-        float disocclusionThreshold = 0.005f;
+        // (normalized %) - if relative distance difference is greater than threshold, history gets reset (0.5-2.5% works well)
+        float disocclusionThreshold = 0.01f;
+
+        // (normalized %) - alternative disocclusion threshold, which is mixed to based on IN_DISOCCLUSION_THRESHOLD_MIX
+        float disocclusionThresholdAlternate = 0.01f;
 
         // [0; 1] - enables "noisy input / denoised output" comparison
         float splitScreen = 0.0f;
@@ -133,6 +136,9 @@ namespace nrd
 
         // If "true" IN_DIFF_CONFIDENCE and IN_SPEC_CONFIDENCE are provided
         bool isHistoryConfidenceInputsAvailable = false;
+
+        // If "true" IN_DISOCCLUSION_THRESHOLD_MIX is provided
+        bool isDisocclusionThresholdMixAvailable = false;
     };
 
     // REBLUR
@@ -218,16 +224,10 @@ namespace nrd
         float specularPrepassBlurRadius = 50.0f;
 
         // (pixels) - base denoising radius (30 is a baseline for 1440p)
-        float blurRadius = 30.0f;
+        float blurRadius = 15.0f;
 
         // (pixels) - base stride between samples in history reconstruction pass
         float historyFixStrideBetweenSamples = 14.0f;
-
-        // (normalized %) - defines base blur radius shrinking when number of accumulated frames increases
-        float minConvergedStateBaseRadiusScale = 0.25f;
-
-        // [0; 10] - adaptive radius scale, comes into play if boiling is detected
-        float maxAdaptiveRadiusScale = 5.0f;
 
         // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
         float lobeAngleFraction = 0.13f;
@@ -311,7 +311,7 @@ namespace nrd
         float specularVarianceBoost = 0.0f;
 
         // (degrees) - slack for the specular lobe angle used in normal based rejection of specular during A-Trous passes
-        float specularLobeAngleSlack = 0.3f;
+        float specularLobeAngleSlack = 0.15f;
 
         // (pixels) - base stride between samples in history reconstruction pass
         float historyFixStrideBetweenSamples = 14.0f;
@@ -340,10 +340,12 @@ namespace nrd
         float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
         float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
 
-        // How much we relax roughness based rejection in areas where specular reprojection is low
+        // How much we relax roughness based rejection for spatial filter in areas where specular reprojection is low
         float luminanceEdgeStoppingRelaxation = 0.5f;
         float normalEdgeStoppingRelaxation = 0.3f;
-        float roughnessEdgeStoppingRelaxation = 0.3f;
+
+        // How much we relax rejection for spatial filter based on roughness and view vector
+        float roughnessEdgeStoppingRelaxation = 1.0f;
 
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
@@ -419,7 +421,7 @@ namespace nrd
         float roughnessFraction = 0.15f;
 
         float specularVarianceBoost = 0.0f;
-        float specularLobeAngleSlack = 0.3f;
+        float specularLobeAngleSlack = 0.15f;
 
         float historyFixEdgeStoppingNormalPower = 8.0f;
         float historyFixStrideBetweenSamples = 14.0f;
@@ -437,7 +439,7 @@ namespace nrd
 
         float luminanceEdgeStoppingRelaxation = 0.5f;
         float normalEdgeStoppingRelaxation = 0.3f;
-        float roughnessEdgeStoppingRelaxation = 0.3f;
+        float roughnessEdgeStoppingRelaxation = 1.0f;
 
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
         HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;

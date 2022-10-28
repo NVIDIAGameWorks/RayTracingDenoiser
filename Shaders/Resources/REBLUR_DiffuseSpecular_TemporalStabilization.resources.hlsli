@@ -38,11 +38,12 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_StabilizedHistory, t, 7 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_MinHitDist, t, 9 )
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 9 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 10 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh_StabilizedHistory, t, 11 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 12 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 10 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 11 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh_StabilizedHistory, t, 12 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 13 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -90,9 +91,10 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data2, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 5 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_MinHitDist, t, 7 )
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 7 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 8 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 8 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 9 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -107,4 +109,5 @@ NRD_CONSTANTS_END
 #endif
 
 // Macro magic
-#define NRD_CTA_8X8
+#define GROUP_X 8
+#define GROUP_Y 8

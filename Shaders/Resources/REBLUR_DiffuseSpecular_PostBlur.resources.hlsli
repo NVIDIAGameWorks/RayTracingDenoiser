@@ -18,7 +18,6 @@ NRD_SAMPLER_END
 NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
     NRD_CONSTANT( float4, gRotator )
-    NRD_CONSTANT( float, gBlurRadiusScale )
 NRD_CONSTANTS_END
 
 #ifdef REBLUR_OCCLUSION
@@ -116,4 +115,5 @@ NRD_CONSTANTS_END
 #endif
 
 // Macro magic
-#define NRD_CTA_8X8
+#define GROUP_X 8
+#define GROUP_Y 8

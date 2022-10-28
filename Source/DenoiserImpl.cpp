@@ -205,14 +205,14 @@ nrd::Result nrd::DenoiserImpl::Create(const nrd::DenoiserCreationDesc& denoiserC
     _PushPass("Clear (f)");
     {
         PushOutput(0, 0, 1);
-        AddDispatch( Clear_f, 0, 16, 1 );
+        AddDispatch( Clear_f, 0, NumThreads(16, 16), 1 );
     }
 
     m_DispatchClearIndex[1] = m_Dispatches.size();
     _PushPass("Clear (ui)");
     {
         PushOutput(0, 0, 1);
-        AddDispatch( Clear_ui, 0, 16, 1 );
+        AddDispatch( Clear_ui, 0, NumThreads(16, 16), 1 );
     }
 
     Optimize();
@@ -257,8 +257,8 @@ nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const nrd::CommonSettings& c
                 dispatchDesc.resources = &resource;
                 dispatchDesc.resourceNum = 1;
                 dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
-                dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDimX);
-                dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDimY);
+                dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.numThreads.width);
+                dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.numThreads.height);
 
                 m_ActiveDispatches.push_back(dispatchDesc);
             }
@@ -382,8 +382,7 @@ void nrd::DenoiserImpl::PrepareDesc()
 
 void nrd::DenoiserImpl::AddComputeDispatchDesc
 (
-    uint8_t workgroupDimX,
-    uint8_t workgroupDimY,
+    NumThreads numThreads,
     uint16_t downsampleFactor,
     uint32_t constantBufferDataSize,
     uint32_t maxRepeatNum,
@@ -436,22 +435,16 @@ void nrd::DenoiserImpl::AddComputeDispatchDesc
         m_Pipelines.push_back( pipelineDesc );
     }
 
-    #if 0 // CTA override
-        workgroupDimX = 16;
-        workgroupDimY = 16;
-    #endif
-
     // Dispatch
     InternalDispatchDesc computeDispatchDesc = {};
+    computeDispatchDesc.name = m_PassName;
     computeDispatchDesc.pipelineIndex = (uint16_t)pipelineIndex;
+    computeDispatchDesc.downsampleFactor = downsampleFactor;
     computeDispatchDesc.maxRepeatNum = (uint16_t)maxRepeatNum;
     computeDispatchDesc.constantBufferDataSize = constantBufferDataSize;
     computeDispatchDesc.resourceNum = uint32_t(m_Resources.size() - m_ResourceOffset);
     computeDispatchDesc.resources = (Resource*)m_ResourceOffset;
-    computeDispatchDesc.name = m_PassName;
-    computeDispatchDesc.workgroupDimX = workgroupDimX;
-    computeDispatchDesc.workgroupDimY = workgroupDimY;
-    computeDispatchDesc.downsampleFactor = downsampleFactor;
+    computeDispatchDesc.numThreads = numThreads;
 
     m_Dispatches.push_back(computeDispatchDesc);
 }
@@ -674,8 +667,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Diffuse_PrePass.cs.dxil.h"
         #include "REBLUR_Diffuse_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Diffuse_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Diffuse_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Diffuse_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Diffuse_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Diffuse_HistoryFix.cs.dxil.h"
         #include "REBLUR_Diffuse_Blur.cs.dxbc.h"
@@ -699,8 +690,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_Diffuse_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_Diffuse_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_Diffuse_Blur.cs.dxbc.h"
@@ -717,7 +706,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Diffuse_PrePass.cs.spirv.h"
     #include "REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Diffuse_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Diffuse_HistoryFix.cs.spirv.h"
     #include "REBLUR_Diffuse_Blur.cs.spirv.h"
     #include "REBLUR_Diffuse_CopyStabilizedHistory.cs.spirv.h"
@@ -730,7 +718,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_Blur.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_TemporalStabilization.cs.spirv.h"
@@ -745,8 +732,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_DiffuseOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_DiffuseOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_DiffuseOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_DiffuseOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_DiffuseOcclusion_Blur.cs.dxbc.h"
@@ -760,8 +745,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseOcclusion_Blur.cs.dxbc.h"
@@ -773,7 +756,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_DiffuseOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -781,7 +763,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -792,8 +773,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSh_PrePass.cs.dxil.h"
         #include "REBLUR_DiffuseSh_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseSh_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_DiffuseSh_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_DiffuseSh_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_DiffuseSh_HistoryFix.cs.dxbc.h"
         #include "REBLUR_DiffuseSh_HistoryFix.cs.dxil.h"
         #include "REBLUR_DiffuseSh_Blur.cs.dxbc.h"
@@ -813,8 +792,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseSh_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSh_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSh_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_DiffuseSh_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseSh_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSh_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSh_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSh_Blur.cs.dxbc.h"
@@ -829,7 +806,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_DiffuseSh_PrePass.cs.spirv.h"
     #include "REBLUR_DiffuseSh_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_DiffuseSh_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_DiffuseSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSh_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseSh_CopyStabilizedHistory.cs.spirv.h"
@@ -840,7 +816,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_Perf_DiffuseSh_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSh_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_DiffuseSh_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSh_Blur.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSh_TemporalStabilization.cs.spirv.h"
@@ -857,8 +832,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Specular_PrePass.cs.dxil.h"
         #include "REBLUR_Specular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Specular_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Specular_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Specular_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Specular_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Specular_HistoryFix.cs.dxil.h"
         #include "REBLUR_Specular_Blur.cs.dxbc.h"
@@ -882,8 +855,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_Specular_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_Specular_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_Specular_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_Specular_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_Specular_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_Specular_Blur.cs.dxbc.h"
@@ -900,7 +871,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Specular_PrePass.cs.spirv.h"
     #include "REBLUR_Specular_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Specular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Specular_HistoryFix.cs.spirv.h"
     #include "REBLUR_Specular_Blur.cs.spirv.h"
     #include "REBLUR_Specular_PostBlur.cs.spirv.h"
@@ -913,7 +883,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_Specular_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_Specular_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_Specular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_Specular_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_Specular_Blur.cs.spirv.h"
     #include "REBLUR_Perf_Specular_PostBlur.cs.spirv.h"
@@ -928,8 +897,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_SpecularOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_SpecularOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_SpecularOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_SpecularOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_SpecularOcclusion_Blur.cs.dxbc.h"
@@ -943,8 +910,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_SpecularOcclusion_Blur.cs.dxbc.h"
@@ -956,7 +921,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_SpecularOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_SpecularOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -964,7 +928,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_SpecularOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_Perf_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -975,8 +938,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_SpecularSh_PrePass.cs.dxil.h"
         #include "REBLUR_SpecularSh_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_SpecularSh_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_SpecularSh_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_SpecularSh_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_SpecularSh_HistoryFix.cs.dxbc.h"
         #include "REBLUR_SpecularSh_HistoryFix.cs.dxil.h"
         #include "REBLUR_SpecularSh_Blur.cs.dxbc.h"
@@ -996,8 +957,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_SpecularSh_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_SpecularSh_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_SpecularSh_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_SpecularSh_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_SpecularSh_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_SpecularSh_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_SpecularSh_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_SpecularSh_Blur.cs.dxbc.h"
@@ -1012,7 +971,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_SpecularSh_PrePass.cs.spirv.h"
     #include "REBLUR_SpecularSh_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_SpecularSh_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_SpecularSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_SpecularSh_Blur.cs.spirv.h"
     #include "REBLUR_SpecularSh_PostBlur.cs.spirv.h"
@@ -1023,7 +981,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_Perf_SpecularSh_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_SpecularSh_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_SpecularSh_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_SpecularSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_SpecularSh_Blur.cs.spirv.h"
     #include "REBLUR_Perf_SpecularSh_PostBlur.cs.spirv.h"
@@ -1040,8 +997,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecular_PrePass.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_DiffuseSpecular_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_DiffuseSpecular_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_HistoryFix.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecular_HistoryFix.cs.dxil.h"
         #include "REBLUR_DiffuseSpecular_Blur.cs.dxbc.h"
@@ -1065,8 +1020,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecular_Blur.cs.dxbc.h"
@@ -1083,7 +1036,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PrePass.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_DiffuseSpecular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_CopyStabilizedHistory.cs.spirv.h"
@@ -1096,7 +1048,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_DiffuseSpecular_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_Blur.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
@@ -1111,8 +1062,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.dxbc.h"
@@ -1126,8 +1075,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.dxbc.h"
@@ -1139,7 +1086,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -1147,7 +1093,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -1158,8 +1103,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseSpecularSh_PrePass.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularSh_HistoryFix.cs.dxbc.h"
         #include "REBLUR_DiffuseSpecularSh_HistoryFix.cs.dxil.h"
         #include "REBLUR_DiffuseSpecularSh_Blur.cs.dxbc.h"
@@ -1179,8 +1122,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseSpecularSh_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularSh_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseSpecularSh_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseSpecularSh_Blur.cs.dxbc.h"
@@ -1195,7 +1136,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_DiffuseSpecularSh_PrePass.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_CopyStabilizedHistory.cs.spirv.h"
@@ -1206,7 +1146,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_Perf_DiffuseSpecularSh_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularSh_Blur.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseSpecularSh_TemporalStabilization.cs.spirv.h"
@@ -1219,8 +1158,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.dxil.h"
         #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_DiffuseDirectionalOcclusion_Blur.cs.dxbc.h"
@@ -1236,8 +1173,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
         #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxil.h"
-        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxbc.h"
-        #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.dxbc.h"
         #include "REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.dxil.h"
         #include "REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.dxbc.h"
@@ -1252,7 +1187,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.spirv.h"
     #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseDirectionalOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization.cs.spirv.h"
@@ -1261,7 +1195,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const nrd::CommonSettings& commonSe
 
     #include "REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.spirv.h"
-    #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation_Confidence.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.spirv.h"
     #include "REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization.cs.spirv.h"

@@ -76,5 +76,6 @@ NRD_CONSTANTS_END
 #endif
 
 // Macro magic
-#define NRD_CTA_8X8
+#define GROUP_X 8
+#define GROUP_Y 8
 #define NRD_USE_BORDER_2

@@ -16,6 +16,12 @@ option(NRD_CROSSCOMPILE_AARCH64 "Cross compilation for aarch64" OFF)
 option(NRD_CROSSCOMPILE_X86_64 "Cross compilation for x86_64" OFF)
 option(NRD_INTERPROCEDURAL_OPTIMIZATION "Interprocedural optimization" OFF)
 
+file(WRITE Shaders/Include/NRDEncoding.hlsli
+"// This file is auto-generated during project deployment. Do not modify!\n"
+"#define NRD_NORMAL_ENCODING ${NRD_NORMAL_ENCODING}\n"
+"#define NRD_ROUGHNESS_ENCODING ${NRD_ROUGHNESS_ENCODING}\n"
+)
+
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Include/NRD.h" ver_h)
 string(REGEX MATCH "NRD_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
 set(ver_major ${CMAKE_MATCH_1})

@@ -134,9 +134,9 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
     static std::array<const char*, 4> permutationMacros     = {"", "#define REBLUR_OCCLUSION\n", "#define REBLUR_SH\n", "#define REBLUR_DIRECTIONAL_OCCLUSION\n"};
 
     static std::array<const char*, 9> passNames             = {"HitDistReconstruction", "PrePass", "TemporalAccumulation", "HistoryFix", "Blur", "PostBlur", "CopyStabilizedHistory", "TemporalStabilization", "SplitScreen"};
-    static std::array<size_t, 9> passPermutationNums        = {2, 1, 2, 1, 1, 2, 1, 1, 1};
-    static std::array<const char*, 9> passPermutationNames  = {"_5x5", "", "_Confidence", "", "", "_NoTemporalStabilization", "", "", ""};
-    static std::array<const char*, 9> passPermutationMacros = {"#define REBLUR_HITDIST_RECONSTRUCTION_5X5\n", "", "#define REBLUR_HAS_CONFIDENCE\n", "", "", "#define REBLUR_NO_TEMPORAL_STABILIZATION\n", "", "", ""};
+    static std::array<size_t, 9> passPermutationNums        = {2, 1, 1, 1, 1, 2, 1, 1, 1};
+    static std::array<const char*, 9> passPermutationNames  = {"_5x5", "", "", "", "", "_NoTemporalStabilization", "", "", ""};
+    static std::array<const char*, 9> passPermutationMacros = {"#define REBLUR_HITDIST_RECONSTRUCTION_5X5\n", "", "", "", "", "#define REBLUR_NO_TEMPORAL_STABILIZATION\n", "", "", ""};
 
     if( !_wmkdir(L"_Temp") )
     {

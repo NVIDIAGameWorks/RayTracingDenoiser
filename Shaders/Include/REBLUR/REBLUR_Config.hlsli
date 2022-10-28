@@ -70,15 +70,11 @@ static const float3 g_Special8[ 8 ] =
 
 #define REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM       2
 #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       1.5 // TODO: was 2.0, but we can use even 1.0 because the fast history is noisy, while the main history is denoised
-#define REBLUR_SPEC_ACCUM_BASE_POWER                            ( 0.4 + 0.2 * exp2( -gFramerateScale ) ) // bigger values = more aggressive rejection
-#define REBLUR_SPEC_ACCUM_CURVE                                 ( 1.0 - exp2( -gFramerateScale ) ) // smaller values = more aggressive rejection
-#define REBLUR_TS_SIGMA_AMPLITUDE                               ( 3.0 * gFramerateScale )
-#define REBLUR_TS_ACCUM_TIME                                    ( gFramerateScale * 30.0 * 0.5 ) // = FPS * seconds // TODO: make it "gMaxAccumulatedFrameNum" dependent, like: clamp( gFramerateScale * 30.0 - gMaxAccumulatedFrameNum * 0.5, 0.0, 63.0 )
-#define REBLUR_PARALLAX_SCALE                                   ( 2.0 * gFramerateScale ) // TODO: is it possible to use 1 with tweaks in other parameters?
 #define REBLUR_HISTORY_FIX_THRESHOLD_1                          0.111 // was 0.01
 #define REBLUR_HISTORY_FIX_THRESHOLD_2                          0.333 // was 0.25
 #define REBLUR_HIT_DIST_MIN_WEIGHT                              0.1 // TODO: reduce?
 #define REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY                   float2( 10.0, 1.1 )
+#define REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE                  0.1
 
 // Shared data
 #define REBLUR_SHARED_CB_DATA \
@@ -108,7 +104,7 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( float, gMaxAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gMaxFastAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gAntiFirefly ) \
-    NRD_CONSTANT( float, gMinConvergedStateBaseRadiusScale ) \
+    NRD_CONSTANT( float, unused1 ) \
     NRD_CONSTANT( float, gLobeAngleFraction ) \
     NRD_CONSTANT( float, gRoughnessFraction ) \
     NRD_CONSTANT( float, gResponsiveAccumulationRoughnessThreshold ) \

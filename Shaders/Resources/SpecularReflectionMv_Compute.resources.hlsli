@@ -27,6 +27,7 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float2, gRectSize )
     NRD_CONSTANT( float2, gInvRectSize )
     NRD_CONSTANT( float2, gMotionVectorScale )
+    NRD_CONSTANT( float2, gRectOffset )
     NRD_CONSTANT( uint2, gRectOrigin )
     NRD_CONSTANT( float, gDenoisingRange )
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled )

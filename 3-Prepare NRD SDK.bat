@@ -43,6 +43,7 @@ copy "..\_Build\Debug\NRD.pdb" "Lib\Debug"
 copy "..\_Build\Release\NRD.dll" "Lib\Release"
 copy "..\_Build\Release\NRD.lib" "Lib\Release"
 copy "..\%NRD_DIR%\Shaders\Include\NRD.hlsli" "Shaders\Include"
+copy "..\%NRD_DIR%\Shaders\Include\NRDEncoding.hlsli" "Shaders\Include"
 copy "..\%NRD_DIR%\LICENSE.txt" "."
 copy "..\%NRD_DIR%\README.md" "."
 

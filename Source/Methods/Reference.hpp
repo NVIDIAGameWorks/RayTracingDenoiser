@@ -33,7 +33,7 @@ void nrd::DenoiserImpl::AddMethod_Reference(nrd::MethodData& methodData)
 
         PushOutput( AsUint(Permanent::HISTORY) );
 
-        AddDispatch( REFERENCE_TemporalAccumulation, SumConstants(0, 0, 2, 3), 16, 1 );
+        AddDispatch( REFERENCE_TemporalAccumulation, SumConstants(0, 0, 2, 3), NumThreads(16, 16), 1 );
     }
 
     PushPass("Split screen");
@@ -42,7 +42,7 @@ void nrd::DenoiserImpl::AddMethod_Reference(nrd::MethodData& methodData)
 
         PushOutput( AsUint(ResourceType::OUT_RADIANCE) );
 
-        AddDispatch( REFERENCE_SplitScreen, SumConstants(0, 0, 0, 0), 16, 1 );
+        AddDispatch( REFERENCE_SplitScreen, SumConstants(0, 0, 0, 0), NumThreads(16, 16), 1 );
     }
 
     #undef METHOD_NAME

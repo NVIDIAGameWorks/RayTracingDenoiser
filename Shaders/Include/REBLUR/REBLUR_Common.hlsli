@@ -64,16 +64,13 @@ float3 UnpackInternalData( uint p )
 
 // Intermediate data ( in the current frame )
 
-float4 PackData1( float diffAccumSpeed, float diffRadiusScale, float specAccumSpeed, float specRadiusScale )
+float4 PackData1( float diffAccumSpeed, float diffError, float specAccumSpeed, float specError )
 {
     float4 r;
     r.x = saturate( diffAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.y = diffRadiusScale;
+    r.y = diffError;
     r.z = saturate( specAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.w = specRadiusScale;
-
-    // Optional
-    r.yw = STL::Math::Sqrt01( r.yw );
+    r.w = specError;
 
     // Allow RG8_UNORM for specular only denoiser
     #ifndef REBLUR_DIFFUSE
@@ -85,24 +82,17 @@ float4 PackData1( float diffAccumSpeed, float diffRadiusScale, float specAccumSp
 
 float4 UnpackData1( float4 p )
 {
-    // Allow RG8_UNORM for specular only denoiser
+    // Allow R8_UNORM for specular only denoiser
     #ifndef REBLUR_DIFFUSE
         p.zw = p.xy;
     #endif
 
-    float4 r;
-    r.x = p.x * REBLUR_MAX_ACCUM_FRAME_NUM;
-    r.y = p.y;
-    r.z = p.z * REBLUR_MAX_ACCUM_FRAME_NUM;
-    r.w = p.w;
+    p.xz *= REBLUR_MAX_ACCUM_FRAME_NUM;
 
-    // Optional
-    r.yw *= r.yw;
-
-    return r;
+    return p;
 }
 
-float4 PackData2( float fbits, float curvature, float virtualHistoryAmount, float hitDistScaleForTracking, float viewZ )
+float4 PackData2( float fbits, float curvature, float virtualHistoryAmount, float viewZ )
 {
     // BITS:
     // 0        - free // TODO: can be used to store "skip HistoryFix" bit
@@ -120,7 +110,7 @@ float4 PackData2( float fbits, float curvature, float virtualHistoryAmount, floa
     r.x = saturate( ( fbits + 0.5 ) / 255.0 );
     r.y = abs( packedCurvature );
     r.z = virtualHistoryAmount;
-    r.w = hitDistScaleForTracking;
+    r.w = 0.0; // TODO: unused
 
     // Optional
     r.yzw = STL::Math::Sqrt01( r.yzw );
@@ -144,46 +134,21 @@ float3 UnpackData2( float4 p, float viewZ, out uint bits )
 
 // Accumulation speed
 
-float SaturateParallax( float parallax )
+float GetFPS( float period = 1.0 )
 {
-    // A smooth version of "saturate"
-    // https://www.desmos.com/calculator/mjv79pn0rp
-
-    return saturate( 1.0 - exp2( -3.5 * parallax * parallax ) );
+    return gFramerateScale * 30.0 * period;
 }
 
-float GetSpecAccumulatedFrameNum( float roughness, float powerScale )
+float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float vmbPixelsTraveled, float smbParallax, float specAccumSpeed, float roughness )
 {
-    return REBLUR_MAX_ACCUM_FRAME_NUM * GetSpecMagicCurve( roughness, REBLUR_SPEC_ACCUM_BASE_POWER * powerScale );
-}
+    float smbSpecAccumSpeed = GetFPS( ) / ( 1.0 + smbSpecAccumSpeedFactor * vmbPixelsTraveled );
 
-float GetSpecAccumSpeed( float maxAccumSpeed, float roughness, float NoV, float parallax, float curvature, float viewZ )
-{
-    // Artificially increase roughness if parallax is low to get a few frames of accumulation // TODO: is there a better way?
-    float smbParallaxNorm = SaturateParallax( parallax * REBLUR_PARALLAX_SCALE );
-    roughness = roughness + saturate( 0.05 - roughness ) * ( 1.0 - smbParallaxNorm );
+    // ( Optional ) Accelerate if parallax is high // TODO: migrate to "smbParallaxInPixels"?
+    float f = 1.0 - roughness * roughness;
+    f *= smbSpecAccumSpeed / ( 1.0 + smbSpecAccumSpeed );
+    smbSpecAccumSpeed /= 1.0 + smbParallax * f;
 
-    // Recalculate virtual roughness from curvature
-    float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float curvatureAngleTan = abs( curvature ) * pixelSize * gFramerateScale;
-
-    float percentOfVolume = 0.75;
-    float roughnessFromCurvatureAngle = STL::Math::Sqrt01( curvatureAngleTan * ( 1.0 - percentOfVolume ) / percentOfVolume );
-
-    roughness = lerp( roughness, 1.0, roughnessFromCurvatureAngle );
-
-    // https://www.desmos.com/calculator/aaqg3a7dnz
-    float acos01sq = saturate( 1.0 - NoV * 0.99999 ); // see AcosApprox()
-    float a = STL::Math::Pow01( acos01sq, REBLUR_SPEC_ACCUM_CURVE );
-    float b = 1.1 + roughness * roughness;
-    float parallaxSensitivity = ( b + a ) / ( b - a );
-
-    float powerScale = 1.0 + parallaxSensitivity * parallax * REBLUR_PARALLAX_SCALE; // TODO: previously was REBLUR_PARALLAX_SCALE => gFramerateScale
-    float accumSpeed = GetSpecAccumulatedFrameNum( roughness, powerScale );
-
-    accumSpeed = min( accumSpeed, maxAccumSpeed );
-
-    return accumSpeed;
+    return min( smbSpecAccumSpeed, specAccumSpeed );
 }
 
 // Misc
@@ -226,9 +191,14 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
 float ClampNegativeHitDistToZero( float hitDist )
 { return saturate( hitDist ); }
 
-// Doesn't allow to increase luma
 float GetLumaScale( float currLuma, float newLuma )
-{ return saturate( ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS ) ); }
+{
+    // IMPORTANT" "saturate" of below must be used if "vmbAllowCatRom = vmbAllowCatRom && specAllowCatRom"
+    // is not used. But we can't use "saturate" because otherwise fast history clamping won't be able to
+    // increase energy ( i.e. clamp a lower value to a bigger one from fast history ).
+
+    return ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS );
+}
 
 #ifdef REBLUR_OCCLUSION
 
@@ -358,17 +328,13 @@ float2 GetSensitivityToDarkness( float roughness )
 
 float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, float accumSpeed, float roughness = 1.0 )
 {
+    // TODO: track temporal variance instead
     float2 p = float2( GetLuma( prev ), ExtractHitDist( prev ) );
     float2 c = float2( GetLuma( curr ), ExtractHitDist( curr ) );
     float2 f = abs( c - p ) / ( max( c, p ) + GetSensitivityToDarkness( roughness ) );
 
-    float smc = GetSpecMagicCurve2( roughness );
-    float level = lerp( 1.0, 0.15, smc );
-
-    // TODO: use "hitDistFactor" to avoid over blurring contact shadowing?
-
     float error = max( f.x, f.y );
-    error = STL::Math::SmoothStep( 0.0, level, error );
+    error = STL::Math::SmoothStep( 0.0, 0.15, error );
     error *= GetFadeBasedOnAccumulatedFrames( accumSpeed );
     error *= 1.0 - gReference;
 
@@ -378,7 +344,7 @@ float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, f
 float ComputeAntilagScale(
     REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE m1, REBLUR_TYPE sigma,
     float4 antilagMinMaxThreshold, float2 antilagSigmaScale, float stabilizationStrength,
-    float curvatureMulPixelSize, float2 data1, float roughness = 1.0
+    float curvatureMulPixelSize, float accumSpeed, float roughness = 1.0
 )
 {
     // On-edge strictness
@@ -396,8 +362,7 @@ float ComputeAntilagScale(
 
     float antilag = min( delta.x, delta.y );
     antilag = lerp( 1.0, antilag, stabilizationStrength );
-    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( data1.x ) );
-    antilag = lerp( antilag, 1.0, saturate( data1.y ) );
+    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( accumSpeed ) );
 
     #if( REBLUR_DEBUG != 0 )
         antilag = 1.0;
@@ -487,20 +452,20 @@ float2 GetCoarseRoughnessWeightParams( float roughness )
 
 float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed )
 {
-    // Normalization depends on FPS
+    // TODO: make it "gMaxAccumulatedFrameNum" dependent?
+    float frameNum = GetFPS( 0.5 );
     float nonLinearAccumSpeed = accumSpeed / ( 1.0 + accumSpeed );
-    float norm1 = gFramerateScale * 30.0 * 0.25 / ( 1.0 + gFramerateScale * 30.0 * 0.25 );
+    float norm1 = frameNum * 0.5 / ( 1.0 + frameNum * 0.5 );
     float normAccumSpeed = saturate( nonLinearAccumSpeed / norm1 );
 
-    // TODO: should weight depend on "sigma / signal" ratio to avoid stabilization where it's not needed?
-    float w = normAccumSpeed * normAccumSpeed;
+    float w = frameNum / ( 1.0 + frameNum );
+    w *= normAccumSpeed * normAccumSpeed;
     w *= isInScreenMulFootprintQuality;
 
-    // TODO: disocclusion regions on stable bumpy surfaces with super low roughness look better with s = 0
     float s = normAccumSpeed;
     s *= 1.0 - gReference;
 
-    return float2( w, 1.0 + REBLUR_TS_SIGMA_AMPLITUDE * s );
+    return float2( w, 1.0 + 3.0 * gFramerateScale * s );
 }
 
 // Weights

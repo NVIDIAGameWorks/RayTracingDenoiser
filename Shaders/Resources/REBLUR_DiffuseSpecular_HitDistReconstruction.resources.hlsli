@@ -66,7 +66,8 @@ NRD_CONSTANTS_END
 #endif
 
 // Macro magic
-#define NRD_CTA_8X8
+#define GROUP_X 8
+#define GROUP_Y 8
 
 #ifdef REBLUR_HITDIST_RECONSTRUCTION_5X5
     #define NRD_USE_BORDER_2

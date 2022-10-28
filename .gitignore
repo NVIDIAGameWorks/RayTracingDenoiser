@@ -25,6 +25,7 @@ Makefile
 *.dxbc.h
 *.dxil.h
 *.spirv.h
+NRDEncoding.hlsli
 
 # ninja
 .ninja_deps

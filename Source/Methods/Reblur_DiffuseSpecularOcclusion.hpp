@@ -69,19 +69,20 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             // Shaders
             if (is5x5)
             {
-                AddDispatch( REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
             }
             else
             {
-                AddDispatch( REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
             }
         }
     }
 
     for (int i = 0; i < REBLUR_OCCLUSION_TEMPORAL_ACCUMULATION_PERMUTATION_NUM; i++)
     {
+        bool hasDisocclusionThresholdMix = ( ( ( i >> 2 ) & 0x1 ) != 0 );
         bool hasConfidenceInputs = ( ( ( i >> 1 ) & 0x1 ) != 0 );
         bool isAfterReconstruction = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
@@ -94,6 +95,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
             PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Permanent::PREV_INTERNAL_DATA) );
+            PushInput( hasDisocclusionThresholdMix ? AsUint(ResourceType::IN_DISOCCLUSION_THRESHOLD_MIX) : REBLUR_DUMMY );
             PushInput( REBLUR_DUMMY ); // TODO: should be SPEC_MIN_HITDIST, but there is no pre-pass in occlusion-only denoisers
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : REBLUR_DUMMY );
@@ -108,16 +110,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             PushOutput( AsUint(Transient::DATA1) );
 
             // Shaders
-            if (hasConfidenceInputs)
-            {
-                AddDispatch( REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-            }
-            else
-            {
-                AddDispatch( REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-            }
+            AddDispatch( REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
         }
     }
 
@@ -137,8 +131,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             PushOutput( SPEC_TEMP1 );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_DiffuseSpecularOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );
         }
     }
 
@@ -159,8 +153,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             PushOutput( AsUint(Permanent::PREV_VIEWZ) );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularOcclusion_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_DiffuseSpecularOcclusion_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_NUM_THREADS, 1 );
         }
     }
 
@@ -182,8 +176,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
         }
     }
 
@@ -201,7 +195,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             PushOutput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseSpecular_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_DiffuseSpecular_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_NUM_THREADS, 1 );
         }
     }
 

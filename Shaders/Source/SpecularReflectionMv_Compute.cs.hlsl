@@ -25,7 +25,6 @@ void Preload( uint2 sharedPos, int2 globalPos )
     s_Normal_Roughness[ sharedPos.y ][ sharedPos.x ] = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ globalIdUser ] );
 }
 
-// TODO: The below utility functions are copied over from REBLUR_Common.hlsli, perhaps they should be moved to something like NRD_Common.hlsli?
 float3 GetViewVector( float3 X, bool isViewSpace = false )
 {
     return gOrthoMode == 0.0 ? normalize( -X ) : ( isViewSpace ? float3( 0, 0, -1 ) : gViewVectorWorld.xyz );
@@ -83,45 +82,52 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     float roughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance( roughness, Navg );
 
-    // Curvature
-    float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta, false );
-    float2 cameraMotion2d = ( pixelUv - motionUv ) * gRectSize;
-    cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );
-    cameraMotion2d *= 0.5 * gInvRectSize;
-
-    float curvature = 0;
-
-    [unroll]
-    for( int dir = -1; dir <= 1; dir += 2 )
-    {
-        float2 uv = pixelUv + dir * cameraMotion2d;
-        STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( uv, gRectSize );
-
-        smemPos = threadPos + BORDER + uint2( f.origin ) - pixelPos;
-        float3 n00 = s_Normal_Roughness[ smemPos.y ][ smemPos.x ].xyz;
-        float3 n10 = s_Normal_Roughness[ smemPos.y ][ smemPos.x + 1 ].xyz;
-        float3 n01 = s_Normal_Roughness[ smemPos.y + 1 ][ smemPos.x ].xyz;
-        float3 n11 = s_Normal_Roughness[ smemPos.y + 1 ][ smemPos.x + 1 ].xyz;
-
-        float3 n = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
-        n = normalize( n );
-
-        float3 xv = STL::Geometry::ReconstructViewPosition( uv, gFrustum, 1.0, gOrthoMode );
-        float3 x = STL::Geometry::RotateVector( gViewToWorld, xv );
-        float3 v = GetViewVector( x );
-
-        // Values below this threshold get turned into garbage due to numerical imprecision
-        float d = STL::Math::ManhattanDistance( N, n );
-        float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
-
-        curvature += EstimateCurvature( n, v, N, X ) * s;
-    }
-
-    curvature *= 0.5;
-
     // Parallax
     float smbParallax = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
     float smbParallaxInPixels = GetParallaxInPixels( smbParallax, gUnproject );
+
+    // Camera motion in screen space
+    float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta, false );
+    float2 cameraMotion2d = ( motionUv - pixelUv ) * gRectSize;
+    cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );
+    cameraMotion2d *= gInvRectSize;
+
+    // Normal for low parallax - bilinear ( SMEM )
+    float2 uv = pixelUv + cameraMotion2d * 0.5;
+    STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( uv, gRectSize );
+
+    int2 pos = threadPos + BORDER + int2( f.origin ) - pixelPos;
+    pos = clamp( pos, 0, int2( BUFFER_X, BUFFER_Y ) - 2 );
+
+    float3 n00 = s_Normal_Roughness[ pos.y ][ pos.x ].xyz;
+    float3 n10 = s_Normal_Roughness[ pos.y ][ pos.x + 1 ].xyz;
+    float3 n01 = s_Normal_Roughness[ pos.y + 1 ][ pos.x ].xyz;
+    float3 n11 = s_Normal_Roughness[ pos.y + 1 ][ pos.x + 1 ].xyz;
+
+    float3 n = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
+    n = normalize( n );
+
+    // Normal for high parallax - nearest ( fetch )
+    float2 uvHigh = gRectOffset + pixelUv + cameraMotion2d * smbParallaxInPixels;
+    float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvHigh, 0 ) ).xyz;
+    float zHigh = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvHigh, 0 ) );
+
+    float zError = abs( zHigh - viewZ ) * rcp( max( zHigh, viewZ ) );
+    bool cmp = smbParallaxInPixels > 1.0 && zError < 0.1;
+
+    uv = cmp ? uvHigh : uv;
+    n = cmp ? nHigh : n;
+
+    // Estimate curvature
+    float3 xv = STL::Geometry::ReconstructViewPosition( uv, gFrustum, 1.0, gOrthoMode );
+    float3 x = STL::Geometry::RotateVector( gViewToWorld, xv );
+    float3 v = GetViewVector( x );
+
+    // Values below this threshold get turned into garbage due to numerical imprecision
+    float d = STL::Math::ManhattanDistance( N, n );
+    float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
+
+    float curvature = EstimateCurvature( n, v, N, X ) * s;
 
     // Virtual motion
     float3 V = GetViewVector( X );

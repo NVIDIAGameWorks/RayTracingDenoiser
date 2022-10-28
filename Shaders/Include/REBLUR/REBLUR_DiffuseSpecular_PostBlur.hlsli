@@ -20,6 +20,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     [branch]
     if( viewZ > gDenoisingRange )
     {
+        // ~0 normal is needed to allow bilinear filter in TA ( 0 can't be used due to "division by zero" in "UnpackNormalRoughness" )
+        gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( 1.0 / 255.0 );
+
         // IMPORTANT: no data output, must be rejected by the "viewZ" check!
         return;
     }

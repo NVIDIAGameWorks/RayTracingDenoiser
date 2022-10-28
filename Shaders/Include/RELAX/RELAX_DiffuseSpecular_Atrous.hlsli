@@ -49,7 +49,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     if (gStepSize <= 4)
         specularLuminanceWeightRelaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
 
-    float specularPhiLIllumination = gSpecularPhiLuminance * max(1.0e-4, sqrt(centerSpecularVar));
+    float specularPhiLIlluminationInv = 1.0 / max(1.0e-4, gSpecularPhiLuminance * sqrt(centerSpecularVar));
+
     float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
 
     float diffuseLobeAngleFractionForSimplifiedSpecularNormalWeight = diffuseLobeAngleFraction;
@@ -71,7 +72,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     }
 
     float specularNormalWeightParamsSimplified = GetNormalWeightParams(1.0, diffuseLobeAngleFractionForSimplifiedSpecularNormalWeight);
-    float2 specularNormalWeightParams = GetNormalWeightParams_ATrous(centerRoughness, historyLength, specularReprojectionConfidence, gNormalEdgeStoppingRelaxation, specularLobeAngleFraction);
+    float2 specularNormalWeightParams =
+        GetNormalWeightParams_ATrous(
+            centerRoughness,
+            historyLength,
+            specularReprojectionConfidence,
+            gNormalEdgeStoppingRelaxation,
+            specularLobeAngleFraction,
+            gSpecularLobeAngleSlack);
 
     float sumWSpecular = 0.44198 * 0.44198;
     float4 sumSpecularIlluminationAndVariance = centerSpecularIlluminationAndVariance * float4(sumWSpecular.xxx, sumWSpecular * sumWSpecular);
@@ -81,7 +89,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float4 centerDiffuseIlluminationAndVariance = gDiffuseIlluminationAndVariance[pixelPos];
     float centerDiffuseLuminance = STL::Color::Luminance(centerDiffuseIlluminationAndVariance.rgb);
     float centerDiffuseVar = centerDiffuseIlluminationAndVariance.a;
-    float diffusePhiLIllumination = gDiffusePhiLuminance * max(1.0e-4, sqrt(centerDiffuseVar));
+    float diffusePhiLIlluminationInv = 1.0 / max(1.0e-4, gDiffusePhiLuminance * sqrt(centerDiffuseVar));
 
     float diffuseLuminanceWeightRelaxation = 1.0;
     if (gUseConfidenceInputs != 0)
@@ -104,7 +112,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 #endif
 
     float3 centerWorldPos = GetCurrentWorldPosFromPixelPos(pixelPos, centerViewZ);
+    float3 centerV = -normalize(centerWorldPos);
     static const float kernelWeightGaussian3x3[2] = { 0.44198, 0.27901 };
+    float depthThreshold = gDepthThreshold * (gOrthoMode == 0 ? centerViewZ : 1.0);
 
     // Adding random offsets to minimize "ringing" at large A-Trous steps
     int2 offset = 0;
@@ -139,19 +149,18 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(p, sampleViewZ);
 
             // Calculating geometry weight for diffuse and specular
-            float geometryW = GetPlaneDistanceWeight(
-                centerWorldPos,
-                centerNormal,
-                gOrthoMode == 0 ? centerViewZ : 1.0,
-                sampleWorldPos,
-                gDepthThreshold);
-
+            float geometryW = GetPlaneDistanceWeight_Atrous(centerWorldPos, centerNormal, sampleWorldPos, depthThreshold);
             geometryW *= kernel;
 
 #ifdef RELAX_SPECULAR
+            // Getting sample view vector closer to center view vector
+            // by adding gRoughnessEdgeStoppingRelaxation * centerWorldPos
+            // relaxes view direction based rejection
+            float3 sampleV = -normalize(sampleWorldPos + gRoughnessEdgeStoppingRelaxation * centerWorldPos);
+
             // Calculating weights for specular
             float normalWSpecularSimplified = GetNormalWeight(specularNormalWeightParamsSimplified, centerNormal, sampleNormal);
-            float normalWSpecular = GetSpecularNormalWeight_ATrous(specularNormalWeightParams, gSpecularLobeAngleSlack, centerNormal, sampleNormal);
+            float normalWSpecular = GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
             float roughnessWSpecular = GetRoughnessWeight(roughnessWeightParams, sampleRoughness);
 
             // Summing up specular
@@ -162,7 +171,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 float4 sampleSpecularIlluminationAndVariance = gSpecularIlluminationAndVariance[p];
                 float sampleSpecularLuminance = STL::Color::Luminance(sampleSpecularIlluminationAndVariance.rgb);
 
-                float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) / specularPhiLIllumination;
+                float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) * specularPhiLIlluminationInv;
                 specularLuminanceW = min(gMaxSpecularLuminanceRelativeDifference, specularLuminanceW);
                 specularLuminanceW *= specularLuminanceWeightRelaxation;
                 wSpecular *= exp(-specularLuminanceW);
@@ -184,7 +193,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 float4 sampleDiffuseIlluminationAndVariance = gDiffuseIlluminationAndVariance[p];
                 float sampleDiffuseLuminance = STL::Color::Luminance(sampleDiffuseIlluminationAndVariance.rgb);
 
-                float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) / diffusePhiLIllumination;
+                float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) * diffusePhiLIlluminationInv;
                 diffuseLuminanceW = min(gMaxDiffuseLuminanceRelativeDifference, diffuseLuminanceW);
                 if (gUseConfidenceInputs != 0)
                 {

@@ -94,10 +94,17 @@ float GetPlaneDistanceWeight(float3 centerWorldPos, float3 centerNormal, float c
 {
     float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
 
-    return 1.0 - STL::Math::SmoothStep(threshold, threshold * 2.0, distanceToCenterPointPlane / centerViewZ);
+    return distanceToCenterPointPlane / centerViewZ > threshold ? 0.0 : 1.0;
 }
 
-float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, float specularReprojectionConfidence, float normalEdgeStoppingRelaxation, float specularLobeAngleFraction)
+float GetPlaneDistanceWeight_Atrous(float3 centerWorldPos, float3 centerNormal, float3 sampleWorldPos, float threshold)
+{
+    float distanceToCenterPointPlane = abs(dot(sampleWorldPos - centerWorldPos, centerNormal));
+
+    return distanceToCenterPointPlane < threshold ? 1.0 : 0.0;
+}
+
+float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, float specularReprojectionConfidence, float normalEdgeStoppingRelaxation, float specularLobeAngleFraction, float specularLobeAngleSlack)
 {
     // Relaxing normal weights if not enough frames in history
     // and if specular reprojection confidence is low
@@ -110,18 +117,23 @@ float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, f
 
     // Increasing angle ~10x to relax rejection of the neighbors if specular reprojection confidence is low
     angle *= 10.0 - 9.0 * relaxation;
+
+    angle += specularLobeAngleSlack;
+
     angle = min(STL::Math::Pi(0.5), angle);
 
     return float2(angle, f);
 }
 
-float GetSpecularNormalWeight_ATrous(float2 params0, float specularLobeAngleSlack, float3 n0, float3 n)
+float GetSpecularNormalWeight_ATrous(float2 params0, float3 n0, float3 n, float3 v0, float3 v)
 {
-    float cosa = saturate(dot(n0, n));
+    float cosaN = dot(n0, n);
+    float cosaV = dot(v0, v);
+    float cosa = saturate(min(cosaN, cosaV));
     float a = STL::Math::AcosApprox(cosa);
-    params0.x += specularLobeAngleSlack;
-    a = 1.0 - STL::Math::SmoothStep(0.0, params0.x, a);
-    return saturate(1.0 + (a - 1.0) * params0.y);
+    a = STL::Math::SmoothStep(0.0, params0.x, a);
+
+    return saturate(1.0 - a * params0.y);
 }
 
 float GetNormalWeightParams(float roughness, float angleFraction = 0.75)

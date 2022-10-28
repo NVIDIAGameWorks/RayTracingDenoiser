@@ -46,7 +46,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float3 centerNormal = centerNormalRoughness.rgb;
     float centerRoughness = centerNormalRoughness.a;
     float3 centerWorldPos = GetCurrentWorldPosFromPixelPos(pixelPos, centerViewZ);
-    float normalWeightParams = GetNormalWeightParams(centerRoughness, 0.33);
+    float3 centerV = -normalize(centerWorldPos);
+    float depthThreshold = gDepthThreshold * (gOrthoMode == 0 ? centerViewZ : 1.0);
 
     // Running sparse cross-bilateral filter
 #ifdef RELAX_DIFFUSE
@@ -56,6 +57,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 #ifdef RELAX_SPECULAR
     float4 specularIlluminationAnd2ndMomentSum = specularIlluminationAnd2ndMoment;
     float specularWSum = 1;
+    float2 specularNormalWeightParams =
+        GetNormalWeightParams_ATrous(
+            centerRoughness,
+            5.0, // History length,
+            1.0, // Specular reprojection confidence
+            0.0, // Normal edge stopping relaxation
+            gSpecularLobeAngleFraction,
+            gSpecularLobeAngleSlack); 
 #endif
 
     float r = getRadius(historyLength);
@@ -80,12 +89,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
             float sampleViewZ = gViewZFP16[samplePosInt] / NRD_FP16_VIEWZ_SCALE;
             float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(samplePosInt, sampleViewZ);
-            float geometryWeight = GetPlaneDistanceWeight(
+            float geometryWeight = GetPlaneDistanceWeight_Atrous(
                 centerWorldPos,
                 centerNormal,
-                gOrthoMode == 0 ? centerViewZ : 1.0,
                 sampleWorldPos,
-                gDepthThreshold);
+                depthThreshold);
 
     #ifdef RELAX_DIFFUSE
             // Summing up diffuse result
@@ -102,9 +110,15 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             }
     #endif
     #ifdef RELAX_SPECULAR
+            // Getting sample view vector closer to center view vector
+            // by adding gRoughnessEdgeStoppingRelaxation * centerWorldPos 
+            // relaxes view direction based rejection
+            float3 sampleV = -normalize(sampleWorldPos + gRoughnessEdgeStoppingRelaxation * centerWorldPos);
+
             // Summing up specular result
             float specularW = geometryWeight;
-            specularW *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
+            specularW *= 
+                GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
             specularW = isInside ? specularW : 0;
             specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
 

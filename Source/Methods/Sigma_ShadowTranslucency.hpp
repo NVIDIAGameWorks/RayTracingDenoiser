@@ -48,7 +48,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(nrd::MethodData& metho
 
         PushOutput( AsUint(Transient::TILES) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_ClassifyTiles, SIGMA_CLASSIFY_TILES_SET_CONSTANTS, 1, 16 );
+        AddDispatch( SIGMA_ShadowTranslucency_ClassifyTiles, SIGMA_CLASSIFY_TILES_SET_CONSTANTS, SIGMA_CLASSIFY_TILES_NUM_THREADS, 16 );
     }
 
     PushPass("Smooth tiles");
@@ -57,7 +57,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(nrd::MethodData& metho
 
         PushOutput( AsUint(Transient::SMOOTH_TILES) );
 
-        AddDispatch( SIGMA_Shadow_SmoothTiles, SIGMA_SMOOTH_TILES_SET_CONSTANTS, 16, 16 );
+        AddDispatch( SIGMA_Shadow_SmoothTiles, SIGMA_SMOOTH_TILES_SET_CONSTANTS, SIGMA_SMOOTH_TILES_NUM_THREADS, 16 );
     }
 
     PushPass("Blur");
@@ -72,7 +72,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(nrd::MethodData& metho
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_Blur, SIGMA_BLUR_SET_CONSTANTS, 16, USE_MAX_DIMS );
+        AddDispatch( SIGMA_ShadowTranslucency_Blur, SIGMA_BLUR_SET_CONSTANTS, SIGMA_BLUR_NUM_THREADS, USE_MAX_DIMS );
     }
 
     PushPass("Post-blur");
@@ -84,7 +84,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(nrd::MethodData& metho
         PushOutput( AsUint(Transient::DATA_2) );
         PushOutput( AsUint(Transient::TEMP_2) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_PostBlur, SIGMA_BLUR_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_PostBlur, SIGMA_BLUR_SET_CONSTANTS, SIGMA_BLUR_NUM_THREADS, 1 );
     }
 
     PushPass("Temporal stabilization");
@@ -97,7 +97,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(nrd::MethodData& metho
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_TemporalStabilization, SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_TemporalStabilization, SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS, SIGMA_TEMPORAL_STABILIZATION_NUM_THREADS, 1 );
     }
 
     PushPass("Split screen");
@@ -107,7 +107,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadowTranslucency(nrd::MethodData& metho
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_SplitScreen, SIGMA_SPLIT_SCREEN_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_SplitScreen, SIGMA_SPLIT_SCREEN_SET_CONSTANTS, SIGMA_SPLIT_SCREEN_NUM_THREADS, 1 );
     }
 
     #undef METHOD_NAME

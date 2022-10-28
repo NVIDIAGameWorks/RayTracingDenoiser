@@ -18,8 +18,7 @@ void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSize - 1.0 );
 
-    float4 data1 = UnpackData1( gIn_Data1[ globalPos ] );
-    s_FrameNum[ sharedPos.y ][ sharedPos.x ] = data1.xz;
+    s_FrameNum[ sharedPos.y ][ sharedPos.x ] = UnpackData1( gIn_Data1[ globalPos ] ).xz;
 
     // Fast history & anti-firefly
     #ifndef REBLUR_PERFORMANCE_MODE

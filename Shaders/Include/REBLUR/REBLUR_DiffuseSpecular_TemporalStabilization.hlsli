@@ -96,8 +96,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float2 specMin = NRD_INF;
         float2 specMax = -NRD_INF;
-
-        float hitDistForTracking = spec.w;
     #endif
 
     [unroll]
@@ -145,9 +143,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 float specLuma = GetLuma( s );
                 specMin = min( specMin, float2( specLuma, s.w ) );
                 specMax = max( specMax, float2( specLuma, s.w ) );
-
-                // Find optimal hitDist for tracking
-                hitDistForTracking = min( ExtractHitDist( s ), hitDistForTracking );
             #endif
         }
     }
@@ -222,11 +217,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     STL::Filtering::Bilinear smbBilinearFilter = STL::Filtering::GetBilinearFilter( saturate( smbPixelUv ), gRectSizePrev );
 
-    float4 smbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, smbOcclusion ); // TODO: only for "WithMaterialID" even if test is disabled
-    bool smbIsCatromAllowed = ( bits & 2 ) != 0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS; // TODO: only for "WithMaterialID" even if test is disabled
+    // Only for "...WithMaterialID" even if material ID test is disabled
+    float4 smbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, smbOcclusion );
+    bool smbIsCatromAllowed = ( bits & 2 ) != 0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS;
 
-    float footprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
-    footprintQuality = STL::Math::Sqrt01( footprintQuality );
+    float smbFootprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
+    smbFootprintQuality = STL::Math::Sqrt01( smbFootprintQuality );
+
+    float smbIsInScreenMulFootprintQuality = isInScreen * smbFootprintQuality;
 
     // Diffuse
     #ifdef REBLUR_DIFFUSE
@@ -249,24 +247,22 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float diffAntilag = ComputeAntilagScale(
             smbDiffHistory, diff, diffM1, diffSigma,
             gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
-            curvature * pixelSize, data1.xy
+            curvature * pixelSize, data1.x
         );
 
         // Clamp history and combine with the current frame
-        float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, data1.x );
+        float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( smbIsInScreenMulFootprintQuality, data1.x );
 
         smbDiffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
         #ifdef REBLUR_SH
             smbDiffShHistory = STL::Color::Clamp( diffShM1, diffShSigma * diffTemporalAccumulationParams.y, smbDiffShHistory );
         #endif
 
-        float diffHistoryWeight = REBLUR_TS_ACCUM_TIME / ( 1.0 + REBLUR_TS_ACCUM_TIME );
-        diffHistoryWeight *= diffTemporalAccumulationParams.x;
-        diffHistoryWeight *= footprintQuality;
+        float diffHistoryWeight = diffTemporalAccumulationParams.x;
         diffHistoryWeight *= diffAntilag;
         diffHistoryWeight *= gStabilizationStrength;
 
-        float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight ); // TODO: mix with diffM1 if history is discarded?
+        float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight );
         #ifdef REBLUR_SH
             float4 diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
         #endif
@@ -304,10 +300,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Specular
     #ifdef REBLUR_SPECULAR
-        // Current hit distance
+        // Hit distance for tracking ( tests 6, 67, 155 )
+        float hitDistForTracking = gSpecPrepassBlurRadius != 0.0 ? gIn_Spec_MinHitDist[ pixelPos ] : spec.w;
+        hitDistForTracking = min( hitDistForTracking, specMin.y );
+        hitDistForTracking = min( hitDistForTracking, spec.w );
+
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         hitDistForTracking *= hitDistScale;
-        hitDistForTracking *= hitDistScaleForTracking;
 
         // Sample history - surface motion
         float4 smbSpecHistory;
@@ -357,23 +356,22 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specAntilag = ComputeAntilagScale(
             specHistory, spec, specM1, specSigma,
             gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
-            curvature * pixelSize, data1.zw, roughness );
+            curvature * pixelSize, data1.z, roughness );
 
         // Clamp history and combine with the current frame
-        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreen, data1.z );
+        float isInScreenMulFootprintQuality = lerp( smbIsInScreenMulFootprintQuality, 1.0, virtualHistoryAmount );
+        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreenMulFootprintQuality, data1.z );
 
         specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
         #ifdef REBLUR_SH
             specShHistory = STL::Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory );
         #endif
 
-        float specHistoryWeight = REBLUR_TS_ACCUM_TIME / ( 1.0 + REBLUR_TS_ACCUM_TIME );
-        specHistoryWeight *= specTemporalAccumulationParams.x;
-        specHistoryWeight *= footprintQuality;
+        float specHistoryWeight = specTemporalAccumulationParams.x;
         specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= gStabilizationStrength;
 
-        float4 specResult = lerp( spec, specHistory, specHistoryWeight ); // TODO: mix with specM1 if history is discarded?
+        float4 specResult = lerp( spec, specHistory, specHistoryWeight );
         #ifdef REBLUR_SH
             float4 specShResult = lerp( specSh, specShHistory, specHistoryWeight );
         #endif
@@ -384,7 +382,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             if( specMode == 1 ) // Accumulated frame num
                 specResult.w = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
             else if( specMode == 2 ) // Error
-                specResult.w = data1.w; // can be > 1.0
+                specResult.w = data1.w;
             else if( specMode == 3 ) // Curvature magnitude
                 specResult.w = abs( curvature * pixelSize );
             else if( specMode == 4 ) // Curvature sign

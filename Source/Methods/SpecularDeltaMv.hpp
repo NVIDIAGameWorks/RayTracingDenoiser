@@ -39,7 +39,7 @@ void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(nrd::MethodData& methodData)
         PushOutput( AsUint(ResourceType::OUT_DELTA_MV) );
         PushOutput( AsUint(Permanent::DELTA_SECONDARY_POS_CURR), 0, 1, AsUint(Permanent::DELTA_SECONDARY_POS_PREV) );
 
-        AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 0, 4, 2), 16, 1 );
+        AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 0, 4, 2), NumThreads(16, 16), 1 );
     }
 
     #undef METHOD_NAME

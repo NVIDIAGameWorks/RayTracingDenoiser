@@ -26,7 +26,7 @@ void nrd::DenoiserImpl::AddMethod_SpecularReflectionMv(nrd::MethodData& methodDa
 
         PushOutput( AsUint(ResourceType::OUT_REFLECTION_MV) );
 
-        AddDispatch( SpecularReflectionMv_Compute, SumConstants(3, 3, 4, 3), 16, 1 );
+        AddDispatch( SpecularReflectionMv_Compute, SumConstants(3, 3, 5, 3), NumThreads(16, 16), 1 );
     }
 
     #undef METHOD_NAME
@@ -55,6 +55,7 @@ void nrd::DenoiserImpl::UpdateMethod_SpecularReflectionMv(const MethodData& meth
     AddFloat2(data, float(rectW), float(rectH));
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
     AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
     AddFloat(data, m_CommonSettings.denoisingRange);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);

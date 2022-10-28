@@ -28,24 +28,24 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 
 #ifdef NRD_USE_PRECOMPILED_SHADERS
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_## shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
+        #define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
+            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_## shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
 
-        #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_##shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
+        #define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
+            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_##shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
     #else
-        #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
+        #define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
+            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
 
-        #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
+        #define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
+            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
     #endif
 #else
-    #define AddDispatch(shaderName, constantNum, workgroupDim, downsampleFactor) \
-        AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {})
+    #define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
+        AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {})
 
-    #define AddDispatchRepeated(shaderName, constantNum, workgroupDim, downsampleFactor, repeatNum) \
-        AddComputeDispatchDesc(workgroupDim, workgroupDim, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {})
+    #define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
+        AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {})
 #endif
 
 #define PushPass(passName) _PushPass(NRD_STRINGIFY(METHOD_NAME) " - " passName)
@@ -108,6 +108,18 @@ namespace nrd
         uint16_t indexInPoolToSwapWith;
     };
 
+    struct NumThreads
+    {
+        inline NumThreads(uint8_t w, uint8_t h) : width(w), height(h)
+        {}
+
+        inline NumThreads() : width(0), height(0)
+        {}
+
+        uint8_t width;
+        uint8_t height;
+    };
+
     struct InternalDispatchDesc
     {
         const char* name;
@@ -118,8 +130,7 @@ namespace nrd
         uint16_t pipelineIndex;
         uint16_t downsampleFactor;
         uint16_t maxRepeatNum; // mostly for internal use
-        uint8_t workgroupDimX;
-        uint8_t workgroupDimY;
+        NumThreads numThreads;
     };
 
     class DenoiserImpl
@@ -216,8 +227,7 @@ namespace nrd
     private:
         void AddComputeDispatchDesc
         (
-            uint8_t workgroupDimX,
-            uint8_t workgroupDimY,
+            NumThreads numThreads,
             uint16_t downsampleFactor,
             uint32_t constantBufferDataSize,
             uint32_t maxRepeatNum,
@@ -274,8 +284,8 @@ namespace nrd
             uint16_t w = uint16_t( float(DivideUp(methodData.desc.fullResolutionWidth, d)) * sx + 0.5f );
             uint16_t h = uint16_t( float(DivideUp(methodData.desc.fullResolutionHeight, d)) * sy + 0.5f );
 
-            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.workgroupDimX);
-            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.workgroupDimY);
+            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.numThreads.width);
+            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.numThreads.height);
 
             // Store
             m_ActiveDispatches.push_back(dispatchDesc);

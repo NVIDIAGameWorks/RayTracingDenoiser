@@ -70,11 +70,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         blurRadius *= hitDistFactor * smc;
         blurRadius = min( blurRadius, minBlurRadius );
     #else
+        // Tests 144, 145, 150, 153, 23e
+        hitDistFactor = lerp( hitDistFactor, 1.0, data1.w );
+
         // IMPORTANT: keep an eye on tests:
         // - 51 and 128: outlines without TAA
         // - 81 and 117: cleanness in disoccluded regions
-        // - 62: dirty look on curved thin objects
-        // TODO: try to store blur radius in data1.w, but scale by "hitDistFactor" here
         float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.z );
         boost *= 1.0 - STL::BRDF::Pow5( NoV );
         boost *= smc;
@@ -89,11 +90,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         blurRadius *= hitDistFactor * smc;
         blurRadius = min( blurRadius, minBlurRadius );
 
-        // Blur radius - convergence
-        blurRadius *= lerp( gMinConvergedStateBaseRadiusScale, 1.0, specNonLinearAccumSpeed );
-
-        // Blur radius - adaptivity
-        blurRadius += max( data1.w * gBlurRadiusScale, 1.0 ) * smc; // TODO: hitDistFactor?
+        // Blur radius - addition to avoid underblurring
+        blurRadius += smc;
 
         // Blur radius - scaling
         blurRadius *= radiusScale;
@@ -106,9 +104,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScale );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * fractionScale;
-
-        // TODO: previosuly "minHitDistWeight" was adjusted by specular reprojection confidence
-        //minHitDistWeight = lerp( lerp( minHitDistWeight, 1.0, hitDistFactor ), minHitDistWeight, confidence );
 
         // Sampling
         float minHitDist = ExtractHitDist( spec );

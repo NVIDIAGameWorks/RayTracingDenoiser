@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.7.0 (NRD)
+# NVIDIA Real-time Denoisers v3.8.0 (NRD)
 
 ## SAMPLE APP
 
@@ -98,9 +98,9 @@ In rare cases, when the integration via the engine’s RHI is not possible and t
 The pseudo code below demonstrates how *NRD integration* and *NRI* can be used to wrap native Graphics API pointers into NRI objects to establish connection between the application and NRD:
 
 ```cpp
-//====================================================================================================================
+//=======================================================================================================
 // INITIALIZATION - DECLARATIONS
-//====================================================================================================================
+//=======================================================================================================
 
 #include "NRIDescs.hpp"
 #include "Extensions/NRIWrapperD3D12.h"
@@ -118,9 +118,9 @@ struct NriInterface
 {};
 NriInterface NRI;
 
-//====================================================================================================================
+//=======================================================================================================
 // INITIALIZATION - WRAP NATIVE DEVICE
-//====================================================================================================================
+//=======================================================================================================
 
 // Wrap the device
 nri::DeviceCreationD3D12Desc deviceDesc = {};
@@ -133,15 +133,19 @@ nri::Device* nriDevice = nullptr;
 nri::Result nriResult = nri::CreateDeviceFromD3D12Device(deviceDesc, nriDevice);
 
 // Get core functionality
-nriResult = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI);
-nriResult = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI);
+nriResult = nri::GetInterface(*nriDevice,
+  NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI);
+
+nriResult = nri::GetInterface(*nriDevice,
+  NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI);
 
 // Get appropriate "wrapper" extension (XXX - can be D3D11, D3D12 or VULKAN)
-nriResult = nri::GetInterface(*nriDevice, NRI_INTERFACE(nri::WrapperXXXInterface), (nri::WrapperXXXInterface*)&NRI);
+nriResult = nri::GetInterface(*nriDevice,
+  NRI_INTERFACE(nri::WrapperXXXInterface), (nri::WrapperXXXInterface*)&NRI);
 
-//====================================================================================================================
+//=======================================================================================================
 // INITIALIZATION - INITIALIZE NRD
-//====================================================================================================================
+//=======================================================================================================
 
 const nrd::MethodDesc methodDescs[] =
 {
@@ -155,9 +159,9 @@ denoiserCreationDesc.requestedMethodNum = methodNum;
 
 bool result = NRD.Initialize(*nriDevice, NRI, NRI, denoiserCreationDesc);
 
-//====================================================================================================================
+//=======================================================================================================
 // INITIALIZATION or RENDER - WRAP NATIVE POINTERS
-//====================================================================================================================
+//=======================================================================================================
 
 // Wrap the command buffer
 nri::CommandBufferD3D12Desc commandBufferDesc = {};
@@ -191,9 +195,9 @@ for (uint32_t i = 0; i < N; i++)
     entryDesc.nextLayout = ConvertResourceStateToLayout( myResource->GetCurrentState() );
 }
 
-//====================================================================================================================
+//=======================================================================================================
 // RENDER - DENOISE
-//====================================================================================================================
+//=======================================================================================================
 
 // Populate common settings
 //  - for the first time use defaults
@@ -222,11 +226,11 @@ bool enableDescriptorCaching = true;
 
 NRD.Denoise(frameIndex, *nriCommandBuffer, commonSettings, userPool, enableDescriptorCaching);
 
-// IMPORTANT: NRD integration binds own descriptor pool, don't forget to re-bind back your descriptor pool (heap)
+// IMPORTANT: NRD integration binds own descriptor pool, don't forget to re-bind back your pool (heap)
 
-//====================================================================================================================
+//=======================================================================================================
 // SHUTDOWN or RENDER - CLEANUP
-//====================================================================================================================
+//=======================================================================================================
 
 // Better do it only once on shutdown
 for (uint32_t i = 0; i < N; i++)
@@ -234,15 +238,37 @@ for (uint32_t i = 0; i < N; i++)
 
 NRI.DestroyCommandBuffer(*nriCommandBuffer);
 
-//====================================================================================================================
+//=======================================================================================================
 // SHUTDOWN - DESTROY
-//====================================================================================================================
+//=======================================================================================================
 
 // Release wrapped device
 NRI.DestroyDevice(*nriDevice);
 
 // Also NRD needs to be recreated on "resize"
 NRD.Destroy();
+```
+
+Shader part:
+
+```cpp
+#if 1
+    #include "NRDEncoding.hlsli"
+#else
+    // Or define NRD encoding in Cmake and deliver macro definitions to shader compilation command line
+#endif
+
+#define NRD_HEADER_ONLY
+#include "NRD.hlsli"
+
+// Call corresponding "front end" function to encode data for NRD (NRD.hlsli indicates which function
+// needs to be used for a specific input for a specific denoiser). For example:
+
+float4 nrdIn = RELAX_FrontEnd_PackRadianceAndHitDist(radiance, hitDistance);
+
+// Call corresponding "back end" function to decode data produced by NRD. For example:
+
+float4 nrdOut = RELAX_BackEnd_UnpackRadiance(nrdOutEncoded);
 ```
 
 ### Integration Method 3: White-box library (using the application-side Render Hardware Interface)
@@ -289,21 +315,13 @@ Commons inputs:
 
   Motion vector scaling can be provided via `CommonSettings::motionVectorScale`.
 
-* **IN\_NORMAL\_ROUGHNESS** - primary surface normal in world space and *linear* roughness
+* **IN\_NORMAL\_ROUGHNESS** - primary surface world-space normal and *linear* roughness
 
-  Normal encoding can be controlled by the following macros located in `NRD.hlsli`:
-  - _NRD\_NORMAL\_ENCODING = NRD\_NORMAL\_ENCODING\_UNORM_ - `.xyz` - normal (decoding is `normalize( .xyz * 2 - 1 )`), `.w` - roughness
-  - _NRD\_NORMAL\_ENCODING = NRD\_NORMAL\_ENCODING\_OCT_ - `.xy` - normal (octahedron decoding). `.z` - roughness, `.w` - optional material ID (only 2 lower bits are used).
+  Normal and roughness encoding must be controlled via *Cmake* parameters `NRD_NORMAL_ENCODING` and `NRD_ROUGHNESS_ENCODING`. During project deployment optional `NRDEncoding.hlsli` file is generated, which can be included prior `NRD.hlsli` to make encoding macro definitions visible in shaders (if `NRD_NORMAL_ENCODING` and `NRD_ROUGHNESS_ENCODING` are not defined in another way by the application). Encoding settings can be known at runtime by accessing `GetLibraryDesc().normalEncoding` and `GetLibraryDesc().roghnessEncoding` respectively. `NormalEncoding` and `RoughnessEncoding` enums briefly describe encoding variants. It's recommended to use `NRD_FrontEnd_PackNormalAndRoughness` from `NRD.hlsli` to match decoding.
 
-  Roughness encoding can be controlled by the following macros located in `NRD.hlsli`:
-  - _NRD\_USE\_SQRT\_LINEAR\_ROUGHNESS_ = 0 - roughness decoding is `m = alpha = roughness ^ 2`
-  - _NRD\_USE\_SQRT\_LINEAR\_ROUGHNESS_ = 1 - roughness decoding is `m = alpha = roughness ^ 4`
-  - _NRD\_NORMAL\_ENCODING = NRD\_NORMAL\_ENCODING\_UNORM_ - `.xyz` - normal (decoding is `normalize( .xyz * 2 - 1 )`), `.w` - roughness
-  - _NRD\_NORMAL\_ENCODING = NRD\_NORMAL\_ENCODING\_OCT_ - `.xy` - normal (octahedron decoding). `.z` - roughness, `.w` - optional material ID (only 2 lower bits are used).
+  *NRD* computes local curvature using provided normals. Less accurate normals can lead to banding in curvature and local flatness. `RGBA8` normals is a good baseline, but `R10G10B10A10` oct-packed normals improve curvature calculations and specular tracking as the result.
 
-  *NRD* computes local curvature using provided normals. Less accurate normals can lead to banding in curvature and local flatness. RGBA8 normals is a good baseline, but R10G10B10A10 oct-packed normals improve curvature calculations and specular tracking in the result.
-
-  If `materialID` is provided, *NRD* diffuse and specular denoisers won't mix up surfaces with different material IDs.
+  If `materialID` is provided and supported by encoding, *NRD* diffuse and specular denoisers won't mix up surfaces with different material IDs.
 
 * **IN\_VIEWZ** - `.x` - view-space Z coordinate of the primary hit position (linearized g-buffer depth)
 
@@ -332,12 +350,14 @@ NRD sample is a good start to familiarize yourself with input requirements and b
   - Pre-pass must be enabled (i.e. `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` must be set to 20-70 pixels) to compensate entropy increase, since radiance in valid samples is divided by probability to compensate 0 values in some neighbors
 - Probabilistic sampling for 2nd+ bounces is absolutely acceptable
 
+## INTERACTION WITH PRIMARY SURFACE REPLACEMENTS
+
+[*Primary Surface Replacement (PSR)*](https://developer.nvidia.com/blog/rendering-perfect-reflections-and-refractions-in-path-traced-games/) can be used with *NRD*. In this case `IN_MV`, `IN_NORMAL_ROUGHNESS` and `IN_VIEWZ` must have data for secondary hits (not primary hits). In case of PSR *NRD* disocclusion logic doesn't take curvature at primary hit into account, because data for primary hits is replaced. This can lead to more intense disocclusions on bumpy surfaces due to significant ray divergence. To mitigate this problem 2x-10x larger `disocclusionThreshold` can be used. This is an applicable solution if the denoiser is used to denoise surfaces with PSR only (glass only, for example). In a general case, when PSR and normal surfaces are mixed on the screen, higher disocclusion thresholds are needed only for pixels with PSR. This can be achieved by using `IN_DISOCCLUSION_THRESHOLD_MIX` input to smoothly mix baseline `disocclusionThreshold` into bigger `disocclusionThresholdAlternate` from `CommonSettings`. Most likely the increased disocclusion threshold is needed only for pixels with normal details at primary hits (local curvature is not zero).
+
 ## MEMORY REQUIREMENTS
 
 The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the *Working set* is required to be left intact for subsequent frames of the application. This memory stores the history resources consumed by NRD. The *Aliasable* column (matches *NRD Transient pool*) shows how much of the *Working set* may be aliased by textures or other resources used by the application outside of the operating boundaries of NRD.
 
-Creating borderless window (2560, 1440)
-Loading...
 | Resolution |                             Denoiser | Working set (Mb) |  Persistent (Mb) |   Aliasable (Mb) |
 |------------|--------------------------------------|------------------|------------------|------------------|
 |      1080p |                       REBLUR_DIFFUSE |            88.75 |            46.50 |            42.25 |
@@ -399,7 +419,7 @@ Denoising is not a panacea or miracle. Denoising works best with ray tracing res
 
 **[NRD]** Read all comments in `NRDDescs.h`, `NRDSettings.h` and `NRD.hlsli`.
 
-**[NRD]** If you are unsure of which parameters to use - use defaults via `{}` construction. It will help to improve compatibility with future versions.
+**[NRD]** If you are unsure of which parameters to use - use defaults via `{}` construction. It helps to improve compatibility with future versions and offers optimal IQ, because default settings are always adjusted by recent algorithmic changes.
 
 **[NRD]** *NRD* requires linear roughness and world-space normals. See `NRD.hlsli` for more details and supported customizations.
 

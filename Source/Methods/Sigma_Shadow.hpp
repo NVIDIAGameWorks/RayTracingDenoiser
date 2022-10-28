@@ -8,12 +8,22 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define SIGMA_SET_SHARED_CONSTANTS                    SetSharedConstants(1, 1, 9, 10)
-#define SIGMA_CLASSIFY_TILES_SET_CONSTANTS            SumConstants(0, 0, 0, 0)
-#define SIGMA_SMOOTH_TILES_SET_CONSTANTS              SumConstants(0, 0, 1, 0)
-#define SIGMA_BLUR_SET_CONSTANTS                      SumConstants(1, 1, 0, 0)
-#define SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS    SumConstants(2, 0, 0, 1)
-#define SIGMA_SPLIT_SCREEN_SET_CONSTANTS              SumConstants(0, 0, 0, 1)
+#define SIGMA_SET_SHARED_CONSTANTS                      SetSharedConstants(1, 1, 9, 10)
+
+#define SIGMA_CLASSIFY_TILES_SET_CONSTANTS              SumConstants(0, 0, 0, 0)
+#define SIGMA_CLASSIFY_TILES_NUM_THREADS                NumThreads(1, 1)
+
+#define SIGMA_SMOOTH_TILES_SET_CONSTANTS                SumConstants(0, 0, 1, 0)
+#define SIGMA_SMOOTH_TILES_NUM_THREADS                  NumThreads(16, 16)
+
+#define SIGMA_BLUR_SET_CONSTANTS                        SumConstants(1, 1, 0, 0)
+#define SIGMA_BLUR_NUM_THREADS                          NumThreads(16, 16)
+
+#define SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS      SumConstants(2, 0, 0, 1)
+#define SIGMA_TEMPORAL_STABILIZATION_NUM_THREADS        NumThreads(16, 16)
+
+#define SIGMA_SPLIT_SCREEN_SET_CONSTANTS                SumConstants(0, 0, 0, 1)
+#define SIGMA_SPLIT_SCREEN_NUM_THREADS                  NumThreads(16, 16)
 
 void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
 {
@@ -54,7 +64,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
 
         PushOutput( AsUint(Transient::TILES) );
 
-        AddDispatch( SIGMA_Shadow_ClassifyTiles, SIGMA_CLASSIFY_TILES_SET_CONSTANTS, 1, 16 );
+        AddDispatch( SIGMA_Shadow_ClassifyTiles, SIGMA_CLASSIFY_TILES_SET_CONSTANTS, SIGMA_CLASSIFY_TILES_NUM_THREADS, 16 );
     }
 
     PushPass("Smooth tiles");
@@ -63,7 +73,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
 
         PushOutput( AsUint(Transient::SMOOTH_TILES) );
 
-        AddDispatch( SIGMA_Shadow_SmoothTiles, SIGMA_SMOOTH_TILES_SET_CONSTANTS, 16, 16 );
+        AddDispatch( SIGMA_Shadow_SmoothTiles, SIGMA_SMOOTH_TILES_SET_CONSTANTS, SIGMA_SMOOTH_TILES_NUM_THREADS, 16 );
     }
 
     PushPass("Blur");
@@ -77,7 +87,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_Shadow_Blur, SIGMA_BLUR_SET_CONSTANTS, 16, USE_MAX_DIMS );
+        AddDispatch( SIGMA_Shadow_Blur, SIGMA_BLUR_SET_CONSTANTS, SIGMA_BLUR_NUM_THREADS, USE_MAX_DIMS );
     }
 
     PushPass("Post-blur");
@@ -89,7 +99,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
         PushOutput( AsUint(Transient::DATA_2) );
         PushOutput( AsUint(Transient::TEMP_2) );
 
-        AddDispatch( SIGMA_Shadow_PostBlur, SIGMA_BLUR_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_Shadow_PostBlur, SIGMA_BLUR_SET_CONSTANTS, SIGMA_BLUR_NUM_THREADS, 1 );
     }
 
     PushPass("Temporal stabilization");
@@ -102,7 +112,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_Shadow_TemporalStabilization, SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_Shadow_TemporalStabilization, SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS, SIGMA_TEMPORAL_STABILIZATION_NUM_THREADS, 1 );
     }
 
     PushPass("Split screen");
@@ -111,7 +121,7 @@ void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_Shadow_SplitScreen, SIGMA_SPLIT_SCREEN_SET_CONSTANTS, 16, 1 );
+        AddDispatch( SIGMA_Shadow_SplitScreen, SIGMA_SPLIT_SCREEN_SET_CONSTANTS, SIGMA_SPLIT_SCREEN_NUM_THREADS, 1 );
     }
 
     #undef METHOD_NAME

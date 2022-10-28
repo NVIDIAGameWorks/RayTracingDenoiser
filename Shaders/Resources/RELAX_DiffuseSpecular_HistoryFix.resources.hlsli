@@ -21,6 +21,12 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float, gHistoryFixEdgeStoppingNormalPower )
     NRD_CONSTANT( float, gHistoryFixStrideBetweenSamples )
     NRD_CONSTANT( float, gHistoryFixFrameNum )
+    #if( defined RELAX_SPECULAR )
+        NRD_CONSTANT(float, gSpecularLobeAngleFraction)
+        NRD_CONSTANT(float, gSpecularLobeAngleSlack)
+        NRD_CONSTANT(float, gRoughnessEdgeStoppingRelaxation)
+        NRD_CONSTANT(float, gNormalEdgeStoppingRelaxation)
+    #endif
 NRD_CONSTANTS_END
 
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
@@ -67,4 +73,5 @@ NRD_CONSTANTS_END
 #endif
 
 // Macro magic
-#define NRD_CTA_8X8
+#define GROUP_X 8
+#define GROUP_Y 8

@@ -18,10 +18,6 @@ float2 GetCoarseRoughnessWeightParams(float roughness)
 
 float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float roughness = 1.0)
 {
-    // TODO: "pixelRadiusNorm" can be used to estimate how many samples from a potentially bumpy normal map fit into
-    // a pixel, i.e. to increase "fraction" a bit if "pixelRadiusNorm" is close to 1. It was used before. Now it's a
-    // backup plan. See "GetBlurRadius".
-
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);
     angle *= lerp(saturate(fraction), 1.0, nonLinearAccumSpeed); // TODO: use as "percentOfVolume" instead?
 

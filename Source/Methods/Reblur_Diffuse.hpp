@@ -12,36 +12,36 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SET_SHARED_CONSTANTS                                 SetSharedConstants(2, 4, 9, 22)
 
 #define REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM                  SumConstants(0, 0, 0, 0)
-#define REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM                     8
+#define REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS                   NumThreads(8, 8)
 
 #define REBLUR_PREPASS_CONSTANT_NUM                                 SumConstants(0, 1, 0, 2)
-#define REBLUR_PREPASS_GROUP_DIM                                    16
+#define REBLUR_PREPASS_NUM_THREADS                                  NumThreads(16, 16)
 
-#define REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM                   SumConstants(4, 2, 1, 4)
-#define REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM                      8
+#define REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM                   SumConstants(4, 2, 1, 7)
+#define REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS                    NumThreads(8, 8)
 
 #define REBLUR_HISTORY_FIX_CONSTANT_NUM                             SumConstants(0, 1, 0, 1)
-#define REBLUR_HISTORY_FIX_GROUP_DIM                                16
+#define REBLUR_HISTORY_FIX_NUM_THREADS                              NumThreads(16, 16)
 
-#define REBLUR_BLUR_CONSTANT_NUM                                    SumConstants(0, 1, 0, 1)
-#define REBLUR_BLUR_GROUP_DIM                                       8
+#define REBLUR_BLUR_CONSTANT_NUM                                    SumConstants(0, 1, 0, 0)
+#define REBLUR_BLUR_NUM_THREADS                                     NumThreads(8, 8)
 
-#define REBLUR_POST_BLUR_CONSTANT_NUM                               SumConstants(0, 1, 0, 1)
-#define REBLUR_POST_BLUR_GROUP_DIM                                  8
+#define REBLUR_POST_BLUR_CONSTANT_NUM                               SumConstants(0, 1, 0, 0)
+#define REBLUR_POST_BLUR_NUM_THREADS                                NumThreads(8, 8)
 
 #define REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM                 SumConstants(0, 0, 0, 0, false)
-#define REBLUR_COPY_STABILIZED_HISTORY_GROUP_DIM                    16
+#define REBLUR_COPY_STABILIZED_HISTORY_NUM_THREADS                  NumThreads(16, 16)
 
 #define REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM                  SumConstants(2, 2, 2, 0)
-#define REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM                     8
+#define REBLUR_TEMPORAL_STABILIZATION_NUM_THREADS                   NumThreads(8, 8)
 
 #define REBLUR_SPLIT_SCREEN_CONSTANT_NUM                            SumConstants(0, 0, 0, 3)
-#define REBLUR_SPLIT_SCREEN_GROUP_DIM                               16
+#define REBLUR_SPLIT_SCREEN_NUM_THREADS                             NumThreads(16, 16)
 
 // Permutations
 #define REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM               4
 #define REBLUR_PREPASS_PERMUTATION_NUM                              2
-#define REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM                8
+#define REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM                16
 #define REBLUR_HISTORY_FIX_PERMUTATION_NUM                          1
 #define REBLUR_BLUR_PERMUTATION_NUM                                 1
 #define REBLUR_POST_BLUR_PERMUTATION_NUM                            2
@@ -50,7 +50,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SPLIT_SCREEN_PERMUTATION_NUM                         1
 
 #define REBLUR_OCCLUSION_HITDIST_RECONSTRUCTION_PERMUTATION_NUM     2
-#define REBLUR_OCCLUSION_TEMPORAL_ACCUMULATION_PERMUTATION_NUM      4
+#define REBLUR_OCCLUSION_TEMPORAL_ACCUMULATION_PERMUTATION_NUM      8
 #define REBLUR_OCCLUSION_HISTORY_FIX_PERMUTATION_NUM                1
 #define REBLUR_OCCLUSION_BLUR_PERMUTATION_NUM                       1
 #define REBLUR_OCCLUSION_POST_BLUR_PERMUTATION_NUM                  1
@@ -156,13 +156,13 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             // Shaders
             if (is5x5)
             {
-                AddDispatch( REBLUR_Diffuse_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Diffuse_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
             }
             else
             {
-                AddDispatch( REBLUR_Diffuse_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Diffuse_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
             }
         }
     }
@@ -182,13 +182,14 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushOutput( DIFF_TEMP1 );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_Diffuse_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_NUM_THREADS, 1 );
         }
     }
 
     for (int i = 0; i < REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM; i++)
     {
+        bool hasDisocclusionThresholdMix = ( ( ( i >> 3 ) & 0x1 ) != 0 );
         bool isTemporalStabilization = ( ( ( i >> 2 ) & 0x1 ) != 0 );
         bool hasConfidenceInputs = ( ( ( i >> 1 ) & 0x1 ) != 0 );
         bool isAfterPrepass = ( ( ( i >> 0 ) & 0x1 ) != 0 );
@@ -202,6 +203,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
             PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Permanent::PREV_INTERNAL_DATA) );
+            PushInput( hasDisocclusionThresholdMix ? AsUint(ResourceType::IN_DISOCCLUSION_THRESHOLD_MIX) : REBLUR_DUMMY );
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterPrepass ? DIFF_TEMP1 : AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_HISTORY) : AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
@@ -214,16 +216,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushOutput( AsUint(Transient::DATA2) );
 
             // Shaders
-            if (hasConfidenceInputs)
-            {
-                AddDispatch( REBLUR_Diffuse_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation_Confidence, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-            }
-            else
-            {
-                AddDispatch( REBLUR_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_GROUP_DIM, 1 );
-            }
+            AddDispatch( REBLUR_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_Diffuse_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
         }
     }
 
@@ -242,8 +236,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushOutput( DIFF_TEMP1 );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );
         }
     }
 
@@ -262,8 +256,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushOutput( AsUint(Permanent::PREV_VIEWZ) );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Diffuse_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_Diffuse_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_NUM_THREADS, 1 );
         }
     }
 
@@ -293,13 +287,13 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             // Shaders
             if (isTemporalStabilization)
             {
-                AddDispatch( REBLUR_Diffuse_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Diffuse_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
             }
             else
             {
-                AddDispatch( REBLUR_Diffuse_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
-                AddDispatch( REBLUR_Perf_Diffuse_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_GROUP_DIM, 1 );
+                AddDispatch( REBLUR_Diffuse_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_Perf_Diffuse_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
             }
         }
     }
@@ -315,7 +309,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushOutput( DIFF_TEMP2 );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_CopyStabilizedHistory, REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM, REBLUR_COPY_STABILIZED_HISTORY_GROUP_DIM, USE_MAX_DIMS );
+            AddDispatch( REBLUR_Diffuse_CopyStabilizedHistory, REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM, REBLUR_COPY_STABILIZED_HISTORY_NUM_THREADS, USE_MAX_DIMS );
         }
     }
 
@@ -337,8 +331,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
-            AddDispatch( REBLUR_Perf_Diffuse_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Diffuse_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_Perf_Diffuse_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_NUM_THREADS, 1 );
         }
     }
 
@@ -354,7 +348,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(nrd::MethodData& methodData)
             PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
 
             // Shaders
-            AddDispatch( REBLUR_Diffuse_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_GROUP_DIM, 1 );
+            AddDispatch( REBLUR_Diffuse_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_NUM_THREADS, 1 );
         }
     }
 
@@ -378,15 +372,22 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
         SPLIT_SCREEN            = TEMPORAL_STABILIZATION + REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM * 2,
     };
 
+    NRD_DECLARE_DIMS;
+
     const ReblurSettings& settings = methodData.settings.reblur;
     const ReblurProps& props = g_ReblurProps[ size_t(methodData.desc.method) - size_t(Method::REBLUR_DIFFUSE) ];
 
+    bool isHistoryReset = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE;
+    bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
     bool skipTemporalStabilization = settings.stabilizationStrength == 0.0f;
     bool skipPrePass = (settings.diffusePrepassBlurRadius == 0.0f || !props.hasDiffuse) &&
         (settings.specularPrepassBlurRadius == 0.0f || !props.hasSpecular) &&
         settings.checkerboardMode == CheckerboardMode::OFF;
 
-    bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
+    float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
+    float disocclusionThreshold = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
+    float disocclusionThresholdAlternate = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
+
     ml::float4 antilagMinMaxThreshold = ml::float4(settings.antilagIntensitySettings.thresholdMin, settings.antilagHitDistanceSettings.thresholdMin, settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
 
     if (!settings.antilagIntensitySettings.enable || settings.enableReferenceAccumulation)
@@ -417,10 +418,6 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
         default:
             break;
     }
-
-    NRD_DECLARE_DIMS;
-
-    float disocclusionThreshold = m_CommonSettings.disocclusionThreshold + (1.0f + m_JitterDelta) / float(rectH);
 
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
@@ -457,7 +454,9 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     }
 
     // TEMPORAL_ACCUMULATION
-    uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (skipTemporalStabilization ? 0 : 8) + (m_CommonSettings.isHistoryConfidenceInputsAvailable ? 4 : 0) + ((!skipPrePass || enableHitDistanceReconstruction) ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+    uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 16 : 0) +
+        (!skipTemporalStabilization ? 8 : 0) + (m_CommonSettings.isHistoryConfidenceInputsAvailable ? 4 : 0) +
+        ((!skipPrePass || enableHitDistanceReconstruction) ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
     Constant* data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
     AddFloat4x4(data, m_WorldToViewPrev);
@@ -467,10 +466,13 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     AddFloat4(data, m_FrustumPrev);
     AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, disocclusionThreshold));
     AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
+    AddFloat(data, disocclusionThresholdAlternate);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);
     AddUint(data, skipPrePass ? 0 : 1);
+    AddUint(data, m_CommonSettings.isHistoryConfidenceInputsAvailable ? 1 : 0);
+    AddUint(data, m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0);
     ValidateConstants(data);
 
     // HISTORY_FIX
@@ -478,7 +480,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
     AddFloat4(data, m_Rotator_HistoryFix);
-    AddFloat(data, settings.historyFixStrideBetweenSamples);
+    AddFloat(data, settings.historyFixStrideBetweenSamples * (isHistoryReset ? 0.5f : 1.0f));
     ValidateConstants(data);
 
     // BLUR
@@ -486,7 +488,6 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
     AddFloat4(data, m_Rotator_Blur);
-    AddFloat(data, settings.maxAdaptiveRadiusScale);
     ValidateConstants(data);
 
     // POST_BLUR
@@ -494,7 +495,6 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
     AddFloat4(data, m_Rotator_PostBlur);
-    AddFloat(data, settings.maxAdaptiveRadiusScale);
     ValidateConstants(data);
 
     // COPY_STABILIZED_HISTORY
@@ -536,17 +536,15 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
 {
     NRD_DECLARE_DIMS;
 
+    bool isHistoryReset = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE;
+    float unproject = 1.0f / (0.5f * rectH * m_ProjectY); // TODO: screenH?
     uint32_t maxAccumulatedFrameNum = ml::Min(settings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM);
-    ml::float4 hitDistParams = ml::float4(settings.hitDistanceParameters.A, settings.hitDistanceParameters.B, settings.hitDistanceParameters.C, settings.hitDistanceParameters.D);
-
-    // DRS will increase reprojected values, needed for stability, compensated by blur radius adjustment
-    float unproject = 1.0f / (0.5f * rectH * m_ProjectY);
 
     AddFloat4x4(data, m_ViewToClip);
     AddFloat4x4(data, m_ViewToWorld);
 
     AddFloat4(data, m_Frustum);
-    AddFloat4(data, hitDistParams);
+    AddFloat4(data, ml::float4(settings.hitDistanceParameters.A, settings.hitDistanceParameters.B, settings.hitDistanceParameters.C, settings.hitDistanceParameters.D));
     AddFloat4(data, ml::float4(m_ViewDirection.x, m_ViewDirection.y, m_ViewDirection.z, 0.0f));
     AddFloat4(data, ml::float4(m_ViewDirectionPrev.x, m_ViewDirectionPrev.y, m_ViewDirectionPrev.z, 0.0f));
 
@@ -573,11 +571,11 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
 
     AddFloat(data, m_FrameRateScale);
     AddFloat(data, settings.enableReferenceAccumulation ? 0.0f : settings.blurRadius);
-    AddFloat(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 0 : float(maxAccumulatedFrameNum));
-    AddFloat(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 0 : float(settings.maxFastAccumulatedFrameNum));
+    AddFloat(data, isHistoryReset ? 0 : float(maxAccumulatedFrameNum));
+    AddFloat(data, float(settings.maxFastAccumulatedFrameNum));
 
     AddFloat(data, settings.enableAntiFirefly ? 1.0f : 0.0f);
-    AddFloat(data, settings.minConvergedStateBaseRadiusScale);
+    AddFloat(data, 0.0f);
     AddFloat(data, settings.lobeAngleFraction);
     AddFloat(data, settings.roughnessFraction);
 

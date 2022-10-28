@@ -57,17 +57,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // CTA & preloading
 //==================================================================================================================
 
-#if 0 // CTA override
+#ifndef GROUP_X
     #define GROUP_X                                             16
+#endif
+
+#ifndef GROUP_Y
     #define GROUP_Y                                             16
-#else
-    #ifdef NRD_CTA_8X8
-        #define GROUP_X                                         8
-        #define GROUP_Y                                         8
-    #else
-        #define GROUP_X                                         16
-        #define GROUP_Y                                         16
-    #endif
 #endif
 
 #ifdef NRD_USE_BORDER_2
@@ -358,7 +353,7 @@ float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight,
 float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, float roughness = 1.0 )
 {
     // IMPORTANT: since this weight is exponential, 3% can lead to leaks from bright objects in reflections.
-    // Eeven 1% is not enough in some cases, but using a lower value makes things even more fragile
+    // Even 1% is not enough in some cases, but using a lower value makes things even more fragile
     float smc = GetSpecMagicCurve2( roughness );
     float norm = lerp( 0.01, 1.0, min( nonLinearAccumSpeed, smc ) );
     float a = 1.0 / norm;

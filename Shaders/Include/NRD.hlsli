@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.7
+// NRD v3.8
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -62,6 +62,14 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
  #ifndef NRD_INCLUDED
  #define NRD_INCLUDED
+
+#if( !defined( NRD_NORMAL_ENCODING ) || !defined( NRD_ROUGHNESS_ENCODING ) )
+    #ifdef NRD_HEADER_ONLY
+        #error "Include 'NRDEncoding.hlsli' file beforehand to get a match with the settings NRD has been compiled with. Or define encoding variants using Cmake parameters."
+    #else
+        #error "For NRD project compilation, encoding variants must be set using Cmake parameters."
+    #endif
+#endif
 
 //=================================================================================================================================
 // BINDINGS
@@ -191,24 +199,16 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 //=================================================================================================================================
 
 // Normal encoding variants ( match NormalEncoding )
-#define NRD_NORMAL_ENCODING_RGBA8_UNORM         0
-#define NRD_NORMAL_ENCODING_RGBA8_SNORM         1
-#define NRD_NORMAL_ENCODING_R10G10B10A2_UNORM   2 // supports material ID bits
-#define NRD_NORMAL_ENCODING_RGBA16_UNORM        3
-#define NRD_NORMAL_ENCODING_RGBA16_SNORM        4 // also can be used with FP formats
-
-#ifndef NRD_NORMAL_ENCODING
-    #error "NRD_NORMAL_ENCODING must be defined as 0-4. You can check 'LibraryDesc::normalEncoding' at runtime to know it."
-#endif
+#define NRD_NORMAL_ENCODING_RGBA8_UNORM                                                 0
+#define NRD_NORMAL_ENCODING_RGBA8_SNORM                                                 1
+#define NRD_NORMAL_ENCODING_R10G10B10A2_UNORM                                           2 // supports material ID bits
+#define NRD_NORMAL_ENCODING_RGBA16_UNORM                                                3
+#define NRD_NORMAL_ENCODING_RGBA16_SNORM                                                4 // also can be used with FP formats
 
 // Roughness encoding variants ( match RoughnessEncoding )
-#define NRD_ROUGHNESS_ENCODING_SQ_LINEAR        0 // linearRoughness * linearRoughness
-#define NRD_ROUGHNESS_ENCODING_LINEAR           1 // linearRoughness
-#define NRD_ROUGHNESS_ENCODING_SQRT_LINEAR      2 // sqrt( linearRoughness )
-
-#ifndef NRD_ROUGHNESS_ENCODING
-    #error "NRD_ROUGHNESS_ENCODING must be defined 0-2. You can check 'LibraryDesc::roughnessEncoding' at runtime to know it."
-#endif
+#define NRD_ROUGHNESS_ENCODING_SQ_LINEAR                                                0 // linearRoughness * linearRoughness
+#define NRD_ROUGHNESS_ENCODING_LINEAR                                                   1 // linearRoughness
+#define NRD_ROUGHNESS_ENCODING_SQRT_LINEAR                                              2 // sqrt( linearRoughness )
 
 #define NRD_FP16_MIN                                                                    1e-7 // min allowed hitDist (0 = no data)
 #define NRD_FP16_MAX                                                                    65504.0
@@ -405,7 +405,7 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint mate
     #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
         p.xy = _NRD_EncodeUnitVector( N, false );
         p.z = roughness;
-        p.w = saturate( ( materialID + 0.5 ) / 3.0 );
+        p.w = saturate( materialID / 3.0 );
     #else
         // Best fit ( optional )
         N /= max( abs( N.x ), max( abs( N.y ), abs( N.z ) ) );
@@ -616,12 +616,12 @@ float4 REBLUR_BackEnd_UnpackRadianceAndNormHitDist( float4 data )
 
 // OUT_DIFF_SH0 and OUT_DIFF_SH1 => X
 // OUT_SPEC_SH0 and OUT_SPEC_SH1 => X
-NRD_SH REBLUR_BackEnd_UnpackSh( float4 data0, float4 data1 )
+NRD_SH REBLUR_BackEnd_UnpackSh( float4 sh0, float4 sh1 )
 {
     NRD_SH sh;
-    sh.c0_chroma = data0.xyz;
-    sh.c1 = data1.xyz;
-    sh.normHitDist = data0.w;
+    sh.c0_chroma = sh0.xyz;
+    sh.c1 = sh1.xyz;
+    sh.normHitDist = sh0.w;
 
     return sh;
 }

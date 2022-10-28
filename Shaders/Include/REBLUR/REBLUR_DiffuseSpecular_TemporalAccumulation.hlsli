@@ -99,41 +99,56 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float isInScreen = IsInScreen( smbPixelUv );
     float3 Xprev = X + motionVector * float( gIsWorldSpaceMotionEnabled != 0 );
 
-    // Curvature ( tests 15, 40, 76, 133, 146, 147 )
+    // Parallax
+    float smbParallax = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
+    float smbParallaxInPixels = GetParallaxInPixels( smbParallax, gUnproject );
+
+    // Curvature estimation along predicted motion ( tests 15, 40, 76, 133, 146, 147, 148 )
     float curvature = 0;
     #ifdef REBLUR_SPECULAR
+    {
         float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta, false );
-        float2 cameraMotion2d = ( pixelUv - motionUv ) * gRectSize;
+        float2 cameraMotion2d = ( motionUv - pixelUv ) * gRectSize;
         cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / ( 1.0 + gMaxAccumulatedFrameNum ) );
-        cameraMotion2d *= 0.5 * gInvRectSize;
+        cameraMotion2d *= gInvRectSize;
 
-        [unroll]
-        for( int dir = -1; dir <= 1; dir += 2 )
-        {
-            float2 uv = pixelUv + dir * cameraMotion2d;
-            STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( uv, gRectSize );
+        // Low parallax - bilinear ( SMEM )
+        float2 uv = pixelUv + cameraMotion2d * 0.5;
+        STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( uv, gRectSize );
 
-            int2 pos = threadPos + BORDER + uint2( f.origin ) - pixelPos;
-            float3 n00 = s_Normal_MinHitDist[ pos.y ][ pos.x ].xyz;
-            float3 n10 = s_Normal_MinHitDist[ pos.y ][ pos.x + 1 ].xyz;
-            float3 n01 = s_Normal_MinHitDist[ pos.y + 1 ][ pos.x ].xyz;
-            float3 n11 = s_Normal_MinHitDist[ pos.y + 1 ][ pos.x + 1 ].xyz;
+        int2 pos = threadPos + BORDER + int2( f.origin ) - pixelPos;
+        pos = clamp( pos, 0, int2( BUFFER_X, BUFFER_Y ) - 2 );
 
-            float3 n = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
-            n = normalize( n );
+        float3 n00 = s_Normal_MinHitDist[ pos.y ][ pos.x ].xyz;
+        float3 n10 = s_Normal_MinHitDist[ pos.y ][ pos.x + 1 ].xyz;
+        float3 n01 = s_Normal_MinHitDist[ pos.y + 1 ][ pos.x ].xyz;
+        float3 n11 = s_Normal_MinHitDist[ pos.y + 1 ][ pos.x + 1 ].xyz;
 
-            float3 xv = STL::Geometry::ReconstructViewPosition( uv, gFrustum, 1.0, gOrthoMode );
-            float3 x = STL::Geometry::RotateVector( gViewToWorld, xv );
-            float3 v = GetViewVector( x );
+        float3 n = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
+        n = normalize( n );
 
-            // Values below this threshold get turned into garbage due to numerical imprecision
-            float d = STL::Math::ManhattanDistance( N, n );
-            float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
+        // High parallax - nearest ( fetch )
+        float2 uvHigh = gRectOffset + pixelUv + cameraMotion2d * smbParallaxInPixels;
+        float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvHigh, 0 ) ).xyz;
+        float zHigh = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvHigh, 0 ) );
 
-            curvature += EstimateCurvature( n, v, N, X ) * s;
-        }
+        float zError = abs( zHigh - viewZ ) * rcp( max( zHigh, viewZ ) );
+        bool cmp = smbParallaxInPixels > 1.0 && zError < 0.1;
 
-        curvature *= 0.5;
+        uv = cmp ? uvHigh : uv;
+        n = cmp ? nHigh : n;
+
+        // Estimate curvature
+        float3 xv = STL::Geometry::ReconstructViewPosition( uv, gFrustum, 1.0, gOrthoMode );
+        float3 x = STL::Geometry::RotateVector( gViewToWorld, xv );
+        float3 v = GetViewVector( x );
+
+        // Values below this threshold get turned into garbage due to numerical imprecision
+        float d = STL::Math::ManhattanDistance( N, n );
+        float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
+
+        curvature = EstimateCurvature( n, v, N, X ) * s;
+    }
     #endif
 
     // Previous viewZ ( 4x4, surface motion )
@@ -163,6 +178,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 prevViewZ3 = UnpackViewZ( smbViewZ3.xyz );
 
     // Previous normal averaged for all pixels in 2x2 footprint
+    // IMPORTANT: bilinear filter can touch sky pixels, due to this reason "Post Blur" writes special values into sky-pixels
     STL::Filtering::Bilinear smbBilinearFilter = STL::Filtering::GetBilinearFilter( saturate( smbPixelUv ), gRectSizePrev );
 
     float2 smbBilinearGatherUv = ( smbBilinearFilter.origin + 1.0 ) * gInvScreenSize;
@@ -181,9 +197,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float4 specAccumSpeeds = float4( internalData00.y, internalData10.y, internalData01.y, internalData11.y );
     float4 prevMaterialIDs = float4( internalData00.z, internalData10.z, internalData01.z, internalData11.z );
 
-    // Parallax
-    float smbParallax = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
-    float smbParallaxInPixels = GetParallaxInPixels( smbParallax, gUnproject );
+    // Disocclsuion threshold
+    float disocclusionThreshold = gDisocclusionThreshold;
+    if( gHasDisocclusionThresholdMix )
+        disocclusionThreshold = lerp( gDisocclusionThreshold, gDisocclusionThresholdAlternate, gIn_DisocclusionThresholdMix[ pixelPosUser ] );
 
     // Plane distance based disocclusion for surface motion
     float3 V = GetViewVector( X );
@@ -191,10 +208,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
     float frustumHeight = pixelSize * gRectSize.y;
 
-    float mvLengthFactor = saturate( smbParallaxInPixels / 0.5 );
+    float smbDisocclusionThreshold = gDisocclusionThreshold * frustumHeight / lerp( NoV, 1.0, saturate( smbParallaxInPixels / 30.0 ) );
+
+    float mvLengthFactor = STL::Math::LinearStep( 0.5, 1.0, smbParallaxInPixels );
     float frontFacing = lerp( cos( STL::Math::DegToRad( 135.0 ) ), cos( STL::Math::DegToRad( 91.0 ) ), mvLengthFactor );
     bool isInScreenAndNotBackfacing = isInScreen && dot( prevNavg, Navg ) > frontFacing;
-    float smbDisocclusionThreshold = isInScreenAndNotBackfacing ? gDisocclusionThreshold * frustumHeight / NoV : -1.0;
+    smbDisocclusionThreshold = isInScreenAndNotBackfacing ? smbDisocclusionThreshold : -1.0;
 
     float3 Xvprev = STL::Geometry::AffineTransform( gWorldToViewPrev, Xprev );
     float3 smbPlaneDist0 = abs( prevViewZ0 - Xvprev.z );
@@ -212,8 +231,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         smbAllowCatRom = false;
     #endif
 
-    float footprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x, smbBilinearFilter );
-    footprintQuality = STL::Math::Sqrt01( footprintQuality );
+    float smbFootprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x, smbBilinearFilter );
+    smbFootprintQuality = STL::Math::Sqrt01( smbFootprintQuality );
 
     // Material ID check
     float4 materialCmps = CompareMaterials( materialID, prevMaterialIDs, 1 );
@@ -225,8 +244,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float4 smbOcclusionWeightsWithMaterialID = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, float4( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x ) );
     bool smbAllowCatRomWithMaterialID = smbAllowCatRom && dot( materialCmps, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA;
 
-    float footprintQualityWithMaterialID = STL::Filtering::ApplyBilinearFilter( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x, smbBilinearFilter );
-    footprintQualityWithMaterialID = STL::Math::Sqrt01( footprintQualityWithMaterialID );
+    float smbFootprintQualityWithMaterialID = STL::Filtering::ApplyBilinearFilter( smbOcclusion0.z, smbOcclusion1.y, smbOcclusion2.y, smbOcclusion3.x, smbBilinearFilter );
+    smbFootprintQualityWithMaterialID = STL::Math::Sqrt01( smbFootprintQualityWithMaterialID );
 
     // Avoid footprint momentary stretching due to changed viewing angle
     float3 Vprev = GetViewVectorPrev( Xprev, gCameraDelta );
@@ -234,8 +253,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float sizeQuality = ( NoVprev + 1e-3 ) / ( NoV + 1e-3 ); // this order because we need to fix stretching only, shrinking is OK
     sizeQuality *= sizeQuality;
     sizeQuality = lerp( 0.1, 1.0, saturate( sizeQuality ) );
-    footprintQuality *= sizeQuality;
-    footprintQualityWithMaterialID *= sizeQuality;
+    smbFootprintQuality *= sizeQuality;
+    smbFootprintQualityWithMaterialID *= sizeQuality;
 
     // Bits
     float fbits = smbAllowCatRom * 2.0;
@@ -244,12 +263,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Update accumulation speeds
     #ifdef REBLUR_DIFFUSE
         float4 diffOcclusionWeights = gDiffMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights;
-        float diffHistoryConfidence = gDiffMaterialMask ? footprintQualityWithMaterialID : footprintQuality;
+        float diffHistoryConfidence = gDiffMaterialMask ? smbFootprintQualityWithMaterialID : smbFootprintQuality;
         bool diffAllowCatRom = gDiffMaterialMask ? smbAllowCatRomWithMaterialID : smbAllowCatRom;
 
-        #ifdef REBLUR_HAS_CONFIDENCE
+        if( gHasHistoryConfidence )
             diffHistoryConfidence *= gIn_Diff_Confidence[ pixelPosUser ];
-        #endif
 
         float diffAccumSpeed = STL::Filtering::ApplyBilinearCustomWeights( diffAccumSpeeds.x, diffAccumSpeeds.y, diffAccumSpeeds.z, diffAccumSpeeds.w, diffOcclusionWeights );
         diffAccumSpeed *= lerp( diffHistoryConfidence, 1.0, 1.0 / ( 1.0 + diffAccumSpeed ) );
@@ -257,12 +275,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     #ifdef REBLUR_SPECULAR
         float4 specOcclusionWeights = gSpecMaterialMask ? smbOcclusionWeightsWithMaterialID : smbOcclusionWeights;
-        float specHistoryConfidence = gSpecMaterialMask ? footprintQualityWithMaterialID : footprintQuality;
+        float specHistoryConfidence = gSpecMaterialMask ? smbFootprintQualityWithMaterialID : smbFootprintQuality;
         bool specAllowCatRom = gSpecMaterialMask ? smbAllowCatRomWithMaterialID : smbAllowCatRom;
 
-        #ifdef REBLUR_HAS_CONFIDENCE
+        if( gHasHistoryConfidence )
             specHistoryConfidence *= gIn_Spec_Confidence[ pixelPosUser ];
-        #endif
 
         float specAccumSpeed = STL::Filtering::ApplyBilinearCustomWeights( specAccumSpeeds.x, specAccumSpeeds.y, specAccumSpeeds.z, specAccumSpeeds.w, specOcclusionWeights );
         specAccumSpeed *= lerp( specHistoryConfidence, 1.0, 1.0 / ( 1.0 + specAccumSpeed ) );
@@ -333,7 +350,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Anti-firefly suppressor
-        float diffAntifireflyFactor = float( ( diffAccumSpeed * gBlurRadius ) != 0.0 );
+        float diffAntifireflyFactor = diffAccumSpeed * gBlurRadius * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE;
+        diffAntifireflyFactor /= 1.0 + diffAntifireflyFactor;
 
         float diffHitDistResult = ExtractHitDist( diffResult );
         float diffHitDistClamped = min( diffHitDistResult, ExtractHitDist( smbDiffHistory ) * REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY.y );
@@ -409,21 +427,30 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Hit distance for tracking ( tests 8, 110, 139 )
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
-        float hitDistForTracking = minHitDist * hitDistScale;
+        float hitDistForTracking = minHitDist * hitDistScale; // TODO: clamp to +/- 3 sigma?
 
         // Virtual motion
         float4 D = STL::ImportanceSampling::GetSpecularDominantDirection( N, V, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
+
         float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, D.w );
         float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual, false );
 
+        float2 vmbDelta = vmbPixelUv - smbPixelUv;
+        float vmbPixelsTraveled = length( vmbDelta * gRectSize );
+
         // Adjust curvature if curvature sign oscillation is forseen // TODO: is there a better way? fix curvature?
-        float pixelsBetweenSurfaceAndVirtualMotion = length( ( vmbPixelUv - smbPixelUv ) * gRectSize );
         float curvatureCorrectionThreshold = smbParallaxInPixels + gInvRectSize.x;
-        float curvatureCorrection = STL::Math::SmoothStep( 2.0 * curvatureCorrectionThreshold, curvatureCorrectionThreshold, pixelsBetweenSurfaceAndVirtualMotion );
+        float curvatureCorrection = STL::Math::SmoothStep( 1.05 * curvatureCorrectionThreshold, 0.95 * curvatureCorrectionThreshold, vmbPixelsTraveled );
         curvature *= curvatureCorrection;
 
         Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, D.w );
         vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual, false );
+
+        // Update after curvature correction
+        vmbDelta = vmbPixelUv - smbPixelUv;
+        vmbPixelsTraveled = length( vmbDelta * gRectSize );
+
+        // TODO: "vmbPixelUv" is noisy, better replace it with "uv2" as early as possible
 
         // Virtual history amount - base
         float virtualHistoryAmount = IsInScreen( vmbPixelUv );
@@ -446,6 +473,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         virtualHistoryAmount *= vmbFootprintQuality;
 
         bool vmbAllowCatRom = dot( vmbOcclusion, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA;
+        vmbAllowCatRom = vmbAllowCatRom && specAllowCatRom; // helps to reduce over-sharpening in disoccluded areas
 
         // Virtual motion based accumulation speed
         uint4 vmbInternalData = gIn_Prev_InternalData.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy;
@@ -460,15 +488,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         vmbSpecAccumSpeed *= lerp( vmbFootprintQuality, 1.0, 1.0 / ( 1.0 + vmbSpecAccumSpeed ) );
 
         float responsiveAccumulationAmount = GetResponsiveAccumulationAmount( roughness );
-        vmbSpecAccumSpeed = GetSpecAccumSpeed( vmbSpecAccumSpeed, lerp( 1.0, roughnessModified, responsiveAccumulationAmount ), 0.99999, 0.0, 0.0, 1.0 );
+        responsiveAccumulationAmount = lerp( 1.0, GetSpecMagicCurve( roughness ), responsiveAccumulationAmount );
+
+        float vmbMaxFrameNum = GetFPS( ) * responsiveAccumulationAmount;
+        vmbSpecAccumSpeed = min( vmbSpecAccumSpeed, vmbMaxFrameNum );
 
         // Virtual motion amount - normal
-        float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness ); // TODO: roughnessModified?
+        float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
         lobeHalfAngle = max( lobeHalfAngle, REBLUR_NORMAL_ULP );
         lobeHalfAngle += STL::Math::DegToRad( 1.0 );
-
-        float2 vmbDelta = vmbPixelUv - smbPixelUv;
-        float vmbPixelsTraveled = length( vmbDelta * gRectSize );
 
         // Estimate how many pixels are traveled by virtual motion - how many radians can it be?
         // If curvature angle is multiplied by path length then we can get an angle exceeding 2 * PI, what is impossible. The max
@@ -490,7 +518,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float vmbRoughness = vmbNormalAndRoughness.w;
         float roughnessFraction = lerp( 0.2, 1.0, STL::BRDF::Pow5( NoV ) );
         float virtualHistoryRoughnessBasedConfidence = GetEncodingAwareRoughnessWeights( roughness, vmbRoughness, roughnessFraction );
-        virtualHistoryAmount *= virtualHistoryRoughnessBasedConfidence;
+        virtualHistoryAmount *= lerp( 1.0 - saturate( vmbPixelsTraveled ), 1.0, virtualHistoryRoughnessBasedConfidence );
 
         // Sample history - surface motion
         REBLUR_TYPE smbSpecHistory;
@@ -529,16 +557,19 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         vmbSpecHistory = ClampNegativeToZero( vmbSpecHistory );
 
         // Virtual motion confidence - virtual parallax difference
-        // Tests 3, 6, 8, 11, 14, 100, 103, 104, 106, 109, 110, 114, 120, 127, 130, 131, 138, 139
-        float NoD = abs( dot( N, D.xyz ) );
-        float hitDistFactor = GetHitDistFactor( hitDistForTracking * NoD, frustumHeight );
-        float smbSpecAccumSpeedForHitDist = GetSpecAccumSpeed( specAccumSpeed, roughnessModified, NoV, smbParallax * hitDistFactor, curvature, viewZ );
+        // Tests 3, 6, 8, 11, 14, 100, 103, 104, 106, 109, 110, 114, 120, 127, 130, 131, 132, 138, 139 and 9e
+        float smc = GetSpecMagicCurve( roughnessModified );
+        float smbSpecAccumSpeedFactor = lerp( 5.0, 1.0, smc );
+        smbSpecAccumSpeedFactor *= lerp( 1.0, lerp( 1.0, 0.25, smc ), NoV );
+        smbSpecAccumSpeedFactor *= gFramerateScale;
+
+        float smbSpecAccumSpeed = GetSmbAccumSpeed( smbSpecAccumSpeedFactor, vmbPixelsTraveled, smbParallax, specAccumSpeed, roughness );
 
         // Current hit distance estimation: // TODO: try to use hit distances processed by OCCLUSION denoiser
         // - can't use input, because it's noisy ( but it's not noisy for 0 roughness and we must use input in this case )
         // - for glossy reflections prefer smb-based hit distance, because it's already denoised
         // - combine with a small amount of vmb-based hit distance to further reduce noise
-        float hitDist = lerp( ExtractHitDist( spec ), ExtractHitDist( smbSpecHistory ), STL::Math::SmoothStep( 0.04, 0.11, roughnessModified ) * smbSpecAccumSpeedForHitDist / ( 1.0 + smbSpecAccumSpeedForHitDist ) );
+        float hitDist = lerp( ExtractHitDist( spec ), ExtractHitDist( smbSpecHistory ), STL::Math::SmoothStep( 0.04, 0.11, roughnessModified ) * smbSpecAccumSpeed / ( 1.0 + smbSpecAccumSpeed ) );
         hitDist = lerp( hitDist, ExtractHitDist( vmbSpecHistory ), 0.5 * vmbSpecAccumSpeed / ( 1.0 + vmbSpecAccumSpeed ) );
         hitDist *= hitDistScale;
 
@@ -550,11 +581,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float3 vmbXvirtual = GetXvirtual( NoV, vmbHitDist, curvature, X, Xprev, V, D.w );
         float2 uv2 = STL::Geometry::GetScreenUv( gWorldToClipPrev, vmbXvirtual, false );
 
-        float smc = GetSpecMagicCurve2( roughnessModified );
-        float parallaxScale = lerp( 5.0, 1.0, smc ); // at least 5.0 is needed for 0 roughness
-
-        float deltaParallax = length( ( uv1 - uv2 ) * gRectSize ) * gFramerateScale;
+        float parallaxScale = lerp( 5.0, 1.0, smc ); // at least 5.0 is needed for 0 roughness // TODO: use "smbSpecAccumSpeedFactor / gFramerateScale" instead?
+        float deltaParallax = length( ( uv1 - uv2 ) * gRectSize );
         float virtualHistoryParallaxBasedConfidence = STL::Math::SmoothStep( 1.0, 0.0, parallaxScale * deltaParallax );
+
+        // Update because "uv2" is less noisy than "vmbPixelUv" ( can be moved to "Surface motion" section )
+        vmbDelta = uv2 - smbPixelUv;
+        vmbPixelsTraveled = length( vmbDelta * gRectSize );
 
         // Virtual motion confidence - fixing trails if radiance on a flat surface is taken from a sloppy surface
         vmbDelta *= STL::Math::Rsqrt( STL::Math::LengthSquared( vmbDelta ) );
@@ -573,26 +606,24 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float w = GetEncodingAwareNormalWeight( N, vmbNprev, angle + curvatureAngle * i, curvatureAngle );
 
             float wr = GetEncodingAwareRoughnessWeights( roughness, vmbNormalAndRoughnessPrev.w, roughnessFraction );
-            w *= lerp( 0.25 * i, 1.0, wr );
+            w *= lerp( 0.33 * i, 1.0, lerp( 1.0 - saturate( abs( vmbPixelsTraveled ) ), 1.0, wr ) );
 
-            virtualHistoryPrevPrevBasedConfidence *= IsInScreen( vmbPixelUvPrev ) ? w : 1.0;
-            virtualHistoryRoughnessBasedConfidence *= wr;
+            float isOutOfScreen = 1.0 - IsInScreen( vmbPixelUvPrev );
+            virtualHistoryPrevPrevBasedConfidence *= saturate( w + isOutOfScreen );
+            virtualHistoryRoughnessBasedConfidence *= saturate( wr + isOutOfScreen );
         }
 
         // Virtual motion - accumulation acceleration
         vmbSpecAccumSpeed *= virtualHistoryPrevPrevBasedConfidence;
 
-        float f = STL::Math::Sqrt01( smc );
-        f = lerp( f, 1.0, virtualHistoryParallaxBasedConfidence );
-        f = lerp( f, 1.0, smc / ( 1.0 + max( vmbSpecAccumSpeed - gHistoryFixFrameNum * smc, 0.0 ) ) );
+        float f = lerp( smc, 1.0, virtualHistoryParallaxBasedConfidence );
         f = lerp( 1.0, f, virtualHistoryPrevPrevBasedConfidence );
         vmbSpecAccumSpeed *= f;
 
-        // Surface motion - allow more accumulation in regions with low virtual motion confidence ( test 9 )
-        float roughnessBoost = ( 0.1 + 0.3 * roughnessModified ) * ( 1.0 - roughnessModified );
-        float roughnessBoostAmount = virtualHistoryAmount * ( 1.0 - virtualHistoryRoughnessBasedConfidence );
-        float roughnessBoosted = roughnessModified + roughnessBoost * roughnessBoostAmount;
-        float smbSpecAccumSpeed = GetSpecAccumSpeed( specAccumSpeed, roughnessBoosted, NoV, smbParallax, curvature, viewZ );
+        // Surface motion ( test 9 )
+        smbSpecAccumSpeedFactor *= lerp( 0.5 + 0.5 * virtualHistoryRoughnessBasedConfidence, 1.0, virtualHistoryAmount );
+
+        smbSpecAccumSpeed = GetSmbAccumSpeed( smbSpecAccumSpeedFactor, vmbPixelsTraveled, smbParallax, specAccumSpeed, roughness );
 
         // Fallback to surface motion if virtual motion doesn't go well ( tests 103, 111, 132, e9, e11 )
         virtualHistoryAmount *= saturate( ( vmbSpecAccumSpeed + 0.1 ) / ( smbSpecAccumSpeed + 0.1 ) );
@@ -602,7 +633,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float specNonLinearAccumSpeed = 1.0 / ( 1.0 + specAccumSpeed );
         if( !specHasData )
-            specNonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, specNonLinearAccumSpeed );
+        {
+            float smbConfidence = STL::Math::LinearStep( 1.0, 0.0, smbParallaxInPixels );
+            float confidence = 1.0 / ( 1.0 + specAccumSpeed * lerp( smbConfidence, 1.0, virtualHistoryAmount ) );
+
+            specNonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, confidence );
+        }
 
         REBLUR_TYPE specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
         REBLUR_TYPE specResult = MixHistoryAndCurrent( specHistory, spec, specNonLinearAccumSpeed, roughnessModified );
@@ -612,7 +648,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Anti-firefly suppressor
-        float specAntifireflyFactor = smc * float( ( specAccumSpeed * gBlurRadius ) != 0.0 );
+        float specAntifireflyFactor = specAccumSpeed * gBlurRadius * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE * smc;
+        specAntifireflyFactor /= 1.0 + specAntifireflyFactor;
 
         float specHitDistResult = ExtractHitDist( specResult );
         float specHitDistClamped = min( specHitDistResult, ExtractHitDist( specHistory ) * REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY.y );
@@ -634,12 +671,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Output
-        #ifdef REBLUR_OCCLUSION
-            float hitDistScaleForTracking = 1.0;
-        #else
-            float hitDistScaleForTracking = hitDistForTracking / ( specResult.w * hitDistScale + pixelSize );
-        #endif
-
         float specError = GetColorErrorForAdaptiveRadiusScale( specResult, specHistory, specAccumSpeed, roughness );
 
         gOut_Spec[ pixelPos ] = specResult;
@@ -652,7 +683,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float specFastHistory = lerp( smbSpecFastHistory, vmbSpecFastHistory, virtualHistoryAmount );
             specFastHistory = specAccumSpeed < gMaxFastAccumulatedFrameNum ? GetLuma( specHistory ) : specFastHistory;
 
-            float specFastAccumSpeed = min( specAccumSpeed, gMaxFastAccumulatedFrameNum ); // TODO: accelerate using "virtualHistoryParallaxBasedConfidence" and / or "virtualHistoryPrevPrevBasedConfidence"
+            float specFastAccumSpeed = min( specAccumSpeed, gMaxFastAccumulatedFrameNum );
+            specFastAccumSpeed *= lerp( 1.0, f, virtualHistoryAmount );
+
             float specFastNonLinearAccumSpeed = 1.0 / ( 1.0 + specFastAccumSpeed );
             if( !specHasData )
                 specFastNonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, specFastNonLinearAccumSpeed );
@@ -663,15 +696,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
     #else
         float specAccumSpeed = 0;
-        float specError = 0;
         float virtualHistoryAmount = 0;
-        float hitDistScaleForTracking = 0;
+        float specError = 0;
     #endif
 
     // Output
     gOut_Data1[ pixelPos ] = PackData1( diffAccumSpeed, diffError, specAccumSpeed, specError );
 
     #ifndef REBLUR_OCCLUSION
-        gOut_Data2[ pixelPos ] = PackData2( fbits, curvature, virtualHistoryAmount, hitDistScaleForTracking, viewZ );
+        gOut_Data2[ pixelPos ] = PackData2( fbits, curvature, virtualHistoryAmount, viewZ );
     #endif
 }

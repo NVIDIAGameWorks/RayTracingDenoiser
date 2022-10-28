@@ -58,11 +58,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float blurRadius = gDiffPrepassBlurRadius;
         blurRadius *= hitDistFactor;
     #else
+        // Test 53
+        hitDistFactor = lerp( hitDistFactor, 1.0, data1.y );
+
         // IMPORTANT: keep an eye on tests:
         // - 51 and 128: outlines without TAA
         // - 81 and 117: cleanness in disoccluded regions
-        // - 62: dirty look on curved thin objects
-        // TODO: try to store blur radius in data1.y, but scale by "hitDistFactor" here
         float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.x );
         boost *= 1.0 - STL::BRDF::Pow5( NoV );
 
@@ -72,11 +73,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float blurRadius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
         blurRadius *= hitDistFactor;
 
-        // Blur radius - convergence
-        blurRadius *= lerp( gMinConvergedStateBaseRadiusScale, 1.0, diffNonLinearAccumSpeed );
-
-        // Blur radius - adaptivity
-        blurRadius += max( data1.y * gBlurRadiusScale, 1.0 ); // TODO: hitDistFactor?
+        // Blur radius - addition to avoid underblurring
+        blurRadius += 1.0;
 
         // Blur radius - scaling
         blurRadius *= radiusScale;

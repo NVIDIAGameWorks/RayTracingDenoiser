@@ -16,10 +16,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     groupshared float4 sharedDiffuse[BUFFER_X][BUFFER_Y];
 #endif
 
+    groupshared float sharedMaterialID[BUFFER_X][BUFFER_Y];
+
 // Helper functions
 void Preload(uint2 sharedPos, int2 globalPos)
 {
     globalPos = clamp(globalPos, 0, gRectSize - 1.0);
+
+    float materialID;
+    NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[globalPos], materialID);
+    sharedMaterialID[sharedPos.y][sharedPos.x] = materialID;
 
 #ifdef RELAX_SPECULAR
     sharedSpecular[sharedPos.y][sharedPos.x] = gSpecularIllumination[globalPos];
@@ -44,6 +50,7 @@ void runRCRS(
 {
     // Fetching center data
     uint2 sharedMemoryIndex = threadPos + int2(BORDER, BORDER);
+    float centerMaterialID = sharedMaterialID[sharedMemoryIndex.y][sharedMemoryIndex.x];
 
 #ifdef RELAX_SPECULAR
     float4 s = sharedSpecular[sharedMemoryIndex.y][sharedMemoryIndex.x];
@@ -95,29 +102,37 @@ void runRCRS(
             float diffuseLuminanceSample = STL::Color::Luminance(diffuseIlluminationSample);
 #endif
 
+            float sampleMaterialID = sharedMaterialID[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];
+
 #ifdef RELAX_SPECULAR
-            if(specularLuminanceSample > maxSpecularLuminance)
+            if (CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask) > 0)
             {
-                maxSpecularLuminance = specularLuminanceSample;
-                maxSpecularLuminanceCoords = sharedMemoryIndexSample;
-            }
-            if(specularLuminanceSample < minSpecularLuminance)
-            {
-                minSpecularLuminance = specularLuminanceSample;
-                minSpecularLuminanceCoords = sharedMemoryIndexSample;
+                if (specularLuminanceSample > maxSpecularLuminance)
+                {
+                    maxSpecularLuminance = specularLuminanceSample;
+                    maxSpecularLuminanceCoords = sharedMemoryIndexSample;
+                }
+                if (specularLuminanceSample < minSpecularLuminance)
+                {
+                    minSpecularLuminance = specularLuminanceSample;
+                    minSpecularLuminanceCoords = sharedMemoryIndexSample;
+                }
             }
 #endif
 
 #ifdef RELAX_DIFFUSE
-            if(diffuseLuminanceSample > maxDiffuseLuminance)
+            if (CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask) > 0)
             {
-                maxDiffuseLuminance = diffuseLuminanceSample;
-                maxDiffuseLuminanceCoords = sharedMemoryIndexSample;
-            }
-            if(diffuseLuminanceSample < minDiffuseLuminance)
-            {
-                minDiffuseLuminance = diffuseLuminanceSample;
-                minDiffuseLuminanceCoords = sharedMemoryIndexSample;
+                if (diffuseLuminanceSample > maxDiffuseLuminance)
+                {
+                    maxDiffuseLuminance = diffuseLuminanceSample;
+                    maxDiffuseLuminanceCoords = sharedMemoryIndexSample;
+                }
+                if (diffuseLuminanceSample < minDiffuseLuminance)
+                {
+                    minDiffuseLuminance = diffuseLuminanceSample;
+                    minDiffuseLuminanceCoords = sharedMemoryIndexSample;
+                }
             }
 #endif
         }
