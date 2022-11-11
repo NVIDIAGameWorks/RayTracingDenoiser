@@ -17,7 +17,6 @@ NRD_SAMPLER_END
 
 NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
-    NRD_CONSTANT( float4, gRotator )
     NRD_CONSTANT( float, gHistoryFixStrideBetweenSamples )
 NRD_CONSTANTS_END
 
@@ -36,13 +35,12 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 4 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data2, t, 5 )
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffFast, t, 6 )
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecFast, t, 7 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DiffFast, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecFast, t, 6 )
         #endif
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 8 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 9 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh, t, 7 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 8 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -85,11 +83,10 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<DATA_TYPE>, gIn_Spec, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data2, t, 4 )
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecFast, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_SpecFast, t, 4 )
         #endif
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 6 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh, t, 5 )
         #endif
     NRD_INPUT_TEXTURE_END
 

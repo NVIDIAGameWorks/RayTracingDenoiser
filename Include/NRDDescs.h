@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 8
+#define NRD_DESCS_VERSION_MINOR 9
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -28,7 +28,6 @@ namespace nrd
         MAX_NUM
     };
 
-    // DenoiserName_SignalType
     enum class Method : uint32_t
     {
         // =============================================================================================================================
@@ -140,7 +139,7 @@ namespace nrd
         // COMMON INPUTS
         //=============================================================================================================================
 
-        // 3D world space motion (RGBA16f+) or 2D screen space motion (RG16f+), MVs must be non-jittered, MV = previous - current
+        // 3D world-space motion (RGBA16f+) or 2D screen-space motion (RG16f+), MVs must be non-jittered, MV = previous - current
         IN_MV,
 
         // Data must match encoding in "NRD_FrontEnd_PackNormalAndRoughness" and "NRD_FrontEnd_UnpackNormalAndRoughness" (RGBA8+)
@@ -193,7 +192,7 @@ namespace nrd
         // Noisy signal (R8+)
         IN_RADIANCE,
 
-        // Primary and secondary world space positions (RGBA16f+)
+        // Primary and secondary world-space positions (RGBA16f+)
         IN_DELTA_PRIMARY_POS,
         IN_DELTA_SECONDARY_POS,
 
@@ -231,11 +230,15 @@ namespace nrd
         // Denoised signal
         OUT_RADIANCE,
 
-        // 2D screen space specular motion (RG16f+), MV = previous - current
+        // 2D screen-space specular motion (RG16f+), MV = previous - current
         OUT_REFLECTION_MV,
 
-        // 2D screen space refraction motion (RG16f+), MV = previous - current
+        // 2D screen-space refraction motion (RG16f+), MV = previous - current
         OUT_DELTA_MV,
+
+        // (Optional) Debug output (RGBA8+), .w = transparency
+        // Written to if "DenoiserCreationDesc::allowValidation = true" and "CommonSettings::enableValidation = true"
+        OUT_VALIDATION,
 
         //=============================================================================================================================
         // POOLS
@@ -312,7 +315,10 @@ namespace nrd
 
     enum class DescriptorType : uint32_t
     {
+        // read-only, SRV
         TEXTURE,
+
+        // read-write, UAV
         STORAGE_TEXTURE,
 
         MAX_NUM
@@ -400,7 +406,6 @@ namespace nrd
         MemoryAllocatorInterface memoryAllocatorInterface;
         const MethodDesc* requestedMethods;
         uint32_t requestedMethodNum;
-        bool enableValidation : 1;
     };
 
     struct TextureDesc
@@ -411,15 +416,6 @@ namespace nrd
         uint16_t mipNum;
     };
 
-    /*
-    Requested descriptor variants:
-      - shader read:
-        - a descriptor for all mips
-        - a descriptor for first mip only
-        - a descriptor for some mips with a specific offset
-      - shader write:
-        - a descriptor for each mip
-    */
     struct Resource
     {
         DescriptorType stateNeeded;

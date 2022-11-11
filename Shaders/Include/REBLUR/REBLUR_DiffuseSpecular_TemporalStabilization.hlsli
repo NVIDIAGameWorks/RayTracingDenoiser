@@ -197,11 +197,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         }
     #endif
 
-    // Compute previous pixel position
-    float3 motionVector = gIn_ObjectMotion[ pixelPosUser ] * gMotionVectorScale.xyy;
-    float2 smbPixelUv = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, gIsWorldSpaceMotionEnabled );
-    float isInScreen = IsInScreen( smbPixelUv );
-    float3 Xprev = X + motionVector * float( gIsWorldSpaceMotionEnabled != 0 );
+    // Previous position and surface motion uv
+    float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
+    float3 Xprev = X;
+
+    float2 smbPixelUv = pixelUv + mv.xy;
+    if( gIsWorldSpaceMotionEnabled )
+    {
+        Xprev += mv;
+        smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
+    }
+    else if( gMvScale.z != 0.0 )
+    {
+        float viewZprev = viewZ + mv.z;
+        float3 Xvprevlocal = STL::Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
+
+        Xprev = STL::Geometry::RotateVectorInverse( gWorldToViewPrev, Xvprevlocal ) + gCameraDelta;
+    }
 
     // Shared data
     uint bits;
@@ -214,6 +226,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float4 smbOcclusion = float4( ( bits & uint4( 4, 8, 16, 32 ) ) != 0 );
 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float stabilizationStrength = gStabilizationStrength * float( pixelUv.x >= gSplitScreen );
 
     STL::Filtering::Bilinear smbBilinearFilter = STL::Filtering::GetBilinearFilter( saturate( smbPixelUv ), gRectSizePrev );
 
@@ -224,7 +237,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float smbFootprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
     smbFootprintQuality = STL::Math::Sqrt01( smbFootprintQuality );
 
-    float smbIsInScreenMulFootprintQuality = isInScreen * smbFootprintQuality;
+    float smbIsInScreenMulFootprintQuality = IsInScreen( smbPixelUv ) * smbFootprintQuality;
 
     // Diffuse
     #ifdef REBLUR_DIFFUSE
@@ -244,9 +257,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         smbDiffHistory = ClampNegativeToZero( smbDiffHistory );
 
         // Compute antilag
+        float diffStabilizationStrength = stabilizationStrength * float( smbPixelUv.x >= gSplitScreen );
+
         float diffAntilag = ComputeAntilagScale(
             smbDiffHistory, diff, diffM1, diffSigma,
-            gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
+            gAntilagMinMaxThreshold, gAntilagSigmaScale, diffStabilizationStrength,
             curvature * pixelSize, data1.x
         );
 
@@ -260,28 +275,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float diffHistoryWeight = diffTemporalAccumulationParams.x;
         diffHistoryWeight *= diffAntilag;
-        diffHistoryWeight *= gStabilizationStrength;
+        diffHistoryWeight *= diffStabilizationStrength;
 
         float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight );
         #ifdef REBLUR_SH
             float4 diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
-        #endif
-
-        // Debug output
-        #if( REBLUR_DEBUG != 0 )
-            uint diffMode = REBLUR_DEBUG;
-            if( diffMode == 1 ) // Accumulated frame num
-                diffResult.w = 1.0 - saturate( data1.x / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
-            else if( diffMode == 2 ) // Error
-                diffResult.w = data1.y;
-
-            // Show how colorization represents 0-1 range on the bottom
-            diffResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.96 ? pixelUv.x : diffResult.w );
-            diffResult.xyz = pixelUv.y > 0.98 ? pixelUv.x : diffResult.xyz;
-
-            #if( REBLUR_USE_YCOCG == 1 )
-                diffResult.xyz = _NRD_LinearToYCoCg( diffResult.xyz );
-            #endif
         #endif
 
         // Output
@@ -353,9 +351,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Compute antilag
+        float specStabilizationStrength = stabilizationStrength;
+        [flatten]
+        if( virtualHistoryAmount != 1.0 )
+            specStabilizationStrength *= float( smbPixelUv.x >= gSplitScreen );
+        [flatten]
+        if( virtualHistoryAmount != 0.0 )
+            specStabilizationStrength *= float( vmbPixelUv.x >= gSplitScreen );
+
         float specAntilag = ComputeAntilagScale(
             specHistory, spec, specM1, specSigma,
-            gAntilagMinMaxThreshold, gAntilagSigmaScale, gStabilizationStrength,
+            gAntilagMinMaxThreshold, gAntilagSigmaScale, specStabilizationStrength,
             curvature * pixelSize, data1.z, roughness );
 
         // Clamp history and combine with the current frame
@@ -369,44 +375,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float specHistoryWeight = specTemporalAccumulationParams.x;
         specHistoryWeight *= specAntilag; // this is important
-        specHistoryWeight *= gStabilizationStrength;
+        specHistoryWeight *= specStabilizationStrength;
 
         float4 specResult = lerp( spec, specHistory, specHistoryWeight );
         #ifdef REBLUR_SH
             float4 specShResult = lerp( specSh, specShHistory, specHistoryWeight );
-        #endif
-
-        // Debug output
-        #if( REBLUR_DEBUG != 0 )
-            uint specMode = REBLUR_DEBUG;
-            if( specMode == 1 ) // Accumulated frame num
-                specResult.w = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
-            else if( specMode == 2 ) // Error
-                specResult.w = data1.w;
-            else if( specMode == 3 ) // Curvature magnitude
-                specResult.w = abs( curvature * pixelSize );
-            else if( specMode == 4 ) // Curvature sign
-                specResult.w = curvature < 0.0 ? 1 : 0;
-            else if( specMode == 5 ) // Virtual history amount
-                specResult.w = virtualHistoryAmount;
-            else if( specMode == 6 ) // Hit dist scale for tracking
-                specResult.w = hitDistScaleForTracking;
-            else if( specMode == 7 ) // Parallax
-            {
-                // or
-                specResult.w = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
-
-                // or
-                //specResult.w = ComputeParallax( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize, gUnproject, gOrthoMode );
-            }
-
-            // Show how colorization represents 0-1 range on the bottom
-            specResult.xyz = STL::Color::ColorizeZucconi( pixelUv.y > 0.96 ? pixelUv.x : specResult.w );
-            specResult.xyz = pixelUv.y > 0.98 ? pixelUv.x : specResult.xyz;
-
-            #if( REBLUR_USE_YCOCG == 1 )
-                specResult.xyz = _NRD_LinearToYCoCg( specResult.xyz );
-            #endif
         #endif
 
         // Output

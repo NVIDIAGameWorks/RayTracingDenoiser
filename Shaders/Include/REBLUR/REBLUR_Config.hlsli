@@ -8,8 +8,6 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define REBLUR_DEBUG                                            0 // 0+ ( output can be in radiance, AO or SO )
-
 // Switches ( default 1 )
 #define REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA              1
 #define REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA              1
@@ -68,7 +66,7 @@ static const float3 g_Special8[ 8 ] =
 #define REBLUR_POST_BLUR_FRACTION_SCALE                         0.5
 #define REBLUR_POST_BLUR_RADIUS_SCALE                           2.0
 
-#define REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM       2
+#define REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM    2
 #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       1.5 // TODO: was 2.0, but we can use even 1.0 because the fast history is noisy, while the main history is denoised
 #define REBLUR_HISTORY_FIX_THRESHOLD_1                          0.111 // was 0.01
 #define REBLUR_HISTORY_FIX_THRESHOLD_2                          0.333 // was 0.25
@@ -84,6 +82,8 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( float4, gHitDistParams ) \
     NRD_CONSTANT( float4, gViewVectorWorld ) \
     NRD_CONSTANT( float4, gViewVectorWorldPrev ) \
+    NRD_CONSTANT( float3, gMvScale ) \
+    NRD_CONSTANT( float, gDebug ) \
     NRD_CONSTANT( float2, gInvScreenSize ) \
     NRD_CONSTANT( float2, gScreenSize ) \
     NRD_CONSTANT( float2, gInvRectSize ) \
@@ -96,7 +96,6 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( float, gReference ) \
     NRD_CONSTANT( float, gOrthoMode ) \
     NRD_CONSTANT( float, gUnproject ) \
-    NRD_CONSTANT( float, gDebug ) \
     NRD_CONSTANT( float, gDenoisingRange ) \
     NRD_CONSTANT( float, gPlaneDistSensitivity ) \
     NRD_CONSTANT( float, gFramerateScale ) \
@@ -104,7 +103,6 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( float, gMaxAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gMaxFastAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gAntiFirefly ) \
-    NRD_CONSTANT( float, unused1 ) \
     NRD_CONSTANT( float, gLobeAngleFraction ) \
     NRD_CONSTANT( float, gRoughnessFraction ) \
     NRD_CONSTANT( float, gResponsiveAccumulationRoughnessThreshold ) \
@@ -114,7 +112,9 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
-    NRD_CONSTANT( uint, gSpecMaterialMask )
+    NRD_CONSTANT( uint, gSpecMaterialMask ) \
+    NRD_CONSTANT( uint, gResetHistory ) \
+    NRD_CONSTANT( uint, unused2 )
 
 // PERFORMANCE MODE: x1.25 perf boost by sacrificing IQ ( DIFFUSE_SPECULAR on RTX 3090 @ 1440p 2.05 vs 2.55 ms )
 #ifdef REBLUR_PERFORMANCE_MODE

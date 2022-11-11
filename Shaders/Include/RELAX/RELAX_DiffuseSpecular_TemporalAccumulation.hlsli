@@ -313,7 +313,7 @@ float loadVirtualMotionBasedPrevData(
     float2 bilinearWeights = frac(prevVirtualPixelPosFloat - 0.5);
     float2 gatherOrigin = (bilinearOrigin + 1.0) * gInvResourceSize;
 
-    // Taking care of camera motion, because world space is always centered at camera position in NRD
+    // Taking care of camera motion, because world-space is always centered at camera position in NRD
     currentWorldPos -= gPrevCameraPosition.xyz;
 
     // Checking bilinear footprint only for virtual motion based specular reprojection
@@ -451,11 +451,19 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[gRectOrigin + pixelPos], currentMaterialID);
 
     // Getting current frame worldspace position and view vector for current pixel
-    float3 motionVector = gMotion[gRectOrigin + pixelPos].xyz * gMotionVectorScale.xyy;
+    float3 mv = gMv[gRectOrigin + pixelPos] * gMvScale;
     float3 currentWorldPos = GetCurrentWorldPosFromPixelPos(pixelPos, currentLinearZ);
-    float3 prevWorldPos = currentWorldPos + motionVector * float(gIsWorldSpaceMotionEnabled != 0);
     float2 pixelUv = float2(pixelPos + 0.5) * gInvRectSize;
-    float2 prevUVSMB = STL::Geometry::GetPrevUvFromMotion(pixelUv, currentWorldPos, gPrevWorldToClip, motionVector, gIsWorldSpaceMotionEnabled);
+    float3 prevWorldPos = currentWorldPos;
+
+    float2 prevUVSMB = pixelUv + mv.xy;
+    if( gIsWorldSpaceMotionEnabled )
+    {
+        prevWorldPos += mv;
+        prevUVSMB = STL::Geometry::GetScreenUv(gPrevWorldToClip, prevWorldPos);
+    }
+    else if( gMvScale.z != 0.0 )
+        prevWorldPos = GetPreviousWorldPosFromClipSpaceXY(prevUVSMB * 2.0 - 1.0, currentLinearZ + mv.z) + gPrevCameraPosition.xyz;
 
     float3 currentViewVector = (gOrthoMode == 0) ?
         currentWorldPos :

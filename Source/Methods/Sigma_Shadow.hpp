@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define SIGMA_SET_SHARED_CONSTANTS                      SetSharedConstants(1, 1, 9, 10)
+#define SIGMA_SET_SHARED_CONSTANTS                      SetSharedConstants(1, 2, 8, 8)
 
 #define SIGMA_CLASSIFY_TILES_SET_CONSTANTS              SumConstants(0, 0, 0, 0)
 #define SIGMA_CLASSIFY_TILES_NUM_THREADS                NumThreads(1, 1)
@@ -19,19 +19,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_BLUR_SET_CONSTANTS                        SumConstants(1, 1, 0, 0)
 #define SIGMA_BLUR_NUM_THREADS                          NumThreads(16, 16)
 
-#define SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS      SumConstants(2, 0, 0, 1)
+#define SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS      SumConstants(2, 0, 0, 0)
 #define SIGMA_TEMPORAL_STABILIZATION_NUM_THREADS        NumThreads(16, 16)
 
 #define SIGMA_SPLIT_SCREEN_SET_CONSTANTS                SumConstants(0, 0, 0, 1)
 #define SIGMA_SPLIT_SCREEN_NUM_THREADS                  NumThreads(16, 16)
 
-void nrd::DenoiserImpl::AddMethod_SigmaShadow(nrd::MethodData& methodData)
+void nrd::DenoiserImpl::AddMethod_SigmaShadow(MethodData& methodData)
 {
     #define METHOD_NAME SIGMA_Shadow
 
     methodData.settings.sigma = SigmaSettings();
     methodData.settingsSize = sizeof(methodData.settings.sigma);
-            
+
     uint16_t w = methodData.desc.fullResolutionWidth;
     uint16_t h = methodData.desc.fullResolutionHeight;
     uint16_t tilesW = DivideUp(w, 16);
@@ -187,7 +187,6 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     AddSharedConstants_Sigma(methodData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
-    AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
     ValidateConstants(data);
 
     // SPLIT_SCREEN
@@ -208,31 +207,29 @@ void nrd::DenoiserImpl::AddSharedConstants_Sigma(const MethodData& methodData, c
     float unproject = 1.0f / (0.5f * screenH * m_ProjectY);
 
     AddFloat4x4(data, m_ViewToClip);
+
     AddFloat4(data, m_Frustum);
+    AddFloat4(data, ml::float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.debug));
 
-    AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat2(data, 1.0f / float(screenW), 1.0f / float(screenH));
-
     AddFloat2(data, float(screenW), float(screenH));
+
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
-
     AddFloat2(data, float(rectW), float(rectH));
+
     AddFloat2(data, float(rectWprev), float(rectHprev));
-
     AddFloat2(data, float(rectW) / float(screenW), float(rectH) / float(screenH));
-    AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
 
+    AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
     AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
+
     AddFloat(data, m_IsOrtho);
     AddFloat(data, unproject);
-
-    AddFloat(data, m_CommonSettings.debug);
     AddFloat(data, m_CommonSettings.denoisingRange);
     AddFloat(data, settings.planeDistanceSensitivity);
-    AddFloat(data, settings.blurRadiusScale);
 
-    AddFloat(data, 0.0f);
+    AddFloat(data, settings.blurRadiusScale);
+    AddFloat(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 0.0f : 1.0f);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
     AddUint(data, m_CommonSettings.frameIndex);
-    AddUint(data, 0);
 }

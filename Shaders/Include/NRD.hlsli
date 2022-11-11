@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.8
+// NRD v3.9
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -30,7 +30,7 @@ float roughness:
     - "linear roughness" = sqrt( "m" ), where "m" = "alpha" - GGX roughness
 
 float normal:
-    - world space normal
+    - world-space normal
 
 float viewZ:
     - linear view space Z for primary rays ( linearized camera depth )

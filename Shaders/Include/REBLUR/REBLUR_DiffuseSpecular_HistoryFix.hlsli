@@ -225,105 +225,65 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     frameNum *= rcp( sum );
 
     // History reconstruction ( tests 20, 23, 24, 27, 28, 54, 59, 65, 66, 76, 81, 98, 112, 117, 124, 126, 128, 134 )
-    float stepSize;
+    float materialID;
+    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ], materialID );
+    float3 N = normalAndRoughness.xyz;
+    float roughness = normalAndRoughness.w;
+
+    float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
+    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
+    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
+
     float2 scale = saturate( 1.0 - frameNum );
-    #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
-        stepSize = max( scale.x, scale.y );
-    #elif( defined REBLUR_DIFFUSE )
-        stepSize = scale.x;
-    #else
-        stepSize = scale.y;
-    #endif
 
-    if( stepSize > REBLUR_HISTORY_FIX_THRESHOLD_1 ) // TODO: use REBLUR_HISTORY_FIX_THRESHOLD_2 to switch to 3x3?
-    {
-        float materialID;
-        float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPosUser ], materialID );
-        float3 N = normalAndRoughness.xyz;
-        float roughness = normalAndRoughness.w;
+    #ifdef REBLUR_DIFFUSE
+        if( scale.x > REBLUR_HISTORY_FIX_THRESHOLD_1 ) // TODO: use REBLUR_HISTORY_FIX_THRESHOLD_2 to switch to 3x3?
+        {
+            scale.x = gHistoryFixStrideBetweenSamples / ( 2.0 + frameNum.x * gHistoryFixFrameNum ); // TODO: 2 to match RELAX logic, where HistoryFix uses "1 / ( 1 + "N + 1" )"
 
-        float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
-        float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
-        float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
-
-        stepSize *= gHistoryFixStrideBetweenSamples;
-
-        #ifdef REBLUR_DIFFUSE
-            float sumd = 1.0;
+            // Parameters
             float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.x );
 
             float diffNormalWeightParam = GetNormalWeightParams( diffNonLinearAccumSpeed, 1.0 );
             float2 diffGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, diffNonLinearAccumSpeed );
-        #endif
 
-        #ifdef REBLUR_SPECULAR
-            float2 sums = 1.0;
-            float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.y );
+            float sumd = 1.0;
 
-            float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, 0.95 );
-            #ifndef REBLUR_OCCLUSION
-                uint unused;
-                float3 data2 = UnpackData2( gIn_Data2[ pixelPos ], viewZ, unused );
-                float curvature = abs( data2.z );
-
-                float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-                curvature *= pixelSize; // tana = pixelSize / curvatureRadius = pixelSize * curvature
-
-                float curvatureAngleTan = stepSize * curvature;
-                float curvatureAngle = STL::Math::AtanApprox( saturate( curvatureAngleTan ) );
-                lobeHalfAngle += curvatureAngle;
-            #else
-                float curvature = 0;
-            #endif
-            lobeHalfAngle *= specNonLinearAccumSpeed;
-
-            float specNormalWeightParam = 1.0 / max( lobeHalfAngle, REBLUR_NORMAL_ULP );
-            float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specNonLinearAccumSpeed );
-            float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness, 1.0 );
-            float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
-
-            float2 specGaussianWeight = 1.5 * ( 1.0 - roughness ) * ( 1.0 - STL::Math::Pow01( curvature, 0.25 ) ); // TODO: roughness at hit needed
-
-            // Hit distances are clean for very low roughness, sparse reconstruction can confuse temporal accumulation on the next frame
-            float smc = GetSpecMagicCurve2( roughness );
-            specGaussianWeight.y *= lerp( 10.0, 1.0, smc );
-        #endif
-
-        [unroll]
-        for( j = -2; j <= 2; j++ )
-        {
             [unroll]
-            for( i = -2; i <= 2; i++ )
+            for( j = -2; j <= 2; j++ )
             {
-                // Skip center
-                if( i == 0 && j == 0 )
-                    continue;
+                [unroll]
+                for( i = -2; i <= 2; i++ )
+                {
+                    // Skip center
+                    if( i == 0 && j == 0 )
+                        continue;
 
-                // Skip corners
-                if( abs( i ) + abs( j ) == 4 )
-                    continue;
+                    // Skip corners
+                    if( abs( i ) + abs( j ) == 4 )
+                        continue;
 
-                float2 tap = float2( i, j );
-                float2 uv = pixelUv + STL::Geometry::RotateVector( gRotator, tap ) * gInvRectSize * stepSize;
-                float2 uvScaled = uv * gResolutionScale;
+                    // Sample uv
+                    float2 uv = pixelUv + float2( i, j ) * gInvRectSize * scale.x;
+                    float2 uvScaled = uv * gResolutionScale;
 
-                float z = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 ) );
+                    // Fetch data
+                    float z = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 ) );
 
-                float materialIDs;
-                float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 );
-                Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
+                    float materialIDs;
+                    float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 );
+                    Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
-                float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
-                float NoX = dot( Nv, Xvs );
+                    float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+                    float NoX = dot( Nv, Xvs );
 
-                float cosa = saturate( dot( Ns.xyz, N ) );
-                float angle = STL::Math::AcosApprox( cosa );
+                    float cosa = saturate( dot( Ns.xyz, N ) );
+                    float angle = STL::Math::AcosApprox( cosa );
 
-                // Accumulate
-                #ifdef REBLUR_DIFFUSE
+                    // Accumulate
                     float wd = IsInScreen( uv );
-                    wd *= _ComputeWeight( NoX, diffGeometryWeightParams.x, diffGeometryWeightParams.y );
                     wd *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+                    wd *= _ComputeWeight( NoX, diffGeometryWeightParams.x, diffGeometryWeightParams.y );
                     wd *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
 
                     REBLUR_TYPE d = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
@@ -335,52 +295,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                         float4 dh = gIn_DiffSh.SampleLevel( gNearestClamp, uvScaled, 0 );
                         diffSh += dh * wd;
                     #endif
-                #endif
-
-                #ifdef REBLUR_SPECULAR
-                    float ws = IsInScreen( uv );
-                    ws *= _ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
-                    ws *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
-                    ws *= _ComputeExponentialWeight( Ns.w, specRoughnessWeightParams.x, specRoughnessWeightParams.y );
-                    ws *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
-
-                    REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
-                    ws *= _ComputeExponentialWeight( ExtractHitDist( s ), specHitDistanceWeightParams.x, specHitDistanceWeightParams.y );
-
-                    float2 ww = ws;
-                    ww.x *= GetGaussianWeight( length( tap ) * specGaussianWeight.x );
-                    ww.y *= GetGaussianWeight( length( tap ) * specGaussianWeight.y );
-
-                    spec += s * Xxxy( ww );
-                    sums += ww;
-
-                    #ifdef REBLUR_SH
-                        float4 sh = gIn_SpecSh.SampleLevel( gNearestClamp, uvScaled, 0 );
-                        specSh += sh * Xxxy( ww );
-                    #endif
-                #endif
+                }
             }
-        }
 
-        #ifdef REBLUR_DIFFUSE
             sumd = STL::Math::PositiveRcp( sumd );
             diff *= sumd;
             #ifdef REBLUR_SH
                 diffSh *= sumd;
             #endif
-        #endif
+        }
 
-        #ifdef REBLUR_SPECULAR
-            sums = STL::Math::PositiveRcp( sums );
-            spec *= Xxxy( sums );
-            #ifdef REBLUR_SH
-                specSh *= Xxxy( sums );
-            #endif
-        #endif
-    }
-
-    // Output
-    #ifdef REBLUR_DIFFUSE
+        // Output
         gOut_Diff[ pixelPos ] = diff;
         #ifdef REBLUR_SH
             gOut_DiffSh[ pixelPos ] = diffSh;
@@ -388,6 +313,93 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     #ifdef REBLUR_SPECULAR
+        if( scale.y > REBLUR_HISTORY_FIX_THRESHOLD_1 ) // TODO: use REBLUR_HISTORY_FIX_THRESHOLD_2 to switch to 3x3?
+        {
+            scale.y = gHistoryFixStrideBetweenSamples / ( 2.0 + frameNum.y * gHistoryFixFrameNum ); // TODO: 2 to match RELAX logic, where HistoryFix uses "1 / ( 1 + "N + 1" )"
+
+            // Adjust scale to respect the specular lobe
+            float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
+            float hitDist = ExtractHitDist( spec ) * hitDistScale;
+            float3 Vv = GetViewVector( Xv, true );
+            float4 Dv = STL::ImportanceSampling::GetSpecularDominantDirection( Nv, Vv, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
+            float NoD = abs( dot( Nv, Dv.xyz ) );
+            float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, 0.65 ); // 65% energy to better follow the lobe
+            float lobeRadius = hitDist * NoD * lobeTanHalfAngle;
+            float minBlurRadius = lobeRadius / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ + hitDist * Dv.w );
+            scale.y = min( scale.y, minBlurRadius / 2.0 );
+
+            // Parameters
+            float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.y );
+
+            float lobeEnergy = lerp( 0.75, 0.85, specNonLinearAccumSpeed );
+            float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, lobeEnergy ); // up to 85% energy to depend less on normal weight
+            lobeHalfAngle *= specNonLinearAccumSpeed;
+
+            float specNormalWeightParam = 1.0 / max( lobeHalfAngle, REBLUR_NORMAL_ULP );
+            float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specNonLinearAccumSpeed );
+            float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness, 1.0 );
+            float2 specHitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
+
+            float sums = 1.0;
+
+            [unroll]
+            for( j = -2; j <= 2; j++ )
+            {
+                [unroll]
+                for( i = -2; i <= 2; i++ )
+                {
+                    // Skip center
+                    if( i == 0 && j == 0 )
+                        continue;
+
+                    // Skip corners
+                    if( abs( i ) + abs( j ) == 4 )
+                        continue;
+
+                    // Sample uv
+                    float2 uv = pixelUv + float2( i, j ) * gInvRectSize * scale.y;
+                    float2 uvScaled = uv * gResolutionScale;
+
+                    // Fetch data
+                    float z = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 ) );
+
+                    float materialIDs;
+                    float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 );
+                    Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
+
+                    float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+                    float NoX = dot( Nv, Xvs );
+
+                    float cosa = saturate( dot( Ns.xyz, N ) );
+                    float angle = STL::Math::AcosApprox( cosa );
+
+                    // Accumulate
+                    float ws = IsInScreen( uv );
+                    ws *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
+                    ws *= _ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
+                    ws *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
+                    ws *= _ComputeExponentialWeight( Ns.w, specRoughnessWeightParams.x, specRoughnessWeightParams.y );
+
+                    REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
+
+                    spec += s * ws;
+                    sums += ws;
+
+                    #ifdef REBLUR_SH
+                        float4 sh = gIn_SpecSh.SampleLevel( gNearestClamp, uvScaled, 0 );
+                        specSh += sh * ws;
+                    #endif
+                }
+            }
+
+            sums = STL::Math::PositiveRcp( sums );
+            spec *= sums;
+            #ifdef REBLUR_SH
+                specSh *= sums;
+            #endif
+        }
+
+        // Output
         gOut_Spec[ pixelPos ] = spec;
         #ifdef REBLUR_SH
             gOut_SpecSh[ pixelPos ] = specSh;

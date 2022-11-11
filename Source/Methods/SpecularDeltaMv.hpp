@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(nrd::MethodData& methodData)
+void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(MethodData& methodData)
 {
     #define METHOD_NAME SpecularDeltaMv
 
@@ -39,7 +39,7 @@ void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(nrd::MethodData& methodData)
         PushOutput( AsUint(ResourceType::OUT_DELTA_MV) );
         PushOutput( AsUint(Permanent::DELTA_SECONDARY_POS_CURR), 0, 1, AsUint(Permanent::DELTA_SECONDARY_POS_PREV) );
 
-        AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 0, 4, 2), NumThreads(16, 16), 1 );
+        AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 1, 3, 1), NumThreads(16, 16), 1 );
     }
 
     #undef METHOD_NAME
@@ -57,11 +57,10 @@ void nrd::DenoiserImpl::UpdateMethod_SpecularDeltaMv(const MethodData& methodDat
     // COMPUTE
     Constant* data = PushDispatch(methodData, AsUint(Dispatch::COMPUTE));
     AddFloat4x4(data, m_WorldToClipPrev);
+    AddFloat4(data, ml::float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.debug));
     AddUint2(data, rectW, rectH);
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
-    AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
-    AddFloat(data, m_CommonSettings.debug);
     ValidateConstants(data);
 }

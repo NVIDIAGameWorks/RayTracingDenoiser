@@ -28,7 +28,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_SHARED_CB_DATA \
     NRD_CONSTANT( float4x4, gViewToClip ) \
     NRD_CONSTANT( float4, gFrustum ) \
-    NRD_CONSTANT( float2, gMotionVectorScale ) \
+    NRD_CONSTANT( float3, gMvScale ) \
+    NRD_CONSTANT( float, gDebug ) \
     NRD_CONSTANT( float2, gInvScreenSize ) \
     NRD_CONSTANT( float2, gScreenSize ) \
     NRD_CONSTANT( float2, gInvRectSize ) \
@@ -39,11 +40,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( uint2, gRectOrigin ) \
     NRD_CONSTANT( float, gOrthoMode ) \
     NRD_CONSTANT( float, gUnproject ) \
-    NRD_CONSTANT( float, gDebug ) \
     NRD_CONSTANT( float, gDenoisingRange ) \
     NRD_CONSTANT( float, gPlaneDistSensitivity ) \
     NRD_CONSTANT( float, gBlurRadiusScale ) \
-    NRD_CONSTANT( float, gUnused2 ) \
+    NRD_CONSTANT( float, gContinueAccumulation ) \
     NRD_CONSTANT( uint, gIsWorldSpaceMotionEnabled ) \
-    NRD_CONSTANT( uint, gFrameIndex ) \
-    NRD_CONSTANT( uint, gUnused1 )
+    NRD_CONSTANT( uint, gFrameIndex )

@@ -19,11 +19,10 @@ NRD_CONSTANTS_START
     SIGMA_SHARED_CB_DATA
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
     NRD_CONSTANT( float4x4, gViewToWorld )
-    NRD_CONSTANT( uint, gResetHistory )
 NRD_CONSTANTS_END
 
 NRD_INPUT_TEXTURE_START
-    NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 0 )
+    NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 0 )
     NRD_INPUT_TEXTURE( Texture2D<float2>, gIn_Hit_ViewZ, t, 1 )
     NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 2 )
     NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_History, t, 3 )

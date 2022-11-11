@@ -112,3 +112,12 @@ Introduced optional `NRDEncoding.hlsli` file which can be included prior `NRD.hl
 - *REBLUR*:
   - Removed `minConvergedStateBaseRadiusScale`
   - Removed `maxAdaptiveRadiusScale`
+
+## To v3.9
+
+Introduced optional `OUT_VALIDATION` output, which contains debug visualization layer if `CommonSettings::enableValidation = true`.
+
+- *API*:
+  - Removed `DenoiserCreationDesc::enableValidation`
+  - Exposed `CommonSettings::enableValidation`
+  - Extened `CommonSettings::motionVectorScale` to 3 floats

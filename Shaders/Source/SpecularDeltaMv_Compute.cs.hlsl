@@ -45,7 +45,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     static const float kMotionEpsilon = 1.e-4;
     static const float kAngleEpsilon = 1.e-8;
     static const float kAngleConvergenceEpsilon = 1.e-2;
-    // TODO: Expose these 2 parameters.
+    // TODO: Expose these 2 parameters
     static const uint  kMaxNewtonMethodIterations = 5;
     static const uint  kMaxLineSearchIterations = 10;
 
@@ -54,14 +54,17 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     if (any(pixelPosUser >= gRectSize))
         return;
 
-    float3 initialMotion = gIn_ObjectMotion[pixelPosUser].xyz;
     float3 primaryPos = gIn_DeltaPrimaryPos[pixelPosUser].xyz;
     float3 secondaryPos = gIn_DeltaSecondaryPos[pixelPosUser].xyz;
 
+    float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
+    float2 pixelUv = float2(pixelPos + 0.5) * gInvRectSize;
+    float2 prevPixelUV = pixelUv + mv.xy;
+    if( gIsWorldSpaceMotionEnabled )
+        prevPixelUV = STL::Geometry::GetScreenUv( gWorldToClipPrev, primaryPos + mv );
+
     gOut_DeltaSecondaryPos[pixelPosUser] = secondaryPos;
 
-    float2 pixelUv = float2(pixelPosUser + 0.5f) * gInvRectSize;
-    float2 prevPixelUV = STL::Geometry::GetPrevUvFromMotion(pixelUv, primaryPos, gWorldToClipPrev, initialMotion, gIsWorldSpaceMotionEnabled);
     float2 initialScreenMotion = prevPixelUV - pixelUv;
 
     // TODO: Add detection for secondary motion.

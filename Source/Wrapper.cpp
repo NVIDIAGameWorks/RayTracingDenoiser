@@ -68,6 +68,7 @@ constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResou
     "IN_SPEC_SH1",
     "IN_DIFF_CONFIDENCE",
     "IN_SPEC_CONFIDENCE",
+    "IN_DISOCCLUSION_THRESHOLD_MIX",
     "IN_SHADOWDATA",
     "IN_SHADOW_TRANSLUCENCY",
     "IN_RADIANCE",
@@ -87,6 +88,7 @@ constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResou
     "OUT_RADIANCE",
     "OUT_REFLECTION_MV",
     "OUT_DELTA_MV",
+    "OUT_VALIDATION",
 
     "TRANSIENT_POOL",
     "PERMANENT_POOL",
@@ -257,33 +259,33 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
     return result;
 }
 
-NRD_API const nrd::DenoiserDesc& NRD_CALL nrd::GetDenoiserDesc(const nrd::Denoiser& denoiser)
+NRD_API const nrd::DenoiserDesc& NRD_CALL nrd::GetDenoiserDesc(const Denoiser& denoiser)
 {
     return ((const DenoiserImpl&)denoiser).GetDesc();
 }
 
-NRD_API nrd::Result NRD_CALL nrd::SetMethodSettings(nrd::Denoiser& denoiser, nrd::Method method, const void* methodSettings)
+NRD_API nrd::Result NRD_CALL nrd::SetMethodSettings(Denoiser& denoiser, Method method, const void* methodSettings)
 {
     return ((DenoiserImpl&)denoiser).SetMethodSettings(method, methodSettings);
 }
 
-NRD_API nrd::Result NRD_CALL nrd::GetComputeDispatches(nrd::Denoiser& denoiser, const nrd::CommonSettings& commonSettings, const nrd::DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
+NRD_API nrd::Result NRD_CALL nrd::GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
 {
     return ((DenoiserImpl&)denoiser).GetComputeDispatches(commonSettings, dispatchDescs, dispatchDescNum);
 }
 
-NRD_API void NRD_CALL nrd::DestroyDenoiser(nrd::Denoiser& denoiser)
+NRD_API void NRD_CALL nrd::DestroyDenoiser(Denoiser& denoiser)
 {
     StdAllocator<uint8_t> memoryAllocator = ((DenoiserImpl&)denoiser).GetStdAllocator();
     Deallocate(memoryAllocator, (DenoiserImpl*)&denoiser);
 }
 
-NRD_API const char* NRD_CALL nrd::GetResourceTypeString(nrd::ResourceType resourceType)
+NRD_API const char* NRD_CALL nrd::GetResourceTypeString(ResourceType resourceType)
 {
     return g_NrdResourceTypeNames[(size_t)resourceType];
 }
 
-NRD_API const char* NRD_CALL nrd::GetMethodString(nrd::Method method)
+NRD_API const char* NRD_CALL nrd::GetMethodString(Method method)
 {
     return g_NrdMethodNames[(size_t)method];
 }

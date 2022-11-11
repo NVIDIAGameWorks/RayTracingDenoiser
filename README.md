@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v3.8.0 (NRD)
+# NVIDIA Real-time Denoisers v3.9.0 (NRD)
 
 ## SAMPLE APP
 
@@ -309,11 +309,15 @@ Commons inputs:
 
 * **IN\_MV** - non-jittered primary surface motion (`old = new + MV`)
 
-  Supported variants via `ComminSettings::isMotionVectorInWorldSpace`:
-  - 3D world space motion (recommended) - camera motion should not be included (it's already in the matrices). In other words, if there are no moving objects all motion vectors = 0. The `.w` channel is unused and can be used by the app
-  - 2D screen space motion - 2D motion doesn't provide information about movement along the view direction, it only allows to "get" the direction. *NRD* can introduce pixels with rejected history on dynamic objects in this case.
+  Modes:
+  - *3D world-space motion (recommended)* - camera motion should not be included (it's already in the matrices). In other words, if there are no moving objects, all motion vectors must be `0` even if the camera moves
+  - *2D screen-space motion* - 2D motion doesn't provide information about movement along the view direction, it only allows to get the direction. *NRD* can introduce pixels with rejected history on dynamic objects in this case
+  - *2.5D screen-space motion* - similar to the 2D screen-space motion, but `.z = viewZprev - viewZ`.
 
-  Motion vector scaling can be provided via `CommonSettings::motionVectorScale`.
+  Motion vector scaling can be provided via `CommonSettings::motionVectorScale`. *NRD* expectations:
+  - Use `ComminSettings::isMotionVectorInWorldSpace = true` for 3D world-space motion
+  - Use `ComminSettings::isMotionVectorInWorldSpace = false` and `ComminSettings::motionVectorScale[2] == 0` for 2D screen-space motion
+  - Use `ComminSettings::isMotionVectorInWorldSpace = false` and `ComminSettings::motionVectorScale[2] != 0` for 2.5D screen-space motion
 
 * **IN\_NORMAL\_ROUGHNESS** - primary surface world-space normal and *linear* roughness
 
@@ -328,7 +332,7 @@ Commons inputs:
   Positive and negative values are supported. Z values in all pixels must be in the same space, matching space defined by matrices passed to NRD. If, for example, the protagonist's hands are rendered using special matrices, Z values should be computed as:
   - reconstruct world position using special matrices for "hands"
   - project on screen using matrices passed to NRD
-  - `.w` component is positive view Z (or just transform world space position to main view space and take `.z` component)
+  - `.w` component is positive view Z (or just transform world-space position to main view space and take `.z` component)
 
 **IMPORTANT**: All textures should be *NaN* free at each pixel, even at pixels outside of denoising range.
 
@@ -338,6 +342,8 @@ See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
 
 NRD sample is a good start to familiarize yourself with input requirements and best practices, but main requirements can be summarized to:
 
+- Since *NRD* denoisers accumulate signals for a limited number of frames, the input signal must converge *reasonably* well for this number of frames. `REFERENCE` denoiser can be used to estimate temporal signal quality
+- Since *NRD* denoisers process signals spatially, high-energy fireflies in the input signal should be avoided. Most of them can be removed by enabling anti-firefly filter in *NRD*, but it will only work if the "background" signal is confident. The worst case is having a single pixel with high energy divided by a very small PDF to represent the lack of energy in neighboring non-representative (black) pixels
 - Signal for *NRD* must be separated into diffuse and specular at primary hit
 - `hitT` must not include primary hit distance
 - Do not pass *sum of lengths of all segments* as `hitT`. A solid baseline is to use hit distance for the 1st bounce only, it works well for diffuse and specular signals
@@ -353,6 +359,39 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 ## INTERACTION WITH PRIMARY SURFACE REPLACEMENTS
 
 [*Primary Surface Replacement (PSR)*](https://developer.nvidia.com/blog/rendering-perfect-reflections-and-refractions-in-path-traced-games/) can be used with *NRD*. In this case `IN_MV`, `IN_NORMAL_ROUGHNESS` and `IN_VIEWZ` must have data for secondary hits (not primary hits). In case of PSR *NRD* disocclusion logic doesn't take curvature at primary hit into account, because data for primary hits is replaced. This can lead to more intense disocclusions on bumpy surfaces due to significant ray divergence. To mitigate this problem 2x-10x larger `disocclusionThreshold` can be used. This is an applicable solution if the denoiser is used to denoise surfaces with PSR only (glass only, for example). In a general case, when PSR and normal surfaces are mixed on the screen, higher disocclusion thresholds are needed only for pixels with PSR. This can be achieved by using `IN_DISOCCLUSION_THRESHOLD_MIX` input to smoothly mix baseline `disocclusionThreshold` into bigger `disocclusionThresholdAlternate` from `CommonSettings`. Most likely the increased disocclusion threshold is needed only for pixels with normal details at primary hits (local curvature is not zero).
+
+## VALIDATION LAYER
+
+If `CommonSettings::enableValidation = true` *REBLUR* & *RELAX* denoisers render debug information into `OUT_VALIDATION` output. Alpha channel contains layer transparency to allow easy mix with the final image on the application side.
+
+Currently the following viewport layout is used on the screen:
+
+| 0 | 1 | 2 | 3 |
+|---|---|---|---|
+| 4 | 5 | 6 | 7 |
+| 8 | 9 | 10| 11|
+| 12| 13| 14| 15|
+
+where:
+
+- Viewport 0 - world-space normals
+- Viewport 1 - linear roughness
+- Viewport 2 - linear viewZ
+  - green = `+`
+  - blue = `-`
+  - red = `out of denoising range`
+- Viewport 3 - difference between MVs, coming from `IN_MV`, and expected MVs, assuming that the scene is static
+  - blue = `out of screen`
+  - pixels with moving objects have non-0 values
+- Viewport 4 - world-space grid & camera jitter:
+  - 1 cube = `1 unit`
+  - the square in the bottom-right corner represents a pixel with accumulated samples
+  - the red boundary of the square marks jittering outside of the pixel area
+
+*REBLUR* specific:
+- Viewport 7 - amount of virtual history
+- Viewport 8 - number of accumulated frames for diffuse signal (red = `history reset`)
+- Viewport 11 - number of accumulated frames for specular signal (red = `history reset`)
 
 ## MEMORY REQUIREMENTS
 

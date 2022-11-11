@@ -172,6 +172,11 @@ float GetSpecMagicCurve2( float roughness, float percentOfVolume = 0.987 )
     return saturate( angle / almostHalfPi );
 }
 
+/*
+Produce same results:
+    ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
+    ComputeParallax( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize, gUnproject, gOrthoMode );
+*/
 float ComputeParallax( float3 X, float2 uvForZeroParallax, float4x4 mWorldToClip, float2 rectSize, float unproject, float orthoMode )
 {
     float3 clip = STL::Geometry::ProjectiveTransform( mWorldToClip, X ).xyw;

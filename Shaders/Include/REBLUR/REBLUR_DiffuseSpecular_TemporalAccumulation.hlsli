@@ -93,11 +93,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float roughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance( roughness, Navg ); // TODO: needed?
     #endif
 
-    // Previous position for surface motion
-    float3 motionVector = gIn_ObjectMotion[ pixelPosUser ] * gMotionVectorScale.xyy;
-    float2 smbPixelUv = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, gIsWorldSpaceMotionEnabled );
-    float isInScreen = IsInScreen( smbPixelUv );
-    float3 Xprev = X + motionVector * float( gIsWorldSpaceMotionEnabled != 0 );
+    // Previous position and surface motion uv
+    float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
+    float3 Xprev = X;
+
+    float2 smbPixelUv = pixelUv + mv.xy;
+    if( gIsWorldSpaceMotionEnabled )
+    {
+        Xprev += mv;
+        smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
+    }
+    else if( gMvScale.z != 0.0 )
+    {
+        float viewZprev = viewZ + mv.z;
+        float3 Xvprevlocal = STL::Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
+
+        Xprev = STL::Geometry::RotateVectorInverse( gWorldToViewPrev, Xvprevlocal ) + gCameraDelta;
+    }
 
     // Parallax
     float smbParallax = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
@@ -212,7 +224,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     float mvLengthFactor = STL::Math::LinearStep( 0.5, 1.0, smbParallaxInPixels );
     float frontFacing = lerp( cos( STL::Math::DegToRad( 135.0 ) ), cos( STL::Math::DegToRad( 91.0 ) ), mvLengthFactor );
-    bool isInScreenAndNotBackfacing = isInScreen && dot( prevNavg, Navg ) > frontFacing;
+    bool isInScreenAndNotBackfacing = IsInScreen( smbPixelUv ) && dot( prevNavg, Navg ) > frontFacing;
     smbDisocclusionThreshold = isInScreenAndNotBackfacing ? smbDisocclusionThreshold : -1.0;
 
     float3 Xvprev = STL::Geometry::AffineTransform( gWorldToViewPrev, Xprev );
@@ -461,9 +473,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         STL::Filtering::Bilinear vmbBilinearFilter = STL::Filtering::GetBilinearFilter( saturate( vmbPixelUv ), gRectSizePrev );
         float2 vmbBilinearGatherUv = ( vmbBilinearFilter.origin + 1.0 ) * gInvScreenSize;
         float4 vmbViewZs = UnpackViewZ( gIn_Prev_ViewZ.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy );
-        float3 vmbVv = STL::Geometry::ReconstructViewPosition( vmbPixelUv, gFrustumPrev, 1.0 ); // unnormalized
+        float3 vmbVv = STL::Geometry::ReconstructViewPosition( vmbPixelUv, gFrustumPrev, 1.0 ); // unnormalized, orthoMode = 0
         float3 Nvprev = STL::Geometry::RotateVector( gWorldToViewPrev, N );
-        float NoXreal = dot( Nvprev, Xvprev );
+        float NoXreal = dot( N, X - gCameraDelta );
         float4 NoX = ( Nvprev.x * vmbVv.x + Nvprev.y * vmbVv.y ) * ( gOrthoMode == 0 ? vmbViewZs : gOrthoMode ) + Nvprev.z * vmbVv.z * vmbViewZs;
         float4 vmbPlaneDist = abs( NoX - NoXreal ) / frustumHeight;
         float4 vmbOcclusion = step( vmbPlaneDist, gDisocclusionThreshold );
@@ -496,7 +508,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Virtual motion amount - normal
         float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
         lobeHalfAngle = max( lobeHalfAngle, REBLUR_NORMAL_ULP );
-        lobeHalfAngle += STL::Math::DegToRad( 1.0 );
 
         // Estimate how many pixels are traveled by virtual motion - how many radians can it be?
         // If curvature angle is multiplied by path length then we can get an angle exceeding 2 * PI, what is impossible. The max
@@ -512,13 +523,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float angle = lobeHalfAngle + curvatureAngle;
         float virtualHistoryNormalBasedConfidence = GetEncodingAwareNormalWeight( N, vmbN, angle );
-        virtualHistoryAmount *= virtualHistoryNormalBasedConfidence;
+        virtualHistoryAmount *= lerp( 1.0 - saturate( vmbPixelsTraveled ), 1.0, virtualHistoryNormalBasedConfidence ); // jitter friendly
 
         // Virtual motion amount - roughness
-        float vmbRoughness = vmbNormalAndRoughness.w;
         float roughnessFraction = lerp( 0.2, 1.0, STL::BRDF::Pow5( NoV ) );
-        float virtualHistoryRoughnessBasedConfidence = GetEncodingAwareRoughnessWeights( roughness, vmbRoughness, roughnessFraction );
-        virtualHistoryAmount *= lerp( 1.0 - saturate( vmbPixelsTraveled ), 1.0, virtualHistoryRoughnessBasedConfidence );
+        float virtualHistoryRoughnessBasedConfidence = GetEncodingAwareRoughnessWeights( roughness, vmbNormalAndRoughness.w, roughnessFraction );
+        virtualHistoryAmount *= lerp( 1.0 - saturate( vmbPixelsTraveled ), 1.0, virtualHistoryRoughnessBasedConfidence ); // jitter friendly
 
         // Sample history - surface motion
         REBLUR_TYPE smbSpecHistory;
@@ -560,10 +570,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Tests 3, 6, 8, 11, 14, 100, 103, 104, 106, 109, 110, 114, 120, 127, 130, 131, 132, 138, 139 and 9e
         float smc = GetSpecMagicCurve( roughnessModified );
         float smbSpecAccumSpeedFactor = lerp( 5.0, 1.0, smc );
-        smbSpecAccumSpeedFactor *= lerp( 1.0, lerp( 1.0, 0.25, smc ), NoV );
+        smbSpecAccumSpeedFactor *= lerp( 1.0, lerp( 1.0, 0.25, smc ), NoV ); // TODO: potentially needs to be tuned
         smbSpecAccumSpeedFactor *= gFramerateScale;
 
-        float smbSpecAccumSpeed = GetSmbAccumSpeed( smbSpecAccumSpeedFactor, vmbPixelsTraveled, smbParallax, specAccumSpeed, roughness );
+        float smbSpecAccumSpeed = GetSmbAccumSpeed( smbSpecAccumSpeedFactor, vmbPixelsTraveled, viewZ, specAccumSpeed, angle );
 
         // Current hit distance estimation: // TODO: try to use hit distances processed by OCCLUSION denoiser
         // - can't use input, because it's noisy ( but it's not noisy for 0 roughness and we must use input in this case )
@@ -574,7 +584,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         hitDist *= hitDistScale;
 
         float vmbHitDist = ExtractHitDist( vmbSpecHistory );
-        vmbHitDist *= hitDistScale; // we could use "vmbViewZs" and "vmbRoughness" but there are dedicated weights for it
+        vmbHitDist *= hitDistScale; // we could use "vmbViewZs" and "vmbNormalAndRoughness.w" but there are dedicated weights for it
 
         float3 smbXvirtual = GetXvirtual( NoV, hitDist, curvature, X, Xprev, V, D.w );
         float2 uv1 = STL::Geometry::GetScreenUv( gWorldToClipPrev, smbXvirtual, false );
@@ -586,26 +596,24 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float virtualHistoryParallaxBasedConfidence = STL::Math::SmoothStep( 1.0, 0.0, parallaxScale * deltaParallax );
 
         // Update because "uv2" is less noisy than "vmbPixelUv" ( can be moved to "Surface motion" section )
+        // TODO: it seems to be correct even if "virtualHistoryParallaxBasedConfidence" is low, isn't it?
         vmbDelta = uv2 - smbPixelUv;
         vmbPixelsTraveled = length( vmbDelta * gRectSize );
 
         // Virtual motion confidence - fixing trails if radiance on a flat surface is taken from a sloppy surface
         vmbDelta *= STL::Math::Rsqrt( STL::Math::LengthSquared( vmbDelta ) );
         vmbDelta /= gRectSizePrev;
-        vmbDelta *= saturate( vmbPixelsTraveled / 0.1 ) + vmbPixelsTraveled / REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM;
+        vmbDelta *= saturate( vmbPixelsTraveled / 0.1 ) + vmbPixelsTraveled / REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM;
 
         float virtualHistoryPrevPrevBasedConfidence = 1.0;
         [unroll]
-        for( i = 1; i <= REBLUR_VIRTUAL_MOTION_NORMAL_WEIGHT_ITERATION_NUM; i++ )
+        for( i = 1; i <= REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM; i++ )
         {
             float2 vmbPixelUvPrev = vmbPixelUv + vmbDelta * i;
-
             float4 vmbNormalAndRoughnessPrev = UnpackNormalAndRoughness( gIn_Prev_Normal_Roughness.SampleLevel( gLinearClamp, vmbPixelUvPrev * gRectSizePrev * gInvScreenSize, 0 ) );
-            float3 vmbNprev = STL::Geometry::RotateVector( gWorldPrevToWorld, vmbNormalAndRoughnessPrev.xyz );
 
-            float w = GetEncodingAwareNormalWeight( N, vmbNprev, angle + curvatureAngle * i, curvatureAngle );
-
-            float wr = GetEncodingAwareRoughnessWeights( roughness, vmbNormalAndRoughnessPrev.w, roughnessFraction );
+            float w = GetEncodingAwareNormalWeight( vmbNormalAndRoughness.xyz, vmbNormalAndRoughnessPrev.xyz, angle + curvatureAngle * i, curvatureAngle );
+            float wr = GetEncodingAwareRoughnessWeights( vmbNormalAndRoughness.w, vmbNormalAndRoughnessPrev.w, roughnessFraction );
             w *= lerp( 0.33 * i, 1.0, lerp( 1.0 - saturate( abs( vmbPixelsTraveled ) ), 1.0, wr ) );
 
             float isOutOfScreen = 1.0 - IsInScreen( vmbPixelUvPrev );
@@ -623,10 +631,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Surface motion ( test 9 )
         smbSpecAccumSpeedFactor *= lerp( 0.5 + 0.5 * virtualHistoryRoughnessBasedConfidence, 1.0, virtualHistoryAmount );
 
-        smbSpecAccumSpeed = GetSmbAccumSpeed( smbSpecAccumSpeedFactor, vmbPixelsTraveled, smbParallax, specAccumSpeed, roughness );
+        smbSpecAccumSpeed = GetSmbAccumSpeed( smbSpecAccumSpeedFactor, vmbPixelsTraveled, viewZ, specAccumSpeed, angle );
 
         // Fallback to surface motion if virtual motion doesn't go well ( tests 103, 111, 132, e9, e11 )
-        virtualHistoryAmount *= saturate( ( vmbSpecAccumSpeed + 0.1 ) / ( smbSpecAccumSpeed + 0.1 ) );
+        virtualHistoryAmount *= saturate( ( vmbSpecAccumSpeed + NRD_EPS ) / ( smbSpecAccumSpeed + NRD_EPS ) );
 
         // Accumulation with checkerboard resolve // TODO: materialID support?
         specAccumSpeed = lerp( smbSpecAccumSpeed, vmbSpecAccumSpeed, virtualHistoryAmount );
@@ -634,9 +642,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specNonLinearAccumSpeed = 1.0 / ( 1.0 + specAccumSpeed );
         if( !specHasData )
         {
-            float smbConfidence = STL::Math::LinearStep( 1.0, 0.0, smbParallaxInPixels );
-            float confidence = 1.0 / ( 1.0 + specAccumSpeed * lerp( smbConfidence, 1.0, virtualHistoryAmount ) );
-
+            float confidence = 1.0 / ( 1.0 + specAccumSpeed );
             specNonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, confidence );
         }
 

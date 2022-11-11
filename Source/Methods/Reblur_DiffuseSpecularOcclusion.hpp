@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData& methodData)
+void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_DiffuseSpecularOcclusion
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
@@ -198,6 +198,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(nrd::MethodData
             AddDispatch( REBLUR_DiffuseSpecular_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_NUM_THREADS, 1 );
         }
     }
+
+    REBLUR_ADD_VALIDATION_DISPATCH( Transient::DATA1, ResourceType::IN_DIFF_HITDIST, ResourceType::IN_SPEC_HITDIST );
 
     #undef METHOD_NAME
     #undef DIFF_TEMP1

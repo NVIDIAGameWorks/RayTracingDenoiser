@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 8
+#define NRD_SETTINGS_VERSION_MINOR 9
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -84,7 +84,7 @@ namespace nrd
         // If coordinate system moves with the camera, camera delta must be included to reflect camera motion
         float worldToViewMatrixPrev[16] = {};
 
-        // (Optional) Previous world space to current world space matrix. It is for virtual normals, where a coordinate
+        // (Optional) Previous world-space to current world-space matrix. It is for virtual normals, where a coordinate
         // system of the virtual space changes frame to frame, such as in a case of animated intermediary reflecting
         // surfaces when primary surface replacement is used for them.
         float worldPrevToWorldMatrix[16] = {
@@ -94,8 +94,8 @@ namespace nrd
             0.0f, 0.0f, 0.0f, 1.0f
         };
 
-        // If "isMotionVectorInWorldSpace = true" will be used as "MV * motionVectorScale.xyy"
-        float motionVectorScale[2] = {1.0f, 1.0f};
+        // used as "IN_MV * motionVectorScale" (use .z = 0 for 2D screen-space motion)
+        float motionVectorScale[3] = {1.0f, 1.0f, 0.0f};
 
         // [-0.5; 0.5] - sampleUv = pixelUv + cameraJitter
         float cameraJitter[2] = {};
@@ -130,8 +130,8 @@ namespace nrd
         // To reset history set to RESTART / CLEAR_AND_RESTART for one frame
         AccumulationMode accumulationMode = AccumulationMode::CONTINUE;
 
-        // If "true" IN_MV is 3D motion in world space (0 should be everywhere if the scene is static),
-        // otherwise it's 2D screen-space motion (0 should be everywhere if the camera doesn't move) (recommended value = true)
+        // If "true" IN_MV is 3D motion in world-space (0 should be everywhere if the scene is static),
+        // otherwise it's 2D (+ optional Z delta) screen-space motion (0 should be everywhere if the camera doesn't move) (recommended value = true)
         bool isMotionVectorInWorldSpace = false;
 
         // If "true" IN_DIFF_CONFIDENCE and IN_SPEC_CONFIDENCE are provided
@@ -139,6 +139,9 @@ namespace nrd
 
         // If "true" IN_DISOCCLUSION_THRESHOLD_MIX is provided
         bool isDisocclusionThresholdMixAvailable = false;
+
+        // Enables debug overlay in OUT_VALIDATION, requires "DenoiserCreationDesc::allowValidation = true"
+        bool enableValidation = false;
     };
 
     // REBLUR

@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_Reference(nrd::MethodData& methodData)
+void nrd::DenoiserImpl::AddMethod_Reference(MethodData& methodData)
 {
     #define METHOD_NAME Reference
 
@@ -58,7 +58,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reference(const MethodData& methodData)
 
     const ReferenceSettings& settings = methodData.settings.reference;
 
-    if (m_WorldToClip != m_WorldToClipPrev || m_CommonSettings.accumulationMode != nrd::AccumulationMode::CONTINUE)
+    if (m_WorldToClip != m_WorldToClipPrev || m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE)
         m_AccumulatedFrameNum = 0;
     else
         m_AccumulatedFrameNum = ml::Min(m_AccumulatedFrameNum + 1, settings.maxAccumulatedFrameNum);

@@ -18,5 +18,5 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 [numthreads( 16, 16, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 {
-    gTexture[ pixelPos ] = 0;
+    gOut[ pixelPos ] = 0;
 }

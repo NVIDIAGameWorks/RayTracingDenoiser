@@ -139,14 +139,15 @@ float GetFPS( float period = 1.0 )
     return gFramerateScale * 30.0 * period;
 }
 
-float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float vmbPixelsTraveled, float smbParallax, float specAccumSpeed, float roughness )
+float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float vmbPixelsTraveled, float viewZ, float specAccumSpeed, float maxAngle )
 {
     float smbSpecAccumSpeed = GetFPS( ) / ( 1.0 + smbSpecAccumSpeedFactor * vmbPixelsTraveled );
 
-    // ( Optional ) Accelerate if parallax is high // TODO: migrate to "smbParallaxInPixels"?
-    float f = 1.0 - roughness * roughness;
-    f *= smbSpecAccumSpeed / ( 1.0 + smbSpecAccumSpeed );
-    smbSpecAccumSpeed /= 1.0 + smbParallax * f;
+    // Tests 142, 148 and 155 ( or anything with very low roughness and curved surfaces )
+    float ta = PixelRadiusToWorld( gUnproject, gOrthoMode, vmbPixelsTraveled, viewZ ) / viewZ;
+    float ca = STL::Math::Sqrt01( 1.0 / ( 1.0 + ta * ta ) );
+    float angle = STL::Math::AcosApprox( ca );
+    smbSpecAccumSpeed *= STL::Math::SmoothStep( maxAngle * 1.5, maxAngle * 0.5, angle );
 
     return min( smbSpecAccumSpeed, specAccumSpeed );
 }
@@ -363,10 +364,6 @@ float ComputeAntilagScale(
     float antilag = min( delta.x, delta.y );
     antilag = lerp( 1.0, antilag, stabilizationStrength );
     antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( accumSpeed ) );
-
-    #if( REBLUR_DEBUG != 0 )
-        antilag = 1.0;
-    #endif
 
     return antilag;
 }

@@ -24,7 +24,6 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float4, gFrustumPrev )
     NRD_CONSTANT( float3, gCameraDelta )
     NRD_CONSTANT( float, gDisocclusionThreshold )
-    NRD_CONSTANT( float2, gMotionVectorScale )
     NRD_CONSTANT( float, gDisocclusionThresholdAlternate )
     NRD_CONSTANT( float, gCheckerboardResolveAccumSpeed )
     NRD_CONSTANT( uint, gDiffCheckerboard )
@@ -45,7 +44,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 5 )
@@ -89,7 +88,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 5 )
@@ -123,7 +122,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 5 )

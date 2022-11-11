@@ -55,11 +55,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;
 
-    // Previous position for surface motion
-    float3 motionVector = gIn_ObjectMotion[ pixelPosUser ] * gMotionVectorScale.xyy;
-    float2 smbPixelUv = STL::Geometry::GetPrevUvFromMotion( pixelUv, X, gWorldToClipPrev, motionVector, gIsWorldSpaceMotionEnabled );
-    float isInScreen = IsInScreen( smbPixelUv );
-    float3 Xprev = X + motionVector * float( gIsWorldSpaceMotionEnabled != 0 );
+    // Previous position and surface motion uv
+    float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
+    float3 Xprev = X;
+
+    float2 smbPixelUv = pixelUv + mv.xy;
+    if( gIsWorldSpaceMotionEnabled )
+    {
+        Xprev += mv;
+        smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
+    }
+    else if( gMvScale.z != 0.0 )
+    {
+        float viewZprev = viewZ + mv.z;
+        float3 Xvprevlocal = STL::Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
+
+        Xprev = STL::Geometry::RotateVectorInverse( gWorldToViewPrev, Xvprevlocal ) + gCameraDelta;
+    }
 
     // Modified roughness
     float3 Navg = N;
@@ -86,7 +98,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float smbParallax = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
     float smbParallaxInPixels = GetParallaxInPixels( smbParallax, gUnproject );
 
-    // Camera motion in screen space
+    // Camera motion in screen-space
     float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta, false );
     float2 cameraMotion2d = ( motionUv - pixelUv ) * gRectSize;
     cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );

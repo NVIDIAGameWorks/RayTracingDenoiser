@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_ReblurSpecular(nrd::MethodData& methodData)
+void nrd::DenoiserImpl::AddMethod_ReblurSpecular(MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_Specular
     #define SPEC_TEMP1 AsUint(Transient::SPEC_TMP1)
@@ -148,7 +148,6 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecular(nrd::MethodData& methodData)
             PushInput( AsUint(Transient::DATA1) );
             PushInput( SPEC_TEMP2 );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
-            PushInput( AsUint(Transient::DATA2) );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
 
             // Outputs
@@ -270,6 +269,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecular(nrd::MethodData& methodData)
             AddDispatch( REBLUR_Specular_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_NUM_THREADS, 1 );
         }
     }
+
+    REBLUR_ADD_VALIDATION_DISPATCH( Transient::DATA2, ResourceType::IN_SPEC_RADIANCE_HITDIST, ResourceType::IN_SPEC_RADIANCE_HITDIST );
 
     #undef METHOD_NAME
     #undef SPEC_TEMP1

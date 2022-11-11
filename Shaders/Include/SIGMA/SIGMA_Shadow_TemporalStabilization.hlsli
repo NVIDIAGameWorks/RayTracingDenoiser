@@ -104,8 +104,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float2 offset = float2( offseti ) * gInvRectSize;
     float3 Xvnearest = STL::Geometry::ReconstructViewPosition( pixelUv + offset, gFrustum, viewZnearest, gOrthoMode );
     float3 Xnearest = STL::Geometry::RotateVector( gViewToWorld, Xvnearest );
-    float3 motionVector = gIn_ObjectMotion[ pixelPosUser + offseti ] * gMotionVectorScale.xyy;
-    float2 pixelUvPrev = STL::Geometry::GetPrevUvFromMotion( pixelUv + offset, Xnearest, gWorldToClipPrev, motionVector, gIsWorldSpaceMotionEnabled );
+    float3 mv = gIn_Mv[ pixelPosUser + offseti ] * gMvScale;
+
+    float2 pixelUvPrev = pixelUv + offset + mv.xy;
+    if( gIsWorldSpaceMotionEnabled )
+        pixelUvPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xnearest + mv );
     pixelUvPrev -= offset;
 
     float isInScreen = IsInScreen( pixelUvPrev );
@@ -148,7 +151,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float2 historyWeight = 0.95 * lerp( 1.0, 0.7, ratioNorm );
     historyWeight = lerp( historyWeight, 0.1, saturate( motionLength / SIGMA_TS_MOTION_MAX_REUSE ) );
     historyWeight *= isInScreen;
-    historyWeight *= float( gResetHistory == 0 );
+    historyWeight *= gContinueAccumulation;
 
     // Reduce history in regions with hard shadows
     float worldRadius = centerHitDist * gBlurRadiusScale;

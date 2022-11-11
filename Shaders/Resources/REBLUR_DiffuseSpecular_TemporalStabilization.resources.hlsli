@@ -19,11 +19,13 @@ NRD_CONSTANTS_START
     REBLUR_SHARED_CB_DATA
     NRD_CONSTANT( float4x4, gWorldToClip )
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
+    NRD_CONSTANT( float4x4, gWorldToViewPrev )
+    NRD_CONSTANT( float4, gFrustumPrev )
     NRD_CONSTANT( float4, gAntilagMinMaxThreshold )
     NRD_CONSTANT( float3, gCameraDelta )
     NRD_CONSTANT( float, gStabilizationStrength )
     NRD_CONSTANT( float2, gAntilagSigmaScale )
-    NRD_CONSTANT( float2, gMotionVectorScale )
+    NRD_CONSTANT( float, gSplitScreen )
 NRD_CONSTANTS_END
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
@@ -31,7 +33,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data2, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
@@ -62,7 +64,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data2, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
@@ -86,7 +88,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_ObjectMotion, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data2, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 5 )

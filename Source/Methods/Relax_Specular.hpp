@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_RelaxSpecular(nrd::MethodData& methodData)
+void nrd::DenoiserImpl::AddMethod_RelaxSpecular(MethodData& methodData)
 {
     #define METHOD_NAME RELAX_Specular
 
@@ -161,7 +161,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxSpecular(nrd::MethodData& methodData)
             PushOutput( AsUint(Permanent::SPEC_HISTORY_LENGTH_CURR) );
             PushOutput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
 
-            AddDispatch( RELAX_Specular_TemporalAccumulation, SumConstants(0, 0, 0, 12), NumThreads(8, 8), 1 );
+            AddDispatch( RELAX_Specular_TemporalAccumulation, SumConstants(0, 0, 0, 11), NumThreads(8, 8), 1 );
         }
     }
 
@@ -305,6 +305,8 @@ void nrd::DenoiserImpl::AddMethod_RelaxSpecular(nrd::MethodData& methodData)
         AddDispatch( RELAX_Specular_SplitScreen, SumConstants(0, 0, 0, 2), NumThreads(16, 16), 1 );
     }
 
+    RELAX_ADD_VALIDATION_DISPATCH;
+
     #undef METHOD_NAME
 }
 
@@ -316,11 +318,11 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         HITDIST_RECONSTRUCTION_5x5,
         PREPASS_AFTER_HITDIST_RECONSTRUCTION,
         PREPASS,
-        REPROJECT,
-        REPROJECT_WITH_CONFIDENCE_INPUTS,
-        REPROJECT_WITH_THRESHOLD_MIX,
-        REPROJECT_WITH_CONFIDENCE_INPUTS_WITH_THRESHOLD_MIX,
-        DISOCCLUSION_FIX,
+        TEMPORAL_ACCUMULATION,
+        TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS,
+        TEMPORAL_ACCUMULATION_WITH_THRESHOLD_MIX,
+        TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS_WITH_THRESHOLD_MIX,
+        HISTORY_FIX,
         HISTORY_CLAMPING,
         HISTORY_CLAMPING_NO_FIREFLY,
         FIREFLY,
@@ -335,6 +337,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         ATROUS_ODD_LAST_WITH_CONFIDENCE_INPUTS,
         ATROUS_EVEN_LAST_WITH_CONFIDENCE_INPUTS,
         SPLIT_SCREEN,
+        VALIDATION,
     };
 
     const RelaxSpecularSettings& settings = methodData.settings.specularRelax;
@@ -369,10 +372,10 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
 
     switch (settings.checkerboardMode)
     {
-    case nrd::CheckerboardMode::BLACK:
+    case CheckerboardMode::BLACK:
         specularCheckerboard = 0;
         break;
-    case nrd::CheckerboardMode::WHITE:
+    case CheckerboardMode::WHITE:
         specularCheckerboard = 1;
         break;
     default:
@@ -383,7 +386,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
         Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, specularCheckerboard);
         ValidateConstants(data);
@@ -391,18 +394,18 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         return;
     }
 
-    // HIT DISTANCE RECONSTRUCTION
+    // HITDIST_RECONSTRUCTION
     if (enableHitDistanceReconstruction)
     {
         bool is3x3 = settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_3X3;
         Constant* data = PushDispatch(methodData, is3x3 ? AsUint(Dispatch::HITDIST_RECONSTRUCTION_3x3) : AsUint(Dispatch::HITDIST_RECONSTRUCTION_5x5));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
         ValidateConstants(data);
     }
 
     // PREPASS
     Constant* data = PushDispatch(methodData, AsUint(enableHitDistanceReconstruction ? Dispatch::PREPASS_AFTER_HITDIST_RECONSTRUCTION : Dispatch::PREPASS));
-    AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+    AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
     AddFloat4(data, m_Rotator_PrePass);
     AddUint(data, specularCheckerboard);
     AddFloat(data, settings.prepassBlurRadius);
@@ -411,24 +414,24 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
     AddFloat(data, settings.roughnessFraction);
     ValidateConstants(data);
 
-    // REPROJECT
+    // TEMPORAL_ACCUMULATION
     if (!m_CommonSettings.isDisocclusionThresholdMixAvailable)
     {
         data = PushDispatch(
             methodData,
             AsUint(m_CommonSettings.isHistoryConfidenceInputsAvailable ?
-                Dispatch::REPROJECT_WITH_CONFIDENCE_INPUTS :
-                Dispatch::REPROJECT));
+                Dispatch::TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS :
+                Dispatch::TEMPORAL_ACCUMULATION));
     }
     else
     {
         data = PushDispatch(
             methodData,
             AsUint(m_CommonSettings.isHistoryConfidenceInputsAvailable ?
-                Dispatch::REPROJECT_WITH_CONFIDENCE_INPUTS_WITH_THRESHOLD_MIX :
-                Dispatch::REPROJECT_WITH_THRESHOLD_MIX));
+                Dispatch::TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS_WITH_THRESHOLD_MIX :
+                Dispatch::TEMPORAL_ACCUMULATION_WITH_THRESHOLD_MIX));
     }
-    AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+    AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
     AddFloat(data, (float)settings.specularMaxAccumulatedFrameNum);
     AddFloat(data, (float)settings.specularMaxFastAccumulatedFrameNum);
     AddUint(data, specularCheckerboard);
@@ -438,14 +441,13 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
     AddFloat(data, settings.specularVarianceBoost);
     AddUint(data, settings.enableSpecularVirtualHistoryClamping ? 1 : 0);
     AddUint(data, settings.enableReprojectionTestSkippingWithoutMotion && isCameraStatic);
-    AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
     AddUint(data, m_CommonSettings.isHistoryConfidenceInputsAvailable ? 1 : 0);
     AddUint(data, m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0);
     ValidateConstants(data);
 
-    // DISOCCLUSION FIX
-    data = PushDispatch(methodData, AsUint(Dispatch::DISOCCLUSION_FIX));
-    AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+    // HISTORY_FIX
+    data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX));
+    AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
     AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
     AddFloat(data, settings.historyFixEdgeStoppingNormalPower);
     AddFloat(data, settings.historyFixStrideBetweenSamples);
@@ -458,9 +460,9 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
 
     if (settings.enableAntiFirefly)
     {
-        // HISTORY CLAMPING
+        // HISTORY_CLAMPING
         data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
         AddFloat(data, float(settings.historyFixFrameNum));
         AddUint(data, settings.specularMaxFastAccumulatedFrameNum < settings.specularMaxAccumulatedFrameNum ? 1 : 0);
@@ -468,14 +470,14 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
 
         // FIREFLY
         data = PushDispatch(methodData, AsUint(Dispatch::FIREFLY));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
         ValidateConstants(data);
     }
     else
     {
-        // HISTORY CLAMPING WITHOUT FIREFLY
+        // HISTORY_CLAMPING (without firefly)
         data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING_NO_FIREFLY));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
         AddFloat(data, float(settings.historyFixFrameNum));
         AddUint(data, settings.specularMaxFastAccumulatedFrameNum < settings.specularMaxAccumulatedFrameNum ? 1 : 0);
@@ -507,7 +509,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
         }
 
         data = PushDispatch(methodData, AsUint(dispatch));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
 
         if (i == 0)
         {
@@ -538,9 +540,19 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxSpecular(const MethodData& methodData)
     if (m_CommonSettings.splitScreen > 0.0f)
     {
         data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Relax(methodData, data, nrd::Method::RELAX_SPECULAR);
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_SPECULAR);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, specularCheckerboard);
+        ValidateConstants(data);
+    }
+
+    // VALIDATION
+    if (m_CommonSettings.enableValidation)
+    {
+        data = PushDispatch(methodData, AsUint(Dispatch::VALIDATION));
+        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE_SPECULAR);
+        AddFloat4x4(data, m_WorldToClipPrev);
+        AddFloat2(data, m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
         ValidateConstants(data);
     }
 }

@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(nrd::MethodData& methodData)
+void nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(MethodData& methodData)
 {
     #define METHOD_NAME REBLUR_DiffuseOcclusion
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
@@ -178,6 +178,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(nrd::MethodData& method
         }
     }
 
+    REBLUR_ADD_VALIDATION_DISPATCH( Transient::DATA1, ResourceType::IN_DIFF_HITDIST, ResourceType::IN_DIFF_HITDIST );
+
     #undef METHOD_NAME
     #undef DIFF_TEMP1
     #undef DIFF_TEMP2
@@ -193,13 +195,14 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
         BLUR                    = HISTORY_FIX + REBLUR_OCCLUSION_HISTORY_FIX_PERMUTATION_NUM * 2, // non perf mode is used for anti-firefly
         POST_BLUR               = BLUR + REBLUR_OCCLUSION_BLUR_PERMUTATION_NUM * 2,
         SPLIT_SCREEN            = POST_BLUR + REBLUR_OCCLUSION_POST_BLUR_PERMUTATION_NUM * 2,
+        VALIDATION              = SPLIT_SCREEN + REBLUR_SPLIT_SCREEN_PERMUTATION_NUM * 1, // no perf mode for split screen
     };
 
     NRD_DECLARE_DIMS;
 
     const ReblurSettings& settings = methodData.settings.reblur;
+    const ReblurProps& props = g_ReblurProps[ size_t(methodData.desc.method) - size_t(Method::REBLUR_DIFFUSE) ];
 
-    bool isHistoryReset = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE;
     bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
 
     float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
@@ -211,11 +214,11 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
 
     switch (settings.checkerboardMode)
     {
-        case nrd::CheckerboardMode::BLACK:
+        case CheckerboardMode::BLACK:
             diffCheckerboard = 0;
             specCheckerboard = 1;
             break;
-        case nrd::CheckerboardMode::WHITE:
+        case CheckerboardMode::WHITE:
             diffCheckerboard = 1;
             specCheckerboard = 0;
             break;
@@ -239,7 +242,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     // HITDIST_RECONSTRUCTION
     if (enableHitDistanceReconstruction)
     {
-        uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (settings.hitDistanceReconstructionMode == nrd::HitDistanceReconstructionMode::AREA_5X5 ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+        uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_5X5 ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
         Constant* data = PushDispatch(methodData, passIndex);
         AddSharedConstants_Reblur(methodData, settings, data);
         ValidateConstants(data);
@@ -256,7 +259,6 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     AddFloat4x4(data, m_WorldPrevToWorld);
     AddFloat4(data, m_FrustumPrev);
     AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, disocclusionThreshold));
-    AddFloat2(data, m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1]);
     AddFloat(data, disocclusionThresholdAlternate);
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddUint(data, diffCheckerboard);
@@ -270,8 +272,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     passIndex = AsUint(Dispatch::HISTORY_FIX) + (!settings.enableAntiFirefly ? 1 : 0);
     data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
-    AddFloat4(data, m_Rotator_HistoryFix);
-    AddFloat(data, settings.historyFixStrideBetweenSamples * (isHistoryReset ? 0.5f : 1.0f));
+    AddFloat(data, settings.historyFixStrideBetweenSamples);
     ValidateConstants(data);
 
     // BLUR
@@ -294,6 +295,20 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
         data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
         AddSharedConstants_Reblur(methodData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
+        AddUint(data, diffCheckerboard);
+        AddUint(data, specCheckerboard);
+        ValidateConstants(data);
+    }
+
+    // VALIDATION
+    if (m_CommonSettings.enableValidation)
+    {
+        data = PushDispatch(methodData, AsUint(Dispatch::VALIDATION));
+        AddSharedConstants_Reblur(methodData, settings, data);
+        AddFloat4x4(data, m_WorldToClipPrev);
+        AddFloat2(data, m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
+        AddUint(data, props.hasDiffuse ? 1 : 0);
+        AddUint(data, props.hasSpecular ? 1 : 0);
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
         ValidateConstants(data);
