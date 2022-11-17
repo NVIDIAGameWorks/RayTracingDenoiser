@@ -611,7 +611,7 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
     AddFloat(data, settings.diffusePrepassBlurRadius);
 
     AddFloat(data, settings.specularPrepassBlurRadius);
-    AddFloat(data, (float)ml::Max(settings.historyFixFrameNum, 1u));
+    AddFloat(data, (float)settings.historyFixFrameNum);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
     AddUint(data, m_CommonSettings.frameIndex);
 

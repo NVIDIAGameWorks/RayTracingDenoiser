@@ -109,7 +109,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         if( viewZ < 0 )
             STL::Text::Print_ch( STL::Text::Char_Minus, textState );
 
-        float f = viewZ / ( 1.0 + abs( viewZ ) );
+        float f = abs( viewZ ) / ( 1.0 + abs( viewZ ) );
         float3 color = viewZ < 0.0 ? float3( 0, 0, 1 ) : float3( 0, 1, 0 );
 
         result.xyz = isInf ? float3( 1, 0, 0 ) : color * f;

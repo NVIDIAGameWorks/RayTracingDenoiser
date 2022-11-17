@@ -145,9 +145,9 @@ float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float vmbPixelsTraveled, 
 
     // Tests 142, 148 and 155 ( or anything with very low roughness and curved surfaces )
     float ta = PixelRadiusToWorld( gUnproject, gOrthoMode, vmbPixelsTraveled, viewZ ) / viewZ;
-    float ca = STL::Math::Sqrt01( 1.0 / ( 1.0 + ta * ta ) );
+    float ca = STL::Math::Rsqrt( 1.0 + ta * ta );
     float angle = STL::Math::AcosApprox( ca );
-    smbSpecAccumSpeed *= STL::Math::SmoothStep( maxAngle * 1.5, maxAngle * 0.5, angle );
+    smbSpecAccumSpeed *= STL::Math::SmoothStep( maxAngle, 0.0, angle );
 
     return min( smbSpecAccumSpeed, specAccumSpeed );
 }
@@ -181,9 +181,10 @@ float GetMinAllowedLimitForHitDistNonLinearAccumSpeed( float roughness )
 
 float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
 {
-    float fade = STL::Math::LinearStep( gHistoryFixFrameNum, gHistoryFixFrameNum * 2.0, accumSpeed );
+    float a = gHistoryFixFrameNum * 2.0 / 3.0 + 1e-6;
+    float b = gHistoryFixFrameNum * 4.0 / 3.0 + 2e-6;
 
-    return fade;
+    return STL::Math::LinearStep( a, b, accumSpeed );
 }
 
 // Misc ( templates )

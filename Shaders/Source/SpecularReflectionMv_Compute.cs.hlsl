@@ -104,7 +104,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );
     cameraMotion2d *= gInvRectSize;
 
-    // Normal for low parallax - bilinear ( SMEM )
+    // Low parallax - bilinear ( SMEM )
     float2 uv = pixelUv + cameraMotion2d * 0.5;
     STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( uv, gRectSize );
 
@@ -119,13 +119,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 n = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
     n = normalize( n );
 
-    // Normal for high parallax - nearest ( fetch )
+    // High parallax - nearest ( fetch )
     float2 uvHigh = gRectOffset + pixelUv + cameraMotion2d * smbParallaxInPixels;
-    float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvHigh, 0 ) ).xyz;
-    float zHigh = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvHigh, 0 ) );
+    float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvHigh * gResolutionScale, 0 ) ).xyz;
+    float zHigh = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvHigh * gResolutionScale, 0 ) );
 
     float zError = abs( zHigh - viewZ ) * rcp( max( zHigh, viewZ ) );
-    bool cmp = smbParallaxInPixels > 1.0 && zError < 0.1;
+    bool cmp = smbParallaxInPixels > 1.0 && zError < 0.1 && IsInScreen( uvHigh );
 
     uv = cmp ? uvHigh : uv;
     n = cmp ? nHigh : n;
@@ -147,13 +147,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float hitDist = gIn_HitDist[ pixelPosUser ];
 
     float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughnessModified, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
+
     float3 Xvirtual = GetXvirtual( NoV, hitDist, curvature, X, Xprev, V, dominantFactor );
     float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual, false );
 
-    // Adjust curvature if curvature sign oscillation is forseen
-    float pixelsBetweenSurfaceAndVirtualMotion = length( ( vmbPixelUv - smbPixelUv ) * gRectSize );
+    float2 vmbDelta = vmbPixelUv - smbPixelUv;
+    float vmbPixelsTraveled = length( vmbDelta * gRectSize );
+
+    // Adjust curvature if curvature sign oscillation is forseen // TODO: is there a better way? fix curvature?
     float curvatureCorrectionThreshold = smbParallaxInPixels + gInvRectSize.x;
-    float curvatureCorrection = STL::Math::SmoothStep( 2.0 * curvatureCorrectionThreshold, curvatureCorrectionThreshold, pixelsBetweenSurfaceAndVirtualMotion );
+    float curvatureCorrection = STL::Math::SmoothStep( 1.05 * curvatureCorrectionThreshold, 0.95 * curvatureCorrectionThreshold, vmbPixelsTraveled );
     curvature *= curvatureCorrection;
 
     Xvirtual = GetXvirtual( NoV, hitDist, curvature, X, Xprev, V, dominantFactor );

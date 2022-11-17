@@ -193,8 +193,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     // Smooth
-    float2 frameNum = saturate( frameNumUnclamped / gHistoryFixFrameNum );
-    float2 c = frameNum;
+    float invHistoryFixFrameNum = STL::Math::PositiveRcp( gHistoryFixFrameNum );
+    float2 normFrameNum = saturate( frameNumUnclamped * invHistoryFixFrameNum );
+    float2 c = normFrameNum;
     float2 sum = 1.0;
 
     [unroll]
@@ -214,15 +215,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             int2 pos = threadPos + int2( i, j );
 
-            float2 s = saturate( s_FrameNum[ pos.y ][ pos.x ] / gHistoryFixFrameNum );
+            float2 s = saturate( s_FrameNum[ pos.y ][ pos.x ] * invHistoryFixFrameNum );
             float2 w = step( c, s );
 
-            frameNum += s * w;
+            normFrameNum += s * w;
             sum += w;
         }
     }
 
-    frameNum *= rcp( sum );
+    normFrameNum *= rcp( sum );
 
     // History reconstruction ( tests 20, 23, 24, 27, 28, 54, 59, 65, 66, 76, 81, 98, 112, 117, 124, 126, 128, 134 )
     float materialID;
@@ -234,15 +235,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
 
-    float2 scale = saturate( 1.0 - frameNum );
+    float2 scale = saturate( 1.0 - normFrameNum ) * float( gHistoryFixFrameNum != 0.0 );
+    float2 frameNum = normFrameNum * gHistoryFixFrameNum;
 
     #ifdef REBLUR_DIFFUSE
         if( scale.x > REBLUR_HISTORY_FIX_THRESHOLD_1 ) // TODO: use REBLUR_HISTORY_FIX_THRESHOLD_2 to switch to 3x3?
         {
-            scale.x = gHistoryFixStrideBetweenSamples / ( 2.0 + frameNum.x * gHistoryFixFrameNum ); // TODO: 2 to match RELAX logic, where HistoryFix uses "1 / ( 1 + "N + 1" )"
+            scale.x = gHistoryFixStrideBetweenSamples / ( 2.0 + frameNum.x ); // TODO: 2 to match RELAX logic, where HistoryFix uses "1 / ( 1 + "N + 1" )"
 
             // Parameters
-            float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.x );
+            float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNum.x );
 
             float diffNormalWeightParam = GetNormalWeightParams( diffNonLinearAccumSpeed, 1.0 );
             float2 diffGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, diffNonLinearAccumSpeed );
@@ -315,7 +317,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #ifdef REBLUR_SPECULAR
         if( scale.y > REBLUR_HISTORY_FIX_THRESHOLD_1 ) // TODO: use REBLUR_HISTORY_FIX_THRESHOLD_2 to switch to 3x3?
         {
-            scale.y = gHistoryFixStrideBetweenSamples / ( 2.0 + frameNum.y * gHistoryFixFrameNum ); // TODO: 2 to match RELAX logic, where HistoryFix uses "1 / ( 1 + "N + 1" )"
+            scale.y = gHistoryFixStrideBetweenSamples / ( 2.0 + frameNum.y ); // TODO: 2 to match RELAX logic, where HistoryFix uses "1 / ( 1 + "N + 1" )"
 
             // Adjust scale to respect the specular lobe
             float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
@@ -329,7 +331,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             scale.y = min( scale.y, minBlurRadius / 2.0 );
 
             // Parameters
-            float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNumUnclamped.y );
+            float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNum.y );
 
             float lobeEnergy = lerp( 0.75, 0.85, specNonLinearAccumSpeed );
             float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, lobeEnergy ); // up to 85% energy to depend less on normal weight

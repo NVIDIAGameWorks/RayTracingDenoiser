@@ -1,12 +1,14 @@
-# NVIDIA Real-time Denoisers v3.9.0 (NRD)
+# NVIDIA Real-time Denoisers v3.9.1 (NRD)
+
+[![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
+
+![Title](Images/Title.jpg)
 
 ## SAMPLE APP
 
 See *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSample)* project.
 
-## QUICK START GUIDE
-
-### Intro
+## OVERVIEW
 
 *NVIDIA Real-Time Denoisers (NRD)* is a spatio-temporal API agnostic denoising library. The library has been designed to work with low rpp (ray per pixel) signals. *NRD* is a fast solution that slightly depends on input signals and environment conditions.
 
@@ -27,11 +29,13 @@ Supported signal types (modulated irradiance can be used instead of radiance):
   - Shadows from a local light source (omni, spot)
   - Shadows from multiple sources (experimental).
 
-*NRD* is distributed as a source as well with a “ready-to-use” library (if used in a precompiled form). It can be integrated into any DX12, VULKAN or DX11 engine using 2 methods:
+*NRD* is distributed as a source as well with a “ready-to-use” library (if used in a precompiled form). It can be integrated into any DX12, VULKAN or DX11 engine using two variants:
 1. Native implementation of the *NRD* API using engine capabilities
 2. Integration via an abstraction layer. In this case, the engine should expose native Graphics API pointers for certain types of objects. The integration layer, provided as a part of SDK, can be used to simplify this kind of integration.
 
-## Build instructions
+## BUILD INSTRUCTIONS
+
+### How to build?
 
 - Install [*Cmake*](https://cmake.org/download/) 3.15+
 - Install on
@@ -44,6 +48,31 @@ Supported signal types (modulated irradiance can be used instead of radiance):
 - Build (variant 2) - by running scripts:
     - Run `1-Deploy`
     - Run `2-Build`
+
+### How to update?
+
+- Clone latest with all dependencies
+- Run `4-Clean.bat`
+- Re-deploy and build
+
+### How to report IQ issues?
+
+NRD sample has *TESTS* section in the bottom of the UI, a new test can be added if needed. The following procedure is recommended:
+- Try to reproduce a problem in the *NRD sample* first
+  - if reproducible
+    - add a test (by pressing `Add` button)
+    - describe the issue and steps to reproduce on *GitHub*
+    - attach depending on the selected scene `.bin` file from the `Tests` folder
+  - if not
+    - verify the integration
+- If nothing helps
+  - describe the issue, attach a video and steps to reproduce
+
+### SDK package generation
+
+- Compile the solution (*Debug* / *Release* or both, depending on what you want to get in *NRD* package)
+- Run `3-Prepare NRD SDK`
+- Grab generated in the root directory `_NRD_SDK` and `_NRI_SDK` (if needed) folders and use them in your project
 
 ### CMake options
 
@@ -66,15 +95,9 @@ Supported signal types (modulated irradiance can be used instead of radiance):
 | Windows           | AMD64          | MSVC, Clang |
 | Linux             | AMD64, ARM64   | GCC, Clang  |
 
-### NRD SDK package generation
-
-- Compile the solution (*Debug* / *Release* or both, depending on what you want to get in *NRD* package)
-- Run `3-Prepare NRD SDK`
-- Grab generated in the root directory `_NRD_SDK` and `_NRI_SDK` (if needed) folders and use them in your project
-
 ## INTEGRATION VARIANTS
 
-### Integration Method 1: Black-box library (using the application-side Render Hardware Interface)
+### VARIANT 1: Black-box library (using the application-side Render Hardware Interface)
 
 RHI must have the ability to do the following:
 * Create shaders from precompiled binary blobs
@@ -83,7 +106,11 @@ RHI must have the ability to do the following:
 * Invoke a Dispatch call (no raster, no VS/PS)
 * Create 2D textures with SRV / UAV access
 
-### Integration Method 2: Black-box library (using native API pointers)
+### VARIANT 2: White-box library (using the application-side Render Hardware Interface)
+
+Logically it's close to the Method 1, but the integration takes place in the full source code (only the *NRD* project is needed). In this case *NRD* shaders are handled by the application shader compilation pipeline. The application should still use *NRD* via *NRD API* to preserve forward compatibility. This variant suits best for compilation on other platforms (consoles, ARM), unlocks *NRD* modification on the application side and increases portability.
+
+### VARIANT 3: Black-box library (using native API pointers)
 
 If Graphics API's native pointers are retrievable from the RHI, the standard *NRD integration* layer can be used to greatly simplify the integration. In this case, the application should only wrap up native pointers for the *Device*, *CommandList* and some input / output *Resources* into entities, compatible with an API abstraction layer (*[NRI](https://github.com/NVIDIAGameWorks/NRI)*), and all work with *NRD* library will be hidden inside the integration layer:
 
@@ -271,20 +298,14 @@ float4 nrdIn = RELAX_FrontEnd_PackRadianceAndHitDist(radiance, hitDistance);
 float4 nrdOut = RELAX_BackEnd_UnpackRadiance(nrdOutEncoded);
 ```
 
-### Integration Method 3: White-box library (using the application-side Render Hardware Interface)
+## API OVERVIEW
 
-Logically it's close to the Method 1, but the integration takes place in the full source code (only the *NRD* project is needed). In this case *NRD* shaders are handled by the application shader compilation pipeline. The application should still use *NRD* via *NRD API* to preserve forward compatibility. This method suits best for compilation on other platforms (consoles, ARM), unlocks *NRD* modification on the application side and increases portability.
-
-NOTE: this method is WIP. It works, but in the future it will work better out of the box.
-
-## NRD TERMINOLOGY
+### TERMINOLOGY
 
 * *Denoiser method (or method)* - a method for denoising of a particular signal (for example: `Method::DIFFUSE`)
 * *Denoiser* - a set of methods aggregated into a monolithic entity (the library is free to rearrange passes without dependencies)
 * *Resource* - an input, output or internal resource. Currently can only be a texture
 * *Texture pool (or pool)* - a texture pool that stores permanent or transient resources needed for denoising. Textures from the permanent pool are dedicated to *NRD* and can not be reused by the application (history buffers are stored here). Textures from the transient pool can be reused by the application right after denoising. *NRD* doesn’t allocate anything. *NRD* provides resource descriptions, but resource creations are done on the application side.
-
-## NRD API OVERVIEW
 
 ### API flow
 
@@ -295,15 +316,15 @@ NOTE: this method is WIP. It works, but in the future it will work better out of
 5. *GetComputeDispatches* - returns per-dispatch data (bound subresources with required state, constant buffer data)
 6. *DestroyDenoiser* - destroys a denoiser
 
-## HOW TO RUN DENOISING?
+### HOW TO RUN DENOISING?
 
 *NRD* doesn't make any graphics API calls. The application is supposed to invoke a set of compute *Dispatch* calls to actually denoise input signals. Please, refer to `NrdIntegration::Denoise()` and `NrdIntegration::Dispatch()` calls in `NRDIntegration.hpp` file as an example of an integration using low level RHI.
 
 *NRD* doesn’t have a "resize" functionality. On resolution change the old denoiser needs to be destroyed and a new one needs to be created with new parameters. But *NRD* supports dynamic resolution scaling via `CommonSettings::resolutionScale`.
 
-The following textures can be requested as inputs or outputs for a method. Required resources are specified near a method declaration inside the `Method` enum class. Also `NRD.hlsli` has a comment near each front-end or back-end function, clarifying which resources this function is for.
+Some textures can be requested as inputs or outputs for a method (see the next section). Required resources are specified near a method declaration inside the `Method` enum class. Also `NRD.hlsli` has a comment near each front-end or back-end function, clarifying which resources this function is for.
 
-### NRD INPUTS & OUTPUTS
+## INPUTS & OUTPUTS
 
 Commons inputs:
 
@@ -347,7 +368,7 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 - Signal for *NRD* must be separated into diffuse and specular at primary hit
 - `hitT` must not include primary hit distance
 - Do not pass *sum of lengths of all segments* as `hitT`. A solid baseline is to use hit distance for the 1st bounce only, it works well for diffuse and specular signals
-  - *NRD sample* uses more complex method for accumulating `hitT` along the path, which takes into account energy dissipation due to lobe spread and curvature at the current hit
+  - *NRD sample* uses more complex approach for accumulating `hitT` along the path, which takes into account energy dissipation due to lobe spread and curvature at the current hit
 - Noise in provided hit distances must follow a diffuse or specular lobe. It implies that `hitT` for `roughness = 0` must be clean (if probabilistic sampling is not in use)
 - In case of probabilistic diffuse / specular selection at the primary hit, provided `hitT` must follow the following rules:
   - Should not be divided by `PDF`
@@ -362,9 +383,9 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 
 ## VALIDATION LAYER
 
-If `CommonSettings::enableValidation = true` *REBLUR* & *RELAX* denoisers render debug information into `OUT_VALIDATION` output. Alpha channel contains layer transparency to allow easy mix with the final image on the application side.
+![Validation](Images/Validation.png)
 
-Currently the following viewport layout is used on the screen:
+If `CommonSettings::enableValidation = true` *REBLUR* & *RELAX* denoisers render debug information into `OUT_VALIDATION` output. Alpha channel contains layer transparency to allow easy mix with the final image on the application side. Currently the following viewport layout is used on the screen:
 
 | 0 | 1 | 2 | 3 |
 |---|---|---|---|
@@ -392,6 +413,8 @@ where:
 - Viewport 7 - amount of virtual history
 - Viewport 8 - number of accumulated frames for diffuse signal (red = `history reset`)
 - Viewport 11 - number of accumulated frames for specular signal (red = `history reset`)
+- Viewport 12 - input normalized `hitT` for diffuse signal (ambient occlusion, AO)
+- Viewport 15 - input normalized `hitT` for specular signal (specular occlusion, SO)
 
 ## MEMORY REQUIREMENTS
 
@@ -586,16 +609,3 @@ Is this a biased solution? If spatial filtering is off - no, because we just reo
 - if shadows overlap, a separate pass is needed to analyze noisy input and classify pixels as *umbra* - *penumbra* (and optionally *empty space*). Raster shadow maps can be used for this if available
 - it is not recommended to mix 1 cd and 100000 cd lights, since FP32 texture will be needed for a weighted sum.
 In this case, it's better to process the sun and other bright light sources separately.
-
-## HOW TO REPORT ISSUES
-
-NRD sample has *TESTS* section in the bottom of the UI, a new test can be added if needed. The following procedure is recommended:
-- Try to reproduce a problem in the *NRD sample* first
-  - if reproducible
-    - add a test (by pressing `Add` button)
-    - describe the issue and steps to reproduce
-    - attach depending on the selected scene `.bin` file from the `Tests` folder
-  - if not
-    - verify the integration
-- If nothing helps
-  - describe the issue, attach a video and steps to reproduce

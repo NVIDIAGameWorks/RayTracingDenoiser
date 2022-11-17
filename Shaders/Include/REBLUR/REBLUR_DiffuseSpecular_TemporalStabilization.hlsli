@@ -221,7 +221,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 data2 = UnpackData2( gIn_Data2[ pixelPos ], viewZ, bits );
 
     float virtualHistoryAmount = data2.x;
-    float hitDistScaleForTracking = data2.y;
     float curvature = data2.z;
     float4 smbOcclusion = float4( ( bits & uint4( 4, 8, 16, 32 ) ) != 0 );
 
