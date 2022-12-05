@@ -20,8 +20,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_ACCUMSPEED_BITS                          7 // "( 1 << REBLUR_ACCUMSPEED_BITS ) - 1" must be >= REBLUR_MAX_ACCUM_FRAME_NUM
 #define REBLUR_MATERIALID_BITS                          ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
 
-#define REBLUR_ROUGHNESS_ULP                            ( 1.0 / 255.0 )
-#define REBLUR_NORMAL_ULP                               atan( 1.0 / 255.0 )
+#define REBLUR_ROUGHNESS_ULP                            ( 1.5 / 255.0 )
+#define REBLUR_NORMAL_ULP                               ( 1.5 / 255.0 )
 #define REBLUR_CURVATURE_PACKING_SCALE                  0.1
 
 // Internal data ( from the previous frame )
