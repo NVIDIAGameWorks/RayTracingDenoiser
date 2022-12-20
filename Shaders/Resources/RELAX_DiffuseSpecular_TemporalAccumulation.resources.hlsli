@@ -29,7 +29,6 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gDisocclusionDepthThresholdAlternate )
         NRD_CONSTANT( float, gRoughnessFraction )
         NRD_CONSTANT( float, gSpecularVarianceBoost )
-        NRD_CONSTANT( uint, gVirtualHistoryClampingEnabled )
         NRD_CONSTANT( uint, gSkipReprojectionTestWithoutMotion )
         NRD_CONSTANT( uint, gUseConfidenceInputs )
         NRD_CONSTANT( uint, gUseDisocclusionThresholdMix )
@@ -111,7 +110,6 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gDisocclusionDepthThresholdAlternate )
         NRD_CONSTANT( float, gRoughnessFraction )
         NRD_CONSTANT( float, gSpecularVarianceBoost )
-        NRD_CONSTANT( uint, gVirtualHistoryClampingEnabled )
         NRD_CONSTANT( uint, gSkipReprojectionTestWithoutMotion )
         NRD_CONSTANT( uint, gUseConfidenceInputs )
         NRD_CONSTANT( uint, gUseDisocclusionThresholdMix )
@@ -146,4 +144,4 @@ NRD_SAMPLER_END
 // Macro magic
 #define GROUP_X 8
 #define GROUP_Y 8
-#define NRD_USE_BORDER_2
+#define NRD_USE_BORDER_1

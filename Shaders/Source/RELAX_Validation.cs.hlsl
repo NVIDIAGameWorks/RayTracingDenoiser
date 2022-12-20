@@ -46,6 +46,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 
     float2 viewportUvScaled = viewportUv * gResolutionScale;
 
+    float historyLength = 255.0 * gIn_HistoryLength.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) - 1.0;
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) );
     float viewZ = gIn_ViewZ.SampleLevel( gNearestClamp, viewportUvScaled, 0 );
     float3 mv = gIn_Mv.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) * gMvScale;
@@ -98,7 +99,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         if( viewZ < 0 )
             STL::Text::Print_ch( STL::Text::Char_Minus, textState );
 
-        float f = abs( viewZ ) / ( 1.0 + abs( viewZ ) );
+        float f = 0.1 * abs( viewZ ) / ( 1.0 + 0.1 * abs( viewZ ) ); // TODO: tuned for meters
         float3 color = viewZ < 0.0 ? float3( 0, 0, 1 ) : float3( 0, 1, 0 );
 
         result.xyz = isInf ? float3( 1, 0, 0 ) : color * f;
@@ -163,6 +164,31 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
             result.xyz = frac( X + roundingErrorCorrection ) * float( !isInf );
         }
 
+        result.w = 1.0;
+    }
+    // Diff-spec frames
+    else if( viewportIndex == 8 )
+    {
+        STL::Text::Print_ch( 'D', textState );
+        STL::Text::Print_ch( 'I', textState );
+        STL::Text::Print_ch( 'F', textState );
+        STL::Text::Print_ch( 'F', textState );
+        STL::Text::Print_ch( '-', textState );
+        STL::Text::Print_ch( 'S', textState );
+        STL::Text::Print_ch( 'P', textState );
+        STL::Text::Print_ch( 'E', textState );
+        STL::Text::Print_ch( 'C', textState );
+        STL::Text::Print_ch( ' ', textState );
+        STL::Text::Print_ch( 'F', textState );
+        STL::Text::Print_ch( 'R', textState );
+        STL::Text::Print_ch( 'A', textState );
+        STL::Text::Print_ch( 'M', textState );
+        STL::Text::Print_ch( 'E', textState );
+        STL::Text::Print_ch( 'S', textState );
+
+        float f = 1.0 - saturate( historyLength / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
+
+        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
         result.w = 1.0;
     }
 

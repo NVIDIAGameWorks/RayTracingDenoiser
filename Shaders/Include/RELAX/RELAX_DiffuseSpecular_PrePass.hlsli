@@ -11,18 +11,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define POISSON_SAMPLE_NUM      8
 #define POISSON_SAMPLES         g_Poisson8
 
-float getNormalWeightParams(float nonLinearAccumSpeed, float roughness = 1.0, float strictness = 1.0)
-{
-    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);
-    float s = 0.15;
-    s *= strictness;
-    s = lerp(s, 1.0, nonLinearAccumSpeed);
-    angle *= s;
-    angle = 1.0 / max(angle, RELAX_NORMAL_ENCODING_ERROR);
-
-    return angle;
-}
-
 #ifdef RELAX_DIFFUSE
 int2 DiffCheckerboard(int2 pos)
 {
@@ -123,17 +111,16 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     if (gDiffuseBlurRadius > 0)
     {
         // Diffuse blur radius
-        float frustumHeight = PixelRadiusToWorld(gUnproject, gOrthoMode, gRectSize.y, centerViewZ);
+        float frustumSize = PixelRadiusToWorld(gUnproject, gOrthoMode, min(gRectSize.x, gRectSize.y), centerViewZ);
         float hitDist = (diffuseIllumination.w == 0.0 ? 1.0 : diffuseIllumination.w);
-        float hitDistFactor = GetHitDistFactor(hitDist, frustumHeight); // NoD = 1
+        float hitDistFactor = GetHitDistFactor(hitDist, frustumSize); // NoD = 1
         float blurRadius = gDiffuseBlurRadius * hitDistFactor;
 
         if (diffuseIllumination.w == 0.0)
             blurRadius = max(blurRadius, 1.0);
 
         float worldBlurRadius = PixelRadiusToWorld(gUnproject, gOrthoMode, blurRadius, centerViewZ) * min(gResolutionScale.x, gResolutionScale.y);
-
-        float normalWeightParams = getNormalWeightParams(1.0 / 9.0, 1.0);
+        float normalWeightParams = GetNormalWeightParams(1.0, 0.25 * gDiffuseLobeAngleFraction);
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams(diffuseIllumination.w, 1.0 / 9.0);
 
         float weightSum = 1.0;
@@ -226,10 +213,10 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float4 D = STL::ImportanceSampling::GetSpecularDominantDirection(centerNormal, viewVector, centerRoughness, STL_SPECULAR_DOMINANT_DIRECTION_G2);
         float NoD = abs(dot(centerNormal, D.xyz));
 
-        float frustumHeight = PixelRadiusToWorld(gUnproject, gOrthoMode, gRectSize.y, centerViewZ);
+        float frustumSize = PixelRadiusToWorld(gUnproject, gOrthoMode, min(gRectSize.x, gRectSize.y), centerViewZ);
         float hitDist = (specularIllumination.w == 0.0 ? 1.0 : specularIllumination.w);
 
-        float hitDistFactor = GetHitDistFactor(hitDist * NoD, frustumHeight);
+        float hitDistFactor = GetHitDistFactor(hitDist * NoD, frustumSize);
 
         float blurRadius = gSpecularBlurRadius * hitDistFactor * GetSpecMagicCurve(centerRoughness);
         float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle(centerRoughness);
@@ -241,7 +228,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         if (specularIllumination.w == 0.0)
             blurRadius = max(blurRadius, 1.0);
 
-        float normalWeightParams = getNormalWeightParams(1.0 / 9.0, centerRoughness);
+        float normalWeightParams = GetNormalWeightParams(centerRoughness, 0.5 * gSpecularLobeAngleFraction);
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams(specularIllumination.w, 1.0 / 9.0, centerRoughness);
         float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
 
@@ -296,22 +283,23 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
             // Decreasing weight for samples that most likely are very close to reflection contact
             // which should not be pre-blurred
-            float worldPosDiff = length(sampleWorldPos - centerWorldPos);
-            float rcw = saturate(sampleSpecularIllumination.a / (15.0 * worldPosDiff + 1.0e-4));
-            sampleWeight *= sampleSpecularIllumination.a > 0 ? rcw * rcw : 1.0;
-
-            sampleWeight *= lerp(specMinHitDistanceWeight, 1.0, hitDistanceWeight);
+            float d = length(sampleWorldPos - centerWorldPos);
+            float h = sampleSpecularIllumination.a; 
+            float t = h / (specularIllumination.a + d);
+            sampleWeight *= lerp(saturate(t), 1.0, STL::Math::LinearStep(0.5, 1.0, centerRoughness));
 
             specularIllumination.rgb += (sampleWeight > 0) ? sampleSpecularIllumination.rgb * sampleWeight : 0;
 
             weightSum += sampleWeight;
 
-            if ((sampleSpecularIllumination.a != 0) && (minHitT > sampleSpecularIllumination.a)) minHitT = sampleSpecularIllumination.a;
+            if (sampleWeight > 0)
+            {
+                if ((sampleSpecularIllumination.a != 0) && (minHitT > sampleSpecularIllumination.a)) minHitT = sampleSpecularIllumination.a;
+            }
 
         }
         specularIllumination.rgb /= weightSum;
-
-        specularIllumination.a = max(1.0e-6, lerp(specularHitT, minHitT, NoV));
+        specularIllumination.a = minHitT;
     }
 
     gOutSpecularIllumination[pixelPos] = clamp(specularIllumination, 0, NRD_FP16_MAX);

@@ -26,6 +26,9 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gSpecularBlurRadius )
         NRD_CONSTANT( float, gMeterToUnitsMultiplier )
         NRD_CONSTANT( float, gDepthThreshold )
+        NRD_CONSTANT( float, gDiffuseLobeAngleFraction )
+        NRD_CONSTANT( float, gSpecularLobeAngleFraction )
+        NRD_CONSTANT( float, gSpecularLobeAngleSlack )
         NRD_CONSTANT( float, gRoughnessFraction )
     NRD_CONSTANTS_END
 
@@ -52,6 +55,7 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gDiffuseBlurRadius )
         NRD_CONSTANT( float, gMeterToUnitsMultiplier )
         NRD_CONSTANT( float, gDepthThreshold )
+        NRD_CONSTANT( float, gDiffuseLobeAngleFraction )
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
@@ -75,6 +79,8 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gSpecularBlurRadius )
         NRD_CONSTANT( float, gMeterToUnitsMultiplier )
         NRD_CONSTANT( float, gDepthThreshold )
+        NRD_CONSTANT( float, gSpecularLobeAngleFraction )
+        NRD_CONSTANT( float, gSpecularLobeAngleSlack )
         NRD_CONSTANT( float, gRoughnessFraction )
     NRD_CONSTANTS_END
 

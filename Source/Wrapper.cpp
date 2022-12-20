@@ -269,9 +269,9 @@ NRD_API nrd::Result NRD_CALL nrd::SetMethodSettings(Denoiser& denoiser, Method m
     return ((DenoiserImpl&)denoiser).SetMethodSettings(method, methodSettings);
 }
 
-NRD_API nrd::Result NRD_CALL nrd::GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
+NRD_API void NRD_CALL nrd::GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
 {
-    return ((DenoiserImpl&)denoiser).GetComputeDispatches(commonSettings, dispatchDescs, dispatchDescNum);
+    ((DenoiserImpl&)denoiser).GetComputeDispatches(commonSettings, dispatchDescs, dispatchDescNum);
 }
 
 NRD_API void NRD_CALL nrd::DestroyDenoiser(Denoiser& denoiser)

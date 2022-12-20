@@ -27,10 +27,10 @@ CREDITS:
 #include <cstdint>
 #include <cstddef>
 
-#define NRD_VERSION_MAJOR 3
-#define NRD_VERSION_MINOR 9
-#define NRD_VERSION_BUILD 2
-#define NRD_VERSION_DATE "5 December 2022"
+#define NRD_VERSION_MAJOR 4
+#define NRD_VERSION_MINOR 0
+#define NRD_VERSION_BUILD 0
+#define NRD_VERSION_DATE "20 December 2022"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall
@@ -57,7 +57,7 @@ namespace nrd
     NRD_API Result NRD_CALL CreateDenoiser(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser);
     NRD_API const DenoiserDesc& NRD_CALL GetDenoiserDesc(const Denoiser& denoiser);
     NRD_API Result NRD_CALL SetMethodSettings(Denoiser& denoiser, Method method, const void* methodSettings);
-    NRD_API Result NRD_CALL GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
+    NRD_API void NRD_CALL GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
     NRD_API void NRD_CALL DestroyDenoiser(Denoiser& denoiser);
 
     // Helpers

@@ -62,10 +62,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;
 
-    float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, center.z );
+    float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, center.z );
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, center.z, gOrthoMode );
     float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, 1.0 );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
 
     float2 roughnessWeightParams = GetCoarseRoughnessWeightParams( roughness );
     float diffNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, 1.0 );

@@ -25,11 +25,15 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(MethodData& methodData
         PREV_VIEWZ = PERMANENT_POOL_START,
         PREV_NORMAL_ROUGHNESS,
         PREV_INTERNAL_DATA,
+        SPEC_FAST_HISTORY_PING,
+        SPEC_FAST_HISTORY_PONG,
     };
 
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
 
     enum class Transient
     {
@@ -92,10 +96,12 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(MethodData& methodData
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterReconstruction ? SPEC_TEMP1 : AsUint(ResourceType::IN_SPEC_HITDIST) );
             PushInput( AsUint(ResourceType::OUT_SPEC_HITDIST) );
+            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PONG) );
 
             // Outputs
             PushOutput( SPEC_TEMP2 );
             PushOutput( AsUint(Transient::DATA1) );
+            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
 
             // Shaders
             AddDispatch( REBLUR_SpecularOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
@@ -110,8 +116,9 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularOcclusion(MethodData& methodData
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
-            PushInput( SPEC_TEMP2 );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( SPEC_TEMP2 );
+            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
 
             // Outputs
             PushOutput( SPEC_TEMP1 );

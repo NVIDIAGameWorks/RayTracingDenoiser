@@ -198,7 +198,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     // Previous position and surface motion uv
-    float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
+    float3 mv = gInOut_Mv[ pixelPosUser ] * gMvScale;
     float3 Xprev = X;
 
     float2 smbPixelUv = pixelUv + mv.xy;
@@ -241,8 +241,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Diffuse
     #ifdef REBLUR_DIFFUSE
         // Sample history - surface motion
-        float4 smbDiffHistory;
-        float4 smbDiffShHistory;
+        REBLUR_TYPE smbDiffHistory;
+        REBLUR_SH_TYPE smbDiffShHistory;
+
         BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             saturate( smbPixelUv ) * gRectSizePrev, gInvScreenSize,
             smbOcclusionWeights, smbIsCatromAllowed,
@@ -298,16 +299,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Specular
     #ifdef REBLUR_SPECULAR
         // Hit distance for tracking ( tests 6, 67, 155 )
-        float hitDistForTracking = gSpecPrepassBlurRadius != 0.0 ? gIn_Spec_MinHitDist[ pixelPos ] : spec.w;
-        hitDistForTracking = min( hitDistForTracking, specMin.y );
-        hitDistForTracking = min( hitDistForTracking, spec.w );
+        float hitDistForTracking = min( spec.w, specMin.y );
 
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         hitDistForTracking *= hitDistScale;
 
+        if( gSpecPrepassBlurRadius != 0.0 )
+            hitDistForTracking = min( hitDistForTracking, gIn_Spec_FastHistory[ pixelPos ].y );
+
         // Sample history - surface motion
-        float4 smbSpecHistory;
-        float4 smbSpecShHistory;
+        REBLUR_TYPE smbSpecHistory;
+        REBLUR_SH_TYPE smbSpecShHistory;
+
         BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             saturate( smbPixelUv ) * gRectSizePrev, gInvScreenSize,
             smbOcclusionWeights, smbIsCatromAllowed,
@@ -322,9 +325,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float NoV = abs( dot( N, V ) );
         float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
         float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
-        float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual, false );
+        float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
 
-        float4 vmbSpecHistory;
+        REBLUR_TYPE vmbSpecHistory;
         #if( REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS == 1 )
             BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
                 saturate( vmbPixelUv ) * gRectSizePrev, gInvScreenSize,
@@ -338,6 +341,40 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SH
             float4 vmbSpecShHistory = gIn_SpecSh_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv, 0 );
         #endif
+
+        // Modify MVs if requested
+        if( gSpecularProbabilityThresholdsForMvModification.x < 1.0 )
+        {
+            float4 baseColorMetalness = gIn_BaseColor_Metalness[ pixelPos ];
+
+            float3 albedo, Rf0;
+            STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( baseColorMetalness.xyz, baseColorMetalness.w, albedo, Rf0 );
+
+            float3 Fenv = STL::BRDF::EnvironmentTerm_Rtg( Rf0, NoV, roughness );
+
+            float lumSpec = STL::Color::Luminance( Fenv );
+            float lumDiff = STL::Color::Luminance( albedo * ( 1.0 - Fenv ) );
+
+            float specProb = lumSpec / ( lumDiff + lumSpec + NRD_EPS );
+            float f = STL::Math::SmoothStep( gSpecularProbabilityThresholdsForMvModification.x, gSpecularProbabilityThresholdsForMvModification.y, specProb );
+
+            if( f != 0.0 )
+            {
+                float3 specMv = Xvirtual - X; // TODO: world-space delta fits badly into FP16
+                if( !gIsWorldSpaceMotionEnabled )
+                {
+                    specMv.xy = vmbPixelUv - pixelUv;
+                    specMv.z = 0.0; // TODO: nice to have, but not needed for TAA & upscaling techniques
+                }
+
+                mv = lerp( mv, specMv, f );
+
+                mv.xy /= gMvScale.xy;
+                mv.z /= gMvScale.z == 0.0 ? 1.0 : gMvScale.z;
+
+                gInOut_Mv[ pixelPosUser ] = mv;
+            }
+        }
 
         // Avoid negative values
         smbSpecHistory = ClampNegativeToZero( smbSpecHistory );

@@ -109,7 +109,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         if( viewZ < 0 )
             STL::Text::Print_ch( STL::Text::Char_Minus, textState );
 
-        float f = abs( viewZ ) / ( 1.0 + abs( viewZ ) );
+        float f = 0.1 * abs( viewZ ) / ( 1.0 + 0.1 * abs( viewZ ) ); // TODO: tuned for meters
         float3 color = viewZ < 0.0 ? float3( 0, 0, 1 ) : float3( 0, 1, 0 );
 
         result.xyz = isInf ? float3( 1, 0, 0 ) : color * f;
@@ -215,7 +215,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 
         float diffFrameNum = 1.0 - saturate( data1.x / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
 
-        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : diffFrameNum ) * float( !isInf );
+        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : diffFrameNum * float( !isInf ) );
         result.w = 1.0;
     }
     // Specular frames
@@ -235,7 +235,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 
         float specFrameNum = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
 
-        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : specFrameNum ) * float( !isInf );
+        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : specFrameNum * float( !isInf ) );
         result.w = 1.0;
     }
     // Diff hitT
@@ -251,7 +251,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'T', textState );
         STL::Text::Print_ch( 'T', textState );
 
-        result.xyz = diff.w * float( !isInf );
+        result.xyz = ( diff.w == 0.0 ? float3( 1, 0, 0 ) : diff.w ) * float( !isInf );
         result.w = 1.0;
     }
     // Spec hitT
@@ -267,7 +267,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'T', textState );
         STL::Text::Print_ch( 'T', textState );
 
-        result.xyz = spec.w * float( !isInf );
+        result.xyz = ( spec.w == 0.0 ? float3( 1, 0, 0 ) : spec.w ) * float( !isInf );
         result.w = 1.0;
     }
 

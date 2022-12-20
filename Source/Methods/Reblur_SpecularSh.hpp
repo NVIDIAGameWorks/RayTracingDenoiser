@@ -37,15 +37,14 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
 
     enum class Transient
     {
         DATA1 = TRANSIENT_POOL_START,
         DATA2,
-        SPEC_MIN_HITDIST,
         SPEC_TMP1,
         SPEC_TMP2,
         SPEC_SH_TMP1,
@@ -54,7 +53,6 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT_MIN_HITDIST, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
@@ -105,7 +103,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
 
             // Outputs
             PushOutput( SPEC_TEMP1 );
-            PushOutput( AsUint(Transient::SPEC_MIN_HITDIST) );
+            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
             PushOutput( SPEC_SH_TEMP1 );
 
             // Shaders
@@ -131,7 +129,6 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
             PushInput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushInput( hasDisocclusionThresholdMix ? AsUint(ResourceType::IN_DISOCCLUSION_THRESHOLD_MIX) : REBLUR_DUMMY );
-            PushInput( AsUint(Transient::SPEC_MIN_HITDIST) );
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterPrepass ? SPEC_TEMP1 : AsUint(ResourceType::IN_SPEC_SH0) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_SH0) );
@@ -159,8 +156,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
-            PushInput( SPEC_TEMP2 );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( SPEC_TEMP2 );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
             PushInput( SPEC_SH_TEMP2 );
 
@@ -256,21 +253,24 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
 
     for (int i = 0; i < REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM; i++)
     {
+        bool hasRf0AndMetalness = ( ( ( i >> 0 ) & 0x1 ) != 0 );
+
         PushPass("Temporal stabilization");
         {
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( hasRf0AndMetalness ? AsUint(ResourceType::IN_BASECOLOR_METALNESS) : REBLUR_DUMMY );
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
-            PushInput( AsUint(ResourceType::IN_MV) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( AsUint(Transient::DATA2) );
             PushInput( AsUint(Permanent::SPEC_HISTORY) );
             PushInput( SPEC_TEMP2 );
-            PushInput( AsUint(Transient::SPEC_MIN_HITDIST) );
+            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
             PushInput( AsUint(Permanent::SPEC_SH_HISTORY) );
             PushInput( SPEC_SH_TEMP2 );
 
             // Outputs
+            PushOutput( AsUint(ResourceType::IN_MV) );
             PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushOutput( AsUint(ResourceType::OUT_SPEC_SH0) );
             PushOutput( AsUint(ResourceType::OUT_SPEC_SH1) );

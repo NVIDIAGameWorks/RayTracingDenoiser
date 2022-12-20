@@ -109,9 +109,17 @@ float PixelRadiusToWorld( float unproject, float orthoMode, float pixelRadius, f
      return pixelRadius * unproject * lerp( viewZ, 1.0, abs( orthoMode ) );
 }
 
-float GetHitDistFactor( float hitDist, float frustumHeight )
+float GetFrustumSize( float minRectDimMulUnproject, float orthoMode, float viewZ )
 {
-    return saturate( hitDist / frustumHeight );
+    // TODO: let's assume that all NRD instances are independent, i.e. there is no a need to reach
+    // "frustumSize" parity between several instances. For example: 3-monitor setup, side monitors
+    // are rotated, i.e. width < height
+    return minRectDimMulUnproject * lerp( viewZ, 1.0, abs( orthoMode ) );
+}
+
+float GetHitDistFactor( float hitDist, float frustumSize )
+{
+    return saturate( hitDist / frustumSize );
 }
 
 float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float4 baseRotator, uint frameIndex )
@@ -346,10 +354,10 @@ float2 GetKernelSampleCoordinates( float4x4 mToClip, float3 offset, float3 X, fl
 
 // Weight parameters
 
-float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumHeight, float3 Xv, float3 Nv, float nonLinearAccumSpeed )
+float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumSize, float3 Xv, float3 Nv, float nonLinearAccumSpeed )
 {
     float relaxation = lerp( 1.0, 0.25, nonLinearAccumSpeed );
-    float a = relaxation / ( planeDistSensitivity * frustumHeight );
+    float a = relaxation / ( planeDistSensitivity * frustumSize );
     float b = -dot( Nv, Xv ) * a;
 
     return float2( a, b );
@@ -360,7 +368,7 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
     // IMPORTANT: since this weight is exponential, 3% can lead to leaks from bright objects in reflections.
     // Even 1% is not enough in some cases, but using a lower value makes things even more fragile
     float smc = GetSpecMagicCurve2( roughness );
-    float norm = lerp( 0.01, 1.0, min( nonLinearAccumSpeed, smc ) );
+    float norm = lerp( NRD_EPS, 1.0, min( nonLinearAccumSpeed, smc ) );
     float a = 1.0 / norm;
     float b = hitDist * a;
 

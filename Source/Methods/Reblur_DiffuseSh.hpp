@@ -37,8 +37,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(MethodData& methodData)
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
 
     enum class Transient
@@ -155,8 +155,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(MethodData& methodData)
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
-            PushInput( DIFF_TEMP2 );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( DIFF_TEMP2 );
             PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
             PushInput( DIFF_SH_TEMP2 );
 
@@ -258,7 +258,6 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(MethodData& methodData)
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
-            PushInput( AsUint(ResourceType::IN_MV) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( AsUint(Transient::DATA2) );
             PushInput( AsUint(Permanent::DIFF_HISTORY) );
@@ -267,6 +266,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(MethodData& methodData)
             PushInput( DIFF_SH_TEMP2 );
 
             // Outputs
+            PushOutput( AsUint(ResourceType::IN_MV) );
             PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
             PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );

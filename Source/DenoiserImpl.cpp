@@ -12,17 +12,20 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include <array>
 
+#define NRD_HEADER_ONLY
+#include "../Shaders/Include/NRD.hlsli"
+
 #ifndef BYTE
     #define BYTE unsigned char
 #endif
 
-constexpr std::array<nrd::StaticSamplerDesc, (size_t)nrd::Sampler::MAX_NUM> g_StaticSamplers =
-{{
-    {nrd::Sampler::NEAREST_CLAMP, 0},
-    {nrd::Sampler::NEAREST_MIRRORED_REPEAT, 1},
-    {nrd::Sampler::LINEAR_CLAMP, 2},
-    {nrd::Sampler::LINEAR_MIRRORED_REPEAT, 3},
-}};
+constexpr std::array<nrd::Sampler, (size_t)nrd::Sampler::MAX_NUM> g_Samplers =
+{
+    nrd::Sampler::NEAREST_CLAMP,
+    nrd::Sampler::NEAREST_MIRRORED_REPEAT,
+    nrd::Sampler::LINEAR_CLAMP,
+    nrd::Sampler::LINEAR_MIRRORED_REPEAT,
+};
 
 constexpr std::array<bool, (size_t)nrd::Format::MAX_NUM> g_IsIntegerFormat =
 {
@@ -824,17 +827,17 @@ nrd::Result nrd::DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreati
     const LibraryDesc& libraryDesc = GetLibraryDesc();
 
     // Collect dispatches from all methods
-    for (uint32_t i = 0; i < denoiserCreationDesc.requestedMethodNum; i++)
+    for (uint32_t i = 0; i < denoiserCreationDesc.requestedMethodsNum; i++)
     {
         const MethodDesc& methodDesc = denoiserCreationDesc.requestedMethods[i];
 
         uint32_t j = 0;
-        for (; j < libraryDesc.supportedMethodNum; j++)
+        for (; j < libraryDesc.supportedMethodsNum; j++)
         {
             if (methodDesc.method == libraryDesc.supportedMethods[j])
                 break;
         }
-        if (j == libraryDesc.supportedMethodNum)
+        if (j == libraryDesc.supportedMethodsNum)
             return Result::INVALID_ARGUMENT;
 
         m_PermanentPoolOffset = (uint16_t)m_PermanentPool.size();
@@ -892,7 +895,7 @@ nrd::Result nrd::DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreati
         size_t resourceNum = m_Resources.size() - resourceOffset;
         for (size_t r = 0; r < resourceNum; r++)
         {
-            const Resource& resource = m_Resources[resourceOffset + r];
+            const ResourceDesc& resource = m_Resources[resourceOffset + r];
 
             if (resource.stateNeeded == DescriptorType::STORAGE_TEXTURE)
             {
@@ -941,7 +944,7 @@ nrd::Result nrd::DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreati
                         const PingPong& pingPong = m_PingPongs[methodData.pingPongOffset + p];
                         if (pingPong.resourceIndex == resourceIndex)
                         {
-                            Resource resourcePong = {resource.stateNeeded, resource.type, pingPong.indexInPoolToSwapWith, resource.mipOffset, resource.mipNum};
+                            ResourceDesc resourcePong = {resource.stateNeeded, resource.type, pingPong.indexInPoolToSwapWith, resource.mipOffset, resource.mipNum};
                             m_ClearResources.push_back( {resourcePong, w, h, isInteger} );
                             break;
                         }
@@ -976,7 +979,7 @@ nrd::Result nrd::DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreati
     return Result::SUCCESS;
 }
 
-nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
+void nrd::DenoiserImpl::GetComputeDispatches(const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
 {
     UpdateCommonSettings(commonSettings);
 
@@ -990,7 +993,7 @@ nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const CommonSettings& common
             const InternalDispatchDesc& internalDispatchDesc = m_Dispatches[ m_DispatchClearIndex[clearResource.isInteger ? 1 : 0] ];
 
             DispatchDesc dispatchDesc = {};
-            dispatchDesc.resourceNum = 1;
+            dispatchDesc.resourcesNum = 1;
             dispatchDesc.name = internalDispatchDesc.name;
             dispatchDesc.resources = &clearResource.resource;
             dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
@@ -1033,8 +1036,6 @@ nrd::Result nrd::DenoiserImpl::GetComputeDispatches(const CommonSettings& common
 
     dispatchDescs = m_ActiveDispatches.data();
     dispatchDescNum = (uint32_t)m_ActiveDispatches.size();
-
-    return Result::SUCCESS;
 }
 
 nrd::Result nrd::DenoiserImpl::SetMethodSettings(Method method, const void* methodSettings)
@@ -1066,11 +1067,17 @@ void nrd::DenoiserImpl::PrepareDesc()
 {
     m_Desc = {};
 
-    m_Desc.pipelines = m_Pipelines.data();
-    m_Desc.pipelineNum = (uint32_t)m_Pipelines.size();
+    m_Desc.constantBufferRegisterIndex = 0;
+    m_Desc.constantBufferSpaceIndex = NRD_CONSTANT_BUFFER_SPACE_INDEX;
 
-    m_Desc.staticSamplers = g_StaticSamplers.data();
-    m_Desc.staticSamplerNum = (uint32_t)g_StaticSamplers.size();
+    m_Desc.samplers = g_Samplers.data();
+    m_Desc.samplersNum = (uint32_t)g_Samplers.size();
+    m_Desc.samplersSpaceIndex = NRD_SAMPLERS_SPACE_INDEX;
+    m_Desc.samplersBaseRegisterIndex = 0;
+
+    m_Desc.pipelines = m_Pipelines.data();
+    m_Desc.pipelinesNum = (uint32_t)m_Pipelines.size();
+    m_Desc.resourcesSpaceIndex = NRD_RESOURCES_SPACE_INDEX;
 
     m_Desc.permanentPool = m_PermanentPool.data();
     m_Desc.permanentPoolSize = (uint32_t)m_PermanentPool.size();
@@ -1078,47 +1085,52 @@ void nrd::DenoiserImpl::PrepareDesc()
     m_Desc.transientPool = m_TransientPool.data();
     m_Desc.transientPoolSize = (uint32_t)m_TransientPool.size();
 
-    m_Desc.constantBufferDesc.registerIndex = 0;
-
     // Calculate descriptor heap (sets) requirements
     for (InternalDispatchDesc& dispatchDesc : m_Dispatches)
     {
         size_t textureOffset = (size_t)dispatchDesc.resources;
         dispatchDesc.resources = &m_Resources[textureOffset];
 
-        for (uint32_t i = 0; i < dispatchDesc.resourceNum; i++)
+        for (uint32_t i = 0; i < dispatchDesc.resourcesNum; i++)
         {
-            const Resource& resource = dispatchDesc.resources[i];
+            const ResourceDesc& resource = dispatchDesc.resources[i];
             if (resource.stateNeeded == DescriptorType::TEXTURE)
-                m_Desc.descriptorSetDesc.textureMaxNum += dispatchDesc.maxRepeatNum;
+                m_Desc.descriptorPoolDesc.texturesMaxNum += dispatchDesc.maxRepeatsNum;
             else if (resource.stateNeeded == DescriptorType::STORAGE_TEXTURE)
-                m_Desc.descriptorSetDesc.storageTextureMaxNum += dispatchDesc.maxRepeatNum;
+                m_Desc.descriptorPoolDesc.storageTexturesMaxNum += dispatchDesc.maxRepeatsNum;
         }
 
-        m_Desc.descriptorSetDesc.setMaxNum += dispatchDesc.maxRepeatNum;
-        m_Desc.descriptorSetDesc.staticSamplerMaxNum += dispatchDesc.maxRepeatNum * m_Desc.staticSamplerNum;
+        m_Desc.descriptorPoolDesc.setsMaxNum += dispatchDesc.maxRepeatsNum;
+        m_Desc.descriptorPoolDesc.samplersMaxNum += dispatchDesc.maxRepeatsNum * m_Desc.samplersNum;
 
         if (dispatchDesc.constantBufferDataSize != 0)
         {
-            m_Desc.descriptorSetDesc.constantBufferMaxNum += dispatchDesc.maxRepeatNum;
-            m_Desc.constantBufferDesc.maxDataSize = std::max(dispatchDesc.constantBufferDataSize, m_Desc.constantBufferDesc.maxDataSize);
+            m_Desc.descriptorPoolDesc.constantBuffersMaxNum += dispatchDesc.maxRepeatsNum;
+            m_Desc.constantBufferMaxDataSize = std::max(dispatchDesc.constantBufferDataSize, m_Desc.constantBufferMaxDataSize);
         }
     }
 
     // For potential clears
     uint32_t clearNum = (uint32_t)m_ClearResources.size();
-    m_Desc.descriptorSetDesc.storageTextureMaxNum += clearNum;
-    m_Desc.descriptorSetDesc.setMaxNum += clearNum;
-    m_Desc.descriptorSetDesc.staticSamplerMaxNum += clearNum * m_Desc.staticSamplerNum; // TODO: because the API assumes that each dispatch uses "static samplers"
+    m_Desc.descriptorPoolDesc.storageTexturesMaxNum += clearNum;
+    m_Desc.descriptorPoolDesc.setsMaxNum += clearNum;
+    m_Desc.descriptorPoolDesc.samplersMaxNum += clearNum * m_Desc.samplersNum;
 
-    m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline = 0;
+    // Assign resources
     for (PipelineDesc& pipelineDesc : m_Pipelines)
     {
-        size_t descriptorRangeffset = (size_t)pipelineDesc.descriptorRanges;
-        pipelineDesc.descriptorRanges = &m_DescriptorRanges[descriptorRangeffset];
-
-        m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline = std::max(pipelineDesc.descriptorRangeNum, m_Desc.descriptorSetDesc.descriptorRangeMaxNumPerPipeline);
+        size_t descriptorRangeffset = (size_t)pipelineDesc.resourceRanges;
+        pipelineDesc.resourceRanges = &m_ResourceRanges[descriptorRangeffset];
     }
+
+    // *= number of "spaces"
+    uint32_t descriptorSetNum = 1;
+    if (m_Desc.constantBufferSpaceIndex != m_Desc.samplersSpaceIndex)
+        descriptorSetNum++;
+    if (m_Desc.samplersSpaceIndex != m_Desc.resourcesSpaceIndex)
+        descriptorSetNum++;
+
+    m_Desc.descriptorPoolDesc.setsMaxNum *= descriptorSetNum;
 }
 
 void nrd::DenoiserImpl::AddComputeDispatchDesc
@@ -1128,9 +1140,9 @@ void nrd::DenoiserImpl::AddComputeDispatchDesc
     uint32_t constantBufferDataSize,
     uint32_t maxRepeatNum,
     const char* shaderFileName,
-    const ComputeShader& dxbc,
-    const ComputeShader& dxil,
-    const ComputeShader& spirv
+    const ComputeShaderDesc& dxbc,
+    const ComputeShaderDesc& dxil,
+    const ComputeShaderDesc& spirv
 )
 {
     // Pipeline (unique only)
@@ -1151,25 +1163,25 @@ void nrd::DenoiserImpl::AddComputeDispatchDesc
         pipelineDesc.computeShaderDXBC = dxbc;
         pipelineDesc.computeShaderDXIL = dxil;
         pipelineDesc.computeShaderSPIRV = spirv;
-        pipelineDesc.descriptorRanges = (DescriptorRangeDesc*)m_DescriptorRanges.size();
+        pipelineDesc.resourceRanges = (ResourceRangeDesc*)m_ResourceRanges.size();
         pipelineDesc.hasConstantData = constantBufferDataSize != 0;
 
         for (size_t r = 0; r < 2; r++)
         {
-            DescriptorRangeDesc descriptorRange = {};
+            ResourceRangeDesc descriptorRange = {};
             descriptorRange.descriptorType = r == 0 ? DescriptorType::TEXTURE : DescriptorType::STORAGE_TEXTURE;
 
             for (size_t i = m_ResourceOffset; i < m_Resources.size(); i++ )
             {
-                const Resource& resource = m_Resources[i];
+                const ResourceDesc& resource = m_Resources[i];
                 if (descriptorRange.descriptorType == resource.stateNeeded)
-                    descriptorRange.descriptorNum++;
+                    descriptorRange.descriptorsNum++;
             }
 
-            if (descriptorRange.descriptorNum != 0)
+            if (descriptorRange.descriptorsNum != 0)
             {
-                m_DescriptorRanges.push_back(descriptorRange);
-                pipelineDesc.descriptorRangeNum++;
+                m_ResourceRanges.push_back(descriptorRange);
+                pipelineDesc.resourceRangesNum++;
             }
         }
 
@@ -1181,10 +1193,10 @@ void nrd::DenoiserImpl::AddComputeDispatchDesc
     computeDispatchDesc.name = m_PassName;
     computeDispatchDesc.pipelineIndex = (uint16_t)pipelineIndex;
     computeDispatchDesc.downsampleFactor = downsampleFactor;
-    computeDispatchDesc.maxRepeatNum = (uint16_t)maxRepeatNum;
+    computeDispatchDesc.maxRepeatsNum = (uint16_t)maxRepeatNum;
     computeDispatchDesc.constantBufferDataSize = constantBufferDataSize;
-    computeDispatchDesc.resourceNum = uint32_t(m_Resources.size() - m_ResourceOffset);
-    computeDispatchDesc.resources = (Resource*)m_ResourceOffset;
+    computeDispatchDesc.resourcesNum = uint32_t(m_Resources.size() - m_ResourceOffset);
+    computeDispatchDesc.resources = (ResourceDesc*)m_ResourceOffset;
     computeDispatchDesc.numThreads = numThreads;
 
     m_Dispatches.push_back(computeDispatchDesc);
@@ -1228,7 +1240,7 @@ void nrd::DenoiserImpl::UpdatePingPong(const MethodData& methodData)
     for (uint32_t i = 0; i < methodData.pingPongNum; i++)
     {
         PingPong& pingPong = m_PingPongs[methodData.pingPongOffset + i];
-        Resource& resource = m_Resources[pingPong.resourceIndex];
+        ResourceDesc& resource = m_Resources[pingPong.resourceIndex];
 
         ml::Swap(resource.indexInPool, pingPong.indexInPoolToSwapWith);
     }

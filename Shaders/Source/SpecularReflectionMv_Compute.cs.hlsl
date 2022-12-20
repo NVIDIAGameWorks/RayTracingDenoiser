@@ -99,7 +99,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float smbParallaxInPixels = GetParallaxInPixels( smbParallax, gUnproject );
 
     // Camera motion in screen-space
-    float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta, false );
+    float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta );
     float2 cameraMotion2d = ( motionUv - pixelUv ) * gRectSize;
     cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );
     cameraMotion2d *= gInvRectSize;
@@ -149,7 +149,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughnessModified, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
 
     float3 Xvirtual = GetXvirtual( NoV, hitDist, curvature, X, Xprev, V, dominantFactor );
-    float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual, false );
+    float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
 
     float2 vmbDelta = vmbPixelUv - smbPixelUv;
     float vmbPixelsTraveled = length( vmbDelta * gRectSize );
@@ -160,7 +160,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     curvature *= curvatureCorrection;
 
     Xvirtual = GetXvirtual( NoV, hitDist, curvature, X, Xprev, V, dominantFactor );
-    vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual, false );
+    vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
 
     gOut_SpecularReflectionMv[ pixelPos ] = vmbPixelUv - pixelUv;
 }

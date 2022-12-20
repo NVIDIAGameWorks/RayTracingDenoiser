@@ -26,8 +26,8 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         DIFF_ILLUM_RESPONSIVE_PREV,
         REFLECTION_HIT_T_CURR,
         REFLECTION_HIT_T_PREV,
-        SPEC_DIFF_HISTORY_LENGTH_CURR,
-        SPEC_DIFF_HISTORY_LENGTH_PREV,
+        HISTORY_LENGTH_CURR,
+        HISTORY_LENGTH_PREV,
         NORMAL_ROUGHNESS_PREV,
         MATERIAL_ID_PREV,
         VIEWZ_CURR,
@@ -111,7 +111,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         PushOutput( AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV) );
         PushOutput( AsUint(Transient::VIEWZ_R16F) );
 
-        AddDispatch( RELAX_DiffuseSpecular_PrePass, SumConstants(0, 1, 0, 7), NumThreads(16, 16), 1 );
+        AddDispatch( RELAX_DiffuseSpecular_PrePass, SumConstants(0, 1, 0, 10), NumThreads(16, 16), 1 );
     }
 
     PushPass("Pre-pass"); // Without hit distance reconstruction
@@ -127,7 +127,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         PushOutput( AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV) );
         PushOutput( AsUint(Transient::VIEWZ_R16F) );
 
-        AddDispatch( RELAX_DiffuseSpecular_PrePass, SumConstants(0, 1, 0, 7), NumThreads(16, 16), 1 );
+        AddDispatch( RELAX_DiffuseSpecular_PrePass, SumConstants(0, 1, 0, 10), NumThreads(16, 16), 1 );
     }
 
     for (int i = 0; i < 4; i++)
@@ -152,7 +152,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
             PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_PREV) );
             PushInput( AsUint(Permanent::VIEWZ_PREV), 0, 1, AsUint(Permanent::VIEWZ_CURR) );
             PushInput( AsUint(Permanent::REFLECTION_HIT_T_PREV), 0, 1, AsUint(Permanent::REFLECTION_HIT_T_CURR) );
-            PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_PREV) );
+            PushInput( AsUint(Permanent::HISTORY_LENGTH_PREV) );
             PushInput( AsUint(Permanent::MATERIAL_ID_PREV) );
 
             // Optional inputs:
@@ -160,13 +160,13 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
             {
                 PushInput( AsUint(Transient::VIEWZ_R16F) ); // Bogus input that will not be fetched anyway
                 PushInput( AsUint(Transient::VIEWZ_R16F) ); // Bogus input that will not be fetched anyway
-                PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_PREV) ); // Bogus input that will not be fetched anyway
+                PushInput( AsUint(Permanent::HISTORY_LENGTH_PREV) ); // Bogus input that will not be fetched anyway
             }
             if (i == 1)
             {
                 PushInput( AsUint(ResourceType::IN_SPEC_CONFIDENCE) );
                 PushInput( AsUint(ResourceType::IN_DIFF_CONFIDENCE) );
-                PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_PREV) ); // Bogus input that will not be fetched anyway
+                PushInput( AsUint(Permanent::HISTORY_LENGTH_PREV) ); // Bogus input that will not be fetched anyway
             }
             if (i == 2)
             {
@@ -186,10 +186,10 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
             PushOutput( AsUint(Transient::SPEC_ILLUM_PONG) );
             PushOutput( AsUint(Transient::DIFF_ILLUM_PONG) );
             PushOutput( AsUint(Permanent::REFLECTION_HIT_T_CURR), 0, 1, AsUint(Permanent::REFLECTION_HIT_T_PREV) );
-            PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+            PushOutput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
             PushOutput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
 
-            AddDispatch(RELAX_DiffuseSpecular_TemporalAccumulation, SumConstants(0, 0, 0, 14), NumThreads(8, 8), 1);
+            AddDispatch(RELAX_DiffuseSpecular_TemporalAccumulation, SumConstants(0, 0, 0, 13), NumThreads(8, 8), 1);
         }
     }
 
@@ -197,7 +197,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
     {
         PushInput( AsUint(Transient::SPEC_ILLUM_PING) ); // Normal history
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
-        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(Transient::VIEWZ_R16F) );
 
@@ -213,13 +213,13 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(Transient::SPEC_ILLUM_PONG) ); // Responsive history
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
 
         PushOutput( AsUint(Transient::SPEC_ILLUM_TMP) );
         PushOutput( AsUint(Transient::DIFF_ILLUM_TMP) );
         PushOutput( AsUint(Permanent::SPEC_ILLUM_RESPONSIVE_PREV) );
         PushOutput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV) );
-        PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_PREV) );
+        PushOutput( AsUint(Permanent::HISTORY_LENGTH_PREV) );
 
         AddDispatch( RELAX_DiffuseSpecular_HistoryClamping, SumConstants(0, 0, 0, 4), NumThreads(8, 8), 1 );
     }
@@ -230,13 +230,13 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(Transient::SPEC_ILLUM_PONG) ); // Responsive history
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-        PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
 
         PushOutput( AsUint(Permanent::SPEC_ILLUM_PREV) );
         PushOutput( AsUint(Permanent::DIFF_ILLUM_PREV) );
         PushOutput( AsUint(Permanent::SPEC_ILLUM_RESPONSIVE_PREV) );
         PushOutput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV) );
-        PushOutput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_PREV) );
+        PushOutput( AsUint(Permanent::HISTORY_LENGTH_PREV) );
 
         AddDispatch( RELAX_DiffuseSpecular_HistoryClamping, SumConstants(0, 0, 0, 4), NumThreads(8, 8), 1 );
     }
@@ -263,7 +263,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         {
             PushInput( AsUint(Permanent::SPEC_ILLUM_PREV) );
             PushInput( AsUint(Permanent::DIFF_ILLUM_PREV) );
-            PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
             PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::VIEWZ_R16F) );
@@ -283,7 +283,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         {
             PushInput( AsUint(Transient::SPEC_ILLUM_PING) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
-            PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
             PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::VIEWZ_R16F) );
@@ -301,7 +301,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         {
             PushInput( AsUint(Transient::SPEC_ILLUM_PONG) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-            PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
             PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::VIEWZ_R16F) );
@@ -319,7 +319,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         {
             PushInput( AsUint(Transient::SPEC_ILLUM_PING) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
-            PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
             PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::VIEWZ_R16F) );
@@ -337,7 +337,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSpecular(MethodData& methodData)
         {
             PushInput( AsUint(Transient::SPEC_ILLUM_PONG) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-            PushInput( AsUint(Permanent::SPEC_DIFF_HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
             PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::VIEWZ_R16F) );
@@ -476,6 +476,9 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     AddFloat(data, settings.specularPrepassBlurRadius);
     AddFloat(data, 1.0f);
     AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
+    AddFloat(data, settings.diffuseLobeAngleFraction);
+    AddFloat(data, settings.specularLobeAngleFraction);
+    AddFloat(data, settings.specularLobeAngleSlack);
     AddFloat(data, settings.roughnessFraction);
     ValidateConstants(data);
 
@@ -484,7 +487,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     {
         data = PushDispatch(
             methodData,
-            AsUint(m_CommonSettings.isHistoryConfidenceInputsAvailable ?
+            AsUint(m_CommonSettings.isHistoryConfidenceAvailable ?
                 Dispatch::TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS :
                 Dispatch::TEMPORAL_ACCUMULATION));
     }
@@ -492,7 +495,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     {
         data = PushDispatch(
             methodData,
-            AsUint(m_CommonSettings.isHistoryConfidenceInputsAvailable ?
+            AsUint(m_CommonSettings.isHistoryConfidenceAvailable ?
                 Dispatch::TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS_WITH_THRESHOLD_MIX :
                 Dispatch::TEMPORAL_ACCUMULATION_WITH_THRESHOLD_MIX));
     }
@@ -507,9 +510,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     AddFloat(data, m_IsOrtho == 0 ? disocclusionThresholdAlternate : disocclusionThresholdAlternateOrtho);
     AddFloat(data, settings.roughnessFraction);
     AddFloat(data, settings.specularVarianceBoost);
-    AddUint(data, settings.enableSpecularVirtualHistoryClamping ? 1 : 0);
     AddUint(data, settings.enableReprojectionTestSkippingWithoutMotion && isCameraStatic);
-    AddUint(data, m_CommonSettings.isHistoryConfidenceInputsAvailable ? 1 : 0);
+    AddUint(data, m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0);
     AddUint(data, m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0);
     ValidateConstants(data);
 
@@ -559,7 +561,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
     for (uint32_t i = 0; i < iterationNum; i++)
     {
         Dispatch dispatch;
-        if (!m_CommonSettings.isHistoryConfidenceInputsAvailable)
+        if (!m_CommonSettings.isHistoryConfidenceAvailable)
         {
             if (i == 0)
                 dispatch = Dispatch::ATROUS_SMEM;
@@ -601,7 +603,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
         AddFloat(data, settings.roughnessEdgeStoppingRelaxation);
         AddFloat(data, settings.normalEdgeStoppingRelaxation);
         AddFloat(data, settings.luminanceEdgeStoppingRelaxation);
-        AddUint(data, m_CommonSettings.isHistoryConfidenceInputsAvailable ? 1 : 0);
+        AddUint(data, m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0);
         AddFloat(data, settings.confidenceDrivenRelaxationMultiplier);
         AddFloat(data, settings.confidenceDrivenLuminanceEdgeStoppingRelaxation);
         AddFloat(data, settings.confidenceDrivenNormalEdgeStoppingRelaxation);
@@ -626,6 +628,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSpecular(const MethodData& meth
         AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE_SPECULAR);
         AddFloat4x4(data, m_WorldToClipPrev);
         AddFloat2(data, m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
+        AddFloat(data, (float)ml::Max(settings.diffuseMaxAccumulatedFrameNum, settings.specularMaxAccumulatedFrameNum));
         ValidateConstants(data);
     }
 }

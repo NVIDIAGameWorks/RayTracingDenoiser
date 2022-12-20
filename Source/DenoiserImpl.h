@@ -64,7 +64,7 @@ namespace nrd
     constexpr uint32_t PERMANENT_POOL_START = 1000;
     constexpr uint32_t TRANSIENT_POOL_START = 2000;
     constexpr size_t CONSTANT_DATA_SIZE = 2 * 1024 * 2014;
-    
+
     constexpr uint16_t USE_MAX_DIMS = 0xFFFF;
     constexpr uint16_t IGNORE_RS = 0xFFFE;
 
@@ -125,19 +125,19 @@ namespace nrd
     struct InternalDispatchDesc
     {
         const char* name;
-        const Resource* resources; // concatenated resources for all "DescriptorRangeDesc" descriptions in DenoiserDesc::pipelines[ pipelineIndex ]
-        uint32_t resourceNum;
+        const ResourceDesc* resources; // concatenated resources for all "ResourceRangeDesc" descriptions in DenoiserDesc::pipelines[ pipelineIndex ]
+        uint32_t resourcesNum;
         const uint8_t* constantBufferData;
         uint32_t constantBufferDataSize;
         uint16_t pipelineIndex;
         uint16_t downsampleFactor;
-        uint16_t maxRepeatNum; // mostly for internal use
+        uint16_t maxRepeatsNum; // mostly for internal use
         NumThreads numThreads;
     };
 
     struct ClearResource
     {
-        Resource resource;
+        ResourceDesc resource;
         uint32_t w;
         uint32_t h;
         bool isInteger;
@@ -203,7 +203,7 @@ namespace nrd
             m_Resources(GetStdAllocator()),
             m_ClearResources(GetStdAllocator()),
             m_PingPongs(GetStdAllocator()),
-            m_DescriptorRanges(GetStdAllocator()),
+            m_ResourceRanges(GetStdAllocator()),
             m_Pipelines(GetStdAllocator()),
             m_Dispatches(GetStdAllocator()),
             m_ActiveDispatches(GetStdAllocator())
@@ -215,7 +215,7 @@ namespace nrd
             m_Resources.reserve(128);
             m_ClearResources.reserve(32);
             m_PingPongs.reserve(32);
-            m_DescriptorRanges.reserve(64);
+            m_ResourceRanges.reserve(64);
             m_Pipelines.reserve(32);
             m_Dispatches.reserve(32);
             m_ActiveDispatches.reserve(32);
@@ -231,7 +231,7 @@ namespace nrd
         { return m_StdAllocator; }
 
         Result Create(const DenoiserCreationDesc& denoiserCreationDesc);
-        Result GetComputeDispatches(const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
+        void GetComputeDispatches(const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
         Result SetMethodSettings(Method method, const void* methodSettings);
 
     private:
@@ -242,9 +242,9 @@ namespace nrd
             uint32_t constantBufferDataSize,
             uint32_t maxRepeatNum,
             const char* shaderFileName,
-            const ComputeShader& dxbc,
-            const ComputeShader& dxil,
-            const ComputeShader& spirv
+            const ComputeShaderDesc& dxbc,
+            const ComputeShaderDesc& dxil,
+            const ComputeShaderDesc& spirv
         );
 
         void Optimize();
@@ -279,7 +279,7 @@ namespace nrd
             DispatchDesc dispatchDesc = {};
             dispatchDesc.name = internalDispatchDesc.name;
             dispatchDesc.resources = internalDispatchDesc.resources;
-            dispatchDesc.resourceNum = internalDispatchDesc.resourceNum;
+            dispatchDesc.resourcesNum = internalDispatchDesc.resourcesNum;
             dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
 
             // Update constant data
@@ -333,10 +333,10 @@ namespace nrd
         Vector<MethodData> m_MethodData;
         Vector<TextureDesc> m_PermanentPool;
         Vector<TextureDesc> m_TransientPool;
-        Vector<Resource> m_Resources;
+        Vector<ResourceDesc> m_Resources;
         Vector<ClearResource> m_ClearResources;
         Vector<PingPong> m_PingPongs;
-        Vector<DescriptorRangeDesc> m_DescriptorRanges;
+        Vector<ResourceRangeDesc> m_ResourceRanges;
         Vector<PipelineDesc> m_Pipelines;
         Vector<InternalDispatchDesc> m_Dispatches;
         Vector<DispatchDesc> m_ActiveDispatches;
@@ -377,11 +377,11 @@ namespace nrd
         float m_JitterDelta = 0.0f;
         float m_TimeDelta = 0.0f;
         float m_FrameRateScale = 0.0f;
+        float m_ProjectY = 0.0f;
         uint32_t m_SharedConstantNum = 0;
         uint32_t m_AccumulatedFrameNum = 0;
         uint16_t m_TransientPoolOffset = 0;
         uint16_t m_PermanentPoolOffset = 0;
-        float m_ProjectY = 0.0f; // TODO: NRD assumes that there are no checkerboard "tricks" in Y direction, so no a separate m_ProjectX
         bool m_IsFirstUse = true;
     };
 

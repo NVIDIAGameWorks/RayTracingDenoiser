@@ -19,12 +19,14 @@ NRD_CONSTANTS_START
     RELAX_SHARED_CB_DATA
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
     NRD_CONSTANT( float2, gJitter )
+    NRD_CONSTANT( float, gMaxAccumulatedFrameNum )
 NRD_CONSTANTS_END
 
 NRD_INPUT_TEXTURE_START
     NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
     NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
     NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
+    NRD_INPUT_TEXTURE( Texture2D<float>, gIn_HistoryLength, t, 3 )
 NRD_INPUT_TEXTURE_END
 
 NRD_OUTPUT_TEXTURE_START

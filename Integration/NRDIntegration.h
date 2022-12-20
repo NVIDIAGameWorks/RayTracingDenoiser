@@ -22,10 +22,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <vector>
 #include <map>
 
-#define NRD_INTEGRATION 1
-#define NRD_INTEGRATION_MAJOR 3
+#define NRD_INTEGRATION_MAJOR 1
 #define NRD_INTEGRATION_MINOR 4
-#define NRD_INTEGRATION_DATE "19 September 2022"
+#define NRD_INTEGRATION_DATE "20 December 2022"
+#define NRD_INTEGRATION 1
 
 #define NRD_INTEGRATION_DEBUG_LOGGING 0
 
@@ -122,6 +122,7 @@ private:
     std::vector<nri::PipelineLayout*> m_PipelineLayouts;
     std::vector<nri::Pipeline*> m_Pipelines;
     std::vector<nri::Memory*> m_MemoryAllocations;
+    std::vector<nri::Descriptor*> m_Samplers;
     std::array<nri::DescriptorPool*, 16> m_DescriptorPools = {};
     const nri::CoreInterface* m_NRI = nullptr;
     const nri::HelperInterface* m_NRIHelper = nullptr;

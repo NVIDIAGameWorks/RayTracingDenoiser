@@ -10,8 +10,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-#define NRD_DESCS_VERSION_MAJOR 3
-#define NRD_DESCS_VERSION_MINOR 9
+#define NRD_DESCS_VERSION_MAJOR 4
+#define NRD_DESCS_VERSION_MINOR 0
 
 static_assert (NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -175,7 +175,7 @@ namespace nrd
         IN_SPEC_SH1,
 
         // (Optional) User-provided history confidence in range 0-1, i.e. antilag (R8+)
-        // Used only if "CommonSettings::isHistoryConfidenceInputsAvailable = true"
+        // Used only if "CommonSettings::isHistoryConfidenceAvailable = true"
         IN_DIFF_CONFIDENCE,
         IN_SPEC_CONFIDENCE,
 
@@ -183,6 +183,10 @@ namespace nrd
         // Disocclusion threshold is mixed between "disocclusionThreshold" and "disocclusionThresholdAlternate"
         // Used only if "CommonSettings::isDisocclusionThresholdMixAvailable = true"
         IN_DISOCCLUSION_THRESHOLD_MIX,
+
+        // (Optional) Base color (can be decoupled to diffuse and specular albedo based on metalness) and metalness (RGBA8+)
+        // Used only if "CommonSettings::isBaseColorMetalnessAvailable = true"
+        IN_BASECOLOR_METALNESS,
 
         // Noisy shadow data and optional translucency (RG16f+ and RGBA8+ for optional translucency)
         //      SIGMA: use "SIGMA_FrontEnd_PackShadow" for encoding
@@ -386,7 +390,7 @@ namespace nrd
     {
         SPIRVBindingOffsets spirvBindingOffsets;
         const Method* supportedMethods;
-        uint32_t supportedMethodNum;
+        uint32_t supportedMethodsNum;
         uint8_t versionMajor;
         uint8_t versionMinor;
         uint8_t versionBuild;
@@ -405,7 +409,7 @@ namespace nrd
     {
         MemoryAllocatorInterface memoryAllocatorInterface;
         const MethodDesc* requestedMethods;
-        uint32_t requestedMethodNum;
+        uint32_t requestedMethodsNum;
     };
 
     struct TextureDesc
@@ -416,7 +420,7 @@ namespace nrd
         uint16_t mipNum;
     };
 
-    struct Resource
+    struct ResourceDesc
     {
         DescriptorType stateNeeded;
         ResourceType type;
@@ -425,75 +429,75 @@ namespace nrd
         uint16_t mipNum;
     };
 
-    struct DescriptorRangeDesc
+    struct ResourceRangeDesc
     {
         DescriptorType descriptorType;
         uint32_t baseRegisterIndex;
-        uint32_t descriptorNum;
+        uint32_t descriptorsNum;
     };
 
-    struct ComputeShader
+    struct ComputeShaderDesc
     {
         const void* bytecode;
         uint64_t size;
     };
 
-    struct StaticSamplerDesc
-    {
-        Sampler sampler;
-        uint32_t registerIndex;
-    };
-
     struct PipelineDesc
     {
-        ComputeShader computeShaderDXBC;
-        ComputeShader computeShaderDXIL;
-        ComputeShader computeShaderSPIRV;
-        const char* shaderFileName; // optional, useful for white-box integration or shaders hot reloading
+        ComputeShaderDesc computeShaderDXBC;
+        ComputeShaderDesc computeShaderDXIL;
+        ComputeShaderDesc computeShaderSPIRV;
+        const char* shaderFileName;
         const char* shaderEntryPointName;
-        const DescriptorRangeDesc* descriptorRanges;
-        uint32_t descriptorRangeNum;
-
-        // if "true" all constant buffers share same "ConstantBufferDesc" description
-        // if "false" this pipeline doesn't have a constant buffer
-        bool hasConstantData : 1;
+        const ResourceRangeDesc* resourceRanges;
+        uint32_t resourceRangesNum;
+        bool hasConstantData;
     };
 
-    struct DescriptorSetDesc
+    struct DescriptorPoolDesc
     {
-        uint32_t setMaxNum;
-        uint32_t constantBufferMaxNum;
-        uint32_t staticSamplerMaxNum;
-        uint32_t textureMaxNum;
-        uint32_t storageTextureMaxNum;
-        uint32_t descriptorRangeMaxNumPerPipeline;
-    };
-
-    struct ConstantBufferDesc
-    {
-        uint32_t registerIndex;
-        uint32_t maxDataSize;
+        uint32_t setsMaxNum;
+        uint32_t constantBuffersMaxNum;
+        uint32_t samplersMaxNum;
+        uint32_t texturesMaxNum;
+        uint32_t storageTexturesMaxNum;
     };
 
     struct DenoiserDesc
     {
+        // Constant buffer (shared)
+        uint32_t constantBufferMaxDataSize;
+        uint32_t constantBufferSpaceIndex;
+        uint32_t constantBufferRegisterIndex;
+
+        // Samplers (shared)
+        const Sampler* samplers;
+        uint32_t samplersNum;
+        uint32_t samplersSpaceIndex;
+        uint32_t samplersBaseRegisterIndex;
+
+        // Pipelines
+        // - if "PipelineDesc::hasConstantData = true" a pipeline has a constant buffer with the shared description
+        // - if "samplers" are used as static/immutable samplers, "DescriptorPoolDesc::samplerMaxNum" is not needed (it counts samplers across all dispatches)
         const PipelineDesc* pipelines;
-        uint32_t pipelineNum;
-        const StaticSamplerDesc* staticSamplers;
-        uint32_t staticSamplerNum;
+        uint32_t pipelinesNum;
+        uint32_t resourcesSpaceIndex;
+
+        // Textures
         const TextureDesc* permanentPool;
         uint32_t permanentPoolSize;
         const TextureDesc* transientPool;
         uint32_t transientPoolSize;
-        ConstantBufferDesc constantBufferDesc;
-        DescriptorSetDesc descriptorSetDesc;
+
+        // Limits
+        DescriptorPoolDesc descriptorPoolDesc;
     };
 
     struct DispatchDesc
     {
         const char* name;
-        const Resource* resources; // concatenated resources for all "DescriptorRangeDesc" descriptions in DenoiserDesc::pipelines[ pipelineIndex ]
-        uint32_t resourceNum;
+        const ResourceDesc* resources; // concatenated resources for all "resourceRanges" descriptions in DenoiserDesc::pipelines[ pipelineIndex ]
+        uint32_t resourcesNum;
         const uint8_t* constantBufferData;
         uint32_t constantBufferDataSize;
         uint16_t pipelineIndex;

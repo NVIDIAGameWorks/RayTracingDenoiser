@@ -49,8 +49,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Hit distance factor ( tests 76, 95, 120 )
         // TODO: if luminance stoppers are used, blur radius should depend less on "hitDistFactor"
-        float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
-        float hitDistFactor = GetHitDistFactor( hitDist, frustumHeight );
+        float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
+        float hitDistFactor = GetHitDistFactor( hitDist, frustumSize );
 
         // Blur radius
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
@@ -82,7 +82,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
         // Weights
-        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, diffNonLinearAccumSpeed );
+        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
         float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed, lobeAngleFractionScale );
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * fractionScale;

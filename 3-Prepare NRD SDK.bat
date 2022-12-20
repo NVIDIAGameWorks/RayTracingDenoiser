@@ -1,7 +1,6 @@
 @echo off
 
 set NRD_DIR=.
-set "use_pause=y"
 set "copy_shaders="
 set "no_copy_shaders="
 set "copy_integration="
@@ -12,8 +11,6 @@ if "%~1"=="" goto :MAIN
 
 if /i "%~1"=="-h" goto :HELP
 if /i "%~1"=="--help" goto :HELP
-
-if /i "%~1"=="--no-pause" set "use_pause="
 
 if /i "%~1"=="--shaders"    set "copy_shaders=y"
 if /i "%~1"=="--no-shaders" set "no_copy_shaders=y"
@@ -78,13 +75,11 @@ cd ..
 :END
 
 cd ..
-if defined use_pause pause
 exit /b %errorlevel%
 
 :HELP
 
 echo. -h, --help          show help message
-echo. --no-pause          skip pause at the end of the script
 echo. --shaders           copy shaders for a white-box integration
 echo. --no-shaders        do not copy shaders for a white-box integration
 echo. --integration       copy NRD integration layer

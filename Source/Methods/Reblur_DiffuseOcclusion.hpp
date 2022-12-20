@@ -25,11 +25,15 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(MethodData& methodData)
         PREV_VIEWZ = PERMANENT_POOL_START,
         PREV_NORMAL_ROUGHNESS,
         PREV_INTERNAL_DATA,
+        DIFF_FAST_HISTORY_PING,
+        DIFF_FAST_HISTORY_PONG,
     };
 
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
     m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
 
     enum class Transient
     {
@@ -91,10 +95,12 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(MethodData& methodData)
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterReconstruction ? DIFF_TEMP1 : AsUint(ResourceType::IN_DIFF_HITDIST) );
             PushInput( AsUint(ResourceType::OUT_DIFF_HITDIST) );
+            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PONG) );
 
             // Outputs
             PushOutput( DIFF_TEMP2 );
             PushOutput( AsUint(Transient::DATA1) );
+            PushOutput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
 
             // Shaders
             AddDispatch( REBLUR_DiffuseOcclusion_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
@@ -109,8 +115,9 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseOcclusion(MethodData& methodData)
             // Inputs
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
-            PushInput( DIFF_TEMP2 );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( DIFF_TEMP2 );
+            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
 
             // Outputs
             PushOutput( DIFF_TEMP1 );
@@ -250,7 +257,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
 
     // TEMPORAL_ACCUMULATION
     uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 8 : 0) +
-        (m_CommonSettings.isHistoryConfidenceInputsAvailable ? 4 : 0) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
+        (m_CommonSettings.isHistoryConfidenceAvailable ? 4 : 0) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
     Constant* data = PushDispatch(methodData, passIndex);
     AddSharedConstants_Reblur(methodData, settings, data);
     AddFloat4x4(data, m_WorldToViewPrev);
@@ -264,7 +271,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     AddUint(data, diffCheckerboard);
     AddUint(data, specCheckerboard);
     AddUint(data, 0);
-    AddUint(data, m_CommonSettings.isHistoryConfidenceInputsAvailable);
+    AddUint(data, m_CommonSettings.isHistoryConfidenceAvailable);
     AddUint(data, m_CommonSettings.isDisocclusionThresholdMixAvailable);
     ValidateConstants(data);
 

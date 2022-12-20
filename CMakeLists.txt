@@ -1,137 +1,137 @@
 cmake_minimum_required(VERSION 3.15)
 
-message("Processing 'NRD'...")
-
-set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "Custom DXC to use if Vulkan SDK is not installed")
-set(NRD_SHADER_OUTPUT_PATH "" CACHE STRING "Shader output path override")
-set(NRD_NORMAL_ENCODING "2" CACHE STRING "Normal encoding variant (0-4, matches nrd::NormalEncoding)")
-set(NRD_ROUGHNESS_ENCODING "1" CACHE STRING "Roughness encoding variant (0-2, matches nrd::RoughnessEncoding)")
-
-# Settings
+# Options
 option(NRD_DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
 option(NRD_USE_PRECOMPILED_SHADERS "Use precompiled (embedded) shaders" ON)
 option(NRD_STATIC_LIBRARY "Build static library" OFF)
-option(NRD_STATIC_CPP_RUNTIME "Link static C++ runtime (Linux only), on Windows use CMAKE_MSVC_RUNTIME_LIBRARY" OFF)
-option(NRD_CROSSCOMPILE_AARCH64 "Cross compilation for aarch64" OFF)
-option(NRD_CROSSCOMPILE_X86_64 "Cross compilation for x86_64" OFF)
-option(NRD_INTERPROCEDURAL_OPTIMIZATION "Interprocedural optimization" OFF)
 
+# Cached
+set(NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "Custom DXC to use if Vulkan SDK is not installed")
+set(NRD_SHADERS_PATH "" CACHE STRING "Shader output path override")
+set(NRD_NORMAL_ENCODING "2" CACHE STRING "Normal encoding variant (0-4, matches nrd::NormalEncoding)")
+set(NRD_ROUGHNESS_ENCODING "1" CACHE STRING "Roughness encoding variant (0-2, matches nrd::RoughnessEncoding)")
+set(GLOBAL_BIN_OUTPUT_PATH "${CMAKE_SOURCE_DIR}/_Build" CACHE STRING "")
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "")
+
+# Create project
+file(READ "Include/NRD.h" ver_h)
+string(REGEX MATCH "VERSION_MAJOR ([0-9]*)" _ ${ver_h})
+set(VERSION_MAJOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "VERSION_MINOR ([0-9]*)" _ ${ver_h})
+set(VERSION_MINOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "VERSION_BUILD ([0-9]*)" _ ${ver_h})
+set(VERSION_BUILD ${CMAKE_MATCH_1})
+
+message("NRD v${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_BUILD}")
+project(NRD LANGUAGES CXX)
+
+# Generate "NRDEncoding.hlsli"
 file(WRITE Shaders/Include/NRDEncoding.hlsli
 "// This file is auto-generated during project deployment. Do not modify!\n"
 "#define NRD_NORMAL_ENCODING ${NRD_NORMAL_ENCODING}\n"
-"#define NRD_ROUGHNESS_ENCODING ${NRD_ROUGHNESS_ENCODING}\n"
-)
+"#define NRD_ROUGHNESS_ENCODING ${NRD_ROUGHNESS_ENCODING}\n")
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Include/NRD.h" ver_h)
-string(REGEX MATCH "NRD_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
-set(ver_major ${CMAKE_MATCH_1})
-string(REGEX MATCH "NRD_VERSION_MINOR ([0-9]*)" _ ${ver_h})
-set(ver_minor ${CMAKE_MATCH_1})
-string(REGEX MATCH "NRD_VERSION_BUILD ([0-9]*)" _ ${ver_h})
-set(ver_patch ${CMAKE_MATCH_1})
+message("NRD encoding: NRD_NORMAL_ENCODING = ${NRD_NORMAL_ENCODING}; NRD_ROUGHNESS_ENCODING = ${NRD_ROUGHNESS_ENCODING}")
 
-project(NRD VERSION ${ver_major}.${ver_minor}.${ver_patch} LANGUAGES CXX)
-message(STATUS "${PROJECT_NAME} version: ${ver_major}.${ver_minor}.${ver_patch}")
-
-if (NRD_CROSSCOMPILE_AARCH64)
-    set(CMAKE_SYSTEM_PROCESSOR "aarch64")
-    message(STATUS "CROSSCOMPILE_AARCH64 enabled.")
-endif()
-if (NRD_CROSSCOMPILE_X86_64)
-    set(CMAKE_SYSTEM_PROCESSOR "x86_64")
-    message(STATUS "CROSSCOMPILE_X86_64 enabled.")
-endif()
-
+# Globals?
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_POSITION_INDEPENDENT_BINARIES ON)
-set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION NRD_INTERPROCEDURAL_OPTIMIZATION)
 
-if ("${NRD_SHADER_OUTPUT_PATH}" STREQUAL "")
-    set(NRD_SHADER_OUTPUT_PATH "${PROJECT_BINARY_DIR}/Shaders")
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+else()
+    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
 endif()
-message(STATUS "NRD shaders output path: '${NRD_SHADER_OUTPUT_PATH}'")
-message(STATUS "NRD.hlsli definitions: NRD_NORMAL_ENCODING = ${NRD_NORMAL_ENCODING}; NRD_ROUGHNESS_ENCODING = ${NRD_ROUGHNESS_ENCODING}")
 
-if (NOT NRD_DISABLE_SHADER_COMPILATION)
-    # Non-NRD include paths
-    set(NRD_MATHLIB_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/MathLib")
+# Compile options
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(COMPILE_OPTIONS -Wextra)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    set(COMPILE_OPTIONS -Wextra)
+elseif(MSVC)
+    set(COMPILE_OPTIONS /W4 /WX)
+else()
+    message(WARNING "Unknown compiler!")
+endif()
 
-    # list HLSL shaders and headers
-    file(GLOB_RECURSE NRD_HLSL_MATHLIB_HEADER_FILES "${NRD_MATHLIB_INCLUDE_PATH}/*.hlsli")
-    file(GLOB_RECURSE NRD_HLSL_INCLUDE "Shaders/*.hlsli" )
-    file(GLOB_RECURSE NRD_HLSL_FILES "Shaders/*.hlsl")
+# Compile definitions
+set(COMPILE_DEFINITIONS NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING} NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING})
+if(WIN32)
+    set(COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS _UNICODE UNICODE _ENFORCE_MATCHING_ALLOCATORS=0)
+else()
+    set(COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} NRD_ONLY_SPIRV_SHADERS_AVAILABLE=1)
+endif()
 
-    file(MAKE_DIRECTORY ${NRD_SHADER_OUTPUT_PATH})
+# Shaders
+if("${NRD_SHADERS_PATH}" STREQUAL "")
+    set(NRD_SHADERS_PATH "${PROJECT_BINARY_DIR}/Shaders")
+endif()
+message("NRD shaders output path: '${NRD_SHADERS_PATH}'")
+
+if(NOT NRD_DISABLE_SHADER_COMPILATION)
+    # Create output directory
+    file(MAKE_DIRECTORY ${NRD_SHADERS_PATH})
+
+    # External include needed for ShaderCompilation.cmake
+    set(MATHLIB_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/MathLib")
+
+    # Gather "hlsl/hlsli" files
+    file(GLOB MATHLIB_HLSLI "${MATHLIB_INCLUDE_PATH}/*.hlsli")
+    file(GLOB_RECURSE HLSLI "Shaders/*.hlsli" )
+    file(GLOB_RECURSE HLSL "Shaders/*.hlsl")
+    file(GLOB_RECURSE RESOURCES_HLSLI "Shaders/*.resources.hlsli")
+
+    # Define build rules
     include(ShaderCompilation.cmake)
 
-    # define build rules for the shaders
-    list_hlsl_headers("${NRD_HLSL_FILES}" NRD_HEADER_FILES)
-    list_hlsl_headers("${NRD_HLSL_MATHLIB_HEADER_FILES}" NRD_HEADER_FILES)
-    list_hlsl_headers("${NRD_HLSL_INCLUDE}" NRD_HEADER_FILES)
-    list_hlsl_shaders("${NRD_HLSL_FILES}" "${NRD_HEADER_FILES}" NRD_SHADER_FILES)
-    add_custom_target(NRDShaders ALL DEPENDS ${NRD_SHADER_FILES} SOURCES "${NRD_HEADER_FILES}")
-    set_property(TARGET NRDShaders PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
+    list_hlsl_headers("${HLSL}" HEADER_FILES)
+    list_hlsl_headers("${MATHLIB_HLSLI}" HEADER_FILES)
+    list_hlsl_headers("${HLSLI}" HEADER_FILES)
+    list_hlsl_shaders("${HLSL}" "${HEADER_FILES}" SHADER_FILES)
+
+    source_group("MathLib" FILES ${MATHLIB_HLSLI})
+    source_group("Source" FILES ${HLSL})
+    source_group("Resources" FILES ${RESOURCES_HLSLI})
+
+    add_custom_target(${PROJECT_NAME}_Shaders ALL DEPENDS ${SHADER_FILES} SOURCES "${HEADER_FILES}")
+    set_property(TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER "${PROJECT_NAME}")
 endif()
 
-if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
-    set(NRD_IS_SUBMODULE OFF)
+# External/MathLib
+file(READ "External/MathLib/MathLib.h" ver_h)
+string(REGEX MATCH "MATHLIB_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
+set(MATHLIB_VERSION_MAJOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "MATHLIB_VERSION_MINOR ([0-9]*)" _ ${ver_h})
+set(MATHLIB_VERSION_MINOR ${CMAKE_MATCH_1})
+message("MathLib v${MATHLIB_VERSION_MAJOR}.${MATHLIB_VERSION_MINOR}")
+
+file(GLOB MATHLIB_FILES "External/MathLib/*.h" "External/MathLib/*.hpp")
+source_group("MathLib" FILES ${MATHLIB_FILES})
+
+# NRD
+file(GLOB GLOB_INCUDE "Include/*")
+source_group("Include" FILES ${GLOB_INCUDE})
+file(GLOB GLOB_SOURCE "Source/*.cpp" "Source/*.h" "Source/*.hpp")
+source_group("Source" FILES ${GLOB_SOURCE})
+file(GLOB GLOB_METHODS "Source/Methods/*.cpp" "Source/Methods/*.h" "Source/Methods/*.hpp")
+source_group("Methods" FILES ${GLOB_METHODS})
+file(GLOB GLOB_RESOURCES "Resources/*")
+source_group("Resources" FILES ${GLOB_RESOURCES})
+
+if(NRD_STATIC_LIBRARY)
+    add_library(${PROJECT_NAME} STATIC ${GLOB_SOURCE} ${GLOB_METHODS} ${MATHLIB_FILES} ${GLOB_RESOURCES} ${GLOB_INCUDE})
 else()
-    set(NRD_IS_SUBMODULE ON)
-endif()
+    add_library(${PROJECT_NAME} SHARED ${GLOB_SOURCE} ${GLOB_METHODS} ${MATHLIB_FILES} ${GLOB_RESOURCES} ${GLOB_INCUDE})
 
-# list C/C++ files and add them to NRD project
-file(GLOB NRD_HEADERS "Include/*")
-file(GLOB NRD_SOURCE "Source/*.cpp" "Source/*.h" "Source/*.hpp")
-file(GLOB NRD_SOURCE_METHODS "Source/Methods/*.cpp" "Source/Methods/*.h" "Source/Methods/*.hpp")
-file(GLOB NRD_MATHLIB_HEADERS "External/MathLib/*.h" "External/MathLib/*.hpp")
-file(GLOB NRD_RESOURCE "Resources/*")
-
-source_group("Include" FILES ${NRD_HEADERS})
-source_group("Sources" FILES ${NRD_SOURCE})
-source_group("Methods" FILES ${NRD_SOURCE_METHODS})
-source_group("MathLib" FILES ${NRD_MATHLIB_HEADERS})
-source_group("Resources" FILES ${NRD_RESOURCE})
-
-if (NRD_STATIC_LIBRARY)
-    add_library(${PROJECT_NAME} STATIC ${NRD_SOURCE} ${NRD_SOURCE_METHODS} ${NRD_MATHLIB_HEADERS} ${NRD_RESOURCE} ${NRD_HEADERS})
-else()
-    add_library(${PROJECT_NAME} SHARED ${NRD_SOURCE} ${NRD_SOURCE_METHODS} ${NRD_MATHLIB_HEADERS} ${NRD_RESOURCE} ${NRD_HEADERS})
-endif()
-
-set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${PROJECT_VERSION})
-target_include_directories(${PROJECT_NAME} PUBLIC "Include" "External")
-set_property(TARGET ${PROJECT_NAME} PROPERTY FOLDER "${NRD_PROJECT_FOLDER}")
-
-if (NOT NRD_DISABLE_SHADER_COMPILATION)
-    add_dependencies(${PROJECT_NAME} NRDShaders)
-endif()
-
-if (NRD_USE_PRECOMPILED_SHADERS)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_USE_PRECOMPILED_SHADERS)
-    target_include_directories(${PROJECT_NAME} PRIVATE "${NRD_SHADER_OUTPUT_PATH}")
-endif()
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING})
-target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING})
-
-if(WIN32)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS _UNICODE UNICODE)
-else()
-    if (NRD_STATIC_CPP_RUNTIME)
-        target_link_options(${PROJECT_NAME} PRIVATE -static-libstdc++)
-    endif()
-
-    # on non-Windows, FXC is not available and VulkanSDK DXC does not produce signed DXIL
-    target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_ONLY_SPIRV_SHADERS_AVAILABLE=1)
-endif()
-
-if (NOT NRD_STATIC_LIBRARY)
     if(WIN32)
         target_compile_definitions(${PROJECT_NAME} PRIVATE "NRD_API=extern \"C\" __declspec(dllexport)")
     else()
@@ -139,26 +139,22 @@ if (NOT NRD_STATIC_LIBRARY)
     endif()
 endif()
 
-if ((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64") OR (CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64"))
-    set(NRD_ARCHITECTURE_COMPILE_OPTIONS -msse4.1)
+target_include_directories(${PROJECT_NAME} PRIVATE "Include" "External")
+if(NRD_USE_PRECOMPILED_SHADERS)
+    target_include_directories(${PROJECT_NAME} PRIVATE "${NRD_SHADERS_PATH}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE NRD_USE_PRECOMPILED_SHADERS)
 endif()
 
-# warning level 4 and all warnings as errors
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(${PROJECT_NAME} PRIVATE ${NRD_ARCHITECTURE_COMPILE_OPTIONS} -Wextra -Werror -Wno-return-type-c-linkage)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(${PROJECT_NAME} PRIVATE ${NRD_ARCHITECTURE_COMPILE_OPTIONS} -Wall -Werror)
-elseif (MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
+target_compile_definitions(${PROJECT_NAME} PRIVATE ${COMPILE_DEFINITIONS})
+target_compile_options(${PROJECT_NAME} PRIVATE ${COMPILE_OPTIONS})
+
+set_property(TARGET ${PROJECT_NAME} PROPERTY FOLDER "${PROJECT_NAME}")
+
+if(NOT NRD_DISABLE_SHADER_COMPILATION)
+    add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_Shaders)
 endif()
 
-if (NOT NRD_IS_SUBMODULE)
-    set(NRD_OUTPUT_BIN_PATH "${CMAKE_SOURCE_DIR}/_Build")
-endif()
-
-if (NOT ${NRD_OUTPUT_BIN_PATH} STREQUAL "")
-    message(STATUS "NRD output path: '${NRD_OUTPUT_BIN_PATH}'")
-    set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${NRD_OUTPUT_BIN_PATH}/$<CONFIG>")
-    set_target_properties(${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${NRD_OUTPUT_BIN_PATH}/$<CONFIG>")
-    set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${NRD_OUTPUT_BIN_PATH}/$<CONFIG>")
-endif()
+set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
+set_target_properties(${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
+set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
+message("NRD output path: '${GLOBAL_BIN_OUTPUT_PATH}'")

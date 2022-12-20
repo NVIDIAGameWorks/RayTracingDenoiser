@@ -3,7 +3,7 @@
 mkdir -p "_Compiler"
 
 cd "_Compiler"
-rm CMakeCache.txt
-cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake ..
 cmake --build . --config Release
+cmake --build . --config Debug
 cd ..

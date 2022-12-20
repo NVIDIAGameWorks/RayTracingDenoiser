@@ -121,3 +121,26 @@ Introduced optional `OUT_VALIDATION` output, which contains debug visualization 
   - Removed `DenoiserCreationDesc::enableValidation`
   - Exposed `CommonSettings::enableValidation`
   - Extened `CommonSettings::motionVectorScale` to 3 floats
+
+## To v4.0
+
+Since *NRD* tracks specular motion, now, if requested, it can modify provided *diffuse*-like motion in `IN_MV` with internally computed *specular*-like motion if specularity is high. For this purpose an optional `IN_BASECOLOR_METALNESS` input has been added. This feature improves behavior of spatio-temporal upscalers, like *TAA* or *DLSS*.
+
+- *API*:
+  - Introduced `CommonSettings::isBaseColorMetalnessAvailable`
+  - Reworked `DenoiserDesc` to clearly indicate that there are 3 types of resources each of which "sits" in a predefined `space` (`set` in *VK*):
+    - constant buffer - binding is shared across all pipelines
+    - samplers - bindings are shared across all pipelines
+    - resources - bindings vary per pipeline
+  - Name changes:
+    - `isHistoryConfidenceInputsAvailable` => `isHistoryConfidenceAvailable`
+    - `Resource` => `ResourceDesc`
+    - `DescriptorRangeDesc` => `ResourceRangeDesc`
+    - `ComputeShader` => `ComputeShaderDesc`
+    - `DescriptorSetDesc` => `DescriptorPoolDesc`
+    - all `fooNum` => `foosNum`
+  - `GetComputeDispatches` return type changed to `void`
+- *REBLUR*:
+  - Exposed `specularProbabilityThresholdsForMvModification` to control diffuse / specular motion mixing
+- *RELAX*:
+  - Removed `enableSpecularVirtualHistoryClamping`

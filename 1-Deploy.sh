@@ -9,5 +9,5 @@ git submodule update --init --recursive
 mkdir -p "_Compiler"
 
 cd "_Compiler"
-cmake ..
+cmake .. -A x64
 cd ..

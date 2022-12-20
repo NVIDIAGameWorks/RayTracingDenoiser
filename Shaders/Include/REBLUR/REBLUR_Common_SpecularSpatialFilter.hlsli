@@ -60,11 +60,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // Hit distance factor ( tests 76, 95, 120 )
         // TODO: reduce "hitDistFactor" influence if reprojection confidence is low?
         // TODO: if luminance stoppers are used, blur radius should depend less on "hitDistFactor"
-        float frustumHeight = PixelRadiusToWorld( gUnproject, gOrthoMode, gRectSize.y, viewZ );
-        float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumHeight );
+        float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
+        float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumSize );
 
         // Blur radius
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        // Add viewZ-dependent threshold to avoid extreme small values in the special test
+        hitDist = max( hitDist, frustumSize * max( gInvRectSize.x, gInvRectSize.y ) );
+
         // Blur radius - main
         float blurRadius = gSpecPrepassBlurRadius;
         blurRadius *= hitDistFactor * smc;
@@ -99,7 +102,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #endif
 
         // Weights
-        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumHeight, Xv, Nv, specNonLinearAccumSpeed );
+        float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
         float normalWeightParams = GetNormalWeightParams( specNonLinearAccumSpeed, lobeAngleFractionScale, roughness );
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScale );
@@ -170,13 +173,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             // Decrease weight for samples that most likely are very close to reflection contact which should not be blurred
             float d = length( Xvs - Xv );
             float h = ExtractHitDist( s ) * hitDistScale; // roughness weight will handle the rest
-            float t = h / ( hitDist + d + frustumHeight * gInvRectSize.y );
+            float t = h / ( hitDist + d );
             w *= lerp( saturate( t ), 1.0, STL::Math::LinearStep( 0.5, 1.0, roughness ) );
 
             // Adjust blur radius "on the fly" if taps have short hit distances
-            float hitDistFactorAtSample = GetHitDistFactor( h * NoD, frustumHeight );
-            float blurRadiusScale = lerp( hitDistFactorAtSample, 1.0, NoD );
-            blurRadius *= lerp( 1.0, blurRadiusScale, n / ( 1.0 + n ) );
+            #if( REBLUR_USE_ADJUSTED_ON_THE_FLY_BLUR_RADIUS_IN_PRE_BLUR == 1 )
+                float hitDistFactorAtSample = GetHitDistFactor( h * NoD, frustumSize );
+                float blurRadiusScale = lerp( hitDistFactorAtSample, 1.0, NoD );
+                blurRadius *= lerp( 1.0, blurRadiusScale, n / ( 1.0 + n ) );
+            #endif
         #endif
 
             // Get rid of potentially bad values outside of the screen ( important for checkerboard )
@@ -186,7 +191,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             // Min hit distance for tracking
             [flatten]
-            if( GetLuma( s ) > minHitDistLuma && w != 0.0 )
+            if( w != 0.0 )
                 minHitDist = min( minHitDist, ExtractHitDist( s ) );
         #endif
 
@@ -207,7 +212,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         // Output
-        gOut_Spec_MinHitDist[ pixelPos ] = minHitDist; // TODO: lerp to ExtractHitDist( spec ) based on NoV or NoD?
+        gOut_Spec_MinHitDist[ pixelPos ] = minHitDist * hitDistScale; // TODO: lerp to ExtractHitDist( spec ) based on NoV or NoD?
     }
 
     // Checkerboard resolve ( if pre-pass failed )

@@ -145,13 +145,34 @@ float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
     return angle;
 }
 
-float GetEncodingAwareNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
+float GetEncodingAwareNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0)
 {
-    float a = 1.0 / maxAngle;
+    // Anything below "angleThreshold" is ignored
+    angleThreshold += RELAX_NORMAL_ULP;
+
     float cosa = saturate(dot(Ncurr, Nprev));
+
+    float a = 1.0 / maxAngle;
     float d = STL::Math::AcosApprox(cosa);
 
-    return STL::Math::SmoothStep01(1.0 - (d - RELAX_NORMAL_ULP) * a);
+    float w = STL::Math::SmoothStep01(1.0 - (d - angleThreshold) * a);
+
+    // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
+    w = STL::Math::SmoothStep(0.05, 0.95, w);
+
+    return w;
+}
+
+float GetNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
+{
+    float cosa = saturate(dot(Ncurr, Nprev));
+
+    float a = 1.0 / maxAngle;
+    float d = STL::Math::AcosApprox(cosa);
+
+    float w = STL::Math::SmoothStep01(1.0 - (d * a));
+
+    return w;
 }
 
 float2 GetRoughnessWeightParams(float roughness, float fraction = 0.05)
@@ -160,6 +181,19 @@ float2 GetRoughnessWeightParams(float roughness, float fraction = 0.05)
     float b = roughness * a;
 
     return float2(a, -b);
+}
+
+float2 GetRoughnessWeightParamsSq(float roughness, float fraction = 0.05)
+{
+    float roughnessSq = roughness * roughness;
+    float a = rcp(lerp(0.01, 1.0, saturate(roughnessSq * fraction)));
+    float b = roughnessSq * a;
+
+    return float2(a, -b);
+}
+float GetRoughnessWeightSq(float2 params, float roughness)
+{
+    return GetRoughnessWeight(params, roughness * roughness);
 }
 
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(

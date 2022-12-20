@@ -16,12 +16,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Storage
 
+// IMPORTANT: if REBLUR_NORMAL_ULP == 1, then "GetEncodingAwareNormalWeight" for 0-roughness
+// can return values < 1 even for same normals due to data re-packing
+#define REBLUR_ROUGHNESS_ULP                            ( 1.5 / 255.0 )
+#define REBLUR_NORMAL_ULP                               atan( 1.5 / 255.0 )
+
 #define REBLUR_MAX_ACCUM_FRAME_NUM                      63.0
 #define REBLUR_ACCUMSPEED_BITS                          7 // "( 1 << REBLUR_ACCUMSPEED_BITS ) - 1" must be >= REBLUR_MAX_ACCUM_FRAME_NUM
 #define REBLUR_MATERIALID_BITS                          ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
-
-#define REBLUR_ROUGHNESS_ULP                            ( 1.5 / 255.0 )
-#define REBLUR_NORMAL_ULP                               ( 1.5 / 255.0 )
 #define REBLUR_CURVATURE_PACKING_SCALE                  0.1
 
 // Internal data ( from the previous frame )
@@ -136,18 +138,22 @@ float3 UnpackData2( float4 p, float viewZ, out uint bits )
 
 float GetFPS( float period = 1.0 )
 {
+    // TODO: can be handy, but not used
     return gFramerateScale * 30.0 * period;
 }
 
 float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float vmbPixelsTraveled, float viewZ, float specAccumSpeed, float maxAngle )
 {
-    float smbSpecAccumSpeed = GetFPS( ) / ( 1.0 + smbSpecAccumSpeedFactor * vmbPixelsTraveled );
+    float smbSpecAccumSpeed = gMaxAccumulatedFrameNum / ( 1.0 + smbSpecAccumSpeedFactor * vmbPixelsTraveled );
 
     // Tests 142, 148 and 155 ( or anything with very low roughness and curved surfaces )
     float ta = PixelRadiusToWorld( gUnproject, gOrthoMode, vmbPixelsTraveled, viewZ ) / viewZ;
     float ca = STL::Math::Rsqrt( 1.0 + ta * ta );
     float angle = STL::Math::AcosApprox( ca );
     smbSpecAccumSpeed *= STL::Math::SmoothStep( maxAngle, 0.0, angle );
+
+    // Do not trust too small values
+    smbSpecAccumSpeed *= STL::Math::LinearStep( 0.5, 1.5, smbSpecAccumSpeed );
 
     return min( smbSpecAccumSpeed, specAccumSpeed );
 }
@@ -202,6 +208,11 @@ float GetLumaScale( float currLuma, float newLuma )
     return ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS );
 }
 
+float MixFastHistoryAndCurrent( float history, float current, float f )
+{
+    return lerp( history, current, f );
+}
+
 #ifdef REBLUR_OCCLUSION
 
     #define REBLUR_TYPE float
@@ -241,11 +252,6 @@ float GetLumaScale( float currLuma, float newLuma )
         return r;
     }
 
-    float MixFastHistoryAndCurrent( float history, float current, float f )
-    {
-        return lerp( history, current, f );
-    }
-
     float ExtractHitDist( float4 input )
     { return input.w; }
 
@@ -274,11 +280,6 @@ float GetLumaScale( float currLuma, float newLuma )
         r.w = lerp( history.w, current.w, max( f, GetMinAllowedLimitForHitDistNonLinearAccumSpeed( roughness ) ) );
 
         return r;
-    }
-
-    float MixFastHistoryAndCurrent( float history, float current, float f )
-    {
-        return lerp( history, current, f );
     }
 
     float ExtractHitDist( float4 input )
@@ -338,7 +339,7 @@ float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, f
     float error = max( f.x, f.y );
     error = STL::Math::SmoothStep( 0.0, 0.15, error );
     error *= GetFadeBasedOnAccumulatedFrames( accumSpeed );
-    error *= 1.0 - gReference;
+    error *= gNonReferenceAccumulation;
 
     return error;
 }
@@ -405,22 +406,28 @@ float GetEncodingAwareRoughnessWeights( float roughnessCurr, float roughnessPrev
     float a = rcp( lerp( 0.01, 1.0, saturate( roughnessCurr * fraction ) ) );
     float d = abs( roughnessPrev - roughnessCurr );
 
-    return STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_ROUGHNESS_ULP ) * a );
+    float w = STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_ROUGHNESS_ULP ) * a );
+
+    // Needed to mitigate imprecision issues
+    w = STL::Math::SmoothStep( 0.05, 0.95, w );
+
+    return w;
 }
 
 float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0 )
 {
-    float a = 1.0 / maxAngle;
-    float cosa = saturate( dot( Ncurr, Nprev ) );
-    float d = STL::Math::AcosApprox( cosa );
-
+    // Anything below "angleThreshold" is ignored
     angleThreshold += REBLUR_NORMAL_ULP;
 
-    // Anything below "angleThreshold" is ignored
+    float cosa = saturate( dot( Ncurr, Nprev ) );
+
+    float a = 1.0 / maxAngle;
+    float d = STL::Math::AcosApprox( cosa );
+
     float w = STL::Math::SmoothStep01( 1.0 - ( d - angleThreshold ) * a );
 
     // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
-    w = saturate( w / 0.95 );
+    w = STL::Math::SmoothStep( 0.05, 0.95, w );
 
     return w;
 }
@@ -450,18 +457,11 @@ float2 GetCoarseRoughnessWeightParams( float roughness )
 
 float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed )
 {
-    // TODO: make it "gMaxAccumulatedFrameNum" dependent?
-    float frameNum = GetFPS( 0.5 );
-    float nonLinearAccumSpeed = accumSpeed / ( 1.0 + accumSpeed );
-    float norm1 = frameNum * 0.5 / ( 1.0 + frameNum * 0.5 );
-    float normAccumSpeed = saturate( nonLinearAccumSpeed / norm1 );
+    float w = isInScreenMulFootprintQuality;
+    w *= accumSpeed / ( 1.0 + accumSpeed );
 
-    float w = frameNum / ( 1.0 + frameNum );
-    w *= normAccumSpeed * normAccumSpeed;
-    w *= isInScreenMulFootprintQuality;
-
-    float s = normAccumSpeed;
-    s *= 1.0 - gReference;
+    float s = w;
+    s *= gNonReferenceAccumulation;
 
     return float2( w, 1.0 + 3.0 * gFramerateScale * s );
 }
@@ -488,11 +488,10 @@ float GetCombinedWeight
     return w.x * w.y * w.z;
 }
 
-// float4 variants
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invTextureSize,
     float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0 ) // main - CatRom
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0 ) // main - CatRom
 {
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
@@ -501,19 +500,8 @@ void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invTextureSize,
     float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0, // main - CatRom
-    Texture2D<float4> tex1, out float4 c1 ) // SH - bilinear
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-    _BilinearFilterWithCustomWeights_Color( c1, tex1 );
-}
-
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-    float2 samplePos, float2 invTextureSize,
-    float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0, // main - CatRom
-    Texture2D<float> tex1, out float c1 ) // fast - bilinear
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // main - CatRom
+    Texture2D<REBLUR_FAST_TYPE> tex1, out REBLUR_FAST_TYPE c1 ) // fast - bilinear
 {
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
@@ -523,33 +511,23 @@ void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invTextureSize,
     float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<float4> tex0, out float4 c0, // main - CatRom
-    Texture2D<float4> tex1, out float4 c1, // SH - bilinear
-    Texture2D<float> tex2, out float c2 ) // fast - bilinear
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // main - CatRom
+    Texture2D<REBLUR_SH_TYPE> tex1, out REBLUR_SH_TYPE c1 ) // SH - bilinear
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+    _BilinearFilterWithCustomWeights_Color( c1, tex1 );
+}
+
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invTextureSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // main - CatRom
+    Texture2D<REBLUR_FAST_TYPE> tex1, out REBLUR_FAST_TYPE c1, // fast - bilinear
+    Texture2D<REBLUR_SH_TYPE> tex2, out REBLUR_SH_TYPE c2 ) // SH - bilinear
 {
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
     _BilinearFilterWithCustomWeights_Color( c1, tex1 );
     _BilinearFilterWithCustomWeights_Color( c2, tex2 );
-}
-
-// float variants
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-    float2 samplePos, float2 invTextureSize,
-    float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<float> tex0, out float c0 ) // main - CatRom
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-}
-
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-    float2 samplePos, float2 invTextureSize,
-    float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<float> tex0, out float c0, // main - CatRom
-    Texture2D<float> tex1, out float c1 ) // fast - bilinear
-{
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
-    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
-    _BilinearFilterWithCustomWeights_Color( c1, tex1 );
 }

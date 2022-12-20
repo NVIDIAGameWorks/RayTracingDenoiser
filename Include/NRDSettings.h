@@ -10,8 +10,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-#define NRD_SETTINGS_VERSION_MAJOR 3
-#define NRD_SETTINGS_VERSION_MINOR 9
+#define NRD_SETTINGS_VERSION_MAJOR 4
+#define NRD_SETTINGS_VERSION_MINOR 0
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -113,7 +113,7 @@ namespace nrd
         float disocclusionThreshold = 0.01f;
 
         // (normalized %) - alternative disocclusion threshold, which is mixed to based on IN_DISOCCLUSION_THRESHOLD_MIX
-        float disocclusionThresholdAlternate = 0.01f;
+        float disocclusionThresholdAlternate = 0.05f;
 
         // [0; 1] - enables "noisy input / denoised output" comparison
         float splitScreen = 0.0f;
@@ -134,11 +134,14 @@ namespace nrd
         // otherwise it's 2D (+ optional Z delta) screen-space motion (0 should be everywhere if the camera doesn't move) (recommended value = true)
         bool isMotionVectorInWorldSpace = false;
 
-        // If "true" IN_DIFF_CONFIDENCE and IN_SPEC_CONFIDENCE are provided
-        bool isHistoryConfidenceInputsAvailable = false;
+        // If "true" IN_DIFF_CONFIDENCE and IN_SPEC_CONFIDENCE are available
+        bool isHistoryConfidenceAvailable = false;
 
-        // If "true" IN_DISOCCLUSION_THRESHOLD_MIX is provided
+        // If "true" IN_DISOCCLUSION_THRESHOLD_MIX is available
         bool isDisocclusionThresholdMixAvailable = false;
+
+        // If "true" IN_BASECOLOR_METALNESS is available
+        bool isBaseColorMetalnessAvailable = false;
 
         // Enables debug overlay in OUT_VALIDATION, requires "DenoiserCreationDesc::allowValidation = true"
         bool enableValidation = false;
@@ -247,6 +250,9 @@ namespace nrd
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
 
+        // IN_MV = lerp(IN_MV, specularMotion, smoothstep(specularProbabilityThresholdsForMvModification[0], specularProbabilityThresholdsForMvModification[1], specularProbability))
+        float specularProbabilityThresholdsForMvModification[2] = {0.5f, 0.9f};
+
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
 
@@ -305,7 +311,7 @@ namespace nrd
 
         // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
         float diffuseLobeAngleFraction = 0.5f;
-        float specularLobeAngleFraction = 0.333f;
+        float specularLobeAngleFraction = 0.5f;
 
         // (normalized %) - base fraction of center roughness used to drive roughness based rejection
         float roughnessFraction = 0.15f;
@@ -335,8 +341,8 @@ namespace nrd
         float diffuseMinLuminanceWeight = 0.0f;
         float specularMinLuminanceWeight = 0.0f;
 
-        // (normalized %) - A-trous edge stopping depth threshold
-        float depthThreshold = 0.01f;
+        // (normalized %) - Depth threshold for spatial passes
+        float depthThreshold = 0.003f;
 
         // Confidence inputs can affect spatial blurs, relaxing some weights in areas with low confidence
         float confidenceDrivenRelaxationMultiplier = 0.0f;
@@ -361,9 +367,6 @@ namespace nrd
 
         // Skip reprojection test when there is no motion, might improve quality along the edges for static camera with a jitter
         bool enableReprojectionTestSkippingWithoutMotion = false;
-
-        // Clamp specular virtual history to the current frame neighborhood
-        bool enableSpecularVirtualHistoryClamping = true;
 
         // Roughness based rejection
         bool enableRoughnessEdgeStopping = true;
@@ -420,7 +423,7 @@ namespace nrd
 
         float specularPhiLuminance = 1.0f;
         float diffuseLobeAngleFraction = 0.5f;
-        float specularLobeAngleFraction = 0.333f;
+        float specularLobeAngleFraction = 0.5f;
         float roughnessFraction = 0.15f;
 
         float specularVarianceBoost = 0.0f;
@@ -449,7 +452,6 @@ namespace nrd
 
         bool enableAntiFirefly = false;
         bool enableReprojectionTestSkippingWithoutMotion = false;
-        bool enableSpecularVirtualHistoryClamping = true;
         bool enableRoughnessEdgeStopping = true;
         bool enableMaterialTest = false;
     };

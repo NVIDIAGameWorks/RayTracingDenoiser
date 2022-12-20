@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v3.9
+// NRD v4.0
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -75,6 +75,13 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 // BINDINGS
 //=================================================================================================================================
 
+#define NRD_CONSTANT_BUFFER_SPACE_INDEX                                                 0
+#define NRD_SAMPLERS_SPACE_INDEX                                                        0
+#define NRD_RESOURCES_SPACE_INDEX                                                       0
+
+#define NRD_MERGE_TOKENS_( _0, _1 )                                                     _0 ## _1
+#define NRD_MERGE_TOKENS( _0, _1 )                                                      NRD_MERGE_TOKENS_( _0, _1 )
+
 #if( defined NRD_COMPILER_UNREAL_ENGINE )
 
     #ifndef NRD_CS_MAIN
@@ -99,7 +106,7 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
     #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName;
     #define NRD_SAMPLER_END
 
-#elif( defined NRD_COMPILER_FXC || defined NRD_COMPILER_DXC )
+#elif( defined NRD_COMPILER_FXC )
 
     #ifndef NRD_CS_MAIN
         #define NRD_CS_MAIN                                                             main
@@ -121,6 +128,30 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 
     #define NRD_SAMPLER_START
     #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex );
+    #define NRD_SAMPLER_END
+
+#elif( defined NRD_COMPILER_DXC )
+
+    #ifndef NRD_CS_MAIN
+        #define NRD_CS_MAIN                                                             main
+    #endif
+
+    #define NRD_EXPORT
+
+    #define NRD_CONSTANTS_START                                                         cbuffer globalConstants : register( b0, NRD_MERGE_TOKENS( space, NRD_CONSTANT_BUFFER_SPACE_INDEX ) ) {
+    #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
+    #define NRD_CONSTANTS_END                                                           };
+
+    #define NRD_INPUT_TEXTURE_START
+    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex, NRD_MERGE_TOKENS( space, NRD_RESOURCES_SPACE_INDEX ) );
+    #define NRD_INPUT_TEXTURE_END
+
+    #define NRD_OUTPUT_TEXTURE_START
+    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex, NRD_MERGE_TOKENS( space, NRD_RESOURCES_SPACE_INDEX ) );
+    #define NRD_OUTPUT_TEXTURE_END
+
+    #define NRD_SAMPLER_START
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex, NRD_MERGE_TOKENS( space, NRD_SAMPLERS_SPACE_INDEX ) );
     #define NRD_SAMPLER_END
 
 #elif( defined NRD_COMPILER_PSSLC )
@@ -197,6 +228,8 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 //=================================================================================================================================
 // PRIVATE
 //=================================================================================================================================
+
+#if !defined(__cplusplus)
 
 // Normal encoding variants ( match NormalEncoding )
 #define NRD_NORMAL_ENCODING_RGBA8_UNORM                                                 0
@@ -668,9 +701,9 @@ float4 RELAX_BackEnd_UnpackRadiance( float4 color )
 //=================================================================================================================================
 
 // Needs to be used to avoid summing up NAN/INF values in many rays per pixel scenarios
-float NRD_GetSampleWeight( float3 radiance )
+bool NRD_IsValidRadiance( float3 radiance )
 {
-    return any( isnan( radiance ) | isinf( radiance ) ) ? 0.0 : 1.0;
+    return any( isnan( radiance ) | isinf( radiance ) ) ? false : true;
 }
 
 // Scales normalized hit distance back to real length
@@ -680,5 +713,7 @@ float REBLUR_GetHitDist( float normHitDist, float viewZ, float4 hitDistParams, f
 
     return normHitDist * scale;
 }
+
+#endif
 
 #endif
