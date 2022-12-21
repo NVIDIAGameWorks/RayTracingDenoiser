@@ -430,7 +430,7 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint mate
     float4 p;
 
     #if( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQRT_LINEAR )
-        roughness = STL::Math::Sqrt01( roughness );
+        roughness = sqrt( saturate( roughness ) );
     #elif( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQ_LINEAR )
         roughness *= roughness;
     #endif

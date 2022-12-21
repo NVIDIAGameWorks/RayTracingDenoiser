@@ -8,8 +8,8 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "STL.hlsli"
 #include "../Include/NRD.hlsli"
+#include "STL.hlsli"
 
 #define REBLUR_DIFFUSE
 #define REBLUR_NO_TEMPORAL_STABILIZATION

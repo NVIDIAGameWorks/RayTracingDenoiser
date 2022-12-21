@@ -8,8 +8,8 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "STL.hlsli"
 #include "../Include/NRD.hlsli"
+#include "STL.hlsli"
 
 #include "../Include/SIGMA/SIGMA_Config.hlsli"
 #include "../Resources/SIGMA_Shadow_SplitScreen.resources.hlsli"

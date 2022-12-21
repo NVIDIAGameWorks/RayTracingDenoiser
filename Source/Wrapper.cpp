@@ -42,7 +42,8 @@ constexpr std::array<nrd::Method, (size_t)nrd::Method::MAX_NUM> g_NrdSupportedMe
 
 constexpr nrd::LibraryDesc g_NrdLibraryDesc =
 {
-    { 100, 200, 300, 400 }, // IMPORTANT: since NRD is compiled via "CompileHLSLToSPIRV" these should match the BAT file!
+    // IMPORTANT: these should match "VK_{S/T/B/U}_SHIFT" in "ShaderCompilation.cmake"!
+    { 100, 200, 300, 400 },
     g_NrdSupportedMethods.data(),
     (uint32_t)g_NrdSupportedMethods.size(),
     VERSION_MAJOR,
@@ -52,7 +53,7 @@ constexpr nrd::LibraryDesc g_NrdLibraryDesc =
     (nrd::RoughnessEncoding)NRD_ROUGHNESS_ENCODING
 };
 
-constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResourceTypeNames =
+const char* g_NrdResourceTypeNames[] =
 {
     "IN_MV",
     "IN_NORMAL_ROUGHNESS",
@@ -69,6 +70,7 @@ constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResou
     "IN_DIFF_CONFIDENCE",
     "IN_SPEC_CONFIDENCE",
     "IN_DISOCCLUSION_THRESHOLD_MIX",
+    "IN_BASECOLOR_METALNESS",
     "IN_SHADOWDATA",
     "IN_SHADOW_TRANSLUCENCY",
     "IN_RADIANCE",
@@ -93,8 +95,9 @@ constexpr std::array<const char*, (size_t)nrd::ResourceType::MAX_NUM> g_NrdResou
     "TRANSIENT_POOL",
     "PERMANENT_POOL",
 };
+static_assert( GetCountOf(g_NrdResourceTypeNames) == (uint32_t)nrd::ResourceType::MAX_NUM );
 
-constexpr std::array<const char*, (size_t)nrd::Method::MAX_NUM> g_NrdMethodNames =
+const char* g_NrdMethodNames[] =
 {
     "REBLUR_DIFFUSE",
     "REBLUR_DIFFUSE_OCCLUSION",
@@ -119,6 +122,7 @@ constexpr std::array<const char*, (size_t)nrd::Method::MAX_NUM> g_NrdMethodNames
     "SPECULAR_REFLECTION_MV",
     "SPECULAR_DELTA_MV",
 };
+static_assert( GetCountOf(g_NrdMethodNames) == (uint32_t)nrd::Method::MAX_NUM );
 
 NRD_API const nrd::LibraryDesc& NRD_CALL nrd::GetLibraryDesc()
 {
@@ -207,8 +211,8 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
                                     "license agreement from NVIDIA CORPORATION is strictly prohibited.\n"
                                     "*/\n"
                                     "\n"
-                                    "#include \"STL.hlsli\"\n"
                                     "#include \"../Include/NRD.hlsli\"\n"
+                                    "#include \"STL.hlsli\"\n"
                                     "\n"
                                     "%s"
                                     "%s"
@@ -282,10 +286,12 @@ NRD_API void NRD_CALL nrd::DestroyDenoiser(Denoiser& denoiser)
 
 NRD_API const char* NRD_CALL nrd::GetResourceTypeString(ResourceType resourceType)
 {
-    return g_NrdResourceTypeNames[(size_t)resourceType];
+    uint32_t i = (uint32_t)resourceType;
+    return i < (uint32_t)ResourceType::MAX_NUM ? g_NrdResourceTypeNames[i] : nullptr;
 }
 
 NRD_API const char* NRD_CALL nrd::GetMethodString(Method method)
 {
-    return g_NrdMethodNames[(size_t)method];
+    uint32_t i = (uint32_t)method;
+    return i < (uint32_t)Method::MAX_NUM ? g_NrdMethodNames[i] : nullptr;
 }
