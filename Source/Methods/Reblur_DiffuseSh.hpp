@@ -52,7 +52,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSh(MethodData& methodData)
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::R8_UINT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );

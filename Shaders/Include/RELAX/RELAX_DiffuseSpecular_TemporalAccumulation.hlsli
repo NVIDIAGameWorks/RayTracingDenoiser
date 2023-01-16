@@ -235,7 +235,7 @@ float loadVirtualMotionBasedPrevData(
     float currentMaterialID,
     uint materialIDMask,
     float2 prevSurfaceMotionBasedUV,
-    float parallax,
+    float parallaxInPixels,
     float NdotV,
     float mixedDisocclusionDepthThreshold,
     out float4 prevSpecularIllumAnd2ndMoment,
@@ -260,7 +260,7 @@ float loadVirtualMotionBasedPrevData(
     // too far from surface motion based UV,
     // then recalculate UV using the non-focused HitT
     [flatten]
-    if (length(prevUVVMB - prevSurfaceMotionBasedUV) > (parallax / NRD_PARALLAX_NORMALIZATION) + 0.001)
+    if (length((prevUVVMB - prevSurfaceMotionBasedUV) * gRectSize) > parallaxInPixels + 0.001)
     {
         virtualViewVector = normalize(currentViewVector) * hitDistOriginal;
         prevVirtualWorldPos = prevWorldPos + virtualViewVector;
@@ -492,8 +492,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 #endif
 
     // Calculating surface parallax
-    float parallax = ComputeParallax(prevWorldPos - gPrevCameraPosition.xyz, gOrthoMode == 0.0 ? pixelUv : prevUVSMB, gWorldToClip, gRectSize, gUnproject, gOrthoMode);
-    float parallaxInPixels = GetParallaxInPixels(parallax, gUnproject);
+    float parallaxInPixels = ComputeParallaxInPixels(prevWorldPos - gPrevCameraPosition.xyz, gOrthoMode == 0.0 ? pixelUv : prevUVSMB, gWorldToClip, gRectSize);
 
     // Calculating curvature along the direction of motion
 #ifdef RELAX_SPECULAR
@@ -530,7 +529,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         float d = STL::Math::ManhattanDistance(pNormal, currentNormal);
         float s = STL::Math::LinearStep(NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d);
 
-        curvature += EstimateCurvature(pNormal, v, currentNormal, currentWorldPos) * s;
+        curvature += EstimateCurvature(normalize(currentNormalAveraged), pNormal, v, currentNormal, currentWorldPos) * s;
     }
     curvature *= 0.5;
 #endif
@@ -696,7 +695,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         currentMaterialID,
         gSpecMaterialMask,
         prevUVSMB,
-        parallax,
+        parallaxInPixels,
         NoV,
         mixedDisocclusionDepthThreshold,
         prevSpecularIlluminationAnd2ndMomentVMB,
@@ -841,7 +840,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float accumulatedSpecularM2VMB = lerp(prevSpecularIlluminationAnd2ndMomentVMB.a, specular2ndMoment, specVMBAlpha);
     float3 accumulatedSpecularVMBResponsive = lerp(prevSpecularIlluminationAnd2ndMomentVMBResponsive.rgb, specularIllumination.xyz, specVMBResponsiveAlpha);
 
-    // Fallback to surface motion if virtual motion doesn't go well 
+    // Fallback to surface motion if virtual motion doesn't go well
     virtualHistoryAmount *= saturate(specVMBConfidence / (specSMBConfidence + NRD_EPS));
 
     // Temporal accumulation of reflection HitT

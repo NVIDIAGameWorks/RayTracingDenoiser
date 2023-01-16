@@ -45,6 +45,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
     {
         DATA1 = TRANSIENT_POOL_START,
         DATA2,
+        SPEC_HITDIST_FOR_TRACKING,
         SPEC_TMP1,
         SPEC_TMP2,
         SPEC_SH_TMP1,
@@ -52,7 +53,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::R32_UINT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_SPEC_HITDIST_FOR_TRACKING, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
@@ -103,7 +105,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
 
             // Outputs
             PushOutput( SPEC_TEMP1 );
-            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
+            PushOutput( AsUint(Transient::SPEC_HITDIST_FOR_TRACKING) );
             PushOutput( SPEC_SH_TEMP1 );
 
             // Shaders
@@ -133,6 +135,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurSpecularSh(MethodData& methodData)
             PushInput( isAfterPrepass ? SPEC_TEMP1 : AsUint(ResourceType::IN_SPEC_SH0) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_SH0) );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PONG) );
+            PushInput( AsUint(Transient::SPEC_HITDIST_FOR_TRACKING) );
             PushInput( isAfterPrepass ? SPEC_SH_TEMP1 : AsUint(ResourceType::IN_SPEC_SH1) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_SH_HISTORY) : AsUint(ResourceType::OUT_SPEC_SH1) );
             

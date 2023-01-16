@@ -137,7 +137,7 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
     NRD_CONSTANT( uint, gSpecMaterialMask ) \
-    NRD_CONSTANT( uint, gResetHistory )
+    NRD_CONSTANT( uint, gResetHistory ) // IMPORTANT: used only in validation
 
 // PERFORMANCE MODE: x1.25 perf boost by sacrificing IQ ( DIFFUSE_SPECULAR on RTX 3090 @ 1440p 2.05 vs 2.55 ms )
 #ifdef REBLUR_PERFORMANCE_MODE

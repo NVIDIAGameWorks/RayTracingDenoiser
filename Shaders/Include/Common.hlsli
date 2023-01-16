@@ -41,16 +41,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_USE_EXPONENTIAL_WEIGHTS                             0 // bool
 #define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03
 #define NRD_CATROM_SHARPNESS                                    0.5 // [ 0; 1 ], 0.5 matches Catmull-Rom
-#define NRD_PARALLAX_NORMALIZATION                              30.0
 #define NRD_RADIANCE_COMPRESSION_MODE                           3 // 0-4, specular color compression for spatial passes
 #define NRD_EXP_WEIGHT_DEFAULT_SCALE                            3.0
 
 #if( NRD_NORMAL_ENCODING < NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 256.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 1.0 / 255.0 )
 #elif( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 1024.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 1.0 / 1023.0 )
 #else
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 65536.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 1.0 / 65535.0 )
 #endif
 
 //==================================================================================================================
@@ -182,31 +181,16 @@ float GetSpecMagicCurve2( float roughness, float percentOfVolume = 0.987 )
 
 /*
 Produce same results:
-    ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
-    ComputeParallax( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize, gUnproject, gOrthoMode );
+    ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
+    ComputeParallaxInPixels( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize );
 */
-float ComputeParallax( float3 X, float2 uvForZeroParallax, float4x4 mWorldToClip, float2 rectSize, float unproject, float orthoMode )
+float ComputeParallaxInPixels( float3 X, float2 uvForZeroParallax, float4x4 mWorldToClip, float2 rectSize )
 {
-    float3 clip = STL::Geometry::ProjectiveTransform( mWorldToClip, X ).xyw;
-    clip.xy /= clip.z;
-    clip.y = -clip.y;
-
-    float2 uv = clip.xy * 0.5 + 0.5;
-    float invDist = orthoMode == 0.0 ? rsqrt( STL::Math::LengthSquared( X ) ) : rcp( clip.z );
-
+    float2 uv = STL::Geometry::GetScreenUv( mWorldToClip, X );
     float2 parallaxInUv = uv - uvForZeroParallax;
     float parallaxInPixels = length( parallaxInUv * rectSize );
-    float parallaxInUnits = PixelRadiusToWorld( unproject, orthoMode, parallaxInPixels, clip.z );
-    float parallax = parallaxInUnits * invDist;
 
-    return parallax * NRD_PARALLAX_NORMALIZATION;
-}
-
-float GetParallaxInPixels( float parallax, float unproject )
-{
-    float smbParallaxInPixels = parallax / ( NRD_PARALLAX_NORMALIZATION * unproject );
-
-    return smbParallaxInPixels;
+    return parallaxInPixels;
 }
 
 float GetColorCompressionExposureForSpatialPasses( float roughness )
@@ -236,12 +220,12 @@ float GetColorCompressionExposureForSpatialPasses( float roughness )
 
 // Thin lens
 
-float EstimateCurvature( float3 n, float3 v, float3 N, float3 X )
+float EstimateCurvature( float3 Nplane, float3 n, float3 v, float3 N, float3 X )
 {
     // https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
 
-    float NoV = dot( N, v );
-    float3 x = 0 + v * dot( X - 0, N ) / NoV;
+    float NoV = dot( Nplane, v );
+    float3 x = 0 + v * dot( X - 0, Nplane ) / NoV;
     float3 edge = x - X;
     float edgeLenSq = STL::Math::LengthSquared( edge );
     float curvature = dot( n - N, edge ) * STL::Math::PositiveRcp( edgeLenSq );
@@ -252,6 +236,8 @@ float EstimateCurvature( float3 n, float3 v, float3 N, float3 X )
 float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
 {
     /*
+    https://www.geeksforgeeks.org/sign-convention-for-spherical-mirrors/
+
     Thin lens equation:
         1 / F = 1 / O + 1 / I
         F = R / 2 - focal distance
@@ -259,7 +245,7 @@ float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
 
     Sign convention:
         convex  : O(-), I(+), C(+)
-        concave : O(+), I(-), C(-)
+        concave : O(-), I(+ or -), C(-)
 
     Why NoV?
         hitDist is not O, we need to find projection to the axis:
@@ -275,60 +261,31 @@ float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
 
         I = [ ( O * NoV ) / ( 2CO * NoV - 1 ) ] / NoV
         I = O / ( 2CO * NoV - 1 )
+
+    O is always negative, while hit distance is always positive:
+        I = -O / ( -2CO * NoV - 1 )
+        I = O / ( 2CO * NoV + 1 )
+
+    Interactive graph:
+        https://www.desmos.com/calculator/dn9spdgwiz
     */
 
-    float hitDistFocused = hitDist;
-    hitDistFocused *= -STL::Math::Sign( curvature );
-    hitDistFocused /= 2.0 * curvature * NoV * hitDistFocused - 1.0;
-
-    // A mystical fix for silhouettes of convex surfaces observed under a grazing angle
-    hitDistFocused *= lerp( NoV, 1.0, 1.0 / ( 1.0 + max( curvature * hitDist, 0.0 ) ) );
+    // TODO: dropping NoV improves behavior on curved surfaces in general ( see i76, i148, b7, b22, b26 ), but test i133
+    // ( low curvature surface observed at grazing angle ) looks significantly worse, especially if motion is accelerated
+    float hitDistFocused = hitDist / ( 2.0 * curvature * hitDist * NoV + 1.0 );
 
     return hitDistFocused;
 }
 
-float3 GetXvirtual(
-    float NoV, float hitDist, float curvature,
-    float3 X, float3 Xprev, float3 V,
-    float dominantFactor )
+float3 GetXvirtual( float NoV, float hitDist, float curvature, float3 X, float3 Xprev, float3 V, float dominantFactor )
 {
-    /*
-    C - curvature
-    O - object distance
-    I - image distance
-    F - focal distance
-
-    The lens equation:
-        [Eq 1] 1 / O + 1 / I = 1 / F
-        [Eq 2] For a spherical mirror F = -0.5 * R
-        [Eq 3] R = 1 / C
-
-    Find I from [Eq 1]:
-        1 / I = 1 / F - 1 / O
-        1 / I = ( O - F ) / ( F * O )
-        I = F * O / ( O - F )
-
-    Apply [Eq 2]:
-        I = -0.5 * R * O / ( O + 0.5 * R )
-
-    Apply [Eq 3]:
-        I = ( -0.5 * O / C ) / ( O + 0.5 / C )
-        I = ( -0.5 * O / C ) / ( ( O * C + 0.5 ) / C )
-        I = ( -0.5 * O / C ) * ( C / ( O * C + 0.5 ) )
-        I = -0.5 * O / ( 0.5 + C * O )
-
-    Reverse sign because I is negative:
-        I = 0.5 * O / ( 0.5 + C * O )
-    */
-
     float hitDistFocused = ApplyThinLensEquation( NoV, hitDist, curvature );
 
-    // "saturate" is needed to clamp values > 1 if curvature is negative
-    float compressionRatio = saturate( ( abs( hitDistFocused ) + NRD_EPS ) / ( hitDist + NRD_EPS ) );
+    // Only hit distance is provided, not real motion in the virtual world. If the virtual position is close to the
+    // surface due to focusing, better to replace current position with previous position because surface motion is known.
+    float closenessToSurface = saturate( abs( hitDistFocused ) / ( hitDist + NRD_EPS ) );
 
-    float3 Xvirtual = lerp( Xprev, X, compressionRatio * dominantFactor ) - V * hitDistFocused * dominantFactor;
-
-    return Xvirtual;
+    return lerp( Xprev, X, closenessToSurface * dominantFactor ) - V * hitDistFocused * dominantFactor;
 }
 
 // Kernel

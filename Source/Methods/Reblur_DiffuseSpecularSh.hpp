@@ -57,6 +57,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
     {
         DATA1 = TRANSIENT_POOL_START,
         DATA2,
+        SPEC_HITDIST_FOR_TRACKING,
         DIFF_TMP1,
         DIFF_TMP2,
         DIFF_SH_TMP1,
@@ -68,7 +69,8 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
     };
 
     m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::R32_UINT, w, h, 1} );
+    m_TransientPool.push_back( {REBLUR_FORMAT_SPEC_HITDIST_FOR_TRACKING, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
@@ -128,7 +130,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
             // Outputs
             PushOutput( DIFF_TEMP1 );
             PushOutput( SPEC_TEMP1 );
-            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
+            PushOutput( AsUint(Transient::SPEC_HITDIST_FOR_TRACKING) );
             PushOutput( DIFF_SH_TEMP1 );
             PushOutput( SPEC_SH_TEMP1 );
 
@@ -163,6 +165,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_SH0) );
             PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PONG) );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PONG) );
+            PushInput( AsUint(Transient::SPEC_HITDIST_FOR_TRACKING) );
             PushInput( isAfterPrepass ? DIFF_SH_TEMP1 : AsUint(ResourceType::IN_DIFF_SH1) );
             PushInput( isAfterPrepass ? SPEC_SH_TEMP1 : AsUint(ResourceType::IN_SPEC_SH1) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_SH_HISTORY) : AsUint(ResourceType::OUT_DIFF_SH1) );

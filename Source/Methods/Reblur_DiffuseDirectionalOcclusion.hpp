@@ -16,7 +16,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(MethodData& 
 
     methodData.settings.reblur = ReblurSettings();
     methodData.settingsSize = sizeof(methodData.settings.reblur);
-            
+
     uint16_t w = methodData.desc.fullResolutionWidth;
     uint16_t h = methodData.desc.fullResolutionHeight;
 
@@ -48,7 +48,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(MethodData& 
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::R8_UINT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION, w, h, 1} );
 
@@ -124,7 +124,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseDirectionalOcclusion(MethodData& 
             PushInput( isAfterPrepass ? DIFF_TEMP1 : AsUint(ResourceType::IN_DIFF_DIRECTION_HITDIST) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_HISTORY) : AsUint(ResourceType::OUT_DIFF_DIRECTION_HITDIST) );
             PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PONG) );
-            
+
             // Outputs
             PushOutput( DIFF_TEMP2 );
             PushOutput( AsUint(Transient::DATA1) );

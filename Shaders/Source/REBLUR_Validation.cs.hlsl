@@ -58,7 +58,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     data1.xz *= REBLUR_MAX_ACCUM_FRAME_NUM;
 
     uint bits;
-    float3 data2 = UnpackData2( gIn_Data2.SampleLevel( gNearestClamp, viewportUvScaled, 0 ), abs( viewZ ), bits );
+    float2 data2 = UnpackData2( gIn_Data2[ uint2( viewportUvScaled * gScreenSize ) ], abs( viewZ ), bits );
 
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;

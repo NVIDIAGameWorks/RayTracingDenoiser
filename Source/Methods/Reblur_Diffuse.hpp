@@ -62,6 +62,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_FORMAT_DIFF_FAST_HISTORY                             Format::R16_SFLOAT
 #define REBLUR_FORMAT_SPEC_FAST_HISTORY                             Format::RG16_SFLOAT // .y = hit distance for tracking
 
+#define REBLUR_FORMAT_SPEC_HITDIST_FOR_TRACKING                     Format::R16_UNORM // use R16_SFLOAT if pre-pass outputs unnormalized hit distance
+
 #define REBLUR_FORMAT_OCCLUSION                                     Format::R16_UNORM
 
 #define REBLUR_FORMAT_DIRECTIONAL_OCCLUSION                         Format::RGBA16_SNORM
@@ -146,7 +148,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuse(MethodData& methodData)
     };
 
     m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::RG8_UNORM, w, h, 1} );
+    m_TransientPool.push_back( {Format::R8_UINT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
     m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
 

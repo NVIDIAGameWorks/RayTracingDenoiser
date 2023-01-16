@@ -30,7 +30,7 @@ NRD_INPUT_TEXTURE_START
     NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
     NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
     NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 3 )
-    NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data2, t, 4 )
+    NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 4 )
     NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
     NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
 NRD_INPUT_TEXTURE_END

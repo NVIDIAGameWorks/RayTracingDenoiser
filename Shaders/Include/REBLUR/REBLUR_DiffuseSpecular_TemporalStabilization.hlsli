@@ -218,11 +218,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Shared data
     uint bits;
     float4 data1 = UnpackData1( gIn_Data1[ pixelPos ] );
-    float3 data2 = UnpackData2( gIn_Data2[ pixelPos ], viewZ, bits );
+    float2 data2 = UnpackData2( gIn_Data2[ pixelPos ], viewZ, bits );
 
-    float virtualHistoryAmount = data2.x;
-    float curvature = data2.z;
-    float4 smbOcclusion = float4( ( bits & uint4( 4, 8, 16, 32 ) ) != 0 );
+    float4 smbOcclusion = float4( ( bits & uint4( 2, 4, 8, 16 ) ) != 0 );
 
     float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
     float stabilizationStrength = gStabilizationStrength * float( pixelUv.x >= gSplitScreen );
@@ -231,7 +229,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Only for "...WithMaterialID" even if material ID test is disabled
     float4 smbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, smbOcclusion );
-    bool smbIsCatromAllowed = ( bits & 2 ) != 0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS;
+    bool smbIsCatromAllowed = ( bits & 1 ) != 0 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS;
 
     float smbFootprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
     smbFootprintQuality = STL::Math::Sqrt01( smbFootprintQuality );
@@ -262,7 +260,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float diffAntilag = ComputeAntilagScale(
             smbDiffHistory, diff, diffM1, diffSigma,
             gAntilagMinMaxThreshold, gAntilagSigmaScale, diffStabilizationStrength,
-            curvature * pixelSize, data1.x
+            0.0, data1.x
         );
 
         // Clamp history and combine with the current frame
@@ -298,6 +296,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Specular
     #ifdef REBLUR_SPECULAR
+        float virtualHistoryAmount = data2.x;
+        float curvature = data2.y;
+
         // Hit distance for tracking ( tests 6, 67, 155 )
         float hitDistForTracking = min( spec.w, specMin.y );
 
@@ -354,9 +355,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             float lumSpec = STL::Color::Luminance( Fenv );
             float lumDiff = STL::Color::Luminance( albedo * ( 1.0 - Fenv ) );
-
             float specProb = lumSpec / ( lumDiff + lumSpec + NRD_EPS );
+
             float f = STL::Math::SmoothStep( gSpecularProbabilityThresholdsForMvModification.x, gSpecularProbabilityThresholdsForMvModification.y, specProb );
+            f *= virtualHistoryAmount;
 
             if( f != 0.0 )
             {

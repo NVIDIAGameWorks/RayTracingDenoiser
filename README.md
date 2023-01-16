@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v4.0.1 (NRD)
+# NVIDIA Real-time Denoisers v4.0.2 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -226,16 +226,16 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 
 | Resolution |                             Denoiser | Working set (Mb) |  Persistent (Mb) |   Aliasable (Mb) |
 |------------|--------------------------------------|------------------|------------------|------------------|
-|      1080p |                       REBLUR_DIFFUSE |            88.75 |            46.50 |            42.25 |
+|      1080p |                       REBLUR_DIFFUSE |            86.62 |            46.50 |            40.12 |
 |            |             REBLUR_DIFFUSE_OCCLUSION |            42.38 |            29.62 |            12.75 |
-|            |                    REBLUR_DIFFUSE_SH |           139.38 |            63.38 |            76.00 |
-|            |                      REBLUR_SPECULAR |           101.31 |            54.88 |            46.44 |
+|            |                    REBLUR_DIFFUSE_SH |           137.25 |            63.38 |            73.88 |
+|            |                      REBLUR_SPECULAR |           105.56 |            54.88 |            50.69 |
 |            |            REBLUR_SPECULAR_OCCLUSION |            50.75 |            38.00 |            12.75 |
-|            |                   REBLUR_SPECULAR_SH |           151.94 |            71.75 |            80.19 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           164.62 |            80.25 |            84.38 |
+|            |                   REBLUR_SPECULAR_SH |           156.19 |            71.75 |            84.44 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           168.88 |            80.25 |            88.62 |
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            71.94 |            46.50 |            25.44 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |           265.88 |           114.00 |           151.88 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            88.75 |            46.50 |            42.25 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |           270.12 |           114.00 |           156.12 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            86.62 |            46.50 |            40.12 |
 |            |                         SIGMA_SHADOW |            23.38 |             0.00 |            23.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            42.31 |             0.00 |            42.31 |
 |            |                        RELAX_DIFFUSE |           120.31 |            65.44 |            54.88 |
@@ -243,16 +243,16 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |               RELAX_DIFFUSE_SPECULAR |           215.31 |           107.69 |           107.62 |
 |            |                            REFERENCE |            33.75 |            33.75 |             0.00 |
 |            |                                      |                  |                  |                  |
-|      1440p |                       REBLUR_DIFFUSE |           157.50 |            82.50 |            75.00 |
+|      1440p |                       REBLUR_DIFFUSE |           153.75 |            82.50 |            71.25 |
 |            |             REBLUR_DIFFUSE_OCCLUSION |            75.00 |            52.50 |            22.50 |
-|            |                    REBLUR_DIFFUSE_SH |           247.50 |           112.50 |           135.00 |
-|            |                      REBLUR_SPECULAR |           180.00 |            97.50 |            82.50 |
+|            |                    REBLUR_DIFFUSE_SH |           243.75 |           112.50 |           131.25 |
+|            |                      REBLUR_SPECULAR |           187.50 |            97.50 |            90.00 |
 |            |            REBLUR_SPECULAR_OCCLUSION |            90.00 |            67.50 |            22.50 |
-|            |                   REBLUR_SPECULAR_SH |           270.00 |           127.50 |           142.50 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           292.50 |           142.50 |           150.00 |
+|            |                   REBLUR_SPECULAR_SH |           277.50 |           127.50 |           150.00 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           300.00 |           142.50 |           157.50 |
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           127.50 |            82.50 |            45.00 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |           472.50 |           202.50 |           270.00 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           157.50 |            82.50 |            75.00 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |           480.00 |           202.50 |           277.50 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           153.75 |            82.50 |            71.25 |
 |            |                         SIGMA_SHADOW |            41.38 |             0.00 |            41.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            75.12 |             0.00 |            75.12 |
 |            |                        RELAX_DIFFUSE |           213.75 |           116.25 |            97.50 |
@@ -260,16 +260,16 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |               RELAX_DIFFUSE_SPECULAR |           382.50 |           191.25 |           191.25 |
 |            |                            REFERENCE |            60.00 |            60.00 |             0.00 |
 |            |                                      |                  |                  |                  |
-|      2160p |                       REBLUR_DIFFUSE |           334.69 |           175.31 |           159.38 |
+|      2160p |                       REBLUR_DIFFUSE |           326.75 |           175.31 |           151.44 |
 |            |             REBLUR_DIFFUSE_OCCLUSION |           159.38 |           111.56 |            47.81 |
-|            |                    REBLUR_DIFFUSE_SH |           525.94 |           239.06 |           286.88 |
-|            |                      REBLUR_SPECULAR |           382.50 |           207.19 |           175.31 |
+|            |                    REBLUR_DIFFUSE_SH |           518.00 |           239.06 |           278.94 |
+|            |                      REBLUR_SPECULAR |           398.44 |           207.19 |           191.25 |
 |            |            REBLUR_SPECULAR_OCCLUSION |           191.25 |           143.44 |            47.81 |
-|            |                   REBLUR_SPECULAR_SH |           573.75 |           270.94 |           302.81 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           621.56 |           302.81 |           318.75 |
+|            |                   REBLUR_SPECULAR_SH |           589.69 |           270.94 |           318.75 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           637.50 |           302.81 |           334.69 |
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           270.94 |           175.31 |            95.62 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |          1004.06 |           430.31 |           573.75 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           334.69 |           175.31 |           159.38 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |          1020.00 |           430.31 |           589.69 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           326.75 |           175.31 |           151.44 |
 |            |                         SIGMA_SHADOW |            87.94 |             0.00 |            87.94 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |           159.56 |             0.00 |           159.56 |
 |            |                        RELAX_DIFFUSE |           454.31 |           247.12 |           207.19 |

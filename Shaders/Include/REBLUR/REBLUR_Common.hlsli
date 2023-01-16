@@ -19,12 +19,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // IMPORTANT: if REBLUR_NORMAL_ULP == 1, then "GetEncodingAwareNormalWeight" for 0-roughness
 // can return values < 1 even for same normals due to data re-packing
 #define REBLUR_ROUGHNESS_ULP                            ( 1.5 / 255.0 )
-#define REBLUR_NORMAL_ULP                               atan( 1.5 / 255.0 )
+#define REBLUR_NORMAL_ULP                               ( 2.0 / 255.0 )
 
 #define REBLUR_MAX_ACCUM_FRAME_NUM                      63.0
 #define REBLUR_ACCUMSPEED_BITS                          7 // "( 1 << REBLUR_ACCUMSPEED_BITS ) - 1" must be >= REBLUR_MAX_ACCUM_FRAME_NUM
 #define REBLUR_MATERIALID_BITS                          ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
-#define REBLUR_CURVATURE_PACKING_SCALE                  0.1
 
 // Internal data ( from the previous frame )
 
@@ -49,7 +48,7 @@ float4 UnpackNormalAndRoughness( float4 p, bool isNormalized = true )
 uint PackInternalData( float diffAccumSpeed, float specAccumSpeed, float materialID )
 {
     float3 t = float3( diffAccumSpeed, specAccumSpeed, materialID );
-    t.xy = min( t.xy, gMaxAccumulatedFrameNum ) / REBLUR_MAX_ACCUM_FRAME_NUM;
+    t.xy /= REBLUR_MAX_ACCUM_FRAME_NUM;
 
     uint p = STL::Packing::RgbaToUint( t.xyzz, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 );
 
@@ -94,60 +93,46 @@ float4 UnpackData1( float4 p )
     return p;
 }
 
-float4 PackData2( float fbits, float curvature, float virtualHistoryAmount, float viewZ )
+uint PackData2( float fbits, float curvature, float virtualHistoryAmount )
 {
     // BITS:
-    // 0        - free // TODO: can be used to store "skip HistoryFix" bit
-    // 1        - CatRom flag
-    // 2,3,4,5  - occlusion 2x2
-    // 6        - free // TODO: free!
-    // 7        - curvature sign
+    // 0     - CatRom flag
+    // 1-4   - occlusion 2x2
+    // other - free // TODO: use if needed
 
-    float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float packedCurvature = curvature * pixelSize * REBLUR_CURVATURE_PACKING_SCALE; // to fit into 8-bits
+    uint p = uint( fbits + 0.5 );
 
-    fbits += 128.0 * ( packedCurvature < 0.0 ? 1 : 0 );
+    p |= uint( saturate( virtualHistoryAmount ) * 255.0 + 0.5 ) << 8;
+    p |= f32tof16( curvature ) << 16;
 
-    float4 r;
-    r.x = saturate( ( fbits + 0.5 ) / 255.0 );
-    r.y = abs( packedCurvature );
-    r.z = virtualHistoryAmount;
-    r.w = 0.0; // TODO: unused
-
-    // Optional
-    r.yzw = STL::Math::Sqrt01( r.yzw );
-
-    return r;
+    return p;
 }
 
-float3 UnpackData2( float4 p, float viewZ, out uint bits )
+float2 UnpackData2( uint p, float viewZ, out uint bits )
 {
-    // Optional
-    p.yzw *= p.yzw;
+    bits = p & 0xFF;
 
-    bits = uint( p.x * 255.0 + 0.5 );
+    float virtualHistoryAmount = float( ( p >> 8 ) & 0xFF ) / 255.0;
+    float curvature = f16tof32( p >> 16 );
 
-    float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float sgn = ( bits & 128 ) != 0 ? -1.0 : 1.0;
-    float curvature = p.y * sgn / ( pixelSize * REBLUR_CURVATURE_PACKING_SCALE );
-
-    return float3( p.zw, curvature );
+    return float2( virtualHistoryAmount, curvature );
 }
 
 // Accumulation speed
 
-float GetFPS( float period = 1.0 )
+float GetFPS( float period = 1.0 ) // TODO: can be handy, but not used
 {
-    // TODO: can be handy, but not used
     return gFramerateScale * 30.0 * period;
 }
 
-float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float vmbPixelsTraveled, float viewZ, float specAccumSpeed, float maxAngle )
+float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float diffParallaxInPixels, float viewZ, float specAccumSpeed, float maxAngle )
 {
-    float smbSpecAccumSpeed = gMaxAccumulatedFrameNum / ( 1.0 + smbSpecAccumSpeedFactor * vmbPixelsTraveled );
+    // "diffParallaxInPixels" is the difference between true specular motion (vmb) and surface based motion (smb),
+    // but "vmb" parallax can only be used if virtual motion confidence is high
+    float smbSpecAccumSpeed = gMaxAccumulatedFrameNum / ( 1.0 + smbSpecAccumSpeedFactor * diffParallaxInPixels );
 
     // Tests 142, 148 and 155 ( or anything with very low roughness and curved surfaces )
-    float ta = PixelRadiusToWorld( gUnproject, gOrthoMode, vmbPixelsTraveled, viewZ ) / viewZ;
+    float ta = PixelRadiusToWorld( gUnproject, gOrthoMode, diffParallaxInPixels, viewZ ) / viewZ;
     float ca = STL::Math::Rsqrt( 1.0 + ta * ta );
     float angle = STL::Math::AcosApprox( ca );
     smbSpecAccumSpeed *= STL::Math::SmoothStep( maxAngle, 0.0, angle );
@@ -351,7 +336,7 @@ float ComputeAntilagScale(
 )
 {
     // On-edge strictness
-    m1 = lerp( m1, signal, abs( curvatureMulPixelSize ) );
+    m1 = lerp( m1, signal, saturate( abs( curvatureMulPixelSize ) ) );
 
     // Antilag
     float2 h = float2( GetLuma( history ), ExtractHitDist( history ) );

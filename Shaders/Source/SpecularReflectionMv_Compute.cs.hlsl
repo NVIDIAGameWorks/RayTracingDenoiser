@@ -95,8 +95,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float roughnessModified = STL::Filtering::GetModifiedRoughnessFromNormalVariance( roughness, Navg );
 
     // Parallax
-    float smbParallax = ComputeParallax( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize, gUnproject, gOrthoMode );
-    float smbParallaxInPixels = GetParallaxInPixels( smbParallax, gUnproject );
+    float smbParallaxInPixels = ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
 
     // Camera motion in screen-space
     float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta );
@@ -104,8 +103,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );
     cameraMotion2d *= gInvRectSize;
 
-    // Low parallax - bilinear ( SMEM )
-    float2 uv = pixelUv + cameraMotion2d * 0.5;
+    // Low parallax
+    float2 uv = pixelUv + cameraMotion2d * 0.99;
     STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( uv, gRectSize );
 
     int2 pos = threadPos + BORDER + int2( f.origin ) - pixelPos;
@@ -119,11 +118,27 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 n = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
     n = normalize( n );
 
-    // High parallax - nearest ( fetch )
-    float2 uvHigh = gRectOffset + pixelUv + cameraMotion2d * smbParallaxInPixels;
-    float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvHigh * gResolutionScale, 0 ) ).xyz;
-    float zHigh = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvHigh * gResolutionScale, 0 ) );
+    // High parallax
+    float2 uvHigh = pixelUv + cameraMotion2d * smbParallaxInPixels;
 
+    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
+        f = STL::Filtering::GetBilinearFilter( uvHigh, gRectSize );
+
+        pos = gRectOrigin + int2( f.origin );
+        pos = clamp( pos, 0, int2( gRectSize ) - 2 );
+
+        n00 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos ] ).xyz;
+        n10 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 1, 0 ) ] ).xyz;
+        n01 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 0, 1 ) ] ).xyz;
+        n11 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 1, 1 ) ] ).xyz;
+
+        float3 nHigh = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
+        nHigh = normalize( nHigh );
+    #else
+        float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gLinearClamp, gRectOffset + uvHigh * gResolutionScale, 0 ) ).xyz;
+    #endif
+
+    float zHigh = abs( gIn_ViewZ.SampleLevel( gLinearClamp, gRectOffset + uvHigh * gResolutionScale, 0 ) );
     float zError = abs( zHigh - viewZ ) * rcp( max( zHigh, viewZ ) );
     bool cmp = smbParallaxInPixels > 1.0 && zError < 0.1 && IsInScreen( uvHigh );
 
@@ -139,7 +154,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float d = STL::Math::ManhattanDistance( N, n );
     float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
 
-    float curvature = EstimateCurvature( n, v, N, X ) * s;
+    float curvature = EstimateCurvature( normalize( Navg ), n, v, N, X ) * s;
 
     // Virtual motion
     float3 V = GetViewVector( X );

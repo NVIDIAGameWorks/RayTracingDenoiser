@@ -212,7 +212,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         // Output
-        gOut_Spec_MinHitDist[ pixelPos ] = minHitDist * hitDistScale; // TODO: lerp to ExtractHitDist( spec ) based on NoV or NoD?
+        gOut_Spec_HitDistForTracking[ pixelPos ] = minHitDist; // TODO: lerp to ExtractHitDist( spec ) based on NoV or NoD?
     }
 
     // Checkerboard resolve ( if pre-pass failed )

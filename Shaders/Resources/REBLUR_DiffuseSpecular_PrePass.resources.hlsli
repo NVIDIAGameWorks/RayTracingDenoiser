@@ -38,7 +38,7 @@ NRD_CONSTANTS_END
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Diff, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Spec, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Spec_MinHitDist, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Spec_HitDistForTracking, u, 2 )
         #ifdef REBLUR_SH
             NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_DiffSh, u, 3 )
             NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 4 )
@@ -76,7 +76,7 @@ NRD_CONSTANTS_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Spec, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Spec_MinHitDist, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Spec_HitDistForTracking, u, 1 )
         #ifdef REBLUR_SH
             NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 2 )
         #endif

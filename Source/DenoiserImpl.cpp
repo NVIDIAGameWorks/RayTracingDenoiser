@@ -921,7 +921,7 @@ nrd::Result nrd::DenoiserImpl::Create(const DenoiserCreationDesc& denoiserCreati
                 if (!isFound)
                 {
                     // Texture props
-                    uint32_t w = methodDesc.fullResolutionHeight;
+                    uint32_t w = methodDesc.fullResolutionWidth;
                     uint32_t h = methodDesc.fullResolutionHeight;
                     bool isInteger = false;
 
@@ -1253,9 +1253,6 @@ void nrd::DenoiserImpl::UpdateCommonSettings(const CommonSettings& commonSetting
     m_ResolutionScalePrev = ml::float2(m_CommonSettings.resolutionScale[0], m_CommonSettings.resolutionScale[1]);
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
-
-    if (m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE)
-        m_CommonSettings.frameIndex = 0;
 
     // Rotators
     ml::float4 rndScale = ml::float4(1.0f) + ml::Rand::sf4(&m_FastRandState) * 0.25f;
