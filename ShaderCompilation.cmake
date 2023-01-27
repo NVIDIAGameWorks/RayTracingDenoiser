@@ -6,7 +6,7 @@ if(WIN32)
     string(REPLACE "/" "\\" MATHLIB_INCLUDE_PATH "${MATHLIB_INCLUDE_PATH}")
 endif()
 
-# Find FXC and DXC
+# Find DXC
 if(WIN32)
     if(DEFINED CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
         set(WINDOWS_SDK_VERSION ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
@@ -22,11 +22,6 @@ if(WIN32)
     set(WINDOWS_SDK_BIN "${WINDOWS_SDK_ROOT}/bin/${WINDOWS_SDK_VERSION}/x64")
 
     # On Windows, FXC and DXC are part of WindowsSDK and there's also DXC in VulkanSDK which supports SPIR-V
-    find_program(FXC_PATH "${WINDOWS_SDK_BIN}/fxc")
-    if(NOT FXC_PATH)
-        message(FATAL_ERROR "Can't find FXC: '${WINDOWS_SDK_BIN}/fxc'")
-    endif()
-
     find_program(DXC_PATH "${WINDOWS_SDK_BIN}/dxc")
     if(NOT DXC_PATH)
         message(FATAL_ERROR "Can't find DXC: '${WINDOWS_SDK_BIN}/dxc'")
@@ -51,7 +46,6 @@ else()
     endif()
 endif()
 
-message("Using FXC path: '${FXC_PATH}'")
 message("Using DXC path: '${DXC_PATH}'")
 message("Using DXC(for SPIRV) path: '${DXC_SPIRV_PATH}'")
 
@@ -59,14 +53,12 @@ function(get_shader_profile_from_name FILE_NAME DXC_PROFILE FXC_PROFILE)
     get_filename_component(EXTENSION ${FILE_NAME} EXT)
     if("${EXTENSION}" STREQUAL ".cs.hlsl")
         set(DXC_PROFILE "cs_6_3" PARENT_SCOPE)
-        set(FXC_PROFILE "cs_5_0" PARENT_SCOPE)
     endif()
 endfunction()
 
 macro(list_hlsl_headers HLSL_FILES HEADER_FILES)
     foreach(FILE_NAME ${HLSL_FILES})
         set(DXC_PROFILE "")
-        set(FXC_PROFILE "")
         get_shader_profile_from_name(${FILE_NAME} DXC_PROFILE FXC_PROFILE)
         if("${DXC_PROFILE}" STREQUAL "" AND "${FXC_PROFILE}" STREQUAL "")
             list(APPEND HEADER_FILES ${FILE_NAME})
@@ -91,27 +83,9 @@ macro(list_hlsl_shaders HLSL_FILES HEADER_FILES SHADER_FILES)
         string(REGEX REPLACE "\\.[^.]*$" "" NAME_ONLY ${NAME_ONLY})
         string(REPLACE "." "_" BYTECODE_ARRAY_NAME "${NAME_ONLY}")
         set(DXC_PROFILE "")
-        set(FXC_PROFILE "")
-        set(OUTPUT_PATH_DXBC "${NRD_SHADERS_PATH}/${NAME_ONLY}.dxbc")
         set(OUTPUT_PATH_DXIL "${NRD_SHADERS_PATH}/${NAME_ONLY}.dxil")
         set(OUTPUT_PATH_SPIRV "${NRD_SHADERS_PATH}/${NAME_ONLY}.spirv")
         get_shader_profile_from_name(${FILE_NAME} DXC_PROFILE FXC_PROFILE)
-
-        # DXBC
-        if(NOT "${FXC_PROFILE}" STREQUAL "" AND NOT "${FXC_PATH}" STREQUAL "")
-            add_custom_command(
-                    OUTPUT ${OUTPUT_PATH_DXBC} ${OUTPUT_PATH_DXBC}.h
-                    COMMAND ${FXC_PATH} /nologo /E main /T ${FXC_PROFILE} /WX /O3 /all_resources_bound
-                        /DNRD_COMPILER_FXC=1 /DNRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING} /DNRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
-                        /I "${MATHLIB_INCLUDE_PATH}" /I "${SHADER_INCLUDE_PATH}"
-                        "${FILE_NAME}" /Vn g_${BYTECODE_ARRAY_NAME}_dxbc /Fh ${OUTPUT_PATH_DXBC}.h /Fo ${OUTPUT_PATH_DXBC}
-                    MAIN_DEPENDENCY ${FILE_NAME}
-                    DEPENDS ${HEADER_FILES}
-                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
-                    VERBATIM
-            )
-            list(APPEND SHADER_FILES ${OUTPUT_PATH_DXBC} ${OUTPUT_PATH_DXBC}.h)
-        endif()
 
         # DXIL
         if(NOT "${DXC_PROFILE}" STREQUAL "" AND NOT "${DXC_PATH}" STREQUAL "")

@@ -45,6 +45,7 @@ compile_commands.json
 *.manifest
 
 # generated folders
+build/
 _Build/
 _Compiler/
 _NRD_SDK/
