@@ -6,8 +6,8 @@ chmod +x "4-Clean.sh"
 
 git submodule update --init --recursive
 
-mkdir -p "_Compiler"
+mkdir -p "build"
 
-cd "_Compiler"
+cd "build"
 cmake .. -A x64
 cd ..

@@ -1,8 +1,8 @@
 #!/bin/sh
 
-mkdir -p "_Compiler"
+mkdir -p "build"
 
-cd "_Compiler"
+cd "build"
 cmake ..
 cmake --build . --config Release
 cmake --build . --config Debug

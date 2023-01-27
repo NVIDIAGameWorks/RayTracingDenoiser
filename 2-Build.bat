@@ -1,6 +1,6 @@
 @echo off
 
-cd "_Compiler"
+cd "build"
 cmake --build . --config Release
 cmake --build . --config Debug
 cd ..
