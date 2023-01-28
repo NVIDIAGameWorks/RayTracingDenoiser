@@ -1,0 +1,2148 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <None Include="..\External\MathLib\STL.hlsli">
+      <Filter>MathLib</Filter>
+    </None>
+    <None Include="Resources\Clear_f.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\Clear_ui.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_Blur.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_CopyStabilizedHistory.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_HistoryFix.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_HitDistReconstruction.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_PostBlur.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_PrePass.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_SplitScreen.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_TemporalAccumulation.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_DiffuseSpecular_TemporalStabilization.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REBLUR_Validation.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REFERENCE_SplitScreen.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\REFERENCE_TemporalAccumulation.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="RELAX_DiffuseSpecular_AntiFirefly.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_Atrous.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_AtrousSmem.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_HistoryClamping.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_HistoryFix.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_HitDistReconstruction.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_PrePass.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_SplitScreen.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_DiffuseSpecular_TemporalAccumulation.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\RELAX_Validation.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\SIGMA_Shadow_Blur.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\SIGMA_Shadow_ClassifyTiles.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\SIGMA_Shadow_SmoothTiles.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\SIGMA_Shadow_SplitScreen.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\SIGMA_Shadow_TemporalStabilization.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\SpecularDeltaMv_Compute.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Resources\SpecularReflectionMv_Compute.resources.hlsli">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="Include\Common.hlsli">
+      <Filter>Include</Filter>
+    </None>
+    <None Include="Include\NRD.hlsli">
+      <Filter>Include</Filter>
+    </None>
+    <None Include="Include\NRDEncoding.hlsli">
+      <Filter>Include</Filter>
+    </None>
+    <None Include="Include\Poisson.hlsli">
+      <Filter>Include</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_Common.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_Common_DiffuseSpatialFilter.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_Common_SpecularSpatialFilter.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_Config.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_Blur.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_CopyStabilizedHistory.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_HistoryFix.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_HitDistReconstruction.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_PostBlur.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_PrePass.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_SplitScreen.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_TemporalAccumulation.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\REBLUR\REBLUR_DiffuseSpecular_TemporalStabilization.hlsli">
+      <Filter>Include\REBLUR</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_Common.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_Config.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_AntiFirefly.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_Atrous.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_AtrousSmem.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_HistoryClamping.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_HistoryFix.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_HitDistReconstruction.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_PrePass.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_SplitScreen.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\RELAX\RELAX_DiffuseSpecular_TemporalAccumulation.hlsli">
+      <Filter>Include\RELAX</Filter>
+    </None>
+    <None Include="Include\SIGMA\SIGMA_Common.hlsli">
+      <Filter>Include\SIGMA</Filter>
+    </None>
+    <None Include="Include\SIGMA\SIGMA_Shadow_Blur.hlsli">
+      <Filter>Include\SIGMA</Filter>
+    </None>
+    <None Include="Include\SIGMA\SIGMA_Shadow_ClassifyTiles.hlsli">
+      <Filter>Include\SIGMA</Filter>
+    </None>
+    <None Include="Include\SIGMA\SIGMA_Shadow_SplitScreen.hlsli">
+      <Filter>Include\SIGMA</Filter>
+    </None>
+    <None Include="Include\SIGMA\SIGMA_Shadow_TemporalStabilization.hlsli">
+      <Filter>Include\SIGMA</Filter>
+    </None>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="MathLib">
+      <UniqueIdentifier>{62EED9C3-D590-3D22-8F71-23587F7EBB2A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{8D46FEDD-B572-300A-9BA0-CE043E5CB9F3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source">
+      <UniqueIdentifier>{2026A5DB-70D4-34B9-8373-01875402B9CC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Include">
+      <UniqueIdentifier>{cdfe1691-6f6d-44b0-937e-25b2a0654f56}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Include\REBLUR">
+      <UniqueIdentifier>{b6055cac-2cb0-41cd-b593-d424e14c1bec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Include\RELAX">
+      <UniqueIdentifier>{a5264f02-5a43-4d27-aebb-88876ac8a924}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Include\SIGMA">
+      <UniqueIdentifier>{fe7eaf13-68e0-4a93-96ac-fbd13fded9b0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{a80f856f-8738-4c1a-baa3-5905df4e0502}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Source\Clear_f.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\Clear_ui.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_CopyStabilizedHistory.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Diffuse_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseDirectionalOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseDirectionalOcclusion_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_CopyStabilizedHistory.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSh_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_CopyStabilizedHistory.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecular_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_CopyStabilizedHistory.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_DiffuseSpecularSh_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Diffuse_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSh_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSh_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSh_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSh_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSh_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSh_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSh_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecular_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularSh_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularSh_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularSh_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularSh_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_DiffuseSpecularSh_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_Specular_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularSh_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularSh_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularSh_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularSh_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularSh_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularSh_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Perf_SpecularSh_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_CopyStabilizedHistory.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Specular_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularOcclusion_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularOcclusion_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularOcclusion_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularOcclusion_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularOcclusion_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_CopyStabilizedHistory.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_PostBlur_NoTemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_SpecularSh_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REBLUR_Validation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REFERENCE_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\REFERENCE_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_AntiFirefly.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_Atrous.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_AtrousSmem.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_HistoryClamping.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Diffuse_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_AntiFirefly.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_Atrous.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_AtrousSmem.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_HistoryClamping.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_DiffuseSpecular_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_AntiFirefly.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_Atrous.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_AtrousSmem.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_HistoryClamping.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_HistoryFix.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_HitDistReconstruction.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_HitDistReconstruction_5x5.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_PrePass.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Specular_TemporalAccumulation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\RELAX_Validation.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_Shadow_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_Shadow_ClassifyTiles.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_Shadow_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_Shadow_SmoothTiles.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_Shadow_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_Shadow_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_ShadowTranslucency_Blur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_ShadowTranslucency_ClassifyTiles.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_ShadowTranslucency_PostBlur.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_ShadowTranslucency_SplitScreen.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SIGMA_ShadowTranslucency_TemporalStabilization.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SpecularDeltaMv_Compute.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+    <FxCompile Include="Source\SpecularReflectionMv_Compute.cs.hlsl">
+      <Filter>Source</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Shaders\Clear_f.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\Clear_f.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\Clear_ui.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\Clear_ui.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_CopyStabilizedHistory.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_CopyStabilizedHistory.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Diffuse_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseDirectionalOcclusion_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_CopyStabilizedHistory.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_CopyStabilizedHistory.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSh_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_CopyStabilizedHistory.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_CopyStabilizedHistory.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecular_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_CopyStabilizedHistory.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_CopyStabilizedHistory.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_DiffuseSpecularSh_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Diffuse_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseDirectionalOcclusion_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSh_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecular_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_DiffuseSpecularSh_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_Specular_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Perf_SpecularSh_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_CopyStabilizedHistory.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_CopyStabilizedHistory.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Specular_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularOcclusion_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_CopyStabilizedHistory.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_CopyStabilizedHistory.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_PostBlur_NoTemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_PostBlur_NoTemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_SpecularSh_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Validation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REBLUR_Validation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REFERENCE_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REFERENCE_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REFERENCE_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\REFERENCE_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_AntiFirefly.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_AntiFirefly.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_Atrous.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_Atrous.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_AtrousSmem.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_AtrousSmem.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HistoryClamping.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HistoryClamping.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Diffuse_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_AntiFirefly.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_AntiFirefly.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_Atrous.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_Atrous.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_AtrousSmem.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_AtrousSmem.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HistoryClamping.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HistoryClamping.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_DiffuseSpecular_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_AntiFirefly.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_AntiFirefly.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_Atrous.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_Atrous.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_AtrousSmem.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_AtrousSmem.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HistoryClamping.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HistoryClamping.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HistoryFix.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HistoryFix.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HitDistReconstruction.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HitDistReconstruction.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HitDistReconstruction_5x5.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_HitDistReconstruction_5x5.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_PrePass.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_PrePass.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_TemporalAccumulation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Specular_TemporalAccumulation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Validation.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\RELAX_Validation.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_ClassifyTiles.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_ClassifyTiles.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_SmoothTiles.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_SmoothTiles.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_Shadow_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_Blur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_Blur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_ClassifyTiles.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_PostBlur.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_PostBlur.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_SplitScreen.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_SplitScreen.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SIGMA_ShadowTranslucency_TemporalStabilization.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SpecularDeltaMv_Compute.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SpecularDeltaMv_Compute.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SpecularReflectionMv_Compute.cs.dxil.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="Shaders\SpecularReflectionMv_Compute.cs.spirv.h">
+      <Filter>Shaders</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33213.308
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NRD", "Projects\NRD\NRD.vcxproj", "{B862B581-4604-3446-8B09-8FB30C1ECF5C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NRD_Shaders", "Projects\NRD_Shaders\NRD_Shaders.vcxproj", "{EA618552-4344-3BE9-A99E-3CDD5FFDAADD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B862B581-4604-3446-8B09-8FB30C1ECF5C}.Debug|x64.ActiveCfg = Debug|x64
+		{B862B581-4604-3446-8B09-8FB30C1ECF5C}.Debug|x64.Build.0 = Debug|x64
+		{B862B581-4604-3446-8B09-8FB30C1ECF5C}.Release|x64.ActiveCfg = Release|x64
+		{B862B581-4604-3446-8B09-8FB30C1ECF5C}.Release|x64.Build.0 = Release|x64
+		{EA618552-4344-3BE9-A99E-3CDD5FFDAADD}.Debug|x64.ActiveCfg = Debug|x64
+		{EA618552-4344-3BE9-A99E-3CDD5FFDAADD}.Debug|x64.Build.0 = Debug|x64
+		{EA618552-4344-3BE9-A99E-3CDD5FFDAADD}.Release|x64.ActiveCfg = Release|x64
+		{EA618552-4344-3BE9-A99E-3CDD5FFDAADD}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A3FC20E1-AB19-39DB-B420-97F346B97819}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,134 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="Source\DenoiserImpl.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Timer.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Wrapper.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Source\DenoiserImpl.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\StdAllocator.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Timer.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_Diffuse.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_DiffuseDirectionalOcclusion.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_DiffuseOcclusion.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_DiffuseSh.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_DiffuseSpecular.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_DiffuseSpecularOcclusion.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_DiffuseSpecularSh.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_Specular.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_SpecularOcclusion.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reblur_SpecularSh.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Reference.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Relax_Diffuse.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Relax_DiffuseSpecular.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Relax_Specular.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Sigma_Shadow.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\Sigma_ShadowTranslucency.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\SpecularDeltaMv.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Methods\SpecularReflectionMv.hpp">
+      <Filter>Methods</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\MathLib\IntrinEmu.h">
+      <Filter>MathLib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\MathLib\MathLib.h">
+      <Filter>MathLib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\MathLib\MathLib_d.h">
+      <Filter>MathLib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\MathLib\MathLib_f.h">
+      <Filter>MathLib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\MathLib\NdcConfig.h">
+      <Filter>MathLib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\MathLib\Packed.h">
+      <Filter>MathLib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\MathLib\Platform.h">
+      <Filter>MathLib</Filter>
+    </ClInclude>
+    <ClInclude Include="Resources\Version.h">
+      <Filter>Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\NRD.h">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\NRDDescs.h">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\NRDSettings.h">
+      <Filter>Include</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resources\NRD.rc">
+      <Filter>Resources</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Include">
+      <UniqueIdentifier>{30E3DB22-462E-30E7-A2B5-78FC7780C241}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MathLib">
+      <UniqueIdentifier>{62EED9C3-D590-3D22-8F71-23587F7EBB2A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Methods">
+      <UniqueIdentifier>{49A38C11-FC54-3F95-8209-6926E870421B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{8D46FEDD-B572-300A-9BA0-CE043E5CB9F3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source">
+      <UniqueIdentifier>{2026A5DB-70D4-34B9-8373-01875402B9CC}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
