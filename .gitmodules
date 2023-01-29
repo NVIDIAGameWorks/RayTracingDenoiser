@@ -3,3 +3,6 @@
 	url = https://github.com/r2d2Proton/MathLib.git
 	branch = main
 	update = merge
+[submodule "MathLib"]
+	path = MathLib
+	url = https://github.com/r2d2Proton/MathLib
