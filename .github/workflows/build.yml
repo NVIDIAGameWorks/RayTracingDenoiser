@@ -25,7 +25,7 @@ jobs:
         run: |
           mkdir "build"
           cd "build"
-          cmake -G Ninja -DNRD_DISABLE_SHADER_COMPILATION=ON .. 
+          cmake -G Ninja -DNRD_DISABLE_SHADER_COMPILATION=ON -DNRD_USE_PRECOMPILED_SHADERS=OFF .. 
           cd ..
       -
         name: Build Debug
