@@ -3,44 +3,10 @@ on:
   pull_request:
     branches:
       - master
+  push:
+    branches:
+      - master
 jobs:
-  Build-Ubuntu:
-    runs-on: ubuntu-20.04
-    steps:
-      -
-        name : Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: true
-        
-      - name: Setup CMake
-        uses: jwlawson/actions-setup-cmake@v1.13
-        with:
-          cmake-version: '3.16.x'
-      - name: Setup Ninja
-        uses: seanmiddleditch/gha-setup-ninja@master
-      
-      - name: Install Vulkan SDK
-        run: |
-          sudo apt install -y wget
-          wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-focal.list http://packages.lunarg.com/vulkan/lunarg-vulkan-focal.list
-          sudo apt update
-          sudo apt install -y vulkan-sdk
-      -
-        name: CMake Generate
-        run: |
-          mkdir "build"
-          cd "build"
-          cmake -G Ninja .. 
-          cd ..
-      -
-        name: Compile
-        run: |
-          cd "build"
-          cmake --build .
-          cd ..
-
   Build-Windows:
     runs-on: windows-latest
     steps:
@@ -85,3 +51,40 @@ jobs:
         with:
           name: NRD SDK
           path: _NRD_SDK
+          
+  Build-Ubuntu:
+    runs-on: ubuntu-20.04
+    steps:
+      -
+        name : Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+        
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v1.13
+        with:
+          cmake-version: '3.16.x'
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@master
+      
+      - name: Install Vulkan SDK
+        run: |
+          sudo apt install -y wget
+          wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-focal.list http://packages.lunarg.com/vulkan/lunarg-vulkan-focal.list
+          sudo apt update
+          sudo apt install -y vulkan-sdk
+      -
+        name: CMake Generate
+        run: |
+          mkdir "build"
+          cd "build"
+          cmake -G Ninja .. 
+          cd ..
+      -
+        name: Compile
+        run: |
+          cd "build"
+          cmake --build .
+          cd ..
