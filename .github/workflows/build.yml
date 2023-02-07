@@ -65,6 +65,7 @@ jobs:
         uses: jwlawson/actions-setup-cmake@v1.13
         with:
           cmake-version: '3.16.x'
+          
       - name: Setup Ninja
         uses: seanmiddleditch/gha-setup-ninja@master
       
