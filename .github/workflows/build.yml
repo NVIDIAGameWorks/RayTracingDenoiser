@@ -4,6 +4,40 @@ on:
     branches:
       - master
 jobs:
+  Build-Ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name : Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v1.13
+        with:
+          cmake-version: '3.16.x'
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@master
+      -
+        name: CMake Generate
+        run: |
+          mkdir "build"
+          cd "build"
+          cmake -G Ninja .. 
+          cd ..
+      -
+        name: Build Debug
+        run: |
+          cd "build"
+          cmake --build . --config Debug
+          cd ..
+      -
+        name: Build Release
+        run: |
+          cd "build"
+          cmake --build . --config Release
+          cd ..
+
   Build-Windows:
     runs-on: windows-latest
     steps:
