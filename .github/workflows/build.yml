@@ -35,16 +35,10 @@ jobs:
           cmake -G Ninja .. 
           cd ..
       -
-        name: Build Debug
+        name: Compile
         run: |
           cd "build"
-          cmake --build . --config Debug
-          cd ..
-      -
-        name: Build Release
-        run: |
-          cd "build"
-          cmake --build . --config Release
+          cmake --build .
           cd ..
 
   Build-Windows:
