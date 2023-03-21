@@ -8,14 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "../Include/NRD.hlsli"
+#include "NRD.hlsli"
 #include "STL.hlsli"
 
 #define SIGMA_TRANSLUCENT
 
-#include "../Include/SIGMA/SIGMA_Config.hlsli"
-#include "../Resources/SIGMA_Shadow_ClassifyTiles.resources.hlsli"
+#include "SIGMA/SIGMA_Config.hlsli"
+#include "SIGMA_Shadow_ClassifyTiles.resources.hlsli"
 
-#include "../Include/Common.hlsli"
-#include "../Include/SIGMA/SIGMA_Common.hlsli"
-#include "../Include/SIGMA/SIGMA_Shadow_ClassifyTiles.hlsli"
+#include "Common.hlsli"
+#include "SIGMA/SIGMA_Common.hlsli"
+#include "SIGMA/SIGMA_Shadow_ClassifyTiles.hlsli"

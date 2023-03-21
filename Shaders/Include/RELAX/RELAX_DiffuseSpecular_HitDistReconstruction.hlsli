@@ -11,11 +11,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 groupshared float4 sharedNormalRoughness[BUFFER_Y][BUFFER_X];
 groupshared float3 sharedHitdistViewZ[BUFFER_Y][BUFFER_X];
 
-float2 GetCoarseRoughnessWeightParams(float roughness)
-{
-    return float2(1.0, -roughness);
-}
-
 float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float roughness = 1.0)
 {
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);

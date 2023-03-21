@@ -198,13 +198,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     // Previous position and surface motion uv
-    float3 mv = gInOut_Mv[ pixelPosUser ] * gMvScale;
+    float4 mv = gInOut_Mv[ pixelPosUser ] * float4( gMvScale, 1.0 );
     float3 Xprev = X;
 
     float2 smbPixelUv = pixelUv + mv.xy;
     if( gIsWorldSpaceMotionEnabled )
     {
-        Xprev += mv;
+        Xprev += mv.xyz;
         smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
     }
     else if( gMvScale.z != 0.0 )
@@ -266,17 +266,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Clamp history and combine with the current frame
         float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( smbIsInScreenMulFootprintQuality, data1.x );
 
-        smbDiffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
-        #ifdef REBLUR_SH
-            smbDiffShHistory = STL::Color::Clamp( diffShM1, diffShSigma * diffTemporalAccumulationParams.y, smbDiffShHistory );
-        #endif
-
         float diffHistoryWeight = diffTemporalAccumulationParams.x;
         diffHistoryWeight *= diffAntilag;
         diffHistoryWeight *= diffStabilizationStrength;
 
+        smbDiffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
         float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight );
         #ifdef REBLUR_SH
+            smbDiffShHistory = STL::Color::Clamp( diffShM1, diffShSigma * diffTemporalAccumulationParams.y, smbDiffShHistory );
             float4 diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
         #endif
 
@@ -336,11 +333,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 gIn_Spec_StabilizedHistory, vmbSpecHistory
             );
         #else
-            vmbSpecHistory = gIn_Spec_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv, 0 );
+            vmbSpecHistory = gIn_Spec_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
         #endif
 
         #ifdef REBLUR_SH
-            float4 vmbSpecShHistory = gIn_SpecSh_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv, 0 );
+            float4 vmbSpecShHistory = gIn_SpecSh_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
         #endif
 
         // Modify MVs if requested
@@ -369,7 +366,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     specMv.z = 0.0; // TODO: nice to have, but not needed for TAA & upscaling techniques
                 }
 
-                mv = lerp( mv, specMv, f );
+                mv.xyz = lerp( mv.xyz, specMv, f );
 
                 mv.xy /= gMvScale.xy;
                 mv.z /= gMvScale.z == 0.0 ? 1.0 : gMvScale.z;
@@ -406,18 +403,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float isInScreenMulFootprintQuality = lerp( smbIsInScreenMulFootprintQuality, 1.0, virtualHistoryAmount );
         float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( isInScreenMulFootprintQuality, data1.z );
 
-        specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
-        #ifdef REBLUR_SH
-            specShHistory = STL::Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory );
-        #endif
-
+        // TODO: roughness should affect stabilization:
+        // - use "virtualHistoryRoughnessBasedConfidence" from TA
+        // - compute moments for samples with similar roughness
         float specHistoryWeight = specTemporalAccumulationParams.x;
         specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= specStabilizationStrength;
 
+        specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
         float4 specResult = lerp( spec, specHistory, specHistoryWeight );
         #ifdef REBLUR_SH
+            specShHistory = STL::Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory );
             float4 specShResult = lerp( specSh, specShHistory, specHistoryWeight );
+
+            // ( Optional ) Output modified roughness to assist AA during SG resolve
+            specShResult.w = specSh.w;
         #endif
 
         // Output

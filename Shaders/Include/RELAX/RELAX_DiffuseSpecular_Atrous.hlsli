@@ -37,6 +37,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     // Diffuse normal weight is used for diffuse and can be used for specular depending on settings.
     // Weight strictness is higher as the Atrous step size increases.
     float diffuseLobeAngleFraction = gDiffuseLobeAngleFraction / sqrt(gStepSize);
+    #ifdef RELAX_SH
+        diffuseLobeAngleFraction = 1.0 / sqrt(gStepSize);
+    #endif
     diffuseLobeAngleFraction = lerp(0.99, diffuseLobeAngleFraction, saturate(historyLength / 5.0));
 
 #ifdef RELAX_SPECULAR
@@ -83,6 +86,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
     float sumWSpecular = 0.44198 * 0.44198;
     float4 sumSpecularIlluminationAndVariance = centerSpecularIlluminationAndVariance * float4(sumWSpecular.xxx, sumWSpecular * sumWSpecular);
+    #ifdef RELAX_SH
+        float4 centerSpecularSH1 = gSpecularSH1[pixelPos];
+        float4 sumSpecularSH1 = centerSpecularSH1 * sumWSpecular;
+        float roughnessModified = centerSpecularSH1.w;
+    #endif
 #endif
 
 #ifdef RELAX_DIFFUSE
@@ -109,6 +117,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
     float sumWDiffuse = 0.44198 * 0.44198;
     float4 sumDiffuseIlluminationAndVariance = centerDiffuseIlluminationAndVariance * float4(sumWDiffuse.xxx, sumWDiffuse * sumWDiffuse);
+    #ifdef RELAX_SH
+        float4 centerDiffuseSH1 = gDiffuseSH1[pixelPos];
+        float4 sumDiffuseSH1 = centerDiffuseSH1 * sumWDiffuse;
+    #endif
 #endif
 
     float3 centerWorldPos = GetCurrentWorldPosFromPixelPos(pixelPos, centerViewZ);
@@ -178,6 +190,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
                 sumSpecularIlluminationAndVariance += float4(wSpecular.xxx, wSpecular * wSpecular) * sampleSpecularIlluminationAndVariance;
                 sumWSpecular += wSpecular;
+                #ifdef RELAX_SH
+                    sumSpecularSH1 += gSpecularSH1[p] * wSpecular;
+                #endif
             }
 #endif
 
@@ -202,6 +217,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 wDiffuse *= exp(-diffuseLuminanceW);
                 sumDiffuseIlluminationAndVariance += float4(wDiffuse.xxx, wDiffuse * wDiffuse) * sampleDiffuseIlluminationAndVariance;
                 sumWDiffuse += wDiffuse;
+                #ifdef RELAX_SH
+                    sumDiffuseSH1 += gDiffuseSH1[p] * wDiffuse;
+                #endif
             }
 #endif
         }
@@ -209,11 +227,27 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
 #ifdef RELAX_SPECULAR
     float4 filteredSpecularIlluminationAndVariance = float4(sumSpecularIlluminationAndVariance / float4(sumWSpecular.xxx, sumWSpecular * sumWSpecular));
+    #ifdef RELAX_SH
+        // Luminance output is expected in YCoCg color space in SH mode, converting to YCoCg in last A-Trous pass
+        if (gIsLastPass == 1)
+        {
+            filteredSpecularIlluminationAndVariance.rgb = _NRD_LinearToYCoCg(filteredSpecularIlluminationAndVariance.rgb);
+        }
+        gOutSpecularSH1[pixelPos] = float4(sumSpecularSH1.rgb / sumWSpecular, roughnessModified);
+    #endif
     gOutSpecularIlluminationAndVariance[pixelPos] = filteredSpecularIlluminationAndVariance;
 #endif
 
 #ifdef RELAX_DIFFUSE
     float4 filteredDiffuseIlluminationAndVariance = float4(sumDiffuseIlluminationAndVariance / float4(sumWDiffuse.xxx, sumWDiffuse * sumWDiffuse));
+    #ifdef RELAX_SH
+        // Luminance output is expected in YCoCg color space in SH mode, converting to YCoCg in last A-Trous pass
+        if (gIsLastPass == 1)
+        {
+            filteredDiffuseIlluminationAndVariance.rgb = _NRD_LinearToYCoCg(filteredDiffuseIlluminationAndVariance.rgb);
+        }
+        gOutDiffuseSH1[pixelPos] = sumDiffuseSH1 / sumWDiffuse;
+    #endif
     gOutDiffuseIlluminationAndVariance[pixelPos] = filteredDiffuseIlluminationAndVariance;
 #endif
 }

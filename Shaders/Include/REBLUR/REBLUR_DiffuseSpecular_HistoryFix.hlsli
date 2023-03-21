@@ -272,7 +272,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             float specNormalWeightParam = 1.0 / max( lobeHalfAngle, REBLUR_NORMAL_ULP );
             float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
-            float2 specRoughnessWeightParams = GetRoughnessWeightParams( roughness, gRoughnessFraction );
+            float2 specRoughnessWeightParamsSq = GetRoughnessWeightParamsSq( roughness, gRoughnessFraction );
 
             float hitDistNormAtCenter = ExtractHitDist( spec );
             float smc = GetSpecMagicCurve( roughness );
@@ -316,7 +316,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     ws *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
                     ws *= _ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
                     ws *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
-                    ws *= _ComputeExponentialWeight( Ns.w, specRoughnessWeightParams.x, specRoughnessWeightParams.y );
+                    ws *= _ComputeExponentialWeight( Ns.w * Ns.w, specRoughnessWeightParamsSq.x, specRoughnessWeightParamsSq.y );
 
                     REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
 

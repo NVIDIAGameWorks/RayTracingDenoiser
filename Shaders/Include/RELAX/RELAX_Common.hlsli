@@ -26,36 +26,41 @@ float4 PackPrevNormalRoughness(float4 normalRoughness)
     return result;
 }
 
-float BilinearWithBinaryWeightsImmediateFloat(float s00, float s10, float s01, float s11, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
+float BilinearWithCustomWeightsImmediateFloat(float s00, float s10, float s01, float s11, float4 bilinearCustomWeights)
 {
-    s00 *= binaryWeights.x;
-    s10 *= binaryWeights.y;
-    s01 *= binaryWeights.z;
-    s11 *= binaryWeights.w;
+    float output = s00 * bilinearCustomWeights.x;
+    output += s10 * bilinearCustomWeights.y;
+    output += s01 * bilinearCustomWeights.z;
+    output += s11 * bilinearCustomWeights.w;
 
-    STL::Filtering::Bilinear bilinear;
-    bilinear.weights = bilinearWeights;
-
-    float r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
-    r /= interpolatedBinaryWeight;
-
-    return r;
+    float sumWeights = dot(bilinearCustomWeights, 1.0);
+    output = sumWeights < 0.0001 ? 0 : output * rcp(sumWeights);
+    return output;
 }
 
-float4 BilinearWithBinaryWeightsImmediateFloat4(float4 s00, float4 s10, float4 s01, float4 s11, float2 bilinearWeights, float4 binaryWeights, float interpolatedBinaryWeight)
+
+float4 BilinearWithCustomWeightsImmediateFloat4(float4 s00, float4 s10, float4 s01, float4 s11, float4 bilinearCustomWeights)
 {
-    s00 *= binaryWeights.x;
-    s10 *= binaryWeights.y;
-    s01 *= binaryWeights.z;
-    s11 *= binaryWeights.w;
+    float4 output = s00 * bilinearCustomWeights.x;
+    output += s10 * bilinearCustomWeights.y;
+    output += s01 * bilinearCustomWeights.z;
+    output += s11 * bilinearCustomWeights.w;
 
-    STL::Filtering::Bilinear bilinear;
-    bilinear.weights = bilinearWeights;
+    float sumWeights = dot(bilinearCustomWeights, 1.0);
+    output = sumWeights < 0.0001 ? 0 : output * rcp(sumWeights);
+    return output;
+}
 
-    float4 r = STL::Filtering::ApplyBilinearFilter(s00, s10, s01, s11, bilinear);
-    r /= interpolatedBinaryWeight;
+float4 BilinearWithCustomWeightsFloat4(Texture2D<float4> tex0, int2 position, float4 bilinearCustomWeights)
+{
+    float4 output = tex0[position] * bilinearCustomWeights.x;
+    output += tex0[position + int2(1, 0)] * bilinearCustomWeights.y;
+    output += tex0[position + int2(0, 1)] * bilinearCustomWeights.z;
+    output += tex0[position + int2(1, 1)] * bilinearCustomWeights.w;
 
-    return r;
+    float sumWeights = dot(bilinearCustomWeights, 1.0);
+    output = sumWeights < 0.0001 ? 0 : output * rcp(sumWeights);
+    return output;
 }
 
 float3 GetCurrentWorldPosFromPixelPos(int2 pixelPos, float viewZ)
@@ -173,27 +178,6 @@ float GetNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
     float w = STL::Math::SmoothStep01(1.0 - (d * a));
 
     return w;
-}
-
-float2 GetRoughnessWeightParams(float roughness, float fraction = 0.05)
-{
-    float a = rcp(lerp(0.01, 1.0, saturate(roughness * fraction)));
-    float b = roughness * a;
-
-    return float2(a, -b);
-}
-
-float2 GetRoughnessWeightParamsSq(float roughness, float fraction = 0.05)
-{
-    float roughnessSq = roughness * roughness;
-    float a = rcp(lerp(0.01, 1.0, saturate(roughnessSq * fraction)));
-    float b = roughnessSq * a;
-
-    return float2(a, -b);
-}
-float GetRoughnessWeightSq(float2 params, float roughness)
-{
-    return GetRoughnessWeight(params, roughness * roughness);
 }
 
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(

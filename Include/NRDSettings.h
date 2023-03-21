@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 0
+#define NRD_SETTINGS_VERSION_MINOR 1
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -236,7 +236,7 @@ namespace nrd
         float historyFixStrideBetweenSamples = 14.0f;
 
         // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
-        float lobeAngleFraction = 0.13f;
+        float lobeAngleFraction = 0.15f;
 
         // (normalized %) - base fraction of center roughness used to drive roughness based rejection
         float roughnessFraction = 0.15f;

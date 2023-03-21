@@ -12,9 +12,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRD.h"
 
-// TODO: move to a C++ / HLSL shared file (most likely with CB layout declarations)
-#define NRD_CS_MAIN "main"
-
 #define MATH_NAMESPACE
 #include "MathLib/MathLib.h"
 
@@ -174,12 +171,18 @@ namespace nrd
 
         // Relax
         void AddMethod_RelaxDiffuse(MethodData& methodData);
+        void AddMethod_RelaxDiffuseSh(MethodData& methodData);
         void AddMethod_RelaxSpecular(MethodData& methodData);
+        void AddMethod_RelaxSpecularSh(MethodData& methodData);
         void AddMethod_RelaxDiffuseSpecular(MethodData& methodData);
+        void AddMethod_RelaxDiffuseSpecularSh(MethodData& methodData);
 
         void UpdateMethod_RelaxDiffuse(const MethodData& methodData);
+        void UpdateMethod_RelaxDiffuseSh(const MethodData& methodData);
         void UpdateMethod_RelaxSpecular(const MethodData& methodData);
+        void UpdateMethod_RelaxSpecularSh(const MethodData& methodData);
         void UpdateMethod_RelaxDiffuseSpecular(const MethodData& methodData);
+        void UpdateMethod_RelaxDiffuseSpecularSh(const MethodData& methodData);
 
         void AddSharedConstants_Relax(const MethodData& methodData, Constant*& data, Method method);
 
@@ -270,48 +273,7 @@ namespace nrd
         void PushOutput(uint16_t indexInPool, uint16_t mipOffset = 0, uint16_t mipNum = 1, uint16_t indexToSwapWith = uint16_t(-1))
         { PushTexture(DescriptorType::STORAGE_TEXTURE, indexInPool, mipOffset, mipNum, indexToSwapWith); }
 
-        inline Constant* PushDispatch(const MethodData& methodData, uint32_t localIndex)
-        {
-            size_t dispatchIndex = methodData.dispatchOffset + localIndex;
-            const InternalDispatchDesc& internalDispatchDesc = m_Dispatches[dispatchIndex];
-
-            // Copy data
-            DispatchDesc dispatchDesc = {};
-            dispatchDesc.name = internalDispatchDesc.name;
-            dispatchDesc.resources = internalDispatchDesc.resources;
-            dispatchDesc.resourcesNum = internalDispatchDesc.resourcesNum;
-            dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
-
-            // Update constant data
-            if (m_ConstantDataOffset + internalDispatchDesc.constantBufferDataSize > CONSTANT_DATA_SIZE)
-                m_ConstantDataOffset = 0;
-            dispatchDesc.constantBufferData = m_ConstantData + m_ConstantDataOffset;
-            dispatchDesc.constantBufferDataSize = internalDispatchDesc.constantBufferDataSize;
-            m_ConstantDataOffset += internalDispatchDesc.constantBufferDataSize;
-
-            // Update grid size
-            float sx = ml::Max(internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? m_ResolutionScalePrev.x : 0.0f, m_CommonSettings.resolutionScale[0]);
-            float sy = ml::Max(internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? m_ResolutionScalePrev.y : 0.0f, m_CommonSettings.resolutionScale[1]);
-            uint16_t d = internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? 1 : internalDispatchDesc.downsampleFactor;
-
-            if (internalDispatchDesc.downsampleFactor == IGNORE_RS)
-            {
-                sx = 1.0f;
-                sy = 1.0f;
-                d = 1;
-            }
-
-            uint16_t w = uint16_t( float(DivideUp(methodData.desc.fullResolutionWidth, d)) * sx + 0.5f );
-            uint16_t h = uint16_t( float(DivideUp(methodData.desc.fullResolutionHeight, d)) * sy + 0.5f );
-
-            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.numThreads.width);
-            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.numThreads.height);
-
-            // Store
-            m_ActiveDispatches.push_back(dispatchDesc);
-
-            return (Constant*)dispatchDesc.constantBufferData;
-        }
+        Constant* PushDispatch(const MethodData& methodData, uint32_t localIndex);
 
         inline void _PushPass(const char* name)
         {

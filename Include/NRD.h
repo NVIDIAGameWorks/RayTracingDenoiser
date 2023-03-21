@@ -28,9 +28,9 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 4
-#define NRD_VERSION_MINOR 0
-#define NRD_VERSION_BUILD 2
-#define NRD_VERSION_DATE "23 January 2023"
+#define NRD_VERSION_MINOR 1
+#define NRD_VERSION_BUILD 0
+#define NRD_VERSION_DATE "23 March 2023"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall

@@ -52,6 +52,14 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 14 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 15 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDisocclusionThresholdMix, t, 16)
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 17 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 18 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevSpecularResponsiveSH1, t, 19 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevDiffuseResponsiveSH1, t, 20 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevSpecularSH1, t, 21 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevDiffuseSH1, t, 22 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
@@ -62,6 +70,12 @@ NRD_SAMPLER_END
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutReflectionHitT, u, 4 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutHistoryLength, u, 5 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutSpecularReprojectionConfidence, u, 6 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularSH1, u, 7 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseSH1, u, 8 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularResponsiveSH1, u, 9 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseResponsiveSH1, u, 10 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_DIFFUSE )
@@ -91,12 +105,21 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gPrevMaterialID, t, 9 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 10 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDisocclusionThresholdMix, t, 11)
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 12 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevDiffuseResponsiveSH1, t, 13 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevDiffuseSH1, t, 14 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIlluminationResponsive, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutHistoryLength, u, 2 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseSH1, u, 3 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseResponsiveSH1, u, 4 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_SPECULAR )
@@ -129,6 +152,11 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gPrevMaterialID, t, 10 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 11 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDisocclusionThresholdMix, t, 12)
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 13 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevSpecularResponsiveSH1, t, 14 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gPrevSpecularSH1, t, 15 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
@@ -137,6 +165,10 @@ NRD_SAMPLER_END
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutReflectionHitT, u, 2 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutHistoryLength, u, 3 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOutSpecularReprojectionConfidence, u, 4 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularSH1, u, 5 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularResponsiveSH1, u, 6 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #endif

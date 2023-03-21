@@ -8,12 +8,12 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "../Include/NRD.hlsli"
+#include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "../Resources/Clear_f.resources.hlsli"
+#include "Clear_f.resources.hlsli"
 
-#include "../Include/Common.hlsli"
+#include "Common.hlsli"
 
 [numthreads( 16, 16, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )

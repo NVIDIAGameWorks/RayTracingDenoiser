@@ -93,9 +93,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     specularColorMaxYCoCg = max(specularColorMaxYCoCg, specularCenterYCoCg.rgb);
 
     // Color clamping
-    if (gSpecFastHistory)
-        specularYCoCg = clamp(specularYCoCg, specularColorMinYCoCg, specularColorMaxYCoCg);
-    float3 clampedSpecular = STL::Color::YCoCgToLinear(specularYCoCg);
+    float3 clampedSpecularYCoCg = specularYCoCg;
+    if (gSpecFastHistory) clampedSpecularYCoCg = clamp(specularYCoCg, specularColorMinYCoCg, specularColorMaxYCoCg);
+    float3 clampedSpecular = STL::Color::YCoCgToLinear(clampedSpecularYCoCg);
 
     // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
@@ -109,6 +109,24 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Writing out the results
     gOutSpecularIllumination[pixelPos.xy] = outSpecular;
     gOutSpecularIlluminationResponsive[pixelPos.xy] = outSpecularResponsive;
+
+    #ifdef RELAX_SH
+        float4 specularSH1 = gSpecularSH1[pixelPos.xy];
+        float roughnessModified = specularSH1.w;
+        float4 specularResponsiveSH1 = gSpecularResponsiveSH1[pixelPos.xy];
+
+        // Clamping factor: (clamped - slow) / (fast - slow)
+        // The closest clamped is to fast, the closer clamping factor is to 1.
+        float specClampingFactor = (specularCenterYCoCg.x - specularYCoCg.x) == 0 ? 
+            1.0 : saturate( (clampedSpecularYCoCg.x - specularYCoCg.x) / (specularCenterYCoCg.x - specularYCoCg.x));
+        
+        if (historyLength <= gHistoryFixFrameNum)
+            specClampingFactor = 1.0;
+
+        gOutSpecularSH1[pixelPos.xy] = float4(lerp(specularSH1.rgb, specularResponsiveSH1.rgb, specClampingFactor), roughnessModified);
+        gOutSpecularResponsiveSH1[pixelPos.xy] = specularResponsiveSH1;
+    #endif
+
 #endif
 
 #ifdef RELAX_DIFFUSE
@@ -125,9 +143,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     diffuseColorMaxYCoCg = max(diffuseColorMaxYCoCg, diffuseCenterYCoCg.rgb);
 
     // Color clamping
-    if (gDiffFastHistory)
-        diffuseYCoCg = clamp(diffuseYCoCg, diffuseColorMinYCoCg, diffuseColorMaxYCoCg);
-    float3 clampedDiffuse = STL::Color::YCoCgToLinear(diffuseYCoCg);
+    float3 clampedDiffuseYCoCg = diffuseYCoCg;
+    if (gDiffFastHistory) clampedDiffuseYCoCg = clamp(diffuseYCoCg, diffuseColorMinYCoCg, diffuseColorMaxYCoCg);
+    float3 clampedDiffuse = STL::Color::YCoCgToLinear(clampedDiffuseYCoCg);
 
     // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
@@ -141,6 +159,23 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Writing out the results
     gOutDiffuseIllumination[pixelPos.xy] = outDiffuse;
     gOutDiffuseIlluminationResponsive[pixelPos.xy] = outDiffuseResponsive;
+    
+    #ifdef RELAX_SH
+        float4 diffuseSH1 = gDiffuseSH1[pixelPos.xy];
+        float4 diffuseResponsiveSH1 = gDiffuseResponsiveSH1[pixelPos.xy];
+
+        // Clamping factor: (clamped - slow) / (fast - slow)
+        // The closest clamped is to fast, the closer clamping factor is to 1.
+        float diffClampingFactor = (diffuseCenterYCoCg.x - diffuseYCoCg.x) == 0 ? 
+            1.0 : saturate( (clampedDiffuseYCoCg.x - diffuseYCoCg.x) / (diffuseCenterYCoCg.x - diffuseYCoCg.x));
+        
+        if (historyLength <= gHistoryFixFrameNum)
+            diffClampingFactor = 1.0;
+
+        gOutDiffuseSH1[pixelPos.xy] = lerp(diffuseSH1, diffuseResponsiveSH1, diffClampingFactor);
+        gOutDiffuseResponsiveSH1[pixelPos.xy] = diffuseResponsiveSH1;
+    #endif
+
 #endif
 
     // Writing out history length for use in the next frame

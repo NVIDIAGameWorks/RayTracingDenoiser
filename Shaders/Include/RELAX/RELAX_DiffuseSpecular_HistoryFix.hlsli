@@ -33,13 +33,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     if ((centerViewZ > gDenoisingRange) || (historyLength > gHistoryFixFrameNum))
         return;
 
-#ifdef RELAX_DIFFUSE
-    float4 diffuseIlluminationAnd2ndMoment = gDiffuseIllumination[pixelPos];
-#endif
-#ifdef RELAX_SPECULAR
-    float4 specularIlluminationAnd2ndMoment = gSpecularIllumination[pixelPos];
-#endif
-
     // Loading center data
     float centerMaterialID;
     float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos], centerMaterialID);
@@ -49,13 +42,19 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float3 centerV = -normalize(centerWorldPos);
     float depthThreshold = gDepthThreshold * (gOrthoMode == 0 ? centerViewZ : 1.0);
 
-    // Running sparse cross-bilateral filter
 #ifdef RELAX_DIFFUSE
-    float4 diffuseIlluminationAnd2ndMomentSum = diffuseIlluminationAnd2ndMoment;
+    float4 diffuseIlluminationAnd2ndMomentSum = gDiffuseIllumination[pixelPos];
+    #ifdef RELAX_SH
+        float4 diffuseSumSH1 = gDiffuseSH1[pixelPos];
+    #endif
     float diffuseWSum = 1;
 #endif
 #ifdef RELAX_SPECULAR
-    float4 specularIlluminationAnd2ndMomentSum = specularIlluminationAnd2ndMoment;
+    float4 specularIlluminationAnd2ndMomentSum = gSpecularIllumination[pixelPos];
+    #ifdef RELAX_SH
+        float4 specularSumSH1 = gSpecularSH1[pixelPos];
+        float roughnessModified = specularSumSH1.w;
+    #endif
     float specularWSum = 1;
     float2 specularNormalWeightParams =
         GetNormalWeightParams_ATrous(
@@ -67,8 +66,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             gSpecularLobeAngleSlack); 
 #endif
 
+    // Running sparse cross-bilateral filter
     float r = getRadius(historyLength);
-
     [unroll]
     for (int j = -2; j <= 2; j++)
     {
@@ -95,7 +94,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 sampleWorldPos,
                 depthThreshold);
 
-    #ifdef RELAX_DIFFUSE
+#ifdef RELAX_DIFFUSE
             // Summing up diffuse result
             float diffuseW = geometryWeight;
             diffuseW *= getDiffuseNormalWeight(centerNormal, sampleNormal);
@@ -106,10 +105,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             {
                 float4 sampleDiffuseIlluminationAnd2ndMoment = gDiffuseIllumination[samplePosInt];
                 diffuseIlluminationAnd2ndMomentSum += sampleDiffuseIlluminationAnd2ndMoment * diffuseW;
+                #ifdef RELAX_SH
+                    float4 sampleDiffuseSH1 = gDiffuseSH1[samplePosInt];
+                    diffuseSumSH1 += sampleDiffuseSH1 * diffuseW;
+                #endif
                 diffuseWSum += diffuseW;
             }
-    #endif
-    #ifdef RELAX_SPECULAR
+#endif
+#ifdef RELAX_SPECULAR
             // Getting sample view vector closer to center view vector
             // by adding gRoughnessEdgeStoppingRelaxation * centerWorldPos 
             // relaxes view direction based rejection
@@ -126,9 +129,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             {
                 float4 sampleSpecularIlluminationAnd2ndMoment = gSpecularIllumination[samplePosInt];
                 specularIlluminationAnd2ndMomentSum += sampleSpecularIlluminationAnd2ndMoment * specularW;
+                #ifdef RELAX_SH
+                    float4 sampleSpecularSH1 = gSpecularSH1[samplePosInt];
+                    specularSumSH1 += sampleSpecularSH1 * specularW;
+                #endif
                 specularWSum += specularW;
             }
-    #endif
+#endif
         }
     }
 
@@ -137,10 +144,16 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 #ifdef RELAX_DIFFUSE
     float4 outDiffuseIlluminationAnd2ndMoment = diffuseIlluminationAnd2ndMomentSum / diffuseWSum;
     gOutDiffuseIllumination[pixelPos] = outDiffuseIlluminationAnd2ndMoment;
+    #ifdef RELAX_SH
+        gOutDiffuseSH1[pixelPos] = diffuseSumSH1 / diffuseWSum;
+    #endif
 #endif
 
 #ifdef RELAX_SPECULAR
     float4 outSpecularIlluminationAnd2ndMoment = specularIlluminationAnd2ndMomentSum / specularWSum;
     gOutSpecularIllumination[pixelPos] = outSpecularIlluminationAnd2ndMoment;
+    #ifdef RELAX_SH
+        gOutSpecularSH1[pixelPos] = float4(specularSumSH1.rgb / specularWSum, roughnessModified);
+    #endif
 #endif
 }

@@ -144,3 +144,15 @@ Since *NRD* tracks specular motion, now, if requested, it can modify provided *d
   - Exposed `specularProbabilityThresholdsForMvModification` to control diffuse / specular motion mixing
 - *RELAX*:
   - Removed `enableSpecularVirtualHistoryClamping`
+
+## To v4.1
+
+SH (spherical harmonics) have been replaced with SG (spherical gaussians). It unlocks physically-based high quality diffuse & specular resolve. The following functions have been added to `NRD.hlsli` (or renamed):
+- `NRD_SG_ExtractColor` - extracts unresolved denoised radiance
+- `NRD_SG_ExtractDirection` - extracts light dominant direction
+- `NRD_SG_ExtractRoughnessAA` - extracts modified roughness (increased in areas with high normal variance)
+- `NRD_SG_ResolveDiffuse` - reconstructs diffuse macro details
+- `NRD_SG_ResolveSpecular` - reconstructs specular macro details
+- `NRD_SG_ReJitter` - reconstructs diffuse & specular micro details (resurrects jitter vanished out after denoising)
+- `NRD_SH_ResolveDiffuse` - reconstructs diffuse macro details using SH resolve (for comparison only)
+- `NRD_SH_ResolveSpecular` - reconstructs specular macro details using SH resolve (for comparison only)

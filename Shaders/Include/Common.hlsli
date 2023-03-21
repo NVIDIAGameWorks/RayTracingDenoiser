@@ -332,6 +332,26 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
     return float2( a, -b );
 }
 
+// Weights params
+
+float2 GetRoughnessWeightParams( float roughness, float fraction )
+{
+    float a = rcp( lerp( 0.01, 1.0, saturate( roughness * fraction ) ) );
+    float b = roughness * a;
+
+    return float2( a, -b );
+}
+
+float2 GetRoughnessWeightParamsSq( float roughness, float fraction )
+{
+    return GetRoughnessWeightParams( roughness * roughness, fraction );
+}
+
+float2 GetCoarseRoughnessWeightParams( float roughness )
+{
+    return float2( 1.0, -roughness );
+}
+
 // Weights
 
 // IMPORTANT:
@@ -363,6 +383,11 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
 float GetRoughnessWeight( float2 params, float roughness )
 {
     return _ComputeWeight( roughness, params.x, params.y );
+}
+
+float GetRoughnessWeightSq( float2 params, float roughness )
+{
+    return GetRoughnessWeight( params, roughness * roughness );
 }
 
 float GetHitDistanceWeight( float2 params, float hitDist )

@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRDIntegration.h"
 
 static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 0, "Unsupported NRD version!");
-static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 90, "Unsupported NRI version!");
+static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 93, "Unsupported NRI version!");
 
 #if _WIN32
     #define NRD_INTEGRATION_ALLOCA _alloca

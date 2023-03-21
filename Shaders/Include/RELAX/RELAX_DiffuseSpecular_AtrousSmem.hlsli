@@ -10,10 +10,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #ifdef RELAX_DIFFUSE
     groupshared float4 sharedDiffuse[BUFFER_X][BUFFER_Y];
+    #ifdef RELAX_SH
+        groupshared float4 sharedDiffuseSH1[BUFFER_X][BUFFER_Y];
+    #endif
 #endif
 
 #ifdef RELAX_SPECULAR
     groupshared float4 sharedSpecular[BUFFER_X][BUFFER_Y];
+    #ifdef RELAX_SH
+        groupshared float4 sharedSpecularSH1[BUFFER_X][BUFFER_Y];
+    #endif
 #endif
 
 groupshared float4 sharedNormalRoughness[BUFFER_X][BUFFER_Y];
@@ -83,10 +89,16 @@ void Preload(uint2 sharedPos, int2 globalPos)
 
 #ifdef RELAX_SPECULAR
     sharedSpecular[sharedPos.y][sharedPos.x] = gSpecularIlluminationAnd2ndMoment[globalPos];
+    #ifdef RELAX_SH
+        sharedSpecularSH1[sharedPos.y][sharedPos.x] = gSpecularSH1[globalPos];
+    #endif
 #endif
 
 #ifdef RELAX_DIFFUSE
     sharedDiffuse[sharedPos.y][sharedPos.x] = gDiffuseIlluminationAnd2ndMoment[globalPos];
+    #ifdef RELAX_SH
+        sharedDiffuseSH1[sharedPos.y][sharedPos.x] = gDiffuseSH1[globalPos];
+    #endif
 #endif
     float materialID;
     sharedNormalRoughness[sharedPos.y][sharedPos.x] = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[globalPos], materialID);
@@ -193,6 +205,10 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
         float sumWSpecular = 0;
         float4 sumSpecularIlluminationAnd2ndMoment = 0;
+        #ifdef RELAX_SH
+            float4 sumSpecularSH1 = 0;
+            float roughnessModified = sharedSpecularSH1[sharedMemoryIndex.y][sharedMemoryIndex.x].w;
+        #endif
         float3 centerV = -normalize(centerWorldPos);
 #endif
 
@@ -218,6 +234,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
         float sumWDiffuse = 0;
         float4 sumDiffuseIlluminationAnd2ndMoment = 0;
+        #ifdef RELAX_SH
+            float4 sumDiffuseSH1 = 0;
+        #endif
 #endif
 
         static const float kernelWeightGaussian3x3[2] = { 0.44198, 0.27901 };
@@ -279,6 +298,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
                 sumWSpecular += wSpecular;
                 sumSpecularIlluminationAnd2ndMoment += wSpecular * sampleSpecularIlluminationAnd2ndMoment;
+                #ifdef RELAX_SH
+                    sumSpecularSH1 += wSpecular * sharedSpecularSH1[sharedMemoryIndexP.y][sharedMemoryIndexP.x];;
+                #endif
 #endif
 #ifdef RELAX_DIFFUSE
                 // Calculating weights for diffuse
@@ -300,6 +322,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
                 sumWDiffuse += wDiffuse;
                 sumDiffuseIlluminationAnd2ndMoment += wDiffuse * sampleDiffuseIlluminationAnd2ndMoment;
+                #ifdef RELAX_SH
+                    sumDiffuseSH1 += wDiffuse * sharedDiffuseSH1[sharedMemoryIndexP.y][sharedMemoryIndexP.x];;
+                #endif
 #endif
             }
         }
@@ -311,6 +336,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float specularVariance = max(0, specular2ndMoment - specular1stMoment * specular1stMoment);
         float4 filteredSpecularIlluminationAndVariance = float4(sumSpecularIlluminationAnd2ndMoment.rgb, specularVariance);
         gOutSpecularIlluminationAndVariance[pixelPos] = filteredSpecularIlluminationAndVariance;
+        #ifdef RELAX_SH
+            gOutSpecularSH1[pixelPos] = float4(sumSpecularSH1.rgb / sumWSpecular, roughnessModified);
+        #endif
 #endif
 #ifdef RELAX_DIFFUSE
         sumWDiffuse = max(sumWDiffuse, 1e-6f);
@@ -319,8 +347,10 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float diffuse2ndMoment = sumDiffuseIlluminationAnd2ndMoment.a;
         float diffuseVariance = max(0, diffuse2ndMoment - diffuse1stMoment * diffuse1stMoment);
         float4 filteredDiffuseIlluminationAndVariance = float4(sumDiffuseIlluminationAnd2ndMoment.rgb, diffuseVariance);
-
         gOutDiffuseIlluminationAndVariance[pixelPos] = filteredDiffuseIlluminationAndVariance;
+        #ifdef RELAX_SH
+            gOutDiffuseSH1[pixelPos] = sumDiffuseSH1 / sumWDiffuse;
+        #endif
 #endif
     }
     else
@@ -331,6 +361,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float3 sumSpecularIllumination = 0;
         float sumSpecular1stMoment = 0;
         float sumSpecular2ndMoment = 0;
+        #ifdef RELAX_SH
+            float4 sumSpecularSH1 = 0;
+        #endif
 #endif
 
 #ifdef RELAX_DIFFUSE
@@ -338,6 +371,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float3 sumDiffuseIllumination = 0;
         float sumDiffuse1stMoment = 0;
         float sumDiffuse2ndMoment = 0;
+        #ifdef RELAX_SH
+            float4 sumDiffuseSH1 = 0;
+        #endif
 #endif
 
         // Normal weight is same for diffuse and specular during spatial variance estimation
@@ -372,6 +408,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 sumSpecularIllumination += sampleSpecularIllumination.rgb * specularW;
                 sumSpecular1stMoment += sampleSpecular1stMoment * specularW;
                 sumSpecular2ndMoment += sampleSpecular2ndMoment * specularW;
+                #ifdef RELAX_SH
+                    sumSpecularSH1 += sharedSpecularSH1[sharedMemoryIndexP.y][sharedMemoryIndexP.x] * specularW;
+                #endif
 #endif
 
 #ifdef RELAX_DIFFUSE
@@ -386,6 +425,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 sumDiffuseIllumination += sampleDiffuseIllumination.rgb * diffuseW;
                 sumDiffuse1stMoment += sampleDiffuse1stMoment * diffuseW;
                 sumDiffuse2ndMoment += sampleDiffuse2ndMoment * diffuseW;
+                #ifdef RELAX_SH
+                    sumDiffuseSH1 += sharedDiffuseSH1[sharedMemoryIndexP.y][sharedMemoryIndexP.x] * diffuseW;
+                #endif
 #endif
             }
         }
@@ -400,6 +442,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float specularVariance = max(0, sumSpecular2ndMoment - sumSpecular1stMoment * sumSpecular1stMoment);
         specularVariance *= boost;
         gOutSpecularIlluminationAndVariance[pixelPos] = float4(sumSpecularIllumination, specularVariance);
+        #ifdef RELAX_SH
+            gOutSpecularSH1[pixelPos] = sumSpecularSH1 / sumWSpecularIllumination;
+        #endif
 #endif
 
 #ifdef RELAX_DIFFUSE
@@ -410,6 +455,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float diffuseVariance = max(0, sumDiffuse2ndMoment - sumDiffuse1stMoment * sumDiffuse1stMoment);
         diffuseVariance *= boost;
         gOutDiffuseIlluminationAndVariance[pixelPos] = float4(sumDiffuseIllumination, diffuseVariance);
+        #ifdef RELAX_SH
+            gOutDiffuseSH1[pixelPos] = sumDiffuseSH1 / sumWDiffuseIllumination;
+        #endif
 #endif
     }
 

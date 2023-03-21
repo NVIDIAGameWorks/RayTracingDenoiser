@@ -200,14 +200,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             spec += s * w;
         #ifdef REBLUR_SH
             float4 sh = gIn_SpecSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
-            specSh += sh * w;
+            specSh.xyz += sh.xyz * w;
         #endif
         }
 
         float invSum = STL::Math::PositiveRcp( sum );
         spec *= invSum;
     #ifdef REBLUR_SH
-        specSh *= invSum;
+        specSh.xyz *= invSum;
     #endif
 
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )

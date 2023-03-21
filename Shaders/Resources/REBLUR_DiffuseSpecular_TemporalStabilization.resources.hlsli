@@ -51,7 +51,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float3>, gInOut_Mv, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gInOut_Mv, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 2 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 3 )
@@ -77,7 +77,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float3>, gInOut_Mv, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gInOut_Mv, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Diff, u, 2 )
         #ifdef REBLUR_SH
@@ -103,7 +103,7 @@ NRD_CONSTANTS_END
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float3>, gInOut_Mv, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gInOut_Mv, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_InternalData, u, 1 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Spec, u, 2 )
         #ifdef REBLUR_SH

@@ -33,8 +33,11 @@ constexpr std::array<nrd::Method, (size_t)nrd::Method::MAX_NUM> g_NrdSupportedMe
     nrd::Method::SIGMA_SHADOW,
     nrd::Method::SIGMA_SHADOW_TRANSLUCENCY,
     nrd::Method::RELAX_DIFFUSE,
+    nrd::Method::RELAX_DIFFUSE_SH,
     nrd::Method::RELAX_SPECULAR,
+    nrd::Method::RELAX_SPECULAR_SH,
     nrd::Method::RELAX_DIFFUSE_SPECULAR,
+    nrd::Method::RELAX_DIFFUSE_SPECULAR_SH,
     nrd::Method::REFERENCE,
     nrd::Method::SPECULAR_REFLECTION_MV,
     nrd::Method::SPECULAR_DELTA_MV
@@ -114,8 +117,11 @@ const char* g_NrdMethodNames[] =
     "SIGMA_SHADOW_TRANSLUCENCY",
 
     "RELAX_DIFFUSE",
+    "RELAX_DIFFUSE_SH",
     "RELAX_SPECULAR",
+    "RELAX_SPECULAR_SH",
     "RELAX_DIFFUSE_SPECULAR",
+    "RELAX_DIFFUSE_SPECULAR_SH",
 
     "REFERENCE",
 
@@ -211,7 +217,7 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
                                     "license agreement from NVIDIA CORPORATION is strictly prohibited.\n"
                                     "*/\n"
                                     "\n"
-                                    "#include \"../Include/NRD.hlsli\"\n"
+                                    "#include \"NRD.hlsli\"\n"
                                     "#include \"STL.hlsli\"\n"
                                     "\n"
                                     "%s"
@@ -219,18 +225,18 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
                                     "%s"
                                     "%s"
                                     "\n"
-                                    "#include \"../Include/REBLUR/REBLUR_Config.hlsli\"\n"
-                                    "#include \"../Resources/REBLUR_DiffuseSpecular_%s.resources.hlsli\"\n"
+                                    "#include \"REBLUR/REBLUR_Config.hlsli\"\n"
+                                    "#include \"REBLUR_DiffuseSpecular_%s.resources.hlsli\"\n"
                                     "\n"
-                                    "#include \"../Include/Common.hlsli\"\n"
+                                    "#include \"Common.hlsli\"\n"
                                     "%s"
-                                    "#include \"../Include/REBLUR/REBLUR_DiffuseSpecular_%s.hlsli\"\n",
+                                    "#include \"REBLUR/REBLUR_DiffuseSpecular_%s.hlsli\"\n",
                                     perf == 0 ? "" : "#define REBLUR_PERFORMANCE_MODE\n",
                                     typeMacros[type],
                                     permutationMacros[permutation],
                                     passPermutation == 0 ? "" : passPermutationMacros[pass],
                                     passNames[pass],
-                                    pass == 6 ? "" : "#include \"../Include/REBLUR/REBLUR_Common.hlsli\"\n",
+                                    pass == 6 ? "" : "#include \"REBLUR/REBLUR_Common.hlsli\"\n",
                                     passNames[pass]
                                 );
                                 fclose(fp);

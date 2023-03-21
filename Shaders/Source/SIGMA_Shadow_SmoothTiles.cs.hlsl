@@ -8,14 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "../Include/NRD.hlsli"
+#include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "../Include/SIGMA/SIGMA_Config.hlsli"
-#include "../Resources/SIGMA_Shadow_SmoothTiles.resources.hlsli"
+#include "SIGMA/SIGMA_Config.hlsli"
+#include "SIGMA_Shadow_SmoothTiles.resources.hlsli"
 
-#include "../Include/Common.hlsli"
-#include "../Include/SIGMA/SIGMA_Common.hlsli"
+#include "Common.hlsli"
+#include "SIGMA/SIGMA_Common.hlsli"
 
 groupshared float2 s_Tile[ BUFFER_Y ][ BUFFER_X ];
 

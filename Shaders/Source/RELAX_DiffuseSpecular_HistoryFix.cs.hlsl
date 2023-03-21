@@ -8,12 +8,12 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "../Include/NRD.hlsli"
+#include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "../Include/RELAX/RELAX_Config.hlsli"
-#include "../Resources/RELAX_DiffuseSpecular_HistoryFix.resources.hlsli"
+#include "RELAX/RELAX_Config.hlsli"
+#include "RELAX_DiffuseSpecular_HistoryFix.resources.hlsli"
 
-#include "../Include/Common.hlsli"
-#include "../Include/RELAX/RELAX_Common.hlsli"
-#include "../Include/RELAX/RELAX_DiffuseSpecular_HistoryFix.hlsli"
+#include "Common.hlsli"
+#include "RELAX/RELAX_Common.hlsli"
+#include "RELAX/RELAX_DiffuseSpecular_HistoryFix.hlsli"

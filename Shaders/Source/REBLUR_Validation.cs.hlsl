@@ -8,14 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "../Include/NRD.hlsli"
+#include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "../Include/REBLUR/REBLUR_Config.hlsli"
-#include "../Resources/REBLUR_Validation.resources.hlsli"
+#include "REBLUR/REBLUR_Config.hlsli"
+#include "REBLUR_Validation.resources.hlsli"
 
-#include "../Include/Common.hlsli"
-#include "../Include/REBLUR/REBLUR_Common.hlsli"
+#include "Common.hlsli"
+#include "REBLUR/REBLUR_Common.hlsli"
 
 #define VIEWPORT_SIZE   0.25
 #define OFFSET          5

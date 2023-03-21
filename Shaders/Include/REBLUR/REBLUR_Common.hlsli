@@ -386,19 +386,6 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
 
 // Encoding precision aware weight functions ( for reprojection )
 
-float GetEncodingAwareRoughnessWeights( float roughnessCurr, float roughnessPrev, float fraction )
-{
-    float a = rcp( lerp( 0.01, 1.0, saturate( roughnessCurr * fraction ) ) );
-    float d = abs( roughnessPrev - roughnessCurr );
-
-    float w = STL::Math::SmoothStep01( 1.0 - ( d - REBLUR_ROUGHNESS_ULP ) * a );
-
-    // Needed to mitigate imprecision issues
-    w = STL::Math::SmoothStep( 0.05, 0.95, w );
-
-    return w;
-}
-
 float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0 )
 {
     // Anything below "angleThreshold" is ignored
@@ -425,19 +412,6 @@ float GetNormalWeightParams( float nonLinearAccumSpeed, float fraction, float ro
     angle *= lerp( saturate( fraction ), 1.0, nonLinearAccumSpeed ); // TODO: use as "percentOfVolume" instead?
 
     return 1.0 / max( angle, REBLUR_NORMAL_ULP );
-}
-
-float2 GetRoughnessWeightParams( float roughness, float fraction )
-{
-    float a = rcp( lerp( 0.01, 1.0, saturate( roughness * fraction ) ) );
-    float b = roughness * a;
-
-    return float2( a, -b );
-}
-
-float2 GetCoarseRoughnessWeightParams( float roughness )
-{
-    return float2( 1.0, -roughness );
 }
 
 float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed )

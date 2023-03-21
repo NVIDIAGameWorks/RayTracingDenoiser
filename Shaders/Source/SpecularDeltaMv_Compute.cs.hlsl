@@ -8,12 +8,12 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "../Include/NRD.hlsli"
+#include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "../Resources/SpecularDeltaMv_Compute.resources.hlsli"
+#include "SpecularDeltaMv_Compute.resources.hlsli"
 
-#include "../Include/Common.hlsli"
+#include "Common.hlsli"
 
 // acos(dot(a,b)) has severe precision issues for small angles
 // length(cross(a,b)) == length(a) * length(b) * sin(angle)

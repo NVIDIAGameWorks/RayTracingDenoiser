@@ -84,6 +84,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 #ifdef RELAX_DIFFUSE
     // Reading diffuse & resolving diffuse checkerboard
     float4 diffuseIllumination = gDiffuseIllumination[DiffCheckerboard(pixelPos + gRectOrigin)];
+    #ifdef RELAX_SH
+        float4 diffuseSH1 = gDiffuseSH1[DiffCheckerboard(pixelPos + gRectOrigin)];
+    #endif
 
     bool diffHasData = true;
     if (gDiffuseCheckerboard != 2)
@@ -94,17 +97,23 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float4 d0 = gDiffuseIllumination[DiffCheckerboard(pixelPos + int2(-1, 0) + gRectOrigin)];
         float4 d1 = gDiffuseIllumination[DiffCheckerboard(pixelPos + int2(1, 0) + gRectOrigin)];
         float2 diffCheckerboardResolveWeights = checkerboardResolveWeights;
-#if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-        float materialID0;
-        float materialID1;
-        NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos + int2(-1, 0) + gRectOrigin], materialID0);
-        NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos + int2(1, 0) + gRectOrigin], materialID1);
-        diffCheckerboardResolveWeights.x *= CompareMaterials(centerMaterialID, materialID0, gDiffMaterialMask);
-        diffCheckerboardResolveWeights.y *= CompareMaterials(centerMaterialID, materialID1, gDiffMaterialMask);
-        diffCheckerboardResolveWeights *= STL::Math::PositiveRcp(diffCheckerboardResolveWeights.x + diffCheckerboardResolveWeights.y + 1.0e-4);
-#endif
+        #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
+            float materialID0;
+            float materialID1;
+            NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos + int2(-1, 0) + gRectOrigin], materialID0);
+            NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos + int2(1, 0) + gRectOrigin], materialID1);
+            diffCheckerboardResolveWeights.x *= CompareMaterials(centerMaterialID, materialID0, gDiffMaterialMask);
+            diffCheckerboardResolveWeights.y *= CompareMaterials(centerMaterialID, materialID1, gDiffMaterialMask);
+            diffCheckerboardResolveWeights *= STL::Math::PositiveRcp(diffCheckerboardResolveWeights.x + diffCheckerboardResolveWeights.y + 1.0e-4);
+        #endif
         diffuseIllumination *= saturate(1.0 - diffCheckerboardResolveWeights.x - diffCheckerboardResolveWeights.y);
         diffuseIllumination += d0 * diffCheckerboardResolveWeights.x + d1 * diffCheckerboardResolveWeights.y;
+        #ifdef RELAX_SH
+            float4 d0SH1 = gDiffuseSH1[DiffCheckerboard(pixelPos + int2(-1, 0) + gRectOrigin)];
+            float4 d1SH1 = gDiffuseSH1[DiffCheckerboard(pixelPos + int2(1, 0) + gRectOrigin)];
+            diffuseSH1 *= saturate(1.0 - diffCheckerboardResolveWeights.x - diffCheckerboardResolveWeights.y);
+            diffuseSH1 += d0SH1 * diffCheckerboardResolveWeights.x + d1SH1 * diffCheckerboardResolveWeights.y;
+        #endif
     }
 
     // Pre-blur for diffuse
@@ -145,11 +154,9 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
             float sampleMaterialID;
             float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestClamp, uvScaled, 0), sampleMaterialID).rgb;
-
-            float4 sampleDiffuseIllumination = gDiffuseIllumination.SampleLevel(gNearestClamp, checkerboardUvScaled, 0);
             float sampleViewZ = abs(gViewZ.SampleLevel(gNearestClamp, uvScaled, 0));
-
             float3 sampleWorldPos = GetCurrentWorldPosFromClipSpaceXY(uv * 2.0 - 1.0, sampleViewZ);
+            float4 sampleDiffuseIllumination = gDiffuseIllumination.SampleLevel(gNearestClamp, checkerboardUvScaled, 0);
 
             // Sample weight
             float sampleWeight = IsInScreen(uv);
@@ -167,19 +174,33 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             sampleWeight *= lerp(diffMinHitDistanceWeight, 1.0, GetHitDistanceWeight(hitDistanceWeightParams, sampleDiffuseIllumination.a));
 
             diffuseIllumination += (sampleWeight > 0) ? sampleDiffuseIllumination * sampleWeight : 0;
+            
+            #ifdef RELAX_SH
+                float4 sampleDiffuseSH1 = gDiffuseSH1.SampleLevel(gNearestClamp, checkerboardUvScaled, 0);
+                diffuseSH1 += (sampleWeight > 0) ? sampleDiffuseSH1 * sampleWeight : 0;
+            #endif
 
             weightSum += sampleWeight;
         }
 
         diffuseIllumination /= weightSum;
+        #ifdef RELAX_SH
+            diffuseSH1 /= weightSum;
+        #endif
     }
 
     gOutDiffuseIllumination[pixelPos] = clamp(diffuseIllumination, 0, NRD_FP16_MAX);
+    #ifdef RELAX_SH
+        gOutDiffuseSH1[pixelPos] = clamp(diffuseSH1, -NRD_FP16_MAX, NRD_FP16_MAX);
+    #endif
 #endif
 
 #ifdef RELAX_SPECULAR
     // Reading specular & resolving specular checkerboard
     float4 specularIllumination = gSpecularIllumination[SpecCheckerboard(pixelPos + gRectOrigin)];
+    #ifdef RELAX_SH
+        float4 specularSH1 = gSpecularSH1[SpecCheckerboard(pixelPos + gRectOrigin)];
+    #endif
 
     bool specHasData = true;
     if (gSpecularCheckerboard != 2)
@@ -201,6 +222,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 #endif
         specularIllumination *= saturate(1.0 - specCheckerboardResolveWeights.x - specCheckerboardResolveWeights.y);
         specularIllumination += s0 * specCheckerboardResolveWeights.x + s1 * specCheckerboardResolveWeights.y;
+        #ifdef RELAX_SH
+            float4 s0SH1 = gSpecularSH1[SpecCheckerboard(pixelPos + int2(-1, 0) + gRectOrigin)];
+            float4 s1SH1 = gSpecularSH1[SpecCheckerboard(pixelPos + int2(1, 0) + gRectOrigin)];
+            specularSH1 *= saturate(1.0 - specCheckerboardResolveWeights.x - specCheckerboardResolveWeights.y);
+            specularSH1 += s0SH1 * specCheckerboardResolveWeights.x + s1SH1 * specCheckerboardResolveWeights.y;
+        #endif
     }
 
     specularIllumination.a = max(0, min(gDenoisingRange, specularIllumination.a));
@@ -289,7 +316,10 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             sampleWeight *= lerp(saturate(t), 1.0, STL::Math::LinearStep(0.5, 1.0, centerRoughness));
 
             specularIllumination.rgb += (sampleWeight > 0) ? sampleSpecularIllumination.rgb * sampleWeight : 0;
-
+            #ifdef RELAX_SH
+                float4 sampleSpecularSH1 = gSpecularSH1.SampleLevel(gNearestClamp, checkerboardUvScaled, 0);
+                specularSH1 += (sampleWeight > 0) ? sampleSpecularSH1 * sampleWeight : 0;
+            #endif
             weightSum += sampleWeight;
 
             if (sampleWeight > 0)
@@ -300,8 +330,14 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         }
         specularIllumination.rgb /= weightSum;
         specularIllumination.a = minHitT;
+        #ifdef RELAX_SH
+            specularSH1 /= weightSum;
+        #endif
     }
 
     gOutSpecularIllumination[pixelPos] = clamp(specularIllumination, 0, NRD_FP16_MAX);
+    #ifdef RELAX_SH
+        gOutSpecularSH1[pixelPos] = clamp(specularSH1, -NRD_FP16_MAX, NRD_FP16_MAX);
+    #endif
 #endif
 }

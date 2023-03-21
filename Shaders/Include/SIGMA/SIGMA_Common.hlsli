@@ -19,7 +19,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define UnpackShadow( s )                               ( s * s )
 
 // TODO: shadow unpacking is less trivial
-// 2.0 - closer to reference (dictated by encoding)
+// 2.0 - closer to reference ( dictated by encoding )
 // 2.0 - s.x - looks better
 #if 0
     #define UnpackShadowSpecial( s )                    STL::Math::Pow01( s, 2.0 - s.x * ( 1 - SIGMA_REFERENCE ) )

@@ -73,7 +73,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             int2 pos = threadPos + int2( i, j );
             float4 t = s_Normal_MinHitDist[ pos.y ][ pos.x ];
 
-            Navg.xyz += t.xyz;
+            if( i < 2 && j < 2 )
+                Navg.xyz += t.xyz;
 
             #ifdef REBLUR_SPECULAR
                 hitDistForTracking = min( hitDistForTracking, t.w ); // just "min" here works better than code from PrePass
@@ -81,7 +82,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         }
     }
 
-    Navg /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ); // needs to be unnormalized!
+    Navg /= 4.0; // needs to be unnormalized!
 
     // Normal and roughness
     float materialID;
@@ -535,7 +536,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float angle = lobeHalfAngle + curvatureAngle;
 
         // Virtual motion amount - normal
-        float4 vmbNormalAndRoughness = UnpackNormalAndRoughness( gIn_Prev_Normal_Roughness.SampleLevel( gLinearClamp, vmbPixelUv * gRectSizePrev * gInvScreenSize, 0 ) );
+        float4 vmbNormalAndRoughness = UnpackNormalAndRoughness( gIn_Prev_Normal_Roughness.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 ) );
         float3 vmbN = STL::Geometry::RotateVector( gWorldPrevToWorld, vmbNormalAndRoughness.xyz );
 
         float virtualHistoryNormalBasedConfidence = GetEncodingAwareNormalWeight( N, vmbN, angle );
@@ -545,7 +546,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         virtualHistoryAmount *= float( dot( vmbN, Navg ) > 0.0 ); // TODO: "frontFacing" seems to be not needed, better replace with "in-lobe" check
 
         // Virtual motion amount - roughness
-        float virtualHistoryRoughnessBasedConfidence = GetEncodingAwareRoughnessWeights( roughness, vmbNormalAndRoughness.w, gRoughnessFraction );
+        float2 roughnessParamsSq = GetRoughnessWeightParamsSq( roughness, gRoughnessFraction );
+        float virtualHistoryRoughnessBasedConfidence = GetRoughnessWeightSq( roughnessParamsSq, vmbNormalAndRoughness.w );
         virtualHistoryAmount *= lerp( 1.0 - saturate( vmbPixelsTraveled ), 1.0, virtualHistoryRoughnessBasedConfidence ); // jitter friendly
 
         // Sample history - surface motion
@@ -612,20 +614,25 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         vmbDelta /= gRectSizePrev;
         vmbDelta *= saturate( vmbPixelsTraveled / 0.1 ) + vmbPixelsTraveled / REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM;
 
+        roughnessParamsSq = GetRoughnessWeightParamsSq( vmbNormalAndRoughness.w, gRoughnessFraction );
+        float wr = 1.0;
+
         [unroll]
         for( i = 1; i <= REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM; i++ )
         {
             float2 vmbPixelUvPrev = vmbPixelUv + vmbDelta * i;
-            float4 vmbNormalAndRoughnessPrev = UnpackNormalAndRoughness( gIn_Prev_Normal_Roughness.SampleLevel( gLinearClamp, vmbPixelUvPrev * gRectSizePrev * gInvScreenSize, 0 ) );
+            float4 vmbNormalAndRoughnessPrev = UnpackNormalAndRoughness( gIn_Prev_Normal_Roughness.SampleLevel( gLinearClamp, vmbPixelUvPrev * gResolutionScalePrev, 0 ) );
 
-            float w = GetEncodingAwareNormalWeight( vmbNormalAndRoughness.xyz, vmbNormalAndRoughnessPrev.xyz, angle + curvatureAngle * i, curvatureAngle );
-            float wr = GetEncodingAwareRoughnessWeights( vmbNormalAndRoughness.w, vmbNormalAndRoughnessPrev.w, gRoughnessFraction );
-            w *= lerp( 0.33 * i, 1.0, lerp( 1.0 - saturate( abs( vmbPixelsTraveled ) ), 1.0, wr ) );
+            float w1 = GetEncodingAwareNormalWeight( vmbNormalAndRoughness.xyz, vmbNormalAndRoughnessPrev.xyz, angle + curvatureAngle * i, curvatureAngle );
+            float w2 = GetRoughnessWeightSq( roughnessParamsSq, vmbNormalAndRoughnessPrev.w );
 
-            float isOutOfScreen = 1.0 - IsInScreen( vmbPixelUvPrev );
-            virtualHistoryConfidence *= saturate( w + isOutOfScreen );
-            virtualHistoryRoughnessBasedConfidence *= saturate( wr + isOutOfScreen );
+            bool isInScreen = IsInScreen( vmbPixelUvPrev );
+            virtualHistoryConfidence *= isInScreen ? w1 : 1.0;
+            wr *= isInScreen ? w2 : 1.0;
         }
+
+        virtualHistoryRoughnessBasedConfidence *= wr;
+        virtualHistoryAmount *= 0.1 + wr * 0.9;
 
         // Virtual motion - accumulation acceleration
         vmbSpecAccumSpeed *= virtualHistoryConfidence;
@@ -637,7 +644,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         smbSpecAccumSpeedFactor *= gFramerateScale;
         smbSpecAccumSpeedFactor *= lerp( 0.5 + 0.5 * virtualHistoryRoughnessBasedConfidence, 1.0, virtualHistoryAmount );
 
-        float diffParallaxInPixels = lerp( smbParallaxInPixels, vmbPixelsTraveled, virtualHistoryAmount );
+        float diffParallaxInPixels = lerp( smbParallaxInPixels * ( 1.0 - smc ), vmbPixelsTraveled, virtualHistoryAmount );
         float smbSpecAccumSpeed = GetSmbAccumSpeed( smbSpecAccumSpeedFactor, diffParallaxInPixels, viewZ, specAccumSpeed, angle );
 
         // Fallback to surface motion if virtual motion doesn't go well ( tests 103, 111, 132, e9, e11 )
@@ -660,7 +667,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         REBLUR_TYPE specResult = MixHistoryAndCurrent( specHistory, spec, specNonLinearAccumSpeed, roughnessModified );
         #ifdef REBLUR_SH
             float4 specShHistory = lerp( smbSpecShHistory, vmbSpecShHistory, virtualHistoryAmount );
-            float4 specShResult = MixHistoryAndCurrent( specShHistory, specSh, specNonLinearAccumSpeed, roughnessModified );
+            float4 specShResult = lerp( specShHistory, specSh, specNonLinearAccumSpeed );
+
+            // ( Optional ) Output modified roughness to assist AA during SG resolve
+            specShResult.w = roughnessModified; // IMPORTANT: should not be blurred
         #endif
 
         // Anti-firefly suppressor

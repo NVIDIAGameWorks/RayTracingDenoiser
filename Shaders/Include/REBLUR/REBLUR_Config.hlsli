@@ -111,10 +111,11 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( float2, gScreenSize ) \
     NRD_CONSTANT( float2, gInvRectSize ) \
     NRD_CONSTANT( float2, gRectSize ) \
-    NRD_CONSTANT( float2, gRectSizePrev ) \
     NRD_CONSTANT( float2, gResolutionScale ) \
-    NRD_CONSTANT( float2, gRectOffset ) \
+    NRD_CONSTANT( float2, gResolutionScalePrev ) \
+    NRD_CONSTANT( float2, gRectSizePrev ) \
     NRD_CONSTANT( float2, gSensitivityToDarkness ) \
+    NRD_CONSTANT( float2, gRectOffset ) \
     NRD_CONSTANT( uint2, gRectOrigin ) \
     NRD_CONSTANT( float, gNonReferenceAccumulation ) \
     NRD_CONSTANT( float, gOrthoMode ) \
@@ -137,7 +138,9 @@ static const float3 g_Special8[ 8 ] =
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
     NRD_CONSTANT( uint, gSpecMaterialMask ) \
-    NRD_CONSTANT( uint, gResetHistory ) // IMPORTANT: used only in validation
+    NRD_CONSTANT( uint, gResetHistory ) \
+    NRD_CONSTANT( uint, gUnused1 ) \
+    NRD_CONSTANT( uint, gUnused2 )
 
 // PERFORMANCE MODE: x1.25 perf boost by sacrificing IQ ( DIFFUSE_SPECULAR on RTX 3090 @ 1440p 2.05 vs 2.55 ms )
 #ifdef REBLUR_PERFORMANCE_MODE

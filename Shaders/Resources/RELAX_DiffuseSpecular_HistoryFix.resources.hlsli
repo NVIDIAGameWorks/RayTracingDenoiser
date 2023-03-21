@@ -37,11 +37,19 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>,  gHistoryLength, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float>,  gViewZFP16, t, 4 )
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 6 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 1 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularSH1, u, 2 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseSH1, u, 3 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_DIFFUSE )
@@ -51,10 +59,16 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 3 )
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 4 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIllumination, u, 0 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseSH1, u, 1 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_SPECULAR )
@@ -64,10 +78,16 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 1 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 3 )
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 4 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularSH1, u, 1 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #endif

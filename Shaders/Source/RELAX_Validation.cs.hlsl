@@ -8,14 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "../Include/NRD.hlsli"
+#include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "../Include/RELAX/RELAX_Config.hlsli"
-#include "../Resources/RELAX_Validation.resources.hlsli"
+#include "RELAX/RELAX_Config.hlsli"
+#include "RELAX_Validation.resources.hlsli"
 
-#include "../Include/Common.hlsli"
-#include "../Include/RELAX/RELAX_Common.hlsli"
+#include "Common.hlsli"
+#include "RELAX/RELAX_Common.hlsli"
 
 #define VIEWPORT_SIZE   0.25
 #define OFFSET          5

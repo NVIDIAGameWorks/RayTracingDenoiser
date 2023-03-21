@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v4.0.2 (NRD)
+# NVIDIA Real-time Denoisers v4.1.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -22,7 +22,7 @@ Supported signal types:
   - Diffuse & specular radiance
   - Diffuse (ambient) & specular occlusion (OCCLUSION variants)
   - Diffuse (ambient) directional occlusion (DIRECTIONAL_OCCLUSION variant)
-  - Diffuse & specular radiance in spherical harmonics (SH variants)
+  - Diffuse & specular radiance in spherical harmonics (spherical gaussians) (SH variants)
 - *SIGMA*:
   - Shadows from an infinite light source (sun, moon)
   - Shadows from a local light source (omni, spot)
@@ -185,6 +185,67 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 
 See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
 
+# IMPROVING OUTPUT QUALITY
+
+The temporal part of *NRD* naturally suppresses jitter, which is essential for upscaling techniques. If an *SH* denoiser is in use, a high quality resolve can be applied to the final output to regain back macro details, micro details and per-pixel jittering. As an example, the image below demonstrates the results *after* and *before* resolve with active *DLSS* (quality mode).
+
+![Resolve](Images/Resolve.jpg)
+
+The resolve process takes place on the application side and has the following modular structure:
+- construct an SG (spherical gaussian) light
+- apply diffuse or specular resolve function to reconstruct macro details
+- apply re-jittering to reconstruct micro details
+- (optionally) or just extract unresolved color (fully matches the output of a corresponding non-SH denoiser)
+
+Shader code:
+```cpp
+// Diffuse
+float4 diff = gIn_Diff.SampleLevel( gLinearSampler, pixelUv, 0 );
+float4 diff1 = gIn_DiffSh.SampleLevel( gLinearSampler, pixelUv, 0 );
+NRD_SG diffSg = REBLUR_BackEnd_UnpackSh( diff, diff1 );
+
+// Specular
+float4 spec = gIn_Spec.SampleLevel( gLinearSampler, pixelUv, 0 );
+float4 spec1 = gIn_SpecSh.SampleLevel( gLinearSampler, pixelUv, 0 );
+NRD_SG specSg = REBLUR_BackEnd_UnpackSh( spec, spec1 );
+
+// ( Optional ) AO / SO ( available only for REBLUR )
+diff.w = diffSg.normHitDist;
+spec.w = specSg.normHitDist;
+
+if( gResolve )
+{
+    // ( Optional ) replace "roughness" with "roughnessAA"
+    roughness = NRD_SG_ExtractRoughnessAA( specSg );
+
+    // Regain macro-details
+    diff.xyz = NRD_SG_ResolveDiffuse( diffSg, N ); // or NRD_SH_ResolveDiffuse( sg, N )
+    spec.xyz = NRD_SG_ResolveSpecular( specSg, N, V, roughness );
+
+    // Regain micro-details & jittering // TODO: preload N and Z into SMEM
+    float3 Ne = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2( 1, 0 ) ] ).xyz;
+    float3 Nw = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2( -1, 0 ) ] ).xyz;
+    float3 Nn = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2( 0, 1 ) ] ).xyz;
+    float3 Ns = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pixelPos + int2( 0, -1 ) ] ).xyz;
+
+    float Ze = gIn_ViewZ[ pixelPos + int2( 1, 0 ) ];
+    float Zw = gIn_ViewZ[ pixelPos + int2( -1, 0 ) ];
+    float Zn = gIn_ViewZ[ pixelPos + int2( 0, 1 ) ];
+    float Zs = gIn_ViewZ[ pixelPos + int2( 0, -1 ) ];
+
+    float2 scale = NRD_SG_ReJitter( diffSg, specSg, Rf0, V, roughness, viewZ, Ze, Zw, Zn, Zs, N, Ne, Nw, Nn, Ns );
+
+    diff.xyz *= scale.x;
+    spec.xyz *= scale.y;
+}
+else
+{
+    // ( Optional ) Unresolved color matching the non-SH version of the denoiser
+    diff.xyz = NRD_SG_ExtractColor( diffSg );
+    spec.xyz = NRD_SG_ExtractColor( specSg );
+}
+```
+
 # VALIDATION LAYER
 
 ![Validation](Images/Validation.png)
@@ -239,8 +300,11 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |                         SIGMA_SHADOW |            23.38 |             0.00 |            23.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            42.31 |             0.00 |            42.31 |
 |            |                        RELAX_DIFFUSE |           120.31 |            65.44 |            54.88 |
+|            |                     RELAX_DIFFUSE_SH |           204.69 |            99.19 |           105.50 |
 |            |                       RELAX_SPECULAR |           130.94 |            73.94 |            57.00 |
+|            |                    RELAX_SPECULAR_SH |           215.31 |           107.69 |           107.62 |
 |            |               RELAX_DIFFUSE_SPECULAR |           215.31 |           107.69 |           107.62 |
+|            |            RELAX_DIFFUSE_SPECULAR_SH |           384.06 |           175.19 |           208.88 |
 |            |                            REFERENCE |            33.75 |            33.75 |             0.00 |
 |            |                                      |                  |                  |                  |
 |      1440p |                       REBLUR_DIFFUSE |           153.75 |            82.50 |            71.25 |
@@ -256,8 +320,11 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |                         SIGMA_SHADOW |            41.38 |             0.00 |            41.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            75.12 |             0.00 |            75.12 |
 |            |                        RELAX_DIFFUSE |           213.75 |           116.25 |            97.50 |
+|            |                     RELAX_DIFFUSE_SH |           363.75 |           176.25 |           187.50 |
 |            |                       RELAX_SPECULAR |           232.50 |           131.25 |           101.25 |
+|            |                    RELAX_SPECULAR_SH |           382.50 |           191.25 |           191.25 |
 |            |               RELAX_DIFFUSE_SPECULAR |           382.50 |           191.25 |           191.25 |
+|            |            RELAX_DIFFUSE_SPECULAR_SH |           682.50 |           311.25 |           371.25 |
 |            |                            REFERENCE |            60.00 |            60.00 |             0.00 |
 |            |                                      |                  |                  |                  |
 |      2160p |                       REBLUR_DIFFUSE |           326.75 |           175.31 |           151.44 |
@@ -273,8 +340,11 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |                         SIGMA_SHADOW |            87.94 |             0.00 |            87.94 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |           159.56 |             0.00 |           159.56 |
 |            |                        RELAX_DIFFUSE |           454.31 |           247.12 |           207.19 |
+|            |                     RELAX_DIFFUSE_SH |           773.06 |           374.62 |           398.44 |
 |            |                       RELAX_SPECULAR |           494.19 |           279.00 |           215.19 |
+|            |                    RELAX_SPECULAR_SH |           812.94 |           406.50 |           406.44 |
 |            |               RELAX_DIFFUSE_SPECULAR |           812.94 |           406.50 |           406.44 |
+|            |            RELAX_DIFFUSE_SPECULAR_SH |          1450.44 |           661.50 |           788.94 |
 |            |                            REFERENCE |           127.50 |           127.50 |             0.00 |
 
 # INTEGRATION VARIANTS
@@ -467,7 +537,6 @@ Shader part:
     // Or define NRD encoding in Cmake and deliver macro definitions to shader compilation command line
 #endif
 
-#define NRD_HEADER_ONLY
 #include "NRD.hlsli"
 
 // Call corresponding "front end" function to encode data for NRD (NRD.hlsli indicates which function
@@ -612,6 +681,8 @@ maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 ```
 
 **[NRD]** In case of quarter resolution tracing and denoising use `pixelPos / 2` as texture coordinates. Using a "rotated grid" approach (when a pixel gets selected from 2x2 footprint one by one) is not recommended because it significantly bumps entropy of non-noisy inputs, leading to more disocclusions. In case of *REBLUR* it's recommended to increase `sigmaScale` in antilag settings. "Nearest Z" upsampling works best for upscaling of the denoised output. Code, as well as upsampling function, can be found in *NRD sample* releases before 3.10.
+
+**[NRD]** *SH* denoisers can use more relaxed `lobeAngleFraction`. It can help to improve stability, while details will be reconstructed back by *SG* resolve.
 
 **[REBLUR]** In case of *REBLUR* ensure that `enableReferenceAccumulation = true` works properly first. It's not mandatory, but will help to simplify debugging of potential issues by implicitly disabling spatial filtering entirely.
 

@@ -37,6 +37,9 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gConfidenceDrivenRelaxationMultiplier )
         NRD_CONSTANT( float, gConfidenceDrivenLuminanceEdgeStoppingRelaxation )
         NRD_CONSTANT( float, gConfidenceDrivenNormalEdgeStoppingRelaxation )
+        #ifdef RELAX_SH
+            NRD_CONSTANT( uint, gIsLastPass )
+        #endif
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
@@ -48,11 +51,19 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 5 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 6 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 7 )
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 8 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 9 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIlluminationAndVariance, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIlluminationAndVariance, u, 1 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularSH1, u, 2 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseSH1, u, 3 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_DIFFUSE )
@@ -68,6 +79,9 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gConfidenceDrivenRelaxationMultiplier )
         NRD_CONSTANT( float, gConfidenceDrivenLuminanceEdgeStoppingRelaxation )
         NRD_CONSTANT( float, gConfidenceDrivenNormalEdgeStoppingRelaxation )
+        #ifdef RELAX_SH
+            NRD_CONSTANT( uint, gIsLastPass )
+        #endif
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
@@ -76,10 +90,16 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 4 )
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 5 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseIlluminationAndVariance, u, 0 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutDiffuseSH1, u, 1 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #elif( defined RELAX_SPECULAR )
@@ -102,6 +122,9 @@ NRD_SAMPLER_END
         NRD_CONSTANT( float, gConfidenceDrivenRelaxationMultiplier )
         NRD_CONSTANT( float, gConfidenceDrivenLuminanceEdgeStoppingRelaxation )
         NRD_CONSTANT( float, gConfidenceDrivenNormalEdgeStoppingRelaxation )
+        #ifdef RELAX_SH
+            NRD_CONSTANT( uint, gIsLastPass )
+        #endif
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
@@ -111,10 +134,16 @@ NRD_SAMPLER_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 4 )
         NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 5 )
+        #ifdef RELAX_SH
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 6 )
+        #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularIlluminationAndVariance, u, 0 )
+        #ifdef RELAX_SH
+            NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOutSpecularSH1, u, 1 )
+        #endif
     NRD_OUTPUT_TEXTURE_END
 
 #endif
