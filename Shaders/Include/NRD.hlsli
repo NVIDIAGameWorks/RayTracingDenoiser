@@ -277,7 +277,7 @@ float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool b
 // Color space
 float _NRD_Luminance( float3 linearColor )
 {
-    return dot( linearColor, float3( 0.2126729, 0.7151522, 0.072175 ) );
+    return dot( linearColor, float3( 0.2126729, 0.7151521, 0.072175 ) );
 }
 
 float3 _NRD_LinearToYCoCg( float3 color )
