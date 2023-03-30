@@ -142,7 +142,7 @@ set_source_files_properties (${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
 
 if (WIN32)
     add_custom_target (${PROJECT_NAME}_Shaders ALL
-        COMMAND ShaderMake
+        COMMAND ShaderMake --useAPI
             --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_PATH}"
             --sourceDir "Shaders/Source"
             --allResourcesBound
@@ -155,7 +155,7 @@ if (WIN32)
             -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
             -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
             -D NRD_INTERNAL
-        COMMAND ShaderMake
+        COMMAND ShaderMake --useAPI
             --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_SPIRV_PATH}"
             --sourceDir "Shaders/Source"
             --allResourcesBound
@@ -168,7 +168,7 @@ if (WIN32)
             -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
             -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
             -D NRD_INTERNAL
-        COMMAND ShaderMake
+        COMMAND ShaderMake --useAPI
             --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${FXC_PATH}"
             --sourceDir "Shaders/Source"
             --allResourcesBound

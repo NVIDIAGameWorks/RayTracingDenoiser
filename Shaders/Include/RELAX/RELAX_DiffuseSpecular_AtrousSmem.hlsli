@@ -443,7 +443,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         specularVariance *= boost;
         gOutSpecularIlluminationAndVariance[pixelPos] = float4(sumSpecularIllumination, specularVariance);
         #ifdef RELAX_SH
-            gOutSpecularSH1[pixelPos] = sumSpecularSH1 / sumWSpecularIllumination;
+            float roughnessModified = sharedSpecularSH1[sharedMemoryIndex.y][sharedMemoryIndex.x].w;
+            gOutSpecularSH1[pixelPos] = float4(sumSpecularSH1.rgb / sumWSpecularIllumination, roughnessModified);
         #endif
 #endif
 

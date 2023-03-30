@@ -1,4 +1,4 @@
-# NVIDIA Real-time Denoisers v4.1.0 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.1.1 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -92,6 +92,8 @@ NRD sample has *TESTS* section in the bottom of the UI, a new test can be added 
     - verify the integration
 - If nothing helps
   - describe the issue, attach a video and steps to reproduce
+
+Additionally, for any information, suggestions or general requests please feel free to contact us at NRD-SDK-Support@nvidia.com
 
 # API
 

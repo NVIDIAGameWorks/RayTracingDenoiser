@@ -57,10 +57,12 @@ namespace nrd
         // Probabilistic split at primary hit is not used, hence hit distance is always valid (reconstruction is not needed)
         OFF,
 
-        // If hit distance is invalid due to probabilistic sampling, reconstruct using 3x3 neighbors
+        // If hit distance is invalid due to probabilistic sampling, reconstruct using 3x3 neighbors.
+        // Probability at primary hit must be clamped to [1/4; 3/4] range to guarantee a sample in this area
         AREA_3X3,
 
-        // If hit distance is invalid due to probabilistic sampling, reconstruct using 5x5 neighbors
+        // If hit distance is invalid due to probabilistic sampling, reconstruct using 5x5 neighbors.
+        // Probability at primary hit must be clamped to [1/16; 15/16] range to guarantee a sample in this area
         AREA_5X5,
 
         MAX_NUM

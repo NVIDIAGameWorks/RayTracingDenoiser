@@ -389,3 +389,7 @@ namespace nrd
         dst++;
     }
 }
+
+// IMPORTANT: needed only for DXBC produced by ShaderMake without "--useAPI"
+#undef BYTE
+#define BYTE uint8_t
