@@ -134,9 +134,9 @@ float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float
     }
     else if( mode == NRD_RANDOM )
     {
-        STL::Rng::Initialize( pixelPos, frameIndex );
+        STL::Rng::Hash::Initialize( pixelPos, frameIndex );
 
-        float2 rnd = STL::Rng::GetFloat2( );
+        float2 rnd = STL::Rng::Hash::GetFloat2( );
         float4 rotator = STL::Geometry::GetRotator( rnd.x * STL::Math::Pi( 2.0 ) );
         rotator *= 1.0 + ( rnd.y * 2.0 - 1.0 ) * 0.5;
 

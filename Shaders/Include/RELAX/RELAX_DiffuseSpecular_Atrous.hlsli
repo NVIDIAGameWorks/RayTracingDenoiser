@@ -132,8 +132,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     int2 offset = 0;
     if (gStepSize > 4)
     {
-        STL::Rng::Initialize(pixelPos, gFrameIndex);
-        offset = int2(gStepSize.xx * 0.5 * (STL::Rng::GetFloat2() - 0.5));
+        STL::Rng::Hash::Initialize(pixelPos, gFrameIndex);
+        offset = int2(gStepSize.xx * 0.5 * (STL::Rng::Hash::GetFloat2() - 0.5));
     }
 
     [unroll]
