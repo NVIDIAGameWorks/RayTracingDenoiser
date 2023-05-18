@@ -129,9 +129,9 @@ Commons inputs for primary hits (if *PSR* is not used, common use case) or for s
   - *2.5D screen-space motion* - similar to the 2D screen-space motion, but `.z = viewZprev - viewZ`.
 
   Motion vector scaling can be provided via `CommonSettings::motionVectorScale`. *NRD* expectations:
-  - Use `ComminSettings::isMotionVectorInWorldSpace = true` for 3D world-space motion
-  - Use `ComminSettings::isMotionVectorInWorldSpace = false` and `ComminSettings::motionVectorScale[2] == 0` for 2D screen-space motion
-  - Use `ComminSettings::isMotionVectorInWorldSpace = false` and `ComminSettings::motionVectorScale[2] != 0` for 2.5D screen-space motion
+  - Use `CommonSettings::isMotionVectorInWorldSpace = true` for 3D world-space motion
+  - Use `CommonSettings::isMotionVectorInWorldSpace = false` and `CommonSettings::motionVectorScale[2] == 0` for 2D screen-space motion
+  - Use `CommonSettings::isMotionVectorInWorldSpace = false` and `CommonSettings::motionVectorScale[2] != 0` for 2.5D screen-space motion
 
 * **IN\_NORMAL\_ROUGHNESS** - surface world-space normal and *linear* roughness
 
