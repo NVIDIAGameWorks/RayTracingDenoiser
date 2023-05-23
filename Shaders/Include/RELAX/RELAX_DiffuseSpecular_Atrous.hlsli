@@ -11,11 +11,23 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 {
-    float centerMaterialID;
-    float centerViewZ = gViewZFP16[pixelPos] / NRD_FP16_VIEWZ_SCALE;
+    // Tile-based early out
+    float isSky = gTiles[pixelPos >> 4];
+    if (isSky != 0.0)
+    {
+#if( RELAX_BLACK_OUT_INF_PIXELS == 1 )
+#ifdef RELAX_SPECULAR
+        gOutSpecularIlluminationAndVariance[pixelPos] = 0;
+#endif
+#ifdef RELAX_DIFFUSE
+        gOutDiffuseIlluminationAndVariance[pixelPos] = 0;
+#endif
+#endif
+        return;
+    }
 
     // Early out if linearZ is beyond denoising range
-    [branch]
+    float centerViewZ = abs(gViewZ[pixelPos]);
     if (centerViewZ > gDenoisingRange)
     {
 #if( RELAX_BLACK_OUT_INF_PIXELS == 1 )
@@ -29,6 +41,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
         return;
     }
 
+    float centerMaterialID;
     float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos], centerMaterialID);
     float3 centerNormal = centerNormalRoughness.rgb;
     float centerRoughness = centerNormalRoughness.a;
@@ -155,7 +168,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             float4 sampleNormalRoughnes = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[p], sampleMaterialID);
             float3 sampleNormal = sampleNormalRoughnes.rgb;
             float sampleRoughness = sampleNormalRoughnes.a;
-            float sampleViewZ = gViewZFP16[p] / NRD_FP16_VIEWZ_SCALE;
+            float sampleViewZ = abs(gViewZ[p]);
 
             // Calculating sample world position
             float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(p, sampleViewZ);

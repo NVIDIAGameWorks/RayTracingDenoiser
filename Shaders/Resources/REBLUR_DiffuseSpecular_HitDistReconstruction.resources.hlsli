@@ -22,10 +22,11 @@ NRD_CONSTANTS_END
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 4 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
@@ -36,9 +37,10 @@ NRD_CONSTANTS_END
 #elif( defined REBLUR_DIFFUSE )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 3 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
@@ -48,9 +50,10 @@ NRD_CONSTANTS_END
 #else
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 3 )
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START

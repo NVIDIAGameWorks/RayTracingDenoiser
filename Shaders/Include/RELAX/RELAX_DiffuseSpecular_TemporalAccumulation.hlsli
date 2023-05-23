@@ -409,34 +409,15 @@ void Preload(uint2 sharedPos, int2 globalPos)
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
 {
-    PRELOAD_INTO_SMEM; // Declares int i, j
+    float isSky = gTiles[pixelPos >> 4];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
-    // Calculating checkerboard fields
-    uint2 checkerboardPixelPos = pixelPos.xx;
-    uint checkerboard = STL::Sequence::CheckerBoard(pixelPos, gFrameIndex);
-
-#ifdef RELAX_DIFFUSE
-    bool diffHasData = true;
-    if (gDiffCheckerboard != 2)
-    {
-        diffHasData = checkerboard == gDiffCheckerboard;
-        checkerboardPixelPos.x >>= 1;
-    }
-#endif
-
-#ifdef RELAX_SPECULAR
-    bool specHasData = true;
-    if (gSpecCheckerboard != 2)
-    {
-        specHasData = checkerboard == gSpecCheckerboard;
-        checkerboardPixelPos.y >>= 1;
-    }
-#endif
+    // Tile-based early out
+    if (isSky != 0.0)
+        return;
 
     // Early out if linearZ is beyond denoising range
-    float currentLinearZ = gViewZ[pixelPos.xy + gRectOrigin];
-
-    [branch]
+    float currentLinearZ = abs(gViewZ[pixelPos.xy + gRectOrigin]);
     if (currentLinearZ > gDenoisingRange)
         return;
 
@@ -663,6 +644,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Handling history reset if needed
     historyLength = (gResetHistory != 0) ? 1.0 : historyLength;
 
+    // Calculating checkerboard fields
+    uint checkerboard = STL::Sequence::CheckerBoard(pixelPos, gFrameIndex);
+
 #ifdef RELAX_DIFFUSE
     // DIFFUSE ACCUMULATION BELOW
     //
@@ -682,7 +666,12 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float diffuseAlpha = (SMBReprojectionFound > 0) ? max(1.0 / (diffMaxAccumulatedFrameNum + 1.0), 1.0 / diffHistoryLength) : 1.0;
     float diffuseAlphaResponsive = (SMBReprojectionFound > 0) ? max(1.0 / (diffMaxFastAccumulatedFrameNum + 1.0), 1.0 / diffHistoryLength) : 1.0;
 
-    [flatten]
+    bool diffHasData = true;
+    if (gDiffCheckerboard != 2)
+    {
+        diffHasData = checkerboard == gDiffCheckerboard;
+    }
+
     if ((!diffHasData) && (diffHistoryLength > 1.0))
     {
         // Adjusting diffuse accumulation weights for checkerboard
@@ -871,8 +860,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     specSMBAlpha = max(specSMBAlpha, 1.0 / (1.0 + specHistoryFrames));
     specSMBResponsiveAlpha = max(specSMBAlpha, 1.0 / (1.0 + specHistoryResponsiveFrames));
 
-    [flatten]
-    if (!specHasData && (parallaxInPixels < 2.0))
+    bool specHasData = true;
+    if (gSpecCheckerboard != 2)
+    {
+        specHasData = checkerboard == gSpecCheckerboard;
+    }
+
+    if (!specHasData && (parallaxInPixels < 0.5))
     {
         // Adjusting surface motion based specular accumulation weights for checkerboard
         specSMBAlpha *= 1.0 - gCheckerboardResolveAccumSpeed * (SMBReprojectionFound > 0 ? 1.0 : 0.0);
@@ -895,7 +889,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     specVMBHitTAlpha = max(specVMBHitTAlpha, 1.0 / (1.0 + specHistoryFrames));
 
     [flatten]
-    if (!specHasData && (parallaxInPixels < 2.0))
+    if (!specHasData && (parallaxInPixels < 0.5))
     {
         // Adjusting virtual motion based specular accumulation weights for checkerboard
         specVMBAlpha *= 1.0 - gCheckerboardResolveAccumSpeed * (VMBReprojectionFound > 0 ? 1.0 : 0.0);

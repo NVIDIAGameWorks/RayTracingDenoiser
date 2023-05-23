@@ -8,22 +8,22 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_Reference(MethodData& methodData)
+void nrd::InstanceImpl::Add_Reference(DenoiserData& denoiserData)
 {
-    #define METHOD_NAME Reference
+    #define DENOISER_NAME Reference
 
-    methodData.settings.reference = ReferenceSettings();
-    methodData.settingsSize = sizeof(methodData.settings.reference);
+    denoiserData.settings.reference = ReferenceSettings();
+    denoiserData.settingsSize = sizeof(denoiserData.settings.reference);
             
-    uint16_t w = methodData.desc.fullResolutionWidth;
-    uint16_t h = methodData.desc.fullResolutionHeight;
+    uint16_t w = denoiserData.desc.renderWidth;
+    uint16_t h = denoiserData.desc.renderHeight;
 
     enum class Permanent
     {
         HISTORY = PERMANENT_POOL_START,
     };
 
-    m_PermanentPool.push_back( {Format::RGBA32_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA32_SFLOAT, w, h, 1} );
 
     SetSharedConstants(0, 0, 0, 0);
 
@@ -45,10 +45,10 @@ void nrd::DenoiserImpl::AddMethod_Reference(MethodData& methodData)
         AddDispatch( REFERENCE_SplitScreen, SumConstants(0, 0, 0, 0), NumThreads(16, 16), 1 );
     }
 
-    #undef METHOD_NAME
+    #undef DENOISER_NAME
 }
 
-void nrd::DenoiserImpl::UpdateMethod_Reference(const MethodData& methodData)
+void nrd::InstanceImpl::Update_Reference(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
@@ -56,7 +56,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reference(const MethodData& methodData)
         COPY,
     };
 
-    const ReferenceSettings& settings = methodData.settings.reference;
+    const ReferenceSettings& settings = denoiserData.settings.reference;
 
     if (m_WorldToClip != m_WorldToClipPrev || m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE)
         m_AccumulatedFrameNum = 0;
@@ -66,7 +66,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reference(const MethodData& methodData)
     NRD_DECLARE_DIMS;
 
     // ACCUMULATE
-    Constant* data = PushDispatch(methodData, AsUint(Dispatch::ACCUMULATE));
+    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::ACCUMULATE));
     AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
     AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
     AddFloat(data, m_CommonSettings.splitScreen);
@@ -75,6 +75,6 @@ void nrd::DenoiserImpl::UpdateMethod_Reference(const MethodData& methodData)
     ValidateConstants(data);
 
     // COPY
-    data = PushDispatch(methodData, AsUint(Dispatch::COPY));
+    data = PushDispatch(denoiserData, AsUint(Dispatch::COPY));
     ValidateConstants(data);
 }

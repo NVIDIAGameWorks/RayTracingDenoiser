@@ -103,7 +103,7 @@ void Preload(uint2 sharedPos, int2 globalPos)
     float materialID;
     sharedNormalRoughness[sharedPos.y][sharedPos.x] = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[globalPos], materialID);
 
-    float viewZ = gViewZFP16[globalPos] / NRD_FP16_VIEWZ_SCALE;
+    float viewZ = abs(gViewZ[globalPos]);
     sharedWorldPosMaterialID[sharedPos.y][sharedPos.x] = float4(GetCurrentWorldPosFromPixelPos(globalPos, viewZ), materialID);
 
 }
@@ -111,15 +111,17 @@ void Preload(uint2 sharedPos, int2 globalPos)
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
 {
-    PRELOAD_INTO_SMEM;
-    // Shared memory is populated now and can be used for filtering
+    // Preload
+    float isSky = gTiles[pixelPos >> 4];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     int2 sharedMemoryIndex = threadPos.xy + int2(BORDER, BORDER);
 
     float4 centerWorldPosMaterialID = sharedWorldPosMaterialID[sharedMemoryIndex.y][sharedMemoryIndex.x];
     float3 centerWorldPos = centerWorldPosMaterialID.xyz;
     float centerMaterialID = centerWorldPosMaterialID.w;
-    float centerViewZ = gViewZFP16[pixelPos] / NRD_FP16_VIEWZ_SCALE;
+    float centerViewZ = abs(gViewZ[pixelPos]);
+    gOutViewZ[pixelPos] = centerViewZ;
 
     // Repacking normal and roughness to prev normal roughness to be used in the next frame
     float4 normalRoughness = sharedNormalRoughness[sharedMemoryIndex.y][sharedMemoryIndex.x];
@@ -134,8 +136,11 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     gOutMaterialID[pixelPos] = centerMaterialID;
 #endif
 
+    // Tile-based early out
+    if (isSky != 0.0)
+        return;
+
     // Early out if linearZ is beyond denoising range
-    [branch]
     if (centerViewZ > gDenoisingRange)
         return;
 
@@ -275,7 +280,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 // Calculating weights for specular
 
                 // Getting sample view vector closer to center view vector
-                // by adding gRoughnessEdgeStoppingRelaxation * centerWorldPos 
+                // by adding gRoughnessEdgeStoppingRelaxation * centerWorldPos
                 // relaxes view direction based rejection
                 float3 sampleV = -normalize(sampleWorldPos + gRoughnessEdgeStoppingRelaxation * centerWorldPos);
                 float normalWSpecularSimplified = GetNormalWeight(specularNormalWeightParamsSimplified, centerNormal, sampleNormal);

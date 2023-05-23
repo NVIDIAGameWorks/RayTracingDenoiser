@@ -36,12 +36,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
     int2 pixelPosUser = gRectOrigin + pixelPos;
 
-    float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
-
     // Preload
-    PRELOAD_INTO_SMEM;
+    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
+
+    // Tile-based early out
+    if( isSky != 0.0 )
+        return;
 
     // Early out
+    float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
     if( viewZ > gDenoisingRange )
         return;
 
@@ -173,8 +177,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float diffCenter = s_DiffLuma[ smemPos.y ][ smemPos.x ];
         float diffM1 = diffCenter;
         float diffM2 = diffM1 * diffM1;
-        float diffMax = -NRD_INF;
-        float diffMin = NRD_INF;
 
         [unroll]
         for( j = 0; j <= BORDER * 2; j++ )
@@ -187,29 +189,44 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     continue;
 
                 int2 pos = threadPos + int2( i, j );
-                float2 o = float2( i, j ) - BORDER;
 
                 float d = s_DiffLuma[ pos.y ][ pos.x ];
                 diffM1 += d;
                 diffM2 += d * d;
-
-                #if( REBLUR_USE_ANTIFIREFLY == 1 )
-                    if( all( abs( o ) <= 1 ) || REBLUR_USE_5X5_ANTI_FIREFLY == 1 )
-                    {
-                        diffMax = max( diffMax, d );
-                        diffMin = min( diffMin, d );
-                    }
-                #endif
             }
         }
 
         float diffLuma = GetLuma( diff );
 
         // Anti-firefly
-        #if( REBLUR_USE_ANTIFIREFLY == 1 )
-            float diffLumaClamped1 = clamp( diffLuma, diffMin, diffMax );
-            diffLuma = gAntiFirefly ? diffLumaClamped1 : diffLuma;
-        #endif
+        if( gAntiFirefly && REBLUR_USE_ANTIFIREFLY == 1 )
+        {
+            float m1 = 0;
+            float m2 = 0;
+
+            [unroll]
+            for( j = -REBLUR_ANTI_FIREFLY_FILTER_RADIUS; j <= REBLUR_ANTI_FIREFLY_FILTER_RADIUS; j++ )
+            {
+                [unroll]
+                for( i = -REBLUR_ANTI_FIREFLY_FILTER_RADIUS; i <= REBLUR_ANTI_FIREFLY_FILTER_RADIUS; i++ )
+                {
+                    // Skip central 3x3 area
+                    if( abs( i ) <= 1 && abs( j ) <= 1 )
+                        continue;
+
+                    float d = gIn_DiffFast.SampleLevel( gNearestClamp, pixelUv + int2( i, j ) * gInvRectSize, 0 ).x;
+                    m1 += d;
+                    m2 += d * d;
+                }
+            }
+
+            float invNorm = 1.0 / ( ( REBLUR_ANTI_FIREFLY_FILTER_RADIUS * 2 + 1 ) * ( REBLUR_ANTI_FIREFLY_FILTER_RADIUS * 2 + 1 ) - 3 * 3 );
+            m1 *= invNorm;
+            m2 *= invNorm;
+
+            float sigma = GetStdDev( m1, m2 ) * REBLUR_ANTI_FIREFLY_SIGMA_SCALE;
+            diffLuma = clamp( diffLuma, m1 - sigma, m1 + sigma );
+        }
 
         // Fast history
         diffM1 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
@@ -217,11 +234,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float diffSigma = GetStdDev( diffM1, diffM2 ) * REBLUR_COLOR_CLAMPING_SIGMA_SCALE;
 
         // Seems that extending clamping range by the center helps to minimize potential bias
-        diffMin = min( diffM1 - diffSigma, diffCenter );
-        diffMax = max( diffM1 + diffSigma, diffCenter );
+        float diffMin = min( diffM1 - diffSigma, diffCenter );
+        float diffMax = max( diffM1 + diffSigma, diffCenter );
 
-        float diffLumaClamped2 = clamp( diffLuma, diffMin, diffMax );
-        diffLuma = lerp( diffLumaClamped2, diffLuma, 1.0 / ( 1.0 + float( gMaxFastAccumulatedFrameNum < gMaxAccumulatedFrameNum ) * frameNumUnclamped.x ) );
+        float diffLumaClamped = clamp( diffLuma, diffMin, diffMax );
+        diffLuma = lerp( diffLumaClamped, diffLuma, 1.0 / ( 1.0 + float( gMaxFastAccumulatedFrameNum < gMaxAccumulatedFrameNum ) * frameNumUnclamped.x ) );
 
         // Change luma
         diff = ChangeLuma( diff, diffLuma );
@@ -346,8 +363,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specCenter = s_SpecLuma[ smemPos.y ][ smemPos.x ];
         float specM1 = specCenter;
         float specM2 = specM1 * specM1;
-        float specMax = -NRD_INF;
-        float specMin = NRD_INF;
 
         [unroll]
         for( j = 0; j <= BORDER * 2; j++ )
@@ -360,25 +375,44 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     continue;
 
                 int2 pos = threadPos + int2( i, j );
-                float2 o = float2( i, j ) - BORDER;
 
                 float s = s_SpecLuma[ pos.y ][ pos.x ];
                 specM1 += s;
                 specM2 += s * s;
-
-                if( all( abs( o ) <= 1 ) || REBLUR_USE_5X5_ANTI_FIREFLY == 1 )
-                {
-                    specMax = max( specMax, s );
-                    specMin = min( specMin, s );
-                }
             }
         }
 
         float specLuma = GetLuma( spec );
 
         // Anti-firefly
-        float specLumaClamped1 = clamp( specLuma, specMin, specMax );
-        specLuma = gAntiFirefly ? specLumaClamped1 : specLuma;
+        if( gAntiFirefly && REBLUR_USE_ANTIFIREFLY == 1 )
+        {
+            float m1 = 0;
+            float m2 = 0;
+
+            [unroll]
+            for( j = -REBLUR_ANTI_FIREFLY_FILTER_RADIUS; j <= REBLUR_ANTI_FIREFLY_FILTER_RADIUS; j++ )
+            {
+                [unroll]
+                for( i = -REBLUR_ANTI_FIREFLY_FILTER_RADIUS; i <= REBLUR_ANTI_FIREFLY_FILTER_RADIUS; i++ )
+                {
+                    // Skip central 3x3 area
+                    if( abs( i ) <= 1 && abs( j ) <= 1 )
+                        continue;
+
+                    float s = gIn_SpecFast.SampleLevel( gNearestClamp, pixelUv + int2( i, j ) * gInvRectSize, 0 ).x;
+                    m1 += s;
+                    m2 += s * s;
+                }
+            }
+
+            float invNorm = 1.0 / ( ( REBLUR_ANTI_FIREFLY_FILTER_RADIUS * 2 + 1 ) * ( REBLUR_ANTI_FIREFLY_FILTER_RADIUS * 2 + 1 ) - 3 * 3 );
+            m1 *= invNorm;
+            m2 *= invNorm;
+
+            float sigma = GetStdDev( m1, m2 ) * REBLUR_ANTI_FIREFLY_SIGMA_SCALE;
+            specLuma = clamp( specLuma, m1 - sigma, m1 + sigma );
+        }
 
         // Fast history
         specM1 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
@@ -386,11 +420,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specSigma = GetStdDev( specM1, specM2 ) * REBLUR_COLOR_CLAMPING_SIGMA_SCALE;
 
         // Seems that extending clamping range by the center helps to minimize potential bias
-        specMin = min( specM1 - specSigma, specCenter );
-        specMax = max( specM1 + specSigma, specCenter );
+        float specMin = min( specM1 - specSigma, specCenter );
+        float specMax = max( specM1 + specSigma, specCenter );
 
-        float specLumaClamped2 = clamp( specLuma, specMin, specMax );
-        specLuma = lerp( specLumaClamped2, specLuma, 1.0 / ( 1.0 + float( gMaxFastAccumulatedFrameNum < gMaxAccumulatedFrameNum ) * frameNumUnclamped.y ) );
+        float specLumaClamped = clamp( specLuma, specMin, specMax );
+        specLuma = lerp( specLumaClamped, specLuma, 1.0 / ( 1.0 + float( gMaxFastAccumulatedFrameNum < gMaxAccumulatedFrameNum ) * frameNumUnclamped.y ) );
 
         // Change luma
         spec = ChangeLuma( spec, specLuma );

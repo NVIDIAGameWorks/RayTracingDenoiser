@@ -8,15 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(MethodData& methodData)
+void nrd::InstanceImpl::Add_SpecularDeltaMv(DenoiserData& denoiserData)
 {
-    #define METHOD_NAME SpecularDeltaMv
+    #define DENOISER_NAME SpecularDeltaMv
 
-    methodData.settings.specularDeltaMv = SpecularDeltaMvSettings();
-    methodData.settingsSize = sizeof(methodData.settings.specularDeltaMv);
+    denoiserData.settings.specularDeltaMv = SpecularDeltaMvSettings();
+    denoiserData.settingsSize = sizeof(denoiserData.settings.specularDeltaMv);
             
-    uint16_t w = methodData.desc.fullResolutionWidth;
-    uint16_t h = methodData.desc.fullResolutionHeight;
+    uint16_t w = denoiserData.desc.renderWidth;
+    uint16_t h = denoiserData.desc.renderHeight;
 
     enum class Permanent
     {
@@ -24,8 +24,8 @@ void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(MethodData& methodData)
         DELTA_SECONDARY_POS_PREV
     };
 
-    m_PermanentPool.push_back( {Format::RGBA32_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA32_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA32_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA32_SFLOAT, w, h, 1} );
 
     SetSharedConstants(0, 0, 0, 0);
 
@@ -42,10 +42,10 @@ void nrd::DenoiserImpl::AddMethod_SpecularDeltaMv(MethodData& methodData)
         AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 1, 3, 1), NumThreads(16, 16), 1 );
     }
 
-    #undef METHOD_NAME
+    #undef DENOISER_NAME
 }
 
-void nrd::DenoiserImpl::UpdateMethod_SpecularDeltaMv(const MethodData& methodData)
+void nrd::InstanceImpl::Update_SpecularDeltaMv(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
@@ -55,7 +55,7 @@ void nrd::DenoiserImpl::UpdateMethod_SpecularDeltaMv(const MethodData& methodDat
     NRD_DECLARE_DIMS;
 
     // COMPUTE
-    Constant* data = PushDispatch(methodData, AsUint(Dispatch::COMPUTE));
+    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::COMPUTE));
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4(data, ml::float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.debug));
     AddUint2(data, rectW, rectH);

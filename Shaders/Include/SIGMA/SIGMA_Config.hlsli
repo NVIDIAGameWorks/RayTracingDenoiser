@@ -15,8 +15,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_PENUMBRA_FIX_BLUR_RADIUS_ADDON            5.0
 #define SIGMA_MAX_SIGMA_SCALE                           3.5
 #define SIGMA_TS_MOTION_MAX_REUSE                       0.11
-#define SIGMA_USE_CATROM                                1
-#define SIGMA_5X5_TEMPORAL_KERNEL                       1
+#define SIGMA_USE_CATROM                                1 // sharper reprojection
+#define SIGMA_5X5_TEMPORAL_KERNEL                       1 // provides variance estimation in a wider radius
+#define SIGMA_5X5_BLUR_RADIUS_ESTIMATION_KERNEL         0 // helps to improve stability, but adds 10% of overhead
 
 #ifdef SIGMA_TRANSLUCENT
     #define SIGMA_TYPE                                  float4

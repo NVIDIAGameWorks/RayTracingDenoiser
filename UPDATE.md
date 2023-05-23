@@ -156,3 +156,21 @@ SH (spherical harmonics) have been replaced with SG (spherical gaussians). It un
 - `NRD_SG_ReJitter` - reconstructs diffuse & specular micro details (resurrects jitter vanished out after denoising)
 - `NRD_SH_ResolveDiffuse` - reconstructs diffuse macro details using SH resolve (for comparison only)
 - `NRD_SH_ResolveSpecular` - reconstructs specular macro details using SH resolve (for comparison only)
+
+## To v4.2
+
+A single NRD instance can now include any combination of denoisers, including repeating ones (for example, `RELAX_DIFFUSE`, `RELAX_DIFFUSE` and `SIGMA_SHADOW`). Transient memory pool is internally optimized to reduce memory consumption.
+
+- *API*:
+  - Introduced `Identifier` to distinguish one denoiser in the instance from another one
+  - Introduced `SetCommonSettings`
+  - `GetComputeDispatches` now expects a list of identifiers, specifying which denoisers collect dispatches for
+  - Added explicit `CommonSettings::cameraJitterPrev` and `CommonSettings::resolutionScalePrev` (since `SetCommonSettings` can be called several times per frame)
+  - Name changes (including sub-name usages):
+    - `Denoiser` => `Instance`
+    - `Method` => `Denoiser`
+    - `fullResolutionWidth` => `renderWidth`
+    - `fullResolutionHeight` => `renderHeight`
+- *NRD INTEGRATION*:
+  - Introduced `NewFrame`
+  - Introduced `SetCommonSettings`

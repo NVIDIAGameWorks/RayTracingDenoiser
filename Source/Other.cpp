@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "DenoiserImpl.h"
+#include "InstanceImpl.h"
 
 #ifdef NRD_USE_PRECOMPILED_SHADERS
 
@@ -41,6 +41,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #endif
 
-#include "Methods/Reference.hpp"
-#include "Methods/SpecularReflectionMv.hpp"
-#include "Methods/SpecularDeltaMv.hpp"
+#include "Denoisers/Reference.hpp"
+#include "Denoisers/SpecularReflectionMv.hpp"
+#include "Denoisers/SpecularDeltaMv.hpp"

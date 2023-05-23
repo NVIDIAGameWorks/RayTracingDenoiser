@@ -38,7 +38,8 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
 
             float viewZ = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
 
-            bool isInf = viewZ > gDenoisingRange || data.x == 0;
+            bool isInf = viewZ > gDenoisingRange;
+            bool isShadow = data.x == 0;
             bool isLit = data.x == NRD_FP16_MAX;
 
             bool isOpaque = true;
@@ -47,8 +48,9 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
                 isOpaque = STL::Color::Luminance( translucency ) < 0.003; // TODO: replace with a uniformity test?
             #endif
 
-            mask += ( ( isLit || isInf ) ? 1 : 0 ) << 0;
-            mask += ( ( ( !isLit && isOpaque ) || isInf ) ? 1 : 0 ) << 16;
+            mask += ( ( isLit || isInf || isShadow ) ? 1 : 0 ) << 0;
+            mask += ( ( ( !isLit && isOpaque ) || isInf || isShadow ) ? 1 : 0 ) << 9;
+            mask += ( isInf ? 1 : 0 ) << 18;
 
             float worldRadius = ( isLit || isInf ) ? 0 : ( data.x * gBlurRadiusScale );
             float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
@@ -66,12 +68,15 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
 
     if( threadIndex == 0 )
     {
-        bool isLit = ( s_Mask & 0xFFFF ) == 256;
-        bool isUmbra = ( s_Mask >> 16 ) == 256;
+        bool isLit = ( ( s_Mask >> 0 ) & 511 ) == 256;
+        bool isUmbra = ( ( s_Mask >> 9 ) & 511 ) == 256;
+        bool isInf = ( ( s_Mask >> 18 ) & 511 ) == 256;
 
-        float2 result;
+        float4 result;
         result.x = ( isLit || isUmbra ) ? 0.0 : 1.0;
         result.y = saturate( asfloat( s_Radius ) / 16.0 );
+        result.z = isInf ? 1.0 : 0.0;
+        result.w = 0.0;
 
         gOut_Tiles[ tilePos ] = result;
     }

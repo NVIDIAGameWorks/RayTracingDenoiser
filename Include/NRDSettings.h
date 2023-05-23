@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 1
+#define NRD_SETTINGS_VERSION_MINOR 2
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -101,9 +101,11 @@ namespace nrd
 
         // [-0.5; 0.5] - sampleUv = pixelUv + cameraJitter
         float cameraJitter[2] = {};
+        float cameraJitterPrev[2] = {};
 
         // (0; 1] - dynamic resolution scaling
         float resolutionScale[2] = {1.0f, 1.0f};
+        float resolutionScalePrev[2] = {1.0f, 1.0f};
 
         // (ms) - user provided if > 0, otherwise - tracked internally
         float timeDeltaBetweenFrames = 0.0f;
@@ -145,7 +147,7 @@ namespace nrd
         // If "true" IN_BASECOLOR_METALNESS is available
         bool isBaseColorMetalnessAvailable = false;
 
-        // Enables debug overlay in OUT_VALIDATION, requires "DenoiserCreationDesc::allowValidation = true"
+        // Enables debug overlay in OUT_VALIDATION, requires "InstanceCreationDesc::allowValidation = true"
         bool enableValidation = false;
     };
 

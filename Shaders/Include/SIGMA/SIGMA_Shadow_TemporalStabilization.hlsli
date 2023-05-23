@@ -32,7 +32,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     uint2 pixelPosUser = pixelPos + gRectOrigin;
     float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gInvRectSize;
 
-    PRELOAD_INTO_SMEM;
+    // Preload
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].y;
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
+
+    // Tile-based early out
+    if( isSky != 0.0 )
+        return;
 
     // Center data
     int2 smemPos = threadPos + BORDER;
@@ -42,10 +48,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float viewZ = centerData.y;
 
     // Early out
-    [branch]
-    if( viewZ > gDenoisingRange || ( centerHitDist == 0.0 && SIGMA_SHOW_TILES == 0 ) )
+    if( viewZ > gDenoisingRange )
+        return;
+
+    // Early out
+    if( centerHitDist == 0.0 && SIGMA_SHOW_TILES == 0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
+
         return;
     }
 
@@ -174,7 +184,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Debug
     #if( SIGMA_SHOW_TILES == 1 )
-        float tileValue = gIn_Tiles[ pixelPos >> 4 ];
+        float tileValue = gIn_Tiles[ pixelPos >> 4 ].x;
         tileValue = float( tileValue != 0.0 ); // optional, just to show fully discarded tiles
 
         #ifdef SIGMA_TRANSLUCENT

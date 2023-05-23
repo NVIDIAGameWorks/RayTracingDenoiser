@@ -36,29 +36,30 @@ NRD_CONSTANTS_END
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DisocclusionThresholdMix, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Diff_Confidence, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_Confidence, t, 8 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 9 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 10 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff_History, t, 11 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec_History, t, 12 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_DiffFast_History, t, 13 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_SpecFast_History, t, 14 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DisocclusionThresholdMix, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Diff_Confidence, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_Confidence, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 10 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 11 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff_History, t, 12 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec_History, t, 13 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_DiffFast_History, t, 14 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_SpecFast_History, t, 15 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 15 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 16 )
         #endif
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 16 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 17 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_History, t, 18 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 19 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 17 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 18 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_History, t, 19 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 20 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -80,20 +81,21 @@ NRD_CONSTANTS_END
 #elif( defined REBLUR_DIFFUSE )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DisocclusionThresholdMix, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Diff_Confidence, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 8 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff_History, t, 9 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_DiffFast_History, t, 10 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DisocclusionThresholdMix, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Diff_Confidence, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Diff_History, t, 10 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_DiffFast_History, t, 11 )
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 11 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_History, t, 12 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 12 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_History, t, 13 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -112,23 +114,24 @@ NRD_CONSTANTS_END
 #else
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DisocclusionThresholdMix, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_Confidence, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 8 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec_History, t, 9 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_SpecFast_History, t, 10 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float3>, gIn_Mv, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_ViewZ, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Prev_Normal_Roughness, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Prev_InternalData, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_DisocclusionThresholdMix, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_Confidence, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec_History, t, 10 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_SpecFast_History, t, 11 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 11 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 12 )
         #endif
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 12 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 13 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 13 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 14 )
         #endif
     NRD_INPUT_TEXTURE_END
 

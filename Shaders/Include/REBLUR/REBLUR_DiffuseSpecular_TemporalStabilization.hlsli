@@ -43,17 +43,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
-    PRELOAD_INTO_SMEM;
+    // Preload
+    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
+
+    // Tile-based early out
+    if( isSky != 0.0 )
+        return;
 
     // Early out
     float viewZ = UnpackViewZ( gIn_ViewZ[ pixelPosUser ] );
-
-    [branch]
     if( viewZ > gDenoisingRange )
-    {
-        // IMPORTANT: no data output, must be rejected by the "viewZ" check!
-        return;
-    }
+        return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
 
     // Normal and roughness
     float materialID;

@@ -14,12 +14,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
-    // Output
+    // Tile-based early out
+    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    if( isSky != 0.0 )
+        return;
+
+    // Early out
     float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
     gOut_ViewZ[ pixelPos ] = PackViewZ( viewZ );
 
-    // Early out
-    [branch]
     if( viewZ > gDenoisingRange )
         return;
 

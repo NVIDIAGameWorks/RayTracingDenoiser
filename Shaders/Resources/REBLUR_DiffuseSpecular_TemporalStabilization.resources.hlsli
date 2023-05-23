@@ -32,21 +32,22 @@ NRD_CONSTANTS_END
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_BaseColor_Metalness, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_StabilizedHistory, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 8 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_Spec_FastHistory, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_BaseColor_Metalness, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_StabilizedHistory, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 9 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_Spec_FastHistory, t, 10 )
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 10 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 11 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh_StabilizedHistory, t, 12 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 13 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 11 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 12 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh_StabilizedHistory, t, 13 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 14 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -64,15 +65,16 @@ NRD_CONSTANTS_END
 #elif( defined REBLUR_DIFFUSE )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_StabilizedHistory, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_StabilizedHistory, t, 6 )
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 6 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh_StabilizedHistory, t, 7 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 7 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_DiffSh_StabilizedHistory, t, 8 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -88,17 +90,18 @@ NRD_CONSTANTS_END
 #else
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_BaseColor_Metalness, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_Spec_FastHistory, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_BaseColor_Metalness, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_ViewZ, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Data1, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_Spec_FastHistory, t, 8 )
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 8 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 9 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 9 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 10 )
         #endif
     NRD_INPUT_TEXTURE_END
 

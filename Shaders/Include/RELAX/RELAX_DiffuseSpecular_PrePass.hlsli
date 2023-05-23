@@ -39,18 +39,13 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     // Calculating checkerboard fields
     uint checkerboard = STL::Sequence::CheckerBoard(pixelPos, gFrameIndex);
 
-    // Reading center GBuffer data
-    // Applying abs() to viewZ so it is positive down the denoising pipeline.
-    // This ensures correct denoiser operation with different camera handedness.
-    // Also ensuring viewZ is not zero
-    float centerViewZ = max(1e-6, abs(gViewZ[pixelPos + gRectOrigin]));
-
-    // Outputting ViewZ and scaled ViewZ to be used down the denoising pipeline
-    gOutViewZ[pixelPos] = centerViewZ;
-    gOutScaledViewZ[pixelPos] = min(centerViewZ * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX);
+    // Tile-based early out
+    float isSky = gTiles[pixelPos >> 4];
+    if (isSky != 0.0)
+        return;
 
     // Early out if linearZ is beyond denoising range
-    [branch]
+    float centerViewZ = abs(gViewZ[pixelPos + gRectOrigin]);
     if (centerViewZ > gDenoisingRange)
         return;
 

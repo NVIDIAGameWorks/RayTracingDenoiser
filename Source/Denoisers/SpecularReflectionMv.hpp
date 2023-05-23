@@ -8,12 +8,12 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_SpecularReflectionMv(MethodData& methodData)
+void nrd::InstanceImpl::Add_SpecularReflectionMv(DenoiserData& denoiserData)
 {
-    #define METHOD_NAME SpecularReflectionMv
+    #define DENOISER_NAME SpecularReflectionMv
 
-    methodData.settings.specularReflectionMv = SpecularReflectionMvSettings();
-    methodData.settingsSize = sizeof(methodData.settings.specularReflectionMv);
+    denoiserData.settings.specularReflectionMv = SpecularReflectionMvSettings();
+    denoiserData.settingsSize = sizeof(denoiserData.settings.specularReflectionMv);
             
     SetSharedConstants(0, 0, 0, 0);
 
@@ -29,10 +29,10 @@ void nrd::DenoiserImpl::AddMethod_SpecularReflectionMv(MethodData& methodData)
         AddDispatch( SpecularReflectionMv_Compute, SumConstants(4, 5, 5, 2), NumThreads(16, 16), 1 );
     }
 
-    #undef METHOD_NAME
+    #undef DENOISER_NAME
 }
 
-void nrd::DenoiserImpl::UpdateMethod_SpecularReflectionMv(const MethodData& methodData)
+void nrd::InstanceImpl::Update_SpecularReflectionMv(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
@@ -45,7 +45,7 @@ void nrd::DenoiserImpl::UpdateMethod_SpecularReflectionMv(const MethodData& meth
     float unproject = 1.0f / (0.5f * rectH * m_ProjectY);
 
     // COMPUTE
-    Constant* data = PushDispatch(methodData, AsUint(Dispatch::COMPUTE));
+    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::COMPUTE));
     AddFloat4x4(data, m_ViewToWorld);
     AddFloat4x4(data, m_WorldToClip);
     AddFloat4x4(data, m_WorldToClipPrev);

@@ -8,12 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "DenoiserImpl.h"
+#include "InstanceImpl.h"
 
 #include <array>
 
 // Constants
 #define REBLUR_SET_SHARED_CONSTANTS                                 SetSharedConstants(2, 5, 10, 24)
+
+#define REBLUR_CLASSIFY_TILES_CONSTANT_NUM                          SumConstants(0, 0, 0, 1, false)
+#define REBLUR_CLASSIFY_TILES_NUM_THREADS                           NumThreads(16, 16)
 
 #define REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM                  SumConstants(0, 0, 0, 0)
 #define REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS                   NumThreads(8, 8)
@@ -43,6 +46,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SPLIT_SCREEN_NUM_THREADS                             NumThreads(16, 16)
 
 // Permutations
+#define REBLUR_CLASSIFY_TILES_PERMUTATION_NUM                       1
 #define REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM               4
 #define REBLUR_PREPASS_PERMUTATION_NUM                              2
 #define REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM                16
@@ -114,26 +118,27 @@ constexpr std::array<ReblurProps, 10> g_ReblurProps =
     {true, false},      // REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
 }};
 
-void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
+void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
-        HITDIST_RECONSTRUCTION,
+        CLASSIFY_TILES,
+        HITDIST_RECONSTRUCTION  = CLASSIFY_TILES + REBLUR_CLASSIFY_TILES_PERMUTATION_NUM * 1, // CLASSIFY_TILES doesn't have perf mode
         PREPASS                 = HITDIST_RECONSTRUCTION + REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM * 2,
         TEMPORAL_ACCUMULATION   = PREPASS + REBLUR_PREPASS_PERMUTATION_NUM * 2,
         HISTORY_FIX             = TEMPORAL_ACCUMULATION + REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM * 2,
         BLUR                    = HISTORY_FIX + REBLUR_HISTORY_FIX_PERMUTATION_NUM * 2,
         POST_BLUR               = BLUR + REBLUR_BLUR_PERMUTATION_NUM * 2,
         COPY_STABILIZED_HISTORY = POST_BLUR + REBLUR_POST_BLUR_PERMUTATION_NUM * 2,
-        TEMPORAL_STABILIZATION  = COPY_STABILIZED_HISTORY + REBLUR_COPY_STABILIZED_HISTORY_PERMUTATION_NUM * 1, // no perf mode for copy
+        TEMPORAL_STABILIZATION  = COPY_STABILIZED_HISTORY + REBLUR_COPY_STABILIZED_HISTORY_PERMUTATION_NUM * 1, // COPY_STABILIZED_HISTORY doesn't have perf mode
         SPLIT_SCREEN            = TEMPORAL_STABILIZATION + REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM * 2,
-        VALIDATION              = SPLIT_SCREEN + REBLUR_SPLIT_SCREEN_PERMUTATION_NUM * 1, // no perf mode for split screen
+        VALIDATION              = SPLIT_SCREEN + REBLUR_SPLIT_SCREEN_PERMUTATION_NUM * 1, // SPLIT_SCREEN doesn't have perf mode
     };
 
     NRD_DECLARE_DIMS;
 
-    const ReblurSettings& settings = methodData.settings.reblur;
-    const ReblurProps& props = g_ReblurProps[ size_t(methodData.desc.method) - size_t(Method::REBLUR_DIFFUSE) ];
+    const ReblurSettings& settings = denoiserData.settings.reblur;
+    const ReblurProps& props = g_ReblurProps[ size_t(denoiserData.desc.denoiser) - size_t(Denoiser::REBLUR_DIFFUSE) ];
 
     bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
     bool skipTemporalStabilization = settings.stabilizationStrength == 0.0f;
@@ -179,8 +184,8 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Reblur(methodData, settings, data);
+        Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
@@ -189,12 +194,17 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
         return;
     }
 
+    // CLASSIFY_TILES
+    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::CLASSIFY_TILES));
+    AddFloat(data, m_CommonSettings.denoisingRange);
+    ValidateConstants(data);
+
     // HITDIST_RECONSTRUCTION
     if (enableHitDistanceReconstruction)
     {
         uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_5X5 ? 4 : 0) + (!skipPrePass ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
-        Constant* data = PushDispatch(methodData, passIndex);
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, passIndex);
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         ValidateConstants(data);
     }
 
@@ -202,8 +212,8 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     if (!skipPrePass)
     {
         uint32_t passIndex = AsUint(Dispatch::PREPASS) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
-        Constant* data = PushDispatch(methodData, passIndex);
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, passIndex);
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat4(data, m_Rotator_PrePass);
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
@@ -214,8 +224,8 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 16 : 0) +
         (!skipTemporalStabilization ? 8 : 0) + (m_CommonSettings.isHistoryConfidenceAvailable ? 4 : 0) +
         ((!skipPrePass || enableHitDistanceReconstruction) ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
-    Constant* data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat4x4(data, m_WorldToViewPrev);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_WorldToClip);
@@ -233,22 +243,22 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
 
     // HISTORY_FIX
     passIndex = AsUint(Dispatch::HISTORY_FIX) + (settings.enablePerformanceMode ? 1 : 0);
-    data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat(data, settings.historyFixStrideBetweenSamples);
     ValidateConstants(data);
 
     // BLUR
     passIndex = AsUint(Dispatch::BLUR) + (settings.enablePerformanceMode ? 1 : 0);
-    data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat4(data, m_Rotator_Blur);
     ValidateConstants(data);
 
     // POST_BLUR
     passIndex = AsUint(Dispatch::POST_BLUR) + (skipTemporalStabilization ? 0 : 2) + (settings.enablePerformanceMode ? 1 : 0);
-    data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat4(data, m_Rotator_PostBlur);
     ValidateConstants(data);
 
@@ -256,7 +266,7 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     if (!skipTemporalStabilization)
     {
         passIndex = AsUint(Dispatch::COPY_STABILIZED_HISTORY);
-        data = PushDispatch(methodData, passIndex);
+        data = PushDispatch(denoiserData, passIndex);
         ValidateConstants(data);
     }
 
@@ -264,8 +274,8 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     if (!skipTemporalStabilization)
     {
         passIndex = AsUint(Dispatch::TEMPORAL_STABILIZATION) + (m_CommonSettings.isBaseColorMetalnessAvailable ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
-        data = PushDispatch(methodData, passIndex);
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, passIndex);
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat4x4(data, m_WorldToClip);
         AddFloat4x4(data, m_WorldToClipPrev);
         AddFloat4x4(data, m_WorldToViewPrev);
@@ -284,8 +294,8 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     // SPLIT_SCREEN
     if (m_CommonSettings.splitScreen > 0.0f)
     {
-        data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
@@ -295,8 +305,8 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     // VALIDATION
     if (m_CommonSettings.enableValidation)
     {
-        data = PushDispatch(methodData, AsUint(Dispatch::VALIDATION));
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::VALIDATION));
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat4x4(data, m_WorldToClipPrev);
         AddFloat2(data, m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
         AddUint(data, props.hasDiffuse ? 1 : 0);
@@ -307,23 +317,24 @@ void nrd::DenoiserImpl::UpdateMethod_Reblur(const MethodData& methodData)
     }
 }
 
-void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodData)
+void nrd::InstanceImpl::Update_ReblurOcclusion(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
-        HITDIST_RECONSTRUCTION,
+        CLASSIFY_TILES,
+        HITDIST_RECONSTRUCTION  = CLASSIFY_TILES + REBLUR_CLASSIFY_TILES_PERMUTATION_NUM * 1, // CLASSIFY_TILES doesn't have perf mode
         TEMPORAL_ACCUMULATION   = HITDIST_RECONSTRUCTION + REBLUR_OCCLUSION_HITDIST_RECONSTRUCTION_PERMUTATION_NUM * 2,
         HISTORY_FIX             = TEMPORAL_ACCUMULATION + REBLUR_OCCLUSION_TEMPORAL_ACCUMULATION_PERMUTATION_NUM * 2,
-        BLUR                    = HISTORY_FIX + REBLUR_OCCLUSION_HISTORY_FIX_PERMUTATION_NUM * 2, // non perf mode is used for anti-firefly
+        BLUR                    = HISTORY_FIX + REBLUR_OCCLUSION_HISTORY_FIX_PERMUTATION_NUM * 2,
         POST_BLUR               = BLUR + REBLUR_OCCLUSION_BLUR_PERMUTATION_NUM * 2,
         SPLIT_SCREEN            = POST_BLUR + REBLUR_OCCLUSION_POST_BLUR_PERMUTATION_NUM * 2,
-        VALIDATION              = SPLIT_SCREEN + REBLUR_SPLIT_SCREEN_PERMUTATION_NUM * 1, // no perf mode for split screen
+        VALIDATION              = SPLIT_SCREEN + REBLUR_SPLIT_SCREEN_PERMUTATION_NUM * 1, // SPLIT_SCREEN doesn't have perf mode
     };
 
     NRD_DECLARE_DIMS;
 
-    const ReblurSettings& settings = methodData.settings.reblur;
-    const ReblurProps& props = g_ReblurProps[ size_t(methodData.desc.method) - size_t(Method::REBLUR_DIFFUSE) ];
+    const ReblurSettings& settings = denoiserData.settings.reblur;
+    const ReblurProps& props = g_ReblurProps[ size_t(denoiserData.desc.denoiser) - size_t(Denoiser::REBLUR_DIFFUSE) ];
 
     bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
 
@@ -351,8 +362,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Reblur(methodData, settings, data);
+        Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
@@ -361,20 +372,25 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
         return;
     }
 
+    // CLASSIFY_TILES
+    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::CLASSIFY_TILES));
+    AddFloat(data, m_CommonSettings.denoisingRange);
+    ValidateConstants(data);
+
     // HITDIST_RECONSTRUCTION
     if (enableHitDistanceReconstruction)
     {
         uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_5X5 ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
-        Constant* data = PushDispatch(methodData, passIndex);
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, passIndex);
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         ValidateConstants(data);
     }
 
     // TEMPORAL_ACCUMULATION
     uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 8 : 0) +
         (m_CommonSettings.isHistoryConfidenceAvailable ? 4 : 0) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
-    Constant* data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat4x4(data, m_WorldToViewPrev);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_WorldToClip);
@@ -392,30 +408,30 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
 
     // HISTORY_FIX
     passIndex = AsUint(Dispatch::HISTORY_FIX) + (!settings.enableAntiFirefly ? 1 : 0);
-    data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat(data, settings.historyFixStrideBetweenSamples);
     ValidateConstants(data);
 
     // BLUR
     passIndex = AsUint(Dispatch::BLUR) + (settings.enablePerformanceMode ? 1 : 0);
-    data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat4(data, m_Rotator_Blur);
     ValidateConstants(data);
 
     // POST_BLUR
     passIndex = AsUint(Dispatch::POST_BLUR) + (settings.enablePerformanceMode ? 1 : 0);
-    data = PushDispatch(methodData, passIndex);
-    AddSharedConstants_Reblur(methodData, settings, data);
+    data = PushDispatch(denoiserData, passIndex);
+    AddSharedConstants_Reblur(denoiserData, settings, data);
     AddFloat4(data, m_Rotator_PostBlur);
     ValidateConstants(data);
 
     // SPLIT_SCREEN
     if (m_CommonSettings.splitScreen > 0.0f)
     {
-        data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, diffCheckerboard);
         AddUint(data, specCheckerboard);
@@ -425,8 +441,8 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     // VALIDATION
     if (m_CommonSettings.enableValidation)
     {
-        data = PushDispatch(methodData, AsUint(Dispatch::VALIDATION));
-        AddSharedConstants_Reblur(methodData, settings, data);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::VALIDATION));
+        AddSharedConstants_Reblur(denoiserData, settings, data);
         AddFloat4x4(data, m_WorldToClipPrev);
         AddFloat2(data, m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
         AddUint(data, props.hasDiffuse ? 1 : 0);
@@ -437,7 +453,7 @@ void nrd::DenoiserImpl::UpdateMethod_ReblurOcclusion(const MethodData& methodDat
     }
 }
 
-void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, const ReblurSettings& settings, Constant*& data)
+void nrd::InstanceImpl::AddSharedConstants_Reblur(const DenoiserData& denoiserData, const ReblurSettings& settings, Constant*& data)
 {
     NRD_DECLARE_DIMS;
 
@@ -502,6 +518,17 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
 
 #ifdef NRD_USE_PRECOMPILED_SHADERS
 
+    // REBLUR_SHARED
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+        #include "REBLUR_ClassifyTiles.cs.dxbc.h"
+        #include "REBLUR_ClassifyTiles.cs.dxil.h"
+        #include "REBLUR_Validation.cs.dxbc.h"
+        #include "REBLUR_Validation.cs.dxil.h"
+    #endif
+
+    #include "REBLUR_ClassifyTiles.cs.spirv.h"
+    #include "REBLUR_Validation.cs.spirv.h"
+
     // REBLUR_DIFFUSE
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
         #include "REBLUR_Diffuse_HitDistReconstruction.cs.dxbc.h"
@@ -526,8 +553,6 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
         #include "REBLUR_Diffuse_TemporalStabilization.cs.dxil.h"
         #include "REBLUR_Diffuse_SplitScreen.cs.dxbc.h"
         #include "REBLUR_Diffuse_SplitScreen.cs.dxil.h"
-        #include "REBLUR_Validation.cs.dxbc.h"
-        #include "REBLUR_Validation.cs.dxil.h"
 
         #include "REBLUR_Perf_Diffuse_HitDistReconstruction.cs.dxbc.h"
         #include "REBLUR_Perf_Diffuse_HitDistReconstruction.cs.dxil.h"
@@ -560,7 +585,6 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
     #include "REBLUR_Diffuse_PostBlur.cs.spirv.h"
     #include "REBLUR_Diffuse_PostBlur_NoTemporalStabilization.cs.spirv.h"
     #include "REBLUR_Diffuse_SplitScreen.cs.spirv.h"
-    #include "REBLUR_Validation.cs.spirv.h"
 
     #include "REBLUR_Perf_Diffuse_HitDistReconstruction.cs.spirv.h"
     #include "REBLUR_Perf_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
@@ -1051,13 +1075,13 @@ void nrd::DenoiserImpl::AddSharedConstants_Reblur(const MethodData& methodData, 
 
 #endif
 
-#include "Methods/Reblur_Diffuse.hpp"
-#include "Methods/Reblur_DiffuseOcclusion.hpp"
-#include "Methods/Reblur_DiffuseSh.hpp"
-#include "Methods/Reblur_Specular.hpp"
-#include "Methods/Reblur_SpecularOcclusion.hpp"
-#include "Methods/Reblur_SpecularSh.hpp"
-#include "Methods/Reblur_DiffuseSpecular.hpp"
-#include "Methods/Reblur_DiffuseSpecularOcclusion.hpp"
-#include "Methods/Reblur_DiffuseSpecularSh.hpp"
-#include "Methods/Reblur_DiffuseDirectionalOcclusion.hpp"
+#include "Denoisers/Reblur_Diffuse.hpp"
+#include "Denoisers/Reblur_DiffuseOcclusion.hpp"
+#include "Denoisers/Reblur_DiffuseSh.hpp"
+#include "Denoisers/Reblur_Specular.hpp"
+#include "Denoisers/Reblur_SpecularOcclusion.hpp"
+#include "Denoisers/Reblur_SpecularSh.hpp"
+#include "Denoisers/Reblur_DiffuseSpecular.hpp"
+#include "Denoisers/Reblur_DiffuseSpecularOcclusion.hpp"
+#include "Denoisers/Reblur_DiffuseSpecularSh.hpp"
+#include "Denoisers/Reblur_DiffuseDirectionalOcclusion.hpp"

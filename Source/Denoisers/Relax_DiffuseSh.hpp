@@ -8,15 +8,17 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
+void nrd::InstanceImpl::Add_RelaxDiffuseSh(DenoiserData& denoiserData)
 {
-    #define METHOD_NAME RELAX_Diffuse
+    #define DENOISER_NAME RELAX_Diffuse
 
-    methodData.settings.diffuseRelax = RelaxDiffuseSettings();
-    methodData.settingsSize = sizeof(methodData.settings.diffuseRelax);
+    denoiserData.settings.diffuseRelax = RelaxDiffuseSettings();
+    denoiserData.settingsSize = sizeof(denoiserData.settings.diffuseRelax);
 
-    uint16_t w = methodData.desc.fullResolutionWidth;
-    uint16_t h = methodData.desc.fullResolutionHeight;
+    uint16_t w = denoiserData.desc.renderWidth;
+    uint16_t h = denoiserData.desc.renderHeight;
+    uint16_t tilesW = DivideUp(w, 16);
+    uint16_t tilesH = DivideUp(h, 16);
 
     enum class Permanent
     {
@@ -24,24 +26,20 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
         DIFF_ILLUM_PREV_SH1,
         DIFF_ILLUM_RESPONSIVE_PREV,
         DIFF_ILLUM_RESPONSIVE_PREV_SH1,
-        HISTORY_LENGTH_CURR,
         HISTORY_LENGTH_PREV,
         NORMAL_ROUGHNESS_PREV,
         MATERIAL_ID_PREV,
-        VIEWZ_CURR,
         VIEWZ_PREV
     };
 
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R8_UNORM, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R32_SFLOAT, w, h, 1} );
-    m_PermanentPool.push_back( {Format::R32_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToPermanentPool( {Format::R8_UNORM, w, h, 1} );
+    AddTextureToPermanentPool( {Format::RGBA8_UNORM, w, h, 1} );
+    AddTextureToPermanentPool( {Format::R8_UNORM, w, h, 1} );
+    AddTextureToPermanentPool( {Format::R32_SFLOAT, w, h, 1} );
 
     enum class Transient
     {
@@ -49,25 +47,32 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
         DIFF_ILLUM_PING_SH1,
         DIFF_ILLUM_PONG,
         DIFF_ILLUM_PONG_SH1,
-        DIFF_ILLUM_TMP,
-        DIFF_ILLUM_TMP_SH1,
-        VIEWZ_R16F
+        TILES,
+        HISTORY_LENGTH
     };
 
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::RGBA16_SFLOAT, w, h, 1} );
-    m_TransientPool.push_back( {Format::R16_SFLOAT, w, h, 1} );
+    AddTextureToTransientPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToTransientPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToTransientPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToTransientPool( {Format::RGBA16_SFLOAT, w, h, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, tilesW, tilesH, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, w, h, 1} );
 
     RELAX_SET_SHARED_CONSTANTS;
 
     const uint32_t halfMaxPassNum = (RELAX_MAX_ATROUS_PASS_NUM - 2 + 1) / 2;
 
+    PushPass("Classify tiles");
+    {
+        PushInput(AsUint(ResourceType::IN_VIEWZ));
+        PushOutput(AsUint(Transient::TILES));
+
+        AddDispatch(RELAX_ClassifyTiles, SumConstants(0, 0, 0, 1, false), NumThreads(16, 16), 1);
+    }
+
     PushPass("Hit distance reconstruction 3x3"); // 3x3
     {
+        PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
@@ -79,6 +84,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
 
     PushPass("Hit distance reconstruction 5x5"); // 5x5
     {
+        PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
@@ -91,15 +97,14 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
     PushPass("Pre-pass"); // After hit distance reconstruction
     {
         // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+        PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_DIFF_SH1) );
 
-        PushOutput( AsUint(Transient::DIFF_ILLUM_TMP) );
-        PushOutput( AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV) );
-        PushOutput( AsUint(Transient::VIEWZ_R16F) );
-        PushOutput( AsUint(Transient::DIFF_ILLUM_TMP_SH1) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );
 
         AddDispatch( RELAX_DiffuseSh_PrePass, SumConstants(0, 1, 0, 5), NumThreads(16, 16), 1 );
     }
@@ -107,15 +112,14 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
     PushPass("Pre-pass"); // Without hit distance reconstruction
     {
         // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+        PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_DIFF_SH1) );
 
-        PushOutput( AsUint(Transient::DIFF_ILLUM_TMP) );
-        PushOutput( AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV) );
-        PushOutput( AsUint(Transient::VIEWZ_R16F) );
-        PushOutput( AsUint(Transient::DIFF_ILLUM_TMP_SH1) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );
 
         AddDispatch( RELAX_DiffuseSh_PrePass, SumConstants(0, 1, 0, 5), NumThreads(16, 16), 1 );
     }
@@ -130,20 +134,21 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
 
         PushPass("Temporal accumulation");
         {
-            PushInput( AsUint(Transient::DIFF_ILLUM_TMP) );
+            PushInput( AsUint(Transient::TILES) );
+            PushInput( AsUint(ResourceType::OUT_DIFF_SH0) );
             PushInput( AsUint(ResourceType::IN_MV) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Permanent::VIEWZ_CURR), 0, 1, AsUint(Permanent::VIEWZ_PREV) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV) );
             PushInput( AsUint(Permanent::DIFF_ILLUM_PREV) );
             PushInput( AsUint(Permanent::NORMAL_ROUGHNESS_PREV) );
-            PushInput( AsUint(Permanent::VIEWZ_PREV), 0, 1, AsUint(Permanent::VIEWZ_CURR) );
+            PushInput( AsUint(Permanent::VIEWZ_PREV) );
             PushInput( AsUint(Permanent::HISTORY_LENGTH_PREV) );
             PushInput( AsUint(Permanent::MATERIAL_ID_PREV) );
-            // Optional inputs:
+            // Confidence inputs:
             if (i == 0)
             {
-                PushInput( AsUint(Transient::VIEWZ_R16F) ); // Bogus input that will not be fetched anyway
+                PushInput( AsUint(ResourceType::IN_VIEWZ) ); // Bogus input that will not be fetched anyway
                 PushInput( AsUint(Permanent::HISTORY_LENGTH_PREV) ); // Bogus input that will not be fetched anyway
             }
             if (i == 1)
@@ -153,7 +158,7 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
             }
             if (i == 2)
             {
-                PushInput( AsUint(Transient::VIEWZ_R16F) ); // Bogus input that will not be fetched anyway
+                PushInput( AsUint(ResourceType::IN_VIEWZ) ); // Bogus input that will not be fetched anyway
                 PushInput( AsUint(ResourceType::IN_DISOCCLUSION_THRESHOLD_MIX) );
             }
             if (i == 3)
@@ -161,13 +166,13 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
                 PushInput( AsUint(ResourceType::IN_DIFF_CONFIDENCE) );
                 PushInput( AsUint(ResourceType::IN_DISOCCLUSION_THRESHOLD_MIX) );
             }
-            PushInput( AsUint(Transient::DIFF_ILLUM_TMP_SH1) );
+            PushInput( AsUint(ResourceType::OUT_DIFF_SH1) );
             PushInput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV_SH1) );
             PushInput( AsUint(Permanent::DIFF_ILLUM_PREV_SH1) );
 
             PushOutput( AsUint(Transient::DIFF_ILLUM_PING) );
             PushOutput( AsUint(Transient::DIFF_ILLUM_PONG) );
-            PushOutput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+            PushOutput( AsUint(Transient::HISTORY_LENGTH) );
             PushOutput( AsUint(Transient::DIFF_ILLUM_PING_SH1) );
             PushOutput( AsUint(Transient::DIFF_ILLUM_PONG_SH1) );
 
@@ -177,10 +182,11 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
 
     PushPass("History fix");
     {
+        PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Transient::HISTORY_LENGTH) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::VIEWZ_R16F) );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING_SH1) );
 
         PushOutput( AsUint(Transient::DIFF_ILLUM_PONG) );
@@ -191,13 +197,14 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
 
     PushPass("History clamping"); // with firefly after it
     {
+        PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Transient::HISTORY_LENGTH) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING_SH1) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG_SH1) );
 
-        PushOutput( AsUint(Transient::DIFF_ILLUM_TMP) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
         PushOutput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV) );
         PushOutput( AsUint(Permanent::HISTORY_LENGTH_PREV) );
         PushOutput( AsUint(Permanent::DIFF_ILLUM_PREV_SH1) );
@@ -208,9 +215,10 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
 
     PushPass("History clamping"); // without firefly after it
     {
+        PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+        PushInput( AsUint(Transient::HISTORY_LENGTH) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING_SH1) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG_SH1) );
 
@@ -225,9 +233,10 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
 
     PushPass("Anti-firefly");
     {
-        PushInput( AsUint(Transient::DIFF_ILLUM_TMP) );
+        PushInput( AsUint(Transient::TILES) );
+        PushInput( AsUint(ResourceType::OUT_DIFF_SH0) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::VIEWZ_R16F) );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
         PushOutput( AsUint(Permanent::DIFF_ILLUM_PREV) );
 
@@ -241,16 +250,18 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
         // A-trous (first)
         PushPass("A-trous (SMEM)");
         {
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(Permanent::DIFF_ILLUM_PREV) );
-            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Transient::HISTORY_LENGTH) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Transient::VIEWZ_R16F) );
-            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(Permanent::DIFF_ILLUM_PREV_SH1) );
 
             PushOutput( AsUint(Transient::DIFF_ILLUM_PING) );
             PushOutput( AsUint(Permanent::NORMAL_ROUGHNESS_PREV) );
             PushOutput( AsUint(Permanent::MATERIAL_ID_PREV) );
+            PushOutput( AsUint(Permanent::VIEWZ_PREV) );
             PushOutput( AsUint(Transient::DIFF_ILLUM_PING_SH1) );
 
             AddDispatch( RELAX_DiffuseSh_AtrousSmem, SumConstants(0, 0, 1, 10), NumThreads(8, 8), 1 );
@@ -259,11 +270,12 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
         // A-trous (odd)
         PushPass("A-trous");
         {
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
-            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Transient::HISTORY_LENGTH) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Transient::VIEWZ_R16F) );
-            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PING_SH1) );
 
             PushOutput( AsUint(Transient::DIFF_ILLUM_PONG) );
@@ -275,11 +287,12 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
         // A-trous (even)
         PushPass("A-trous");
         {
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Transient::HISTORY_LENGTH) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Transient::VIEWZ_R16F) );
-            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PONG_SH1) );
 
             PushOutput( AsUint(Transient::DIFF_ILLUM_PING) );
@@ -291,11 +304,12 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
         // A-trous (odd, last)
         PushPass("A-trous");
         {
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
-            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Transient::HISTORY_LENGTH) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Transient::VIEWZ_R16F) );
-            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PING_SH1) );
 
             PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
@@ -307,11 +321,12 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
         // A-trous (even, last)
         PushPass("A-trous");
         {
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-            PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) );
+            PushInput( AsUint(Transient::HISTORY_LENGTH) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Transient::VIEWZ_R16F) );
-            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(Transient::VIEWZ_R16F) );
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+            PushInput( withConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(Transient::DIFF_ILLUM_PONG_SH1) );
 
             PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
@@ -333,13 +348,14 @@ void nrd::DenoiserImpl::AddMethod_RelaxDiffuseSh(MethodData& methodData)
 
     RELAX_ADD_VALIDATION_DISPATCH;
 
-    #undef METHOD_NAME
+    #undef DENOISER_NAME
 }
 
-void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData)
+void nrd::InstanceImpl::Update_RelaxDiffuseSh(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
+        CLASSIFY_TILES,
         HITDIST_RECONSTRUCTION_3x3,
         HITDIST_RECONSTRUCTION_5x5,
         PREPASS_AFTER_HITDIST_RECONSTRUCTION,
@@ -366,7 +382,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
         VALIDATION,
     };
 
-    const RelaxDiffuseSettings& settings = methodData.settings.diffuseRelax;
+    const RelaxDiffuseSettings& settings = denoiserData.settings.diffuseRelax;
 
     NRD_DECLARE_DIMS;
 
@@ -411,8 +427,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+        Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, diffuseCheckerboard);
         ValidateConstants(data);
@@ -420,18 +436,23 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
         return;
     }
 
+    // CLASSIFY_TILES
+    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::CLASSIFY_TILES));
+    AddFloat(data, m_CommonSettings.denoisingRange);
+    ValidateConstants(data);
+
     // HITDIST_RECONSTRUCTION
     if (enableHitDistanceReconstruction)
     {
         bool is3x3 = settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_3X3;
-        Constant* data = PushDispatch(methodData, is3x3 ? AsUint(Dispatch::HITDIST_RECONSTRUCTION_3x3) : AsUint(Dispatch::HITDIST_RECONSTRUCTION_5x5));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+        data = PushDispatch(denoiserData, is3x3 ? AsUint(Dispatch::HITDIST_RECONSTRUCTION_3x3) : AsUint(Dispatch::HITDIST_RECONSTRUCTION_5x5));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
         ValidateConstants(data);
     }
 
     // PREPASS
-    Constant* data = PushDispatch(methodData, AsUint(enableHitDistanceReconstruction ? Dispatch::PREPASS_AFTER_HITDIST_RECONSTRUCTION : Dispatch::PREPASS));
-    AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+    data = PushDispatch(denoiserData, AsUint(enableHitDistanceReconstruction ? Dispatch::PREPASS_AFTER_HITDIST_RECONSTRUCTION : Dispatch::PREPASS));
+    AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
     AddFloat4(data, m_Rotator_PrePass);
     AddUint(data, diffuseCheckerboard);
     AddFloat(data, settings.prepassBlurRadius);
@@ -445,7 +466,7 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
     if (!m_CommonSettings.isDisocclusionThresholdMixAvailable)
     {
         data = PushDispatch(
-            methodData,
+            denoiserData,
             AsUint(m_CommonSettings.isHistoryConfidenceAvailable ?
                 Dispatch::TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS :
                 Dispatch::TEMPORAL_ACCUMULATION));
@@ -453,12 +474,12 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
     else
     {
         data = PushDispatch(
-            methodData,
+            denoiserData,
             AsUint(m_CommonSettings.isHistoryConfidenceAvailable ?
                 Dispatch::TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS_WITH_THRESHOLD_MIX :
                 Dispatch::TEMPORAL_ACCUMULATION_WITH_THRESHOLD_MIX));
     }
-    AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+    AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
     AddFloat(data, (float)settings.diffuseMaxAccumulatedFrameNum);
     AddFloat(data, (float)settings.diffuseMaxFastAccumulatedFrameNum);
     AddUint(data, diffuseCheckerboard);
@@ -470,8 +491,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
     ValidateConstants(data);
 
     // HISTORY_FIX
-    data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_FIX));
-    AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+    data = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_FIX));
+    AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
     AddFloat(data, m_IsOrtho == 0 ? settings.depthThreshold : depthThresholdOrtho);
     AddFloat(data, settings.historyFixEdgeStoppingNormalPower);
     AddFloat(data, settings.historyFixStrideBetweenSamples);
@@ -481,23 +502,23 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
     if (settings.enableAntiFirefly)
     {
         // HISTORY_CLAMPING
-        data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_CLAMPING));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
         AddFloat(data, float(settings.historyFixFrameNum));
         AddUint(data, settings.diffuseMaxFastAccumulatedFrameNum < settings.diffuseMaxAccumulatedFrameNum ? 1 : 0);
         ValidateConstants(data);
 
         // FIREFLY
-        data = PushDispatch(methodData, AsUint(Dispatch::FIREFLY));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::FIREFLY));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
         ValidateConstants(data);
     }
     else
     {
         // HISTORY_CLAMPING (without firefly)
-        data = PushDispatch(methodData, AsUint(Dispatch::HISTORY_CLAMPING_NO_FIREFLY));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_CLAMPING_NO_FIREFLY));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
         AddFloat(data, settings.historyClampingColorBoxSigmaScale);
         AddFloat(data, float(settings.historyFixFrameNum));
         AddUint(data, settings.diffuseMaxFastAccumulatedFrameNum < settings.diffuseMaxAccumulatedFrameNum ? 1 : 0);
@@ -528,8 +549,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
                 dispatch = (i % 2 == 0) ? Dispatch::ATROUS_EVEN_WITH_CONFIDENCE_INPUTS : Dispatch::ATROUS_ODD_WITH_CONFIDENCE_INPUTS;
         }
 
-        data = PushDispatch(methodData, AsUint(dispatch));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+        data = PushDispatch(denoiserData, AsUint(dispatch));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
 
         if (i == 0)
         {
@@ -556,8 +577,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
     // SPLIT_SCREEN
     if (m_CommonSettings.splitScreen > 0.0f)
     {
-        data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
         AddFloat(data, m_CommonSettings.splitScreen);
         AddUint(data, diffuseCheckerboard);
         ValidateConstants(data);
@@ -566,8 +587,8 @@ void nrd::DenoiserImpl::UpdateMethod_RelaxDiffuseSh(const MethodData& methodData
     // VALIDATION
     if (m_CommonSettings.enableValidation)
     {
-        data = PushDispatch(methodData, AsUint(Dispatch::VALIDATION));
-        AddSharedConstants_Relax(methodData, data, Method::RELAX_DIFFUSE_SPECULAR);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::VALIDATION));
+        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE_SPECULAR);
         AddFloat4x4(data, m_WorldToClipPrev);
         AddFloat2(data, m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
         AddFloat(data, (float)settings.diffuseMaxAccumulatedFrameNum);

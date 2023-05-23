@@ -40,16 +40,16 @@ void Preload( uint2 sharedPos, int2 globalPos )
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
 {
-    // Copy history
-    #ifdef SIGMA_FIRST_PASS
-        gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
-    #endif
-
-    // Populate shared memory
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
-    PRELOAD_INTO_SMEM;
+    // Preload
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].y;
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
+
+    // Tile-based early out
+    if( isSky != 0.0 )
+        return;
 
     // Center data
     int2 smemPos = threadPos + BORDER;
@@ -59,15 +59,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float viewZ = centerData.y;
 
     // Early out
+    if( viewZ > gDenoisingRange )
+        return;
+
     #ifdef SIGMA_FIRST_PASS
+        // Copy history
+        gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
+
         float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
         tileValue *= all( pixelPos < gRectSize ); // due to USE_MAX_DIMS
     #else
         float tileValue = 1.0;
     #endif
 
-    [branch]
-    if( viewZ > gDenoisingRange || centerHitDist == 0.0 || tileValue == 0.0 )
+    // Early out
+    if( centerHitDist == 0.0 || tileValue == 0.0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
         gOut_Hit_ViewZ[ pixelPos ] = float2( 0.0, viewZ * NRD_FP16_VIEWZ_SCALE );
@@ -79,6 +85,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #if( SIGMA_REFERENCE == 1 )
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
         gOut_Hit_ViewZ[ pixelPos ] = float2( centerHitDist * centerSignNoL, viewZ * NRD_FP16_VIEWZ_SCALE );
+
         return;
     #endif
 

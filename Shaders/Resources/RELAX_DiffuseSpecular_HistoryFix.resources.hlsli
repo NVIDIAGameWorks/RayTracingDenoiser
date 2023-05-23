@@ -32,14 +32,15 @@ NRD_CONSTANTS_END
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>,  gHistoryLength, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float>,  gViewZFP16, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>,  gHistoryLength, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float>,  gViewZ, t, 5 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 5 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 6 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 6 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 7 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -55,12 +56,13 @@ NRD_CONSTANTS_END
 #elif( defined RELAX_DIFFUSE )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 4 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 4 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 5 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -74,12 +76,13 @@ NRD_CONSTANTS_END
 #elif( defined RELAX_SPECULAR )
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 4 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 4 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 5 )
         #endif
     NRD_INPUT_TEXTURE_END
 

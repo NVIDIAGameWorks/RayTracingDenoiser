@@ -26,7 +26,7 @@ NRD_INPUT_TEXTURE_START
     NRD_INPUT_TEXTURE( Texture2D<float2>, gIn_Hit_ViewZ, t, 1 )
     NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 2 )
     NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_History, t, 3 )
-    NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 4 )
+    NRD_INPUT_TEXTURE( Texture2D<float2>, gIn_Tiles, t, 4 )
 NRD_INPUT_TEXTURE_END
 
 NRD_OUTPUT_TEXTURE_START

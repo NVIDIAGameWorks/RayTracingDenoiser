@@ -39,7 +39,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 // Switches ( default 0 )
-#define REBLUR_USE_5X5_ANTI_FIREFLY                             0 // can be 1 for dirty signals, but will be less useful
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
 #define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             0
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
@@ -94,8 +93,10 @@ static const float3 g_Special8[ 8 ] =
 #define REBLUR_HISTORY_FIX_THRESHOLD_2                          0.333 // was 0.25
 #define REBLUR_HISTORY_FIX_BUMPED_ROUGHNESS                     0.08
 #define REBLUR_HIT_DIST_MIN_WEIGHT                              0.1 // TODO: reduce?
-#define REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY                   float2( 10.0, 1.1 )
+#define REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY        float2( 10.0, 1.1 )
 #define REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE                  0.1
+#define REBLUR_ANTI_FIREFLY_FILTER_RADIUS                       4 // pixels
+#define REBLUR_ANTI_FIREFLY_SIGMA_SCALE                         2.0
 
 // Shared data
 #define REBLUR_SHARED_CB_DATA \
@@ -179,4 +180,7 @@ static const float3 g_Special8[ 8 ] =
 
     #undef REBLUR_POST_BLUR_ROTATOR_MODE
     #define REBLUR_POST_BLUR_ROTATOR_MODE                       NRD_FRAME
+
+    #undef REBLUR_ANTI_FIREFLY_FILTER_RADIUS
+    #define REBLUR_ANTI_FIREFLY_FILTER_RADIUS                   3
 #endif

@@ -162,13 +162,15 @@ void runRCRS(
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
 {
-    PRELOAD_INTO_SMEM;
+    float isSky = gTiles[pixelPos >> 4];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
-    // Shared memory is populated now and can be used for filtering
-    float centerViewZ = gViewZFP16[pixelPos] / NRD_FP16_VIEWZ_SCALE;
+    // Tile-based early out
+    if (isSky != 0.0)
+        return;
 
     // Early out if linearZ is beyond denoising range
-    [branch]
+    float centerViewZ = abs(gViewZ[pixelPos]);
     if (centerViewZ > gDenoisingRange)
         return;
 

@@ -73,6 +73,24 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define BUFFER_X                                                ( GROUP_X + BORDER * 2 )
 #define BUFFER_Y                                                ( GROUP_Y + BORDER * 2 )
 
+#define PRELOAD_INTO_SMEM_WITH_TILE_CHECK \
+    if( isSky == 0.0 ) \
+    { \
+        int2 groupBase = pixelPos - threadPos - BORDER; \
+        uint stageNum = ( BUFFER_X * BUFFER_Y + GROUP_X * GROUP_Y - 1 ) / ( GROUP_X * GROUP_Y ); \
+        [unroll] \
+        for( uint stage = 0; stage < stageNum; stage++ ) \
+        { \
+            uint virtualIndex = threadIndex + stage * GROUP_X * GROUP_Y; \
+            uint2 newId = uint2( virtualIndex % BUFFER_X, virtualIndex / BUFFER_X ); \
+            if( stage == 0 || virtualIndex < BUFFER_X * BUFFER_Y ) \
+                Preload( newId, groupBase + newId ); \
+        } \
+    } \
+    GroupMemoryBarrierWithGroupSync( ); \
+    /* Not an elegant way to solve loop variables declaration duplication problem */ \
+    int i, j
+
 #define PRELOAD_INTO_SMEM \
     int2 groupBase = pixelPos - threadPos - BORDER; \
     uint stageNum = ( BUFFER_X * BUFFER_Y + GROUP_X * GROUP_Y - 1 ) / ( GROUP_X * GROUP_Y ); \

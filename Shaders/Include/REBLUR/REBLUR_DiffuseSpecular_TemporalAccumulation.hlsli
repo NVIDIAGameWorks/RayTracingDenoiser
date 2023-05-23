@@ -42,12 +42,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
-    PRELOAD_INTO_SMEM;
+    // Preload
+    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
+
+    // Tile-based early out
+    if( isSky != 0.0 )
+        return;
 
     // Early out
     float viewZ = abs( gIn_ViewZ[ pixelPosUser ] );
-
-    [branch]
     if( viewZ > gDenoisingRange )
         return;
 
@@ -55,7 +59,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float3 X = STL::Geometry::RotateVector( gViewToWorld, Xv );
 
-    // Analyze neighbors
+    // Find hit distance for tracking and averaged normal
     int2 smemPos = threadPos + BORDER;
     float4 t = s_Normal_MinHitDist[ smemPos.y ][ smemPos.x ];
     float3 Navg = t.xyz;
@@ -236,7 +240,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Plane distance based disocclusion for surface motion
     float3 V = GetViewVector( X );
     float NoV = abs( dot( N, V ) );
-    float smbDisocclusionThreshold = disocclusionThresholdMulFrustumSize / lerp( NoV, 1.0, saturate( smbParallaxInPixels / 30.0 ) );
+    float smbDisocclusionThreshold = disocclusionThresholdMulFrustumSize / lerp( 0.05 + 0.95 * NoV, 1.0, saturate( smbParallaxInPixels / 30.0 ) );
 
     float mvLengthFactor = STL::Math::LinearStep( 0.5, 1.0, smbParallaxInPixels );
     float frontFacing = lerp( cos( STL::Math::DegToRad( 135.0 ) ), cos( STL::Math::DegToRad( 91.0 ) ), mvLengthFactor );
@@ -386,14 +390,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         diffAntifireflyFactor /= 1.0 + diffAntifireflyFactor;
 
         float diffHitDistResult = ExtractHitDist( diffResult );
-        float diffHitDistClamped = min( diffHitDistResult, ExtractHitDist( smbDiffHistory ) * REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY.y );
+        float diffHitDistClamped = min( diffHitDistResult, ExtractHitDist( smbDiffHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.y );
         diffHitDistClamped = lerp( diffHitDistResult, diffHitDistClamped, diffAntifireflyFactor );
 
         #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
             diffResult = ChangeLuma( diffResult, diffHitDistClamped );
         #else
             float diffLumaResult = GetLuma( diffResult );
-            float diffLumaClamped = min( diffLumaResult, GetLuma( smbDiffHistory ) * REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY.x );
+            float diffLumaClamped = min( diffLumaResult, GetLuma( smbDiffHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.x );
             diffLumaClamped = lerp( diffLumaResult, diffLumaClamped, diffAntifireflyFactor );
 
             diffResult = ChangeLuma( diffResult, diffLumaClamped );
@@ -413,8 +417,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Fast history
-        smbDiffFastHistory = diffAccumSpeed < gMaxFastAccumulatedFrameNum ? GetLuma( smbDiffHistory ) : smbDiffFastHistory;
-
         float diffFastAccumSpeed = min( diffAccumSpeed, gMaxFastAccumulatedFrameNum );
         float diffFastNonLinearAccumSpeed = 1.0 / ( 1.0 + diffFastAccumSpeed );
         if( !diffHasData )
@@ -486,12 +488,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         virtualHistoryAmount *= D.w;
 
         // Virtual motion amount - surface
+        // IMPORTANT: use "Navg" in this test to avoid false reaction on bumpy surfaces ( test 181 )
         STL::Filtering::Bilinear vmbBilinearFilter = STL::Filtering::GetBilinearFilter( saturate( vmbPixelUv ), gRectSizePrev );
         float2 vmbBilinearGatherUv = ( vmbBilinearFilter.origin + 1.0 ) * gInvScreenSize;
         float4 vmbViewZs = UnpackViewZ( gIn_Prev_ViewZ.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy );
         float3 vmbVv = STL::Geometry::ReconstructViewPosition( vmbPixelUv, gFrustumPrev, 1.0 ); // unnormalized, orthoMode = 0
-        float3 Nvprev = STL::Geometry::RotateVector( gWorldToViewPrev, N );
-        float NoXreal = dot( N, X - gCameraDelta );
+        float3 Nvprev = STL::Geometry::RotateVector( gWorldToViewPrev, Navg );
+        float NoXreal = dot( Navg, X - gCameraDelta );
         float4 NoX = ( Nvprev.x * vmbVv.x + Nvprev.y * vmbVv.y ) * ( gOrthoMode == 0 ? vmbViewZs : gOrthoMode ) + Nvprev.z * vmbVv.z * vmbViewZs;
         float4 vmbPlaneDist = abs( NoX - NoXreal );
         float4 vmbOcclusion = step( vmbPlaneDist, disocclusionThresholdMulFrustumSize );
@@ -678,14 +681,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         specAntifireflyFactor /= 1.0 + specAntifireflyFactor;
 
         float specHitDistResult = ExtractHitDist( specResult );
-        float specHitDistClamped = min( specHitDistResult, ExtractHitDist( specHistory ) * REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY.y );
+        float specHitDistClamped = min( specHitDistResult, ExtractHitDist( specHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.y );
         specHitDistClamped = lerp( specHitDistResult, specHitDistClamped, specAntifireflyFactor );
 
         #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
             specResult = ChangeLuma( specResult, specHitDistClamped );
         #else
             float specLumaResult = GetLuma( specResult );
-            float specLumaClamped = min( specLumaResult, GetLuma( specHistory ) * REBLUR_MAX_FIREFLY_RELATIVE_INTENSITY.x );
+            float specLumaClamped = min( specLumaResult, GetLuma( specHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.x );
             specLumaClamped = lerp( specLumaResult, specLumaClamped, specAntifireflyFactor );
 
             specResult = ChangeLuma( specResult, specLumaClamped );
@@ -706,7 +709,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Fast history
         float specFastHistory = lerp( smbSpecFastHistory.x, vmbSpecFastHistory.x, virtualHistoryAmount );
-        specFastHistory = specAccumSpeed < gMaxFastAccumulatedFrameNum ? GetLuma( specHistory ) : specFastHistory;
 
         float specFastAccumSpeed = min( specAccumSpeed, gMaxFastAccumulatedFrameNum );
         specFastAccumSpeed *= lerp( 1.0, virtualHistoryConfidence, virtualHistoryAmount );

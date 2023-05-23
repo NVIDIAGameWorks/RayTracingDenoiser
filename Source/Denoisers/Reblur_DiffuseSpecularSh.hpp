@@ -8,9 +8,9 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData)
+void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
 {
-    #define METHOD_NAME REBLUR_DiffuseSpecularSh
+    #define DENOISER_NAME REBLUR_DiffuseSpecularSh
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
     #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
     #define DIFF_SH_TEMP1 AsUint(Transient::DIFF_SH_TMP1)
@@ -20,11 +20,13 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
     #define SPEC_SH_TEMP1 AsUint(Transient::SPEC_SH_TMP1)
     #define SPEC_SH_TEMP2 AsUint(Transient::SPEC_SH_TMP2)
 
-    methodData.settings.reblur = ReblurSettings();
-    methodData.settingsSize = sizeof(methodData.settings.reblur);
+    denoiserData.settings.reblur = ReblurSettings();
+    denoiserData.settingsSize = sizeof(denoiserData.settings.reblur);
             
-    uint16_t w = methodData.desc.fullResolutionWidth;
-    uint16_t h = methodData.desc.fullResolutionHeight;
+    uint16_t w = denoiserData.desc.renderWidth;
+    uint16_t h = denoiserData.desc.renderHeight;
+    uint16_t tilesW = DivideUp(w, 16);
+    uint16_t tilesH = DivideUp(h, 16);
 
     enum class Permanent
     {
@@ -41,17 +43,17 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         SPEC_SH_HISTORY,
     };
 
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
 
     enum class Transient
     {
@@ -66,21 +68,38 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         SPEC_TMP2,
         SPEC_SH_TMP1,
         SPEC_SH_TMP2,
+        TILES,
     };
 
-    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {Format::R32_UINT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT_SPEC_HITDIST_FOR_TRACKING, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {Format::RGBA8_UNORM, w, h, 1} );
+    AddTextureToTransientPool( {Format::R32_UINT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_SPEC_HITDIST_FOR_TRACKING, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
+
+    for (int i = 0; i < REBLUR_CLASSIFY_TILES_PERMUTATION_NUM; i++)
+    {
+        PushPass("Classify tiles");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+
+            // Outputs
+            PushOutput( AsUint(Transient::TILES) );
+
+            // Shaders
+            AddDispatch( REBLUR_ClassifyTiles, REBLUR_CLASSIFY_TILES_CONSTANT_NUM, REBLUR_CLASSIFY_TILES_NUM_THREADS, 1 );
+        }
+    }
 
     for (int i = 0; i < REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM; i++)
     {
@@ -90,6 +109,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("Hit distance reconstruction");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
@@ -120,6 +140,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("Pre-pass");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( isAfterReconstruction ? DIFF_TEMP2 : AsUint(ResourceType::IN_DIFF_SH0) );
@@ -150,6 +171,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("Temporal accumulation");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(ResourceType::IN_MV) );
@@ -192,6 +214,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("History fix");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
@@ -219,6 +242,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("Blur");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( DIFF_TEMP1 );
@@ -247,6 +271,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("Post-blur");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( DIFF_TEMP2 );
@@ -293,6 +318,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("Copy stabilized history");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::OUT_DIFF_SH0) );
             PushInput( AsUint(ResourceType::OUT_SPEC_SH0) );
             PushInput( AsUint(ResourceType::OUT_DIFF_SH1) );
@@ -316,6 +342,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
         PushPass("Temporal stabilization");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( hasRf0AndMetalness ? AsUint(ResourceType::IN_BASECOLOR_METALNESS) : REBLUR_DUMMY );
             PushInput( AsUint(Permanent::PREV_VIEWZ) );
@@ -369,7 +396,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularSh(MethodData& methodData
 
     REBLUR_ADD_VALIDATION_DISPATCH( Transient::DATA2, ResourceType::IN_DIFF_SH0, ResourceType::IN_SPEC_SH0 );
 
-    #undef METHOD_NAME
+    #undef DENOISER_NAME
     #undef DIFF_TEMP1
     #undef DIFF_TEMP2
     #undef DIFF_SH_TEMP1

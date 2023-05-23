@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "DenoiserImpl.h"
+#include "InstanceImpl.h"
 
 #define SIGMA_SET_SHARED_CONSTANTS                      SetSharedConstants(1, 2, 8, 8)
 
@@ -27,7 +27,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_SPLIT_SCREEN_SET_CONSTANTS                SumConstants(0, 0, 0, 1)
 #define SIGMA_SPLIT_SCREEN_NUM_THREADS                  NumThreads(16, 16)
 
-void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
+void nrd::InstanceImpl::Update_SigmaShadow(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
@@ -39,7 +39,7 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
         SPLIT_SCREEN,
     };
 
-    const SigmaSettings& settings = methodData.settings.sigma;
+    const SigmaSettings& settings = denoiserData.settings.sigma;
 
     NRD_DECLARE_DIMS;
 
@@ -49,8 +49,8 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
-        Constant* data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Sigma(methodData, settings, data);
+        Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Sigma(denoiserData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         ValidateConstants(data);
 
@@ -58,33 +58,33 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     }
 
     // CLASSIFY_TILES
-    Constant* data = PushDispatch(methodData, AsUint(Dispatch::CLASSIFY_TILES));
-    AddSharedConstants_Sigma(methodData, settings, data);
+    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::CLASSIFY_TILES));
+    AddSharedConstants_Sigma(denoiserData, settings, data);
     ValidateConstants(data);
 
     // SMOOTH_TILES
-    data = PushDispatch(methodData, AsUint(Dispatch::SMOOTH_TILES));
-    AddSharedConstants_Sigma(methodData, settings, data);
+    data = PushDispatch(denoiserData, AsUint(Dispatch::SMOOTH_TILES));
+    AddSharedConstants_Sigma(denoiserData, settings, data);
     AddUint2(data, tilesW, tilesH);
     ValidateConstants(data);
 
     // BLUR
-    data = PushDispatch(methodData, AsUint(Dispatch::BLUR));
-    AddSharedConstants_Sigma(methodData, settings, data);
+    data = PushDispatch(denoiserData, AsUint(Dispatch::BLUR));
+    AddSharedConstants_Sigma(denoiserData, settings, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator_Blur);
     ValidateConstants(data);
 
     // POST_BLUR
-    data = PushDispatch(methodData, AsUint(Dispatch::POST_BLUR));
-    AddSharedConstants_Sigma(methodData, settings, data);
+    data = PushDispatch(denoiserData, AsUint(Dispatch::POST_BLUR));
+    AddSharedConstants_Sigma(denoiserData, settings, data);
     AddFloat4x4(data, m_WorldToView);
     AddFloat4(data, m_Rotator_PostBlur);
     ValidateConstants(data);
 
     // TEMPORAL_STABILIZATION
-    data = PushDispatch(methodData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
-    AddSharedConstants_Sigma(methodData, settings, data);
+    data = PushDispatch(denoiserData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
+    AddSharedConstants_Sigma(denoiserData, settings, data);
     AddFloat4x4(data, m_WorldToClipPrev);
     AddFloat4x4(data, m_ViewToWorld);
     ValidateConstants(data);
@@ -92,14 +92,14 @@ void nrd::DenoiserImpl::UpdateMethod_SigmaShadow(const MethodData& methodData)
     // SPLIT_SCREEN
     if (m_CommonSettings.splitScreen > 0.0f)
     {
-        data = PushDispatch(methodData, AsUint(Dispatch::SPLIT_SCREEN));
-        AddSharedConstants_Sigma(methodData, settings, data);
+        data = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Sigma(denoiserData, settings, data);
         AddFloat(data, m_CommonSettings.splitScreen);
         ValidateConstants(data);
     }
 }
 
-void nrd::DenoiserImpl::AddSharedConstants_Sigma(const MethodData& methodData, const SigmaSettings& settings, Constant*& data)
+void nrd::InstanceImpl::AddSharedConstants_Sigma(const DenoiserData& denoiserData, const SigmaSettings& settings, Constant*& data)
 {
     NRD_DECLARE_DIMS;
 
@@ -181,5 +181,5 @@ void nrd::DenoiserImpl::AddSharedConstants_Sigma(const MethodData& methodData, c
 
 #endif
 
-#include "Methods/Sigma_Shadow.hpp"
-#include "Methods/Sigma_ShadowTranslucency.hpp"
+#include "Denoisers/Sigma_Shadow.hpp"
+#include "Denoisers/Sigma_ShadowTranslucency.hpp"

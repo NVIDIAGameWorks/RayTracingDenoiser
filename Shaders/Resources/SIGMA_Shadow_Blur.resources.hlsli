@@ -24,14 +24,14 @@ NRD_CONSTANTS_END
 NRD_INPUT_TEXTURE_START
     NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
     NRD_INPUT_TEXTURE( Texture2D<float2>, gIn_Hit_ViewZ, t, 1 )
+    NRD_INPUT_TEXTURE( Texture2D<float2>, gIn_Tiles, t, 2 )
     #ifdef SIGMA_FIRST_PASS
-        NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_History, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Tiles, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_History, t, 3 )
         #ifdef SIGMA_TRANSLUCENT
             NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 4 )
         #endif
     #else
-        NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 3 )
     #endif
 NRD_INPUT_TEXTURE_END
 
@@ -42,3 +42,7 @@ NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<SIGMA_TYPE>, gOut_History, u, 2 )
     #endif
 NRD_OUTPUT_TEXTURE_END
+
+#if( SIGMA_5X5_BLUR_RADIUS_ESTIMATION_KERNEL == 1 )
+    #define NRD_USE_BORDER_2
+#endif

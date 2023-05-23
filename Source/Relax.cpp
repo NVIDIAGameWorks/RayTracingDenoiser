@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "DenoiserImpl.h"
+#include "InstanceImpl.h"
 
 constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
 
@@ -20,7 +20,7 @@ constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) ); \
         PushInput( AsUint(ResourceType::IN_VIEWZ) ); \
         PushInput( AsUint(ResourceType::IN_MV) ); \
-        PushInput( AsUint(Permanent::HISTORY_LENGTH_CURR) ); \
+        PushInput( AsUint(Transient::HISTORY_LENGTH) ); \
         PushOutput( AsUint(ResourceType::OUT_VALIDATION) ); \
         AddDispatch( RELAX_Validation, SumConstants(1, 0, 1, 1), NumThreads(16, 16), IGNORE_RS ); \
     }
@@ -44,7 +44,7 @@ inline bool RELAX_IsCameraStatic
     return ml::Length(cameraDelta) < eps && ml::Length(frustumRight - prevFrustumRight) < eps && ml::Length(frustumUp - prevFrustumUp) < eps && ml::Length(frustumForward - prevFrustumForward) < eps;
 }
 
-void nrd::DenoiserImpl::AddSharedConstants_Relax(const MethodData& methodData, Constant*& data, Method method)
+void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserData, Constant*& data, Denoiser denoiser)
 {
     NRD_DECLARE_DIMS;
 
@@ -97,22 +97,22 @@ void nrd::DenoiserImpl::AddSharedConstants_Relax(const MethodData& methodData, C
 
     AddFloat(data, m_CheckerboardResolveAccumSpeed);
     AddFloat(data, m_JitterDelta);
-    switch (method)
+    switch (denoiser)
     {
-    case Method::RELAX_DIFFUSE:
-    case Method::RELAX_DIFFUSE_SH:
-        AddUint(data, methodData.settings.diffuseRelax.enableMaterialTest ? 1 : 0);
+    case Denoiser::RELAX_DIFFUSE:
+    case Denoiser::RELAX_DIFFUSE_SH:
+        AddUint(data, denoiserData.settings.diffuseRelax.enableMaterialTest ? 1 : 0);
         AddUint(data, 0);
         break;
-    case Method::RELAX_SPECULAR:
-    case Method::RELAX_SPECULAR_SH:
+    case Denoiser::RELAX_SPECULAR:
+    case Denoiser::RELAX_SPECULAR_SH:
         AddUint(data, 0);
-        AddUint(data, methodData.settings.specularRelax.enableMaterialTest ? 1 : 0);
+        AddUint(data, denoiserData.settings.specularRelax.enableMaterialTest ? 1 : 0);
         break;
-    case Method::RELAX_DIFFUSE_SPECULAR:
-    case Method::RELAX_DIFFUSE_SPECULAR_SH:
-        AddUint(data, methodData.settings.diffuseSpecularRelax.enableMaterialTestForDiffuse ? 1 : 0);
-        AddUint(data, methodData.settings.diffuseSpecularRelax.enableMaterialTestForSpecular ? 1 : 0);
+    case Denoiser::RELAX_DIFFUSE_SPECULAR:
+    case Denoiser::RELAX_DIFFUSE_SPECULAR_SH:
+        AddUint(data, denoiserData.settings.diffuseSpecularRelax.enableMaterialTestForDiffuse ? 1 : 0);
+        AddUint(data, denoiserData.settings.diffuseSpecularRelax.enableMaterialTestForSpecular ? 1 : 0);
         break;
     default:
         // Should never get here
@@ -129,6 +129,14 @@ void nrd::DenoiserImpl::AddSharedConstants_Relax(const MethodData& methodData, C
 }
 
 #ifdef NRD_USE_PRECOMPILED_SHADERS
+
+    // RELAX_SHARED
+    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
+            #include "RELAX_ClassifyTiles.cs.dxbc.h"
+            #include "RELAX_ClassifyTiles.cs.dxil.h"
+    #endif
+
+    #include "RELAX_ClassifyTiles.cs.spirv.h"
 
     // RELAX_DIFFUSE
     #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
@@ -327,9 +335,9 @@ void nrd::DenoiserImpl::AddSharedConstants_Relax(const MethodData& methodData, C
 
 #endif
 
-#include "Methods/Relax_Diffuse.hpp"
-#include "Methods/Relax_DiffuseSh.hpp"
-#include "Methods/Relax_Specular.hpp"
-#include "Methods/Relax_SpecularSh.hpp"
-#include "Methods/Relax_DiffuseSpecular.hpp"
-#include "Methods/Relax_DiffuseSpecularSh.hpp"
+#include "Denoisers/Relax_Diffuse.hpp"
+#include "Denoisers/Relax_DiffuseSh.hpp"
+#include "Denoisers/Relax_Specular.hpp"
+#include "Denoisers/Relax_SpecularSh.hpp"
+#include "Denoisers/Relax_DiffuseSpecular.hpp"
+#include "Denoisers/Relax_DiffuseSpecularSh.hpp"

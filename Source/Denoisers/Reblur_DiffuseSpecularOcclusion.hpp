@@ -8,19 +8,21 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& methodData)
+void nrd::InstanceImpl::Add_ReblurDiffuseSpecularOcclusion(DenoiserData& denoiserData)
 {
-    #define METHOD_NAME REBLUR_DiffuseSpecularOcclusion
+    #define DENOISER_NAME REBLUR_DiffuseSpecularOcclusion
     #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
     #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
     #define SPEC_TEMP1 AsUint(Transient::SPEC_TMP1)
     #define SPEC_TEMP2 AsUint(Transient::SPEC_TMP2)
 
-    methodData.settings.reblur = ReblurSettings();
-    methodData.settingsSize = sizeof(methodData.settings.reblur);
+    denoiserData.settings.reblur = ReblurSettings();
+    denoiserData.settingsSize = sizeof(denoiserData.settings.reblur);
             
-    uint16_t w = methodData.desc.fullResolutionWidth;
-    uint16_t h = methodData.desc.fullResolutionHeight;
+    uint16_t w = denoiserData.desc.renderWidth;
+    uint16_t h = denoiserData.desc.renderHeight;
+    uint16_t tilesW = DivideUp(w, 16);
+    uint16_t tilesH = DivideUp(h, 16);
 
     enum class Permanent
     {
@@ -33,13 +35,13 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
         SPEC_FAST_HISTORY_PONG,
     };
 
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
-    m_PermanentPool.push_back( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
 
     enum class Transient
     {
@@ -48,15 +50,32 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
         DIFF_TMP2,
         SPEC_TMP1,
         SPEC_TMP2,
+        TILES,
     };
 
-    m_TransientPool.push_back( {Format::RGBA8_UNORM, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
-    m_TransientPool.push_back( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
+    AddTextureToTransientPool( {Format::RGBA8_UNORM, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_OCCLUSION, w, h, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
+
+    for (int i = 0; i < REBLUR_CLASSIFY_TILES_PERMUTATION_NUM; i++)
+    {
+        PushPass("Classify tiles");
+        {
+            // Inputs
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+
+            // Outputs
+            PushOutput( AsUint(Transient::TILES) );
+
+            // Shaders
+            AddDispatch( REBLUR_ClassifyTiles, REBLUR_CLASSIFY_TILES_CONSTANT_NUM, REBLUR_CLASSIFY_TILES_NUM_THREADS, 1 );
+        }
+    }
 
     for (int i = 0; i < REBLUR_OCCLUSION_HITDIST_RECONSTRUCTION_PERMUTATION_NUM; i++)
     {
@@ -65,6 +84,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
         PushPass("Hit distance reconstruction");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(ResourceType::IN_DIFF_HITDIST) );
@@ -97,6 +117,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
         PushPass("Temporal accumulation");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(ResourceType::IN_MV) );
@@ -131,6 +152,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
         PushPass("History fix");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
@@ -154,6 +176,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
         PushPass("Blur");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( DIFF_TEMP1 );
@@ -176,6 +199,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
         PushPass("Post-blur");
         {
             // Inputs
+            PushInput( AsUint(Transient::TILES) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA1) );
             PushInput( DIFF_TEMP2 );
@@ -214,7 +238,7 @@ void nrd::DenoiserImpl::AddMethod_ReblurDiffuseSpecularOcclusion(MethodData& met
 
     REBLUR_ADD_VALIDATION_DISPATCH( Transient::DATA1, ResourceType::IN_DIFF_HITDIST, ResourceType::IN_SPEC_HITDIST );
 
-    #undef METHOD_NAME
+    #undef DENOISER_NAME
     #undef DIFF_TEMP1
     #undef SPEC_TEMP1
     #undef DIFF_TEMP2

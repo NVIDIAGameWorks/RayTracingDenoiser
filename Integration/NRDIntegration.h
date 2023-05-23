@@ -12,7 +12,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // IMPORTANT: these files must be included beforehand:
 //    NRD.h
-//    NRIDescs.hpp
+//    NRIDescs.h
 //    Extensions/NRIHelper.h
 //    Extensions/NRIWrapperD3D11.h
 //    Extensions/NRIWrapperD3D12.h
@@ -23,8 +23,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <map>
 
 #define NRD_INTEGRATION_MAJOR 1
-#define NRD_INTEGRATION_MINOR 5
-#define NRD_INTEGRATION_DATE "23 March 2022"
+#define NRD_INTEGRATION_MINOR 6
+#define NRD_INTEGRATION_DATE "30 April 2023"
 #define NRD_INTEGRATION 1
 
 #define NRD_INTEGRATION_DEBUG_LOGGING 0
@@ -45,7 +45,7 @@ struct NrdIntegrationTexture
 
 typedef std::array<NrdIntegrationTexture, (size_t)nrd::ResourceType::MAX_NUM - 2> NrdUserPool;
 
-// User pool must contain valid entries only for resources, which are required for requested denoising methods, but
+// User pool must contain valid entries only for resources, which are required for requested denoisers, but
 // the entire pool must be zero-ed during initialization
 inline void NrdIntegration_SetResource(NrdUserPool& pool, nrd::ResourceType slot, const NrdIntegrationTexture& texture)
 {
@@ -61,9 +61,9 @@ public:
     // The application must provide number of buffered frames, it's needed to guarantee that
     // constant data and descriptor sets are not overwritten while being executed on the GPU.
     // Usually it's 2-3 frames.
-    NrdIntegration(uint32_t bufferedFrameMaxNum, const char* persistentName = "") :
+    NrdIntegration(uint32_t bufferedFramesNum, const char* persistentName = "") :
         m_Name(persistentName)
-        , m_BufferedFrameMaxNum(bufferedFrameMaxNum)
+        , m_BufferedFramesNum(bufferedFramesNum)
     {}
 
     ~NrdIntegration()
@@ -72,18 +72,20 @@ public:
     // There is no "Resize" functionality, because NRD full recreation costs nothing.
     // The main cost comes from render targets resizing, which needs to be done in any case
     // (call Destroy beforehand)
-    bool Initialize(const nrd::DenoiserCreationDesc& denoiserCreationDesc, nri::Device& nriDevice,
+    bool Initialize(const nrd::InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice,
         const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
 
-    // Just calls "nrd::SetMethodSettings"
-    bool SetMethodSettings(nrd::Method method, const void* methodSettings);
+    // Must be called once on a frame start
+    void NewFrame(uint32_t frameIndex);
+
+    // Explcitly calls eponymous NRD API functions
+    bool SetCommonSettings(const nrd::CommonSettings& commonSettings);
+    bool SetDenoiserSettings(nrd::Identifier denoiser, const void* denoiserSettings);
 
     // Better use "enableDescriptorCaching = true" if resources are not changing between frames
-    // (i.e. are not suballocated from a heap)
-    void Denoise
-    (
-        uint32_t consecutiveFrameIndex, nri::CommandBuffer& commandBuffer,
-        const nrd::CommonSettings& commonSettings, const NrdUserPool& userPool,
+    // (i.e. not suballocated from a heap)
+    void Denoise(const nrd::Identifier* denoisers, uint32_t denoisersNum,
+        nri::CommandBuffer& commandBuffer, const NrdUserPool& userPool,
         bool enableDescriptorCaching
     );
 
@@ -129,14 +131,15 @@ private:
     nri::Device* m_Device = nullptr;
     nri::Buffer* m_ConstantBuffer = nullptr;
     nri::Descriptor* m_ConstantBufferView = nullptr;
-    nrd::Denoiser* m_Denoiser = nullptr;
+    nrd::Instance* m_Instance = nullptr;
     const char* m_Name = nullptr;
     uint64_t m_PermanentPoolSize = 0;
     uint64_t m_TransientPoolSize = 0;
     uint64_t m_ConstantBufferSize = 0;
     uint32_t m_ConstantBufferViewSize = 0;
     uint32_t m_ConstantBufferOffset = 0;
-    uint32_t m_BufferedFrameMaxNum = 0;
+    uint32_t m_BufferedFramesNum = 0;
+    uint32_t m_DescriptorPoolIndex = 0;
     bool m_IsShadersReloadRequested = false;
 };
 

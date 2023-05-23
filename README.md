@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.1.2 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.2.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -28,9 +28,7 @@ Supported signal types:
   - Shadows from a local light source (omni, spot)
   - Shadows from multiple sources (experimental).
 
-De-modulated irradiance (i.e. irradiance with "removed" materials) can be used instead of radiance (see "Recommendations and Best Practices" section)
-
-A single *NRD* instance can track one layer of *diffuse* and one layer of *specular*. In case of multi-layered materials the worst case is to use 1 *NRD* instance for diffuse signals and 1 *NRD* instance per each *specular* layer (diffuse-specular fused denoisers track diffuse and specular separately, thus can be treated as separate instances in the current context).
+For diffuse and specular signals de-modulated irradiance (i.e. irradiance with "removed" materials) can be used instead of radiance (see "Recommendations and Best Practices" section).
 
 *NRD* is distributed as a source as well with a “ready-to-use” library (if used in a precompiled form). It can be integrated into any DX12, VULKAN or DX11 engine using two variants:
 1. Native implementation of the *NRD* API using engine capabilities
@@ -98,24 +96,25 @@ Additionally, for any information, suggestions or general requests please feel f
 # API
 
 Terminology:
-* *Denoiser method (or method)* - a method for denoising of a particular signal (for example: `Method::REBLUR_DIFFUSE`)
-* *Denoiser* - a set of methods aggregated into a monolithic entity (the library is free to rearrange passes without dependencies)
+* *Denoiser* - a denoiser to use (for example: `Denoiser::REBLUR_DIFFUSE`)
+* *Instance* - a set of denoisers aggregated into a monolithic entity (the library is free to rearrange passes without dependencies). Each denoiser in the instance has an associated *Identifier*
 * *Resource* - an input, output or internal resource (currently can only be a texture)
 * *Texture pool (or pool)* - a texture pool that stores permanent or transient resources needed for denoising. Textures from the permanent pool are dedicated to *NRD* and can not be reused by the application (history buffers are stored here). Textures from the transient pool can be reused by the application right after denoising. *NRD* doesn’t allocate anything. *NRD* provides resource descriptions, but resource creations are done on the application side.
 
 Flow:
-1. *GetLibraryDesc* - contains general *NRD* library information (supported denoising methods, SPIRV binding offsets). This call can be skipped if this information is known in advance (for example, is diffuse denoiser available?), but it can’t be skipped if SPIRV binding offsets are needed for VULKAN
-2. *CreateDenoiser* - creates a denoiser based on requested methods (it means that diffuse, specular and shadow logical denoisers can be merged into a single denoiser instance)
-3. *GetDenoiserDesc* - returns descriptions for pipelines, static samplers, texture pools, constant buffer and descriptor set. All this stuff is needed during the initialization step. Commonly used for initialization.
-4. *SetMethodSettings* - can be called to change parameters dynamically before applying the denoiser on each new frame / denoiser call
-5. *GetComputeDispatches* - returns per-dispatch data (bound subresources with required state, constant buffer data)
-6. *DestroyDenoiser* - destroys a denoiser
+1. *GetLibraryDesc* - contains general *NRD* library information (supported denoisers, SPIRV binding offsets). This call can be skipped if this information is known in advance (for example, is diffuse denoiser available?), but it can’t be skipped if SPIRV binding offsets are needed for VULKAN
+2. *CreateInstance* - creates an instance for requested denoisers
+3. *GetInstanceDesc* - returns descriptions for pipelines, samplers, texture pools, constant buffer and descriptor set. All this stuff is needed during the initialization step
+4. *SetCommonSettings* - sets common (shared) per frame parameters
+5. *SetDenoiserSettings* - can be called to change parameters dynamically before applying the denoiser on each new frame / denoiser call
+6. *GetComputeDispatches* - returns per-dispatch data for the list of denoisers (bound subresources with required state, constant buffer data). Returned memory is owned by the instance and gets overwritten by the next *GetComputeDispatches* call
+7. *DestroyInstance* - destroys an instance
 
 *NRD* doesn't make any graphics API calls. The application is supposed to invoke a set of compute *Dispatch* calls to actually denoise input signals. Please, refer to `NrdIntegration::Denoise()` and `NrdIntegration::Dispatch()` calls in `NRDIntegration.hpp` file as an example of an integration using low level RHI.
 
 *NRD* doesn’t have a "resize" functionality. On resolution change the old denoiser needs to be destroyed and a new one needs to be created with new parameters. But *NRD* supports dynamic resolution scaling via `CommonSettings::resolutionScale`.
 
-Some textures can be requested as inputs or outputs for a method (see the next section). Required resources are specified near a method declaration inside the `Method` enum class. Also `NRD.hlsli` has a comment near each front-end or back-end function, clarifying which resources this function is for.
+Some textures can be requested as inputs or outputs for a method (see the next section). Required resources are specified near a denoiser declaration inside the `Denoiser` enum class. Also `NRD.hlsli` has a comment near each front-end or back-end function, clarifying which resources this function is for.
 
 # NON-NOISY INPUTS
 
@@ -173,8 +172,8 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 - Signal for *NRD* must be separated into diffuse and specular at primary hit (or secondary hit in case of *PSR*)
 - `hitT` can't be negative
 - `hitT` must not include primary hit distance
-- `hitT` for after the primary hit (or *PSR*) must be provided "as is"
-- `hitT` for subsequent bounces must be adjusted by curvature and lobe energy dissipation on the application side
+- `hitT` for the bounce after the primary hit or *PSR* must be provided "as is"
+- `hitT` for subsequent bounces and for bounces before *PSR* must be adjusted by curvature and lobe energy dissipation on the application side
   - Do not pass *sum of lengths of all segments* as `hitT`. A solid baseline is to use hit distance for the 1st bounce only, it works well for diffuse and specular signals
   - *NRD sample* uses more complex approach for accumulating `hitT` along the path, which takes into account energy dissipation due to lobe spread and curvature at the current hit
 - Noise in hit distances must follow a diffuse or specular lobe. It implies that `hitT` for `roughness = 0` must be clean (if probabilistic sampling is not in use)
@@ -289,64 +288,64 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 
 | Resolution |                             Denoiser | Working set (Mb) |  Persistent (Mb) |   Aliasable (Mb) |
 |------------|--------------------------------------|------------------|------------------|------------------|
-|      1080p |                       REBLUR_DIFFUSE |            86.62 |            46.50 |            40.12 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |            42.38 |            29.62 |            12.75 |
-|            |                    REBLUR_DIFFUSE_SH |           137.25 |            63.38 |            73.88 |
-|            |                      REBLUR_SPECULAR |           105.56 |            54.88 |            50.69 |
-|            |            REBLUR_SPECULAR_OCCLUSION |            50.75 |            38.00 |            12.75 |
-|            |                   REBLUR_SPECULAR_SH |           156.19 |            71.75 |            84.44 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           168.88 |            80.25 |            88.62 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            71.94 |            46.50 |            25.44 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |           270.12 |           114.00 |           156.12 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            86.62 |            46.50 |            40.12 |
+|      1080p |                       REBLUR_DIFFUSE |            86.69 |            46.50 |            40.19 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |            42.44 |            29.62 |            12.81 |
+|            |                    REBLUR_DIFFUSE_SH |           137.31 |            63.38 |            73.94 |
+|            |                      REBLUR_SPECULAR |           105.62 |            54.88 |            50.75 |
+|            |            REBLUR_SPECULAR_OCCLUSION |            50.81 |            38.00 |            12.81 |
+|            |                   REBLUR_SPECULAR_SH |           156.25 |            71.75 |            84.50 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           168.94 |            80.25 |            88.69 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            72.00 |            46.50 |            25.50 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |           270.19 |           114.00 |           156.19 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            86.69 |            46.50 |            40.19 |
 |            |                         SIGMA_SHADOW |            23.38 |             0.00 |            23.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            42.31 |             0.00 |            42.31 |
-|            |                        RELAX_DIFFUSE |           120.31 |            65.44 |            54.88 |
-|            |                     RELAX_DIFFUSE_SH |           204.69 |            99.19 |           105.50 |
-|            |                       RELAX_SPECULAR |           130.94 |            73.94 |            57.00 |
-|            |                    RELAX_SPECULAR_SH |           215.31 |           107.69 |           107.62 |
-|            |               RELAX_DIFFUSE_SPECULAR |           215.31 |           107.69 |           107.62 |
-|            |            RELAX_DIFFUSE_SPECULAR_SH |           384.06 |           175.19 |           208.88 |
+|            |                        RELAX_DIFFUSE |            99.25 |            63.31 |            35.94 |
+|            |                     RELAX_DIFFUSE_SH |           158.31 |            88.62 |            69.69 |
+|            |                       RELAX_SPECULAR |           101.44 |            63.38 |            38.06 |
+|            |                    RELAX_SPECULAR_SH |           168.94 |            97.12 |            71.81 |
+|            |               RELAX_DIFFUSE_SPECULAR |           168.94 |            97.12 |            71.81 |
+|            |            RELAX_DIFFUSE_SPECULAR_SH |           303.94 |           164.62 |           139.31 |
 |            |                            REFERENCE |            33.75 |            33.75 |             0.00 |
 |            |                                      |                  |                  |                  |
-|      1440p |                       REBLUR_DIFFUSE |           153.75 |            82.50 |            71.25 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |            75.00 |            52.50 |            22.50 |
-|            |                    REBLUR_DIFFUSE_SH |           243.75 |           112.50 |           131.25 |
-|            |                      REBLUR_SPECULAR |           187.50 |            97.50 |            90.00 |
-|            |            REBLUR_SPECULAR_OCCLUSION |            90.00 |            67.50 |            22.50 |
-|            |                   REBLUR_SPECULAR_SH |           277.50 |           127.50 |           150.00 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           300.00 |           142.50 |           157.50 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           127.50 |            82.50 |            45.00 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |           480.00 |           202.50 |           277.50 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           153.75 |            82.50 |            71.25 |
+|      1440p |                       REBLUR_DIFFUSE |           153.81 |            82.50 |            71.31 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |            75.06 |            52.50 |            22.56 |
+|            |                    REBLUR_DIFFUSE_SH |           243.81 |           112.50 |           131.31 |
+|            |                      REBLUR_SPECULAR |           187.56 |            97.50 |            90.06 |
+|            |            REBLUR_SPECULAR_OCCLUSION |            90.06 |            67.50 |            22.56 |
+|            |                   REBLUR_SPECULAR_SH |           277.56 |           127.50 |           150.06 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           300.06 |           142.50 |           157.56 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           127.56 |            82.50 |            45.06 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |           480.06 |           202.50 |           277.56 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           153.81 |            82.50 |            71.31 |
 |            |                         SIGMA_SHADOW |            41.38 |             0.00 |            41.38 |
 |            |            SIGMA_SHADOW_TRANSLUCENCY |            75.12 |             0.00 |            75.12 |
-|            |                        RELAX_DIFFUSE |           213.75 |           116.25 |            97.50 |
-|            |                     RELAX_DIFFUSE_SH |           363.75 |           176.25 |           187.50 |
-|            |                       RELAX_SPECULAR |           232.50 |           131.25 |           101.25 |
-|            |                    RELAX_SPECULAR_SH |           382.50 |           191.25 |           191.25 |
-|            |               RELAX_DIFFUSE_SPECULAR |           382.50 |           191.25 |           191.25 |
-|            |            RELAX_DIFFUSE_SPECULAR_SH |           682.50 |           311.25 |           371.25 |
+|            |                        RELAX_DIFFUSE |           176.31 |           112.50 |            63.81 |
+|            |                     RELAX_DIFFUSE_SH |           281.31 |           157.50 |           123.81 |
+|            |                       RELAX_SPECULAR |           180.06 |           112.50 |            67.56 |
+|            |                    RELAX_SPECULAR_SH |           300.06 |           172.50 |           127.56 |
+|            |               RELAX_DIFFUSE_SPECULAR |           300.06 |           172.50 |           127.56 |
+|            |            RELAX_DIFFUSE_SPECULAR_SH |           540.06 |           292.50 |           247.56 |
 |            |                            REFERENCE |            60.00 |            60.00 |             0.00 |
 |            |                                      |                  |                  |                  |
-|      2160p |                       REBLUR_DIFFUSE |           326.75 |           175.31 |           151.44 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |           159.38 |           111.56 |            47.81 |
-|            |                    REBLUR_DIFFUSE_SH |           518.00 |           239.06 |           278.94 |
-|            |                      REBLUR_SPECULAR |           398.44 |           207.19 |           191.25 |
-|            |            REBLUR_SPECULAR_OCCLUSION |           191.25 |           143.44 |            47.81 |
-|            |                   REBLUR_SPECULAR_SH |           589.69 |           270.94 |           318.75 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           637.50 |           302.81 |           334.69 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           270.94 |           175.31 |            95.62 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |          1020.00 |           430.31 |           589.69 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           326.75 |           175.31 |           151.44 |
-|            |                         SIGMA_SHADOW |            87.94 |             0.00 |            87.94 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |           159.56 |             0.00 |           159.56 |
-|            |                        RELAX_DIFFUSE |           454.31 |           247.12 |           207.19 |
-|            |                     RELAX_DIFFUSE_SH |           773.06 |           374.62 |           398.44 |
-|            |                       RELAX_SPECULAR |           494.19 |           279.00 |           215.19 |
-|            |                    RELAX_SPECULAR_SH |           812.94 |           406.50 |           406.44 |
-|            |               RELAX_DIFFUSE_SPECULAR |           812.94 |           406.50 |           406.44 |
-|            |            RELAX_DIFFUSE_SPECULAR_SH |          1450.44 |           661.50 |           788.94 |
+|      2160p |                       REBLUR_DIFFUSE |           326.81 |           175.31 |           151.50 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |           159.44 |           111.56 |            47.88 |
+|            |                    REBLUR_DIFFUSE_SH |           518.06 |           239.06 |           279.00 |
+|            |                      REBLUR_SPECULAR |           398.50 |           207.19 |           191.31 |
+|            |            REBLUR_SPECULAR_OCCLUSION |           191.31 |           143.44 |            47.88 |
+|            |                   REBLUR_SPECULAR_SH |           589.75 |           270.94 |           318.81 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           637.56 |           302.81 |           334.75 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           271.00 |           175.31 |            95.69 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |          1020.06 |           430.31 |           589.75 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           326.81 |           175.31 |           151.50 |
+|            |                         SIGMA_SHADOW |            88.06 |             0.00 |            88.06 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |           159.69 |             0.00 |           159.69 |
+|            |                        RELAX_DIFFUSE |           374.69 |           239.12 |           135.56 |
+|            |                     RELAX_DIFFUSE_SH |           597.81 |           334.75 |           263.06 |
+|            |                       RELAX_SPECULAR |           382.69 |           239.12 |           143.56 |
+|            |                    RELAX_SPECULAR_SH |           637.69 |           366.62 |           271.06 |
+|            |               RELAX_DIFFUSE_SPECULAR |           637.69 |           366.62 |           271.06 |
+|            |            RELAX_DIFFUSE_SPECULAR_SH |          1147.69 |           621.62 |           526.06 |
 |            |                            REFERENCE |           127.50 |           127.50 |             0.00 |
 
 # INTEGRATION VARIANTS
@@ -428,17 +427,18 @@ nriResult = nri::GetInterface(*nriDevice,
 // INITIALIZATION - INITIALIZE NRD
 //=======================================================================================================
 
-const nrd::MethodDesc methodDescs[] =
+const nrd::DenoiserDesc denoiserDescs[] =
 {
-    // Put neeeded methods here, like:
-    { nrd::Method::XXX, renderResolution.x, renderResolution.y },
+    // Put neeeded denoisers here, like:
+    { identifier1, nrd::Denoiser::XXX, renderResolution.x, renderResolution.y },
+    { identifier2, nrd::Denoiser::YYY, renderResolution.x, renderResolution.y },
 };
 
-nrd::DenoiserCreationDesc denoiserCreationDesc = {};
-denoiserCreationDesc.requestedMethods = methodDescs;
-denoiserCreationDesc.requestedMethodNum = methodNum;
+nrd::InstanceCreationDesc instanceCreationDesc = {};
+instanceCreationDesc.denoisers = denoiserDescs;
+instanceCreationDesc.denoisersNum = GetCountOf(denoiserDescs);
 
-bool result = NRD.Initialize(*nriDevice, NRI, NRI, denoiserCreationDesc);
+bool result = NRD.Initialize(*nriDevice, NRI, NRI, instanceCreationDesc);
 
 //=======================================================================================================
 // INITIALIZATION or RENDER - WRAP NATIVE POINTERS
@@ -480,17 +480,24 @@ for (uint32_t i = 0; i < N; i++)
 // RENDER - DENOISE
 //=======================================================================================================
 
-// Populate common settings
+// Set common settings
 //  - for the first time use defaults
 //  - currently NRD supports only the following view space: X - right, Y - top, Z - forward or backward
 nrd::CommonSettings commonSettings = {};
 PopulateCommonSettings(commonSettings);
 
-// Set settings for each method in the NRD instance
-nrd::XxxSettings settings = {};
-PopulateXxxSettings(settings);
+NRD.SetCommonSettings(commonSettings);
 
-NRD.SetMethodSettings(nrd::Method::XXX, &settings);
+// Set settings for each method in the NRD instance
+nrd::XxxSettings settings1 = {};
+PopulateXxxSettings(settings1);
+
+NRD.SetDenoiserSettings(identifier1, &settings1);
+
+nrd::YyySettings settings2 = {};
+PopulateYyySettings(settings2);
+
+NRD.SetDenoiserSettings(identifier2, &settings2);
 
 // Fill up the user pool
 NrdUserPool userPool = {};
@@ -505,7 +512,8 @@ NrdUserPool userPool = {};
 // Better use "true" if resources are not changing between frames (i.e. are not suballocated from a heap)
 bool enableDescriptorCaching = true;
 
-NRD.Denoise(frameIndex, *nriCommandBuffer, commonSettings, userPool, enableDescriptorCaching);
+const nrd::Identifier denoisers[] = {identifier1, identifier2};
+NRD.Denoise(denoisers, helper::GetCountOf(denoisers), *nriCommandBuffer, userPool, enableDescriptorCaching);
 
 // IMPORTANT: NRD integration binds own descriptor pool, don't forget to re-bind back your pool (heap)
 
@@ -632,6 +640,8 @@ IN_MV = GetMotionAt( B );
 **[NRD]** *NRD* requires linear roughness and world-space normals. See `NRD.hlsli` for more details and supported customizations.
 
 **[NRD]** *NRD* requires non-jittered matrices.
+
+**[NRD]** Most of denoisers do not write into output pixels outside of `CommonSettings::denoisingRange`.
 
 **[NRD]** When upgrading to the latest version keep an eye on `ResourceType` enumeration. The order of the input slots can be changed or something can be added, you need to adjust the inputs accordingly to match the mapping. Or use *NRD integration* to simplify the process.
 

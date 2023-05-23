@@ -61,7 +61,7 @@ float2 FilterBicubic(float2 size, float2 uv, out float4 uv_10_00, out float4 uv_
     return float2( yw.z, xw.z );
 }
 
-float TextureCubic(Texture2D<float> tex, float2 uv)
+float TextureCubic(Texture2D<float2> tex, float2 uv)
 {
     uint w, h;
     tex.GetDimensions( w, h );
@@ -70,31 +70,15 @@ float TextureCubic(Texture2D<float> tex, float2 uv)
     float4 uv_10_00, uv_11_01;
     float2 t = FilterBicubic( size, uv.xy, uv_10_00, uv_11_01 );
 
-    float c00 = tex.SampleLevel( gLinearClamp, uv_10_00.zw, 0 );
-    float c10 = tex.SampleLevel( gLinearClamp, uv_10_00.xy, 0 );
-    float c01 = tex.SampleLevel( gLinearClamp, uv_11_01.zw, 0 );
-    float c11 = tex.SampleLevel( gLinearClamp, uv_11_01.xy, 0 );
+    float c00 = tex.SampleLevel( gLinearClamp, uv_10_00.zw, 0 ).x;
+    float c10 = tex.SampleLevel( gLinearClamp, uv_10_00.xy, 0 ).x;
+    float c01 = tex.SampleLevel( gLinearClamp, uv_11_01.zw, 0 ).x;
+    float c11 = tex.SampleLevel( gLinearClamp, uv_11_01.xy, 0 ).x;
 
     c00 = lerp( c00, c01, t.x );
     c10 = lerp( c10, c11, t.x );
 
     return lerp( c00, c10, t.y );
-}
-
-float TextureSmooth(Texture2D<float> tex, float2 uv)
-{
-    // https://www.iquilezles.org/www/articles/texture/texture.htm
-    uint w, h;
-    tex.GetDimensions( w, h );
-    float2 size = float2( w, h );
-
-    uv = uv * size + 0.5;
-    float2 iuv = floor( uv );
-    float2 fuv = frac( uv );
-    uv = iuv + fuv * fuv * ( 3.0 - 2.0 * fuv );
-    uv = ( uv - 0.5 ) / size;
-
-    return tex.SampleLevel( gLinearClamp, uv, 0 );
 }
 
 void BicubicFilterNoCorners(

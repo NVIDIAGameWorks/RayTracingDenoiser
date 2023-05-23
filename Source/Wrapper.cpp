@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "NRD.h"
-#include "DenoiserImpl.h"
+#include "InstanceImpl.h"
 #include "../Resources/Version.h"
 
 #include <array>
@@ -18,37 +18,37 @@ static_assert(VERSION_MAJOR == NRD_VERSION_MAJOR, "VERSION_MAJOR & NRD_VERSION_M
 static_assert(VERSION_MINOR == NRD_VERSION_MINOR, "VERSION_MINOR & NRD_VERSION_MINOR don't match!");
 static_assert(VERSION_BUILD == NRD_VERSION_BUILD, "VERSION_BUILD & NRD_VERSION_BUILD don't match!");
 
-constexpr std::array<nrd::Method, (size_t)nrd::Method::MAX_NUM> g_NrdSupportedMethods =
+constexpr std::array<nrd::Denoiser, (size_t)nrd::Denoiser::MAX_NUM> g_NrdSupportedDenoisers =
 {
-    nrd::Method::REBLUR_DIFFUSE,
-    nrd::Method::REBLUR_DIFFUSE_OCCLUSION,
-    nrd::Method::REBLUR_DIFFUSE_SH,
-    nrd::Method::REBLUR_SPECULAR,
-    nrd::Method::REBLUR_SPECULAR_OCCLUSION,
-    nrd::Method::REBLUR_SPECULAR_SH,
-    nrd::Method::REBLUR_DIFFUSE_SPECULAR,
-    nrd::Method::REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
-    nrd::Method::REBLUR_DIFFUSE_SPECULAR_SH,
-    nrd::Method::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
-    nrd::Method::SIGMA_SHADOW,
-    nrd::Method::SIGMA_SHADOW_TRANSLUCENCY,
-    nrd::Method::RELAX_DIFFUSE,
-    nrd::Method::RELAX_DIFFUSE_SH,
-    nrd::Method::RELAX_SPECULAR,
-    nrd::Method::RELAX_SPECULAR_SH,
-    nrd::Method::RELAX_DIFFUSE_SPECULAR,
-    nrd::Method::RELAX_DIFFUSE_SPECULAR_SH,
-    nrd::Method::REFERENCE,
-    nrd::Method::SPECULAR_REFLECTION_MV,
-    nrd::Method::SPECULAR_DELTA_MV
+    nrd::Denoiser::REBLUR_DIFFUSE,
+    nrd::Denoiser::REBLUR_DIFFUSE_OCCLUSION,
+    nrd::Denoiser::REBLUR_DIFFUSE_SH,
+    nrd::Denoiser::REBLUR_SPECULAR,
+    nrd::Denoiser::REBLUR_SPECULAR_OCCLUSION,
+    nrd::Denoiser::REBLUR_SPECULAR_SH,
+    nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR,
+    nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
+    nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR_SH,
+    nrd::Denoiser::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
+    nrd::Denoiser::SIGMA_SHADOW,
+    nrd::Denoiser::SIGMA_SHADOW_TRANSLUCENCY,
+    nrd::Denoiser::RELAX_DIFFUSE,
+    nrd::Denoiser::RELAX_DIFFUSE_SH,
+    nrd::Denoiser::RELAX_SPECULAR,
+    nrd::Denoiser::RELAX_SPECULAR_SH,
+    nrd::Denoiser::RELAX_DIFFUSE_SPECULAR,
+    nrd::Denoiser::RELAX_DIFFUSE_SPECULAR_SH,
+    nrd::Denoiser::REFERENCE,
+    nrd::Denoiser::SPECULAR_REFLECTION_MV,
+    nrd::Denoiser::SPECULAR_DELTA_MV
 };
 
 constexpr nrd::LibraryDesc g_NrdLibraryDesc =
 {
     // IMPORTANT: these should match "VK_{S/T/B/U}_SHIFT" in "ShaderCompilation.cmake"!
     { 100, 200, 300, 400 },
-    g_NrdSupportedMethods.data(),
-    (uint32_t)g_NrdSupportedMethods.size(),
+    g_NrdSupportedDenoisers.data(),
+    (uint32_t)g_NrdSupportedDenoisers.size(),
     VERSION_MAJOR,
     VERSION_MINOR,
     VERSION_BUILD,
@@ -100,7 +100,7 @@ const char* g_NrdResourceTypeNames[] =
 };
 static_assert( GetCountOf(g_NrdResourceTypeNames) == (uint32_t)nrd::ResourceType::MAX_NUM );
 
-const char* g_NrdMethodNames[] =
+const char* g_NrdDenoiserNames[] =
 {
     "REBLUR_DIFFUSE",
     "REBLUR_DIFFUSE_OCCLUSION",
@@ -128,14 +128,14 @@ const char* g_NrdMethodNames[] =
     "SPECULAR_REFLECTION_MV",
     "SPECULAR_DELTA_MV",
 };
-static_assert( GetCountOf(g_NrdMethodNames) == (uint32_t)nrd::Method::MAX_NUM );
+static_assert( GetCountOf(g_NrdDenoiserNames) == (uint32_t)nrd::Denoiser::MAX_NUM );
 
 NRD_API const nrd::LibraryDesc& NRD_CALL nrd::GetLibraryDesc()
 {
     return g_NrdLibraryDesc;
 }
 
-NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser)
+NRD_API nrd::Result NRD_CALL nrd::CreateInstance(const InstanceCreationDesc& instanceCreationDesc, Instance*& instance)
 {
 #if 0
     // REBLUR shader source files generator
@@ -251,53 +251,61 @@ NRD_API nrd::Result NRD_CALL nrd::CreateDenoiser(const DenoiserCreationDesc& den
     __debugbreak();
 #endif
 
-    DenoiserCreationDesc modifiedDenoiserCreationDesc = denoiserCreationDesc;
-    CheckAndSetDefaultAllocator(modifiedDenoiserCreationDesc.memoryAllocatorInterface);
+    InstanceCreationDesc modifiedInstanceCreationDesc = instanceCreationDesc;
+    CheckAndSetDefaultAllocator(modifiedInstanceCreationDesc.memoryAllocatorInterface);
 
-    StdAllocator<uint8_t> memoryAllocator(modifiedDenoiserCreationDesc.memoryAllocatorInterface);
+    StdAllocator<uint8_t> memoryAllocator(modifiedInstanceCreationDesc.memoryAllocatorInterface);
 
-    DenoiserImpl* implementation = Allocate<DenoiserImpl>(memoryAllocator, memoryAllocator);
-    const Result result = implementation->Create(modifiedDenoiserCreationDesc);
+    InstanceImpl* implementation = Allocate<InstanceImpl>(memoryAllocator, memoryAllocator);
+    const Result result = implementation->Create(modifiedInstanceCreationDesc);
 
     if (result == Result::SUCCESS)
     {
-        denoiser = (Denoiser*)implementation;
+        instance = (Instance*)implementation;
         return Result::SUCCESS;
     }
 
     Deallocate(memoryAllocator, implementation);
+
     return result;
 }
 
-NRD_API const nrd::DenoiserDesc& NRD_CALL nrd::GetDenoiserDesc(const Denoiser& denoiser)
+NRD_API const nrd::InstanceDesc& NRD_CALL nrd::GetInstanceDesc(const Instance& denoiser)
 {
-    return ((const DenoiserImpl&)denoiser).GetDesc();
+    return ((const InstanceImpl&)denoiser).GetDesc();
 }
 
-NRD_API nrd::Result NRD_CALL nrd::SetMethodSettings(Denoiser& denoiser, Method method, const void* methodSettings)
+NRD_API nrd::Result NRD_CALL nrd::SetCommonSettings(Instance& instance, const CommonSettings& commonSettings)
 {
-    return ((DenoiserImpl&)denoiser).SetMethodSettings(method, methodSettings);
+    return ((InstanceImpl&)instance).SetCommonSettings(commonSettings);
 }
 
-NRD_API void NRD_CALL nrd::GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum)
+NRD_API nrd::Result NRD_CALL nrd::SetDenoiserSettings(Instance& instance, Identifier identifier, const void* denoiserSettings)
 {
-    ((DenoiserImpl&)denoiser).GetComputeDispatches(commonSettings, dispatchDescs, dispatchDescNum);
+    return ((InstanceImpl&)instance).SetDenoiserSettings(identifier, denoiserSettings);
 }
 
-NRD_API void NRD_CALL nrd::DestroyDenoiser(Denoiser& denoiser)
+NRD_API nrd::Result NRD_CALL nrd::GetComputeDispatches(Instance& instance, const Identifier* identifiers, uint32_t identifiersNum, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescsNum)
 {
-    StdAllocator<uint8_t> memoryAllocator = ((DenoiserImpl&)denoiser).GetStdAllocator();
-    Deallocate(memoryAllocator, (DenoiserImpl*)&denoiser);
+    return ((InstanceImpl&)instance).GetComputeDispatches(identifiers, identifiersNum, dispatchDescs, dispatchDescsNum);
+}
+
+NRD_API void NRD_CALL nrd::DestroyInstance(Instance& instance)
+{
+    StdAllocator<uint8_t> memoryAllocator = ((InstanceImpl&)instance).GetStdAllocator();
+    Deallocate(memoryAllocator, (InstanceImpl*)&instance);
 }
 
 NRD_API const char* NRD_CALL nrd::GetResourceTypeString(ResourceType resourceType)
 {
     uint32_t i = (uint32_t)resourceType;
+
     return i < (uint32_t)ResourceType::MAX_NUM ? g_NrdResourceTypeNames[i] : nullptr;
 }
 
-NRD_API const char* NRD_CALL nrd::GetMethodString(Method method)
+NRD_API const char* NRD_CALL nrd::GetDenoiserString(Denoiser denoiser)
 {
-    uint32_t i = (uint32_t)method;
-    return i < (uint32_t)Method::MAX_NUM ? g_NrdMethodNames[i] : nullptr;
+    uint32_t i = (uint32_t)denoiser;
+
+    return i < (uint32_t)Denoiser::MAX_NUM ? g_NrdDenoiserNames[i] : nullptr;
 }

@@ -47,13 +47,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
-    PRELOAD_INTO_SMEM;
+    // Preload
+    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
+
+    // Tile-based early out
+    if( isSky != 0.0 )
+        return;
 
     // Early out
     int2 smemPos = threadPos + BORDER;
     float3 center = s_HitDist_ViewZ[ smemPos.y ][ smemPos.x ];
-
-    [branch]
     if( center.z > gDenoisingRange )
         return;
 

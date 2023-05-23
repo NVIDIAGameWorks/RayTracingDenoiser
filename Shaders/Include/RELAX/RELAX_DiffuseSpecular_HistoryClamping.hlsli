@@ -34,8 +34,13 @@ void Preload(uint2 sharedPos, int2 globalPos)
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
 {
-    PRELOAD_INTO_SMEM;
-    // Shared memory is populated with responsive history now and can be used for history clamping
+    // Preload
+    float isSky = gTiles[pixelPos >> 4];
+    PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
+
+    // Tile-based early out
+    if (isSky != 0.0)
+        return;
 
     // Reading history length
     float historyLength = 255.0 * gHistoryLength[pixelPos];
@@ -117,9 +122,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
         // Clamping factor: (clamped - slow) / (fast - slow)
         // The closest clamped is to fast, the closer clamping factor is to 1.
-        float specClampingFactor = (specularCenterYCoCg.x - specularYCoCg.x) == 0 ? 
+        float specClampingFactor = (specularCenterYCoCg.x - specularYCoCg.x) == 0 ?
             1.0 : saturate( (clampedSpecularYCoCg.x - specularYCoCg.x) / (specularCenterYCoCg.x - specularYCoCg.x));
-        
+
         if (historyLength <= gHistoryFixFrameNum)
             specClampingFactor = 1.0;
 
@@ -159,16 +164,16 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Writing out the results
     gOutDiffuseIllumination[pixelPos.xy] = outDiffuse;
     gOutDiffuseIlluminationResponsive[pixelPos.xy] = outDiffuseResponsive;
-    
+
     #ifdef RELAX_SH
         float4 diffuseSH1 = gDiffuseSH1[pixelPos.xy];
         float4 diffuseResponsiveSH1 = gDiffuseResponsiveSH1[pixelPos.xy];
 
         // Clamping factor: (clamped - slow) / (fast - slow)
         // The closest clamped is to fast, the closer clamping factor is to 1.
-        float diffClampingFactor = (diffuseCenterYCoCg.x - diffuseYCoCg.x) == 0 ? 
+        float diffClampingFactor = (diffuseCenterYCoCg.x - diffuseYCoCg.x) == 0 ?
             1.0 : saturate( (clampedDiffuseYCoCg.x - diffuseYCoCg.x) / (diffuseCenterYCoCg.x - diffuseYCoCg.x));
-        
+
         if (historyLength <= gHistoryFixFrameNum)
             diffClampingFactor = 1.0;
 

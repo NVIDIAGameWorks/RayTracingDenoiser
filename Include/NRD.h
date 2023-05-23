@@ -28,9 +28,9 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 4
-#define NRD_VERSION_MINOR 1
-#define NRD_VERSION_BUILD 2
-#define NRD_VERSION_DATE "5 April 2023"
+#define NRD_VERSION_MINOR 2
+#define NRD_VERSION_BUILD 0
+#define NRD_VERSION_DATE "23 May 2023"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall
@@ -53,14 +53,25 @@ CREDITS:
 
 namespace nrd
 {
+    // Create and destroy
+    NRD_API Result NRD_CALL CreateInstance(const InstanceCreationDesc& instanceCreationDesc, Instance*& instance);
+    NRD_API void NRD_CALL DestroyInstance(Instance& instance);
+
+    // Get
     NRD_API const LibraryDesc& NRD_CALL GetLibraryDesc();
-    NRD_API Result NRD_CALL CreateDenoiser(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser);
-    NRD_API const DenoiserDesc& NRD_CALL GetDenoiserDesc(const Denoiser& denoiser);
-    NRD_API Result NRD_CALL SetMethodSettings(Denoiser& denoiser, Method method, const void* methodSettings);
-    NRD_API void NRD_CALL GetComputeDispatches(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
-    NRD_API void NRD_CALL DestroyDenoiser(Denoiser& denoiser);
+    NRD_API const InstanceDesc& NRD_CALL GetInstanceDesc(const Instance& instance);
+
+    // Typically needs to be called once per frame
+    NRD_API Result NRD_CALL SetCommonSettings(Instance& instance, const CommonSettings& commonSettings);
+
+    // Typically needs to be called at least once per denoiser (not necessarily on each frame)
+    NRD_API Result NRD_CALL SetDenoiserSettings(Instance& instance, Identifier identifier, const void* denoiserSettings);
+
+    // Retrieves dispatches for the list of identifiers (if they are parts of the instance)
+    // IMPORTANT: returned memory is owned by the "instance" and will be overwritten by the next "GetComputeDispatches" call
+    NRD_API Result NRD_CALL GetComputeDispatches(Instance& instance, const Identifier* identifiers, uint32_t identifiersNum, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescsNum);
 
     // Helpers
     NRD_API const char* GetResourceTypeString(ResourceType resourceType);
-    NRD_API const char* GetMethodString(Method method);
+    NRD_API const char* GetDenoiserString(Denoiser denoiser);
 }

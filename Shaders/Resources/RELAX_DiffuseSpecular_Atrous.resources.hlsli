@@ -43,17 +43,18 @@ NRD_SAMPLER_END
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationAndVariance, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationAndVariance, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularReprojectionConfidence, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 5 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 6 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationAndVariance, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationAndVariance, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularReprojectionConfidence, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 7 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 8 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 8 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 9 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 9 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 10 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -85,13 +86,14 @@ NRD_SAMPLER_END
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationAndVariance, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationAndVariance, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gDiffConfidence, t, 5 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 6 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -128,14 +130,15 @@ NRD_SAMPLER_END
     NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationAndVariance, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularReprojectionConfidence, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZFP16, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationAndVariance, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecularReprojectionConfidence, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNormalRoughness, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gViewZ, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gSpecConfidence, t, 6 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 6 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 7 )
         #endif
     NRD_INPUT_TEXTURE_END
 

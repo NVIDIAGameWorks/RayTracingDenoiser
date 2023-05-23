@@ -14,17 +14,24 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     uint2 pixelPosUser = gRectOrigin + pixelPos;
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
 
+    // Tile-based early out
+    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    if( isSky != 0.0 )
+    {
+        // ~0 normal is needed to allow bilinear filter in TA ( 0 can't be used due to "division by zero" in "UnpackNormalRoughness" )
+        gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( 1.0 / 255.0 );
+
+        return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
+    }
+
     // Early out
     float viewZ = UnpackViewZ( gIn_ViewZ[ pixelPos ] );
-
-    [branch]
     if( viewZ > gDenoisingRange )
     {
         // ~0 normal is needed to allow bilinear filter in TA ( 0 can't be used due to "division by zero" in "UnpackNormalRoughness" )
         gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( 1.0 / 255.0 );
 
-        // IMPORTANT: no data output, must be rejected by the "viewZ" check!
-        return;
+        return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
     }
 
     // Normal and roughness

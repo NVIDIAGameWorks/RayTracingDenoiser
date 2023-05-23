@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.1
+// NRD v4.2
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -525,7 +525,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 
 // Not used in NRD
 // X => IN_NORMAL_ROUGHNESS
-float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, uint materialID = 0 )
+float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, float materialID = 0.0 )
 {
     float4 p;
 

@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define RELAX_BLACK_OUT_INF_PIXELS                          1 // can be used to avoid killing INF pixels during composition
+#define RELAX_BLACK_OUT_INF_PIXELS                          0 // 1 can be used to avoid killing INF pixels during composition
 #define RELAX_MAX_ACCUM_FRAME_NUM                           255
 #define RELAX_SPEC_DOMINANT_DIRECTION                       STL_SPECULAR_DOMINANT_DIRECTION_G2
 #define RELAX_NORMAL_ULP                                    atan( 1.5 / 255.0 )

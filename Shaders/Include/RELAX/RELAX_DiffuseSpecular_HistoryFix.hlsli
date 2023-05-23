@@ -24,12 +24,15 @@ float getRadius(float numFramesInHistory)
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 {
 
-    float centerViewZ = gViewZFP16[pixelPos] / NRD_FP16_VIEWZ_SCALE;
-    float historyLength = 255.0 * gHistoryLength[pixelPos];
+    // Tile-based early out
+    float isSky = gTiles[pixelPos >> 4];
+    if (isSky != 0.0)
+        return;
 
     // Early out if linearZ is beyond denoising range
     // Early out if no disocclusion detected
-    [branch]
+    float centerViewZ = abs(gViewZ[pixelPos]);
+    float historyLength = 255.0 * gHistoryLength[pixelPos];
     if ((centerViewZ > gDenoisingRange) || (historyLength > gHistoryFixFrameNum))
         return;
 
@@ -86,7 +89,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             float sampleMaterialID;
             float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[samplePosInt], sampleMaterialID).rgb;
 
-            float sampleViewZ = gViewZFP16[samplePosInt] / NRD_FP16_VIEWZ_SCALE;
+            float sampleViewZ = abs(gViewZ[samplePosInt]);
             float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(samplePosInt, sampleViewZ);
             float geometryWeight = GetPlaneDistanceWeight_Atrous(
                 centerWorldPos,
