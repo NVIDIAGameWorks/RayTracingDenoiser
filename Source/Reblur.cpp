@@ -36,7 +36,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_POST_BLUR_CONSTANT_NUM                               SumConstants(0, 1, 0, 0)
 #define REBLUR_POST_BLUR_NUM_THREADS                                NumThreads(8, 8)
 
-#define REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM                 SumConstants(0, 0, 0, 0, false)
+#define REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM                 SumConstants(0, 0, 0, 1, false)
 #define REBLUR_COPY_STABILIZED_HISTORY_NUM_THREADS                  NumThreads(16, 16)
 
 #define REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM                  SumConstants(3, 3, 2, 1)
@@ -140,6 +140,7 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
     const ReblurSettings& settings = denoiserData.settings.reblur;
     const ReblurProps& props = g_ReblurProps[ size_t(denoiserData.desc.denoiser) - size_t(Denoiser::REBLUR_DIFFUSE) ];
 
+    bool isRectChanged = rectW != rectWprev || rectH != rectHprev;
     bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
     bool skipTemporalStabilization = settings.stabilizationStrength == 0.0f;
     bool skipPrePass = (settings.diffusePrepassBlurRadius == 0.0f || !props.hasDiffuse) &&
@@ -267,6 +268,7 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
     {
         passIndex = AsUint(Dispatch::COPY_STABILIZED_HISTORY);
         data = PushDispatch(denoiserData, passIndex);
+        AddUint(data, isRectChanged ? 1 : 0);
         ValidateConstants(data);
     }
 
@@ -481,7 +483,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const DenoiserData& denoiserDa
 
     AddFloat2(data, float(rectWprev), float(rectHprev));
     AddFloat2(data, settings.antilagIntensitySettings.sensitivityToDarkness + 1e-6f, settings.antilagHitDistanceSettings.sensitivityToDarkness + 1e-6f);
-    
+
     AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
     AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
 

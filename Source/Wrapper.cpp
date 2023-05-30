@@ -45,8 +45,7 @@ constexpr std::array<nrd::Denoiser, (size_t)nrd::Denoiser::MAX_NUM> g_NrdSupport
 
 constexpr nrd::LibraryDesc g_NrdLibraryDesc =
 {
-    // IMPORTANT: these should match "VK_{S/T/B/U}_SHIFT" in "ShaderCompilation.cmake"!
-    { 100, 200, 300, 400 },
+    { 100, 200, 300, 400 }, // IMPORTANT: must match values used in CMake
     g_NrdSupportedDenoisers.data(),
     (uint32_t)g_NrdSupportedDenoisers.size(),
     VERSION_MAJOR,

@@ -145,9 +145,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns );
             w *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
 
-            // Get rid of potentially bad values outside of the screen ( important for checkerboard )
-            w = IsInScreen( uv ) ? w : 0.0;
-            s = w ? s : 0.0;
+            // Get rid of potentially bad values outside of the screen
+            w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;
+            s = w != 0.0 ? s : 0.0;
 
             // Accumulate
             sum += w;

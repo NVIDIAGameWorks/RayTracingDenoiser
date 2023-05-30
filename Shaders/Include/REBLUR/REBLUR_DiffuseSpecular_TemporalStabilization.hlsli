@@ -48,7 +48,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
-    if( isSky != 0.0 )
+    if( isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y )
         return;
 
     // Early out

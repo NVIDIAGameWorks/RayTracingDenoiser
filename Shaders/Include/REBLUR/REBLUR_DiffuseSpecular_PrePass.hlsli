@@ -16,7 +16,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Tile-based early out
     float isSky = gIn_Tiles[ pixelPos >> 4 ];
-    if( isSky != 0.0 )
+    if( isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y )
         return;
 
     // Early out
@@ -34,6 +34,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     int3 checkerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
     checkerboardPos.xz >>= 1;
+    checkerboardPos.x = max( checkerboardPos.x, 0 );
+    checkerboardPos.z = min( checkerboardPos.z, gRectSize.x * 0.5 - 1.0 );
     checkerboardPos += gRectOrigin.xyx;
 
     // Normal and roughness

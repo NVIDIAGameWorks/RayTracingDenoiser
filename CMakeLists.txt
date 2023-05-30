@@ -114,11 +114,6 @@ endif ()
 
 message ("NRD shaders output path: '${NRD_SHADERS_PATH}'")
 
-if (NRD_USE_PRECOMPILED_SHADERS)
-    target_include_directories (${PROJECT_NAME} PRIVATE "${NRD_SHADERS_PATH}")
-    target_compile_definitions (${PROJECT_NAME} PRIVATE NRD_USE_PRECOMPILED_SHADERS)
-endif ()
-
 target_include_directories (${PROJECT_NAME} PUBLIC "Include")
 target_include_directories (${PROJECT_NAME} PRIVATE "External")
 target_compile_definitions (${PROJECT_NAME} PRIVATE ${COMPILE_DEFINITIONS})
@@ -138,76 +133,85 @@ if (NOT TARGET ShaderMake)
 endif ()
 
 # Shaders
-file (GLOB_RECURSE SHADERS "Shaders/*.hlsl" "Shaders/*.hlsli" "External/MathLib/*.hlsli")
-set_source_files_properties (${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
+if (NRD_USE_PRECOMPILED_SHADERS)
+    target_include_directories (${PROJECT_NAME} PRIVATE "${NRD_SHADERS_PATH}")
+    target_compile_definitions (${PROJECT_NAME} PRIVATE NRD_USE_PRECOMPILED_SHADERS)
 
-if (WIN32)
-    add_custom_target (${PROJECT_NAME}_Shaders ALL
-        COMMAND ShaderMake --useAPI
-            --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_PATH}"
-            --sourceDir "Shaders/Source"
-            --allResourcesBound
-            -p DXIL --WX
-            -c Shaders.cfg
-            -o "${NRD_SHADERS_PATH}"
-            -I "External/MathLib"
-            -I "Shaders/Include"
-            -I "Shaders/Resources"
-            -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
-            -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
-            -D NRD_INTERNAL
-        COMMAND ShaderMake --useAPI
-            --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_SPIRV_PATH}"
-            --sourceDir "Shaders/Source"
-            --allResourcesBound
-            -p SPIRV --WX
-            -c Shaders.cfg
-            -o "${NRD_SHADERS_PATH}"
-            -I "External/MathLib"
-            -I "Shaders/Include"
-            -I "Shaders/Resources"
-            -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
-            -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
-            -D NRD_INTERNAL
-        COMMAND ShaderMake --useAPI
-            --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${FXC_PATH}"
-            --sourceDir "Shaders/Source"
-            --allResourcesBound
-            -p DXBC --WX
-            -c Shaders.cfg
-            -o "${NRD_SHADERS_PATH}"
-            -I "External/MathLib"
-            -I "Shaders/Include"
-            -I "Shaders/Resources"
-            -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
-            -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
-            -D NRD_INTERNAL
-        DEPENDS ShaderMake
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        VERBATIM
-        SOURCES ${SHADERS}
-    )
-else ()
-    add_custom_target (${PROJECT_NAME}_Shaders ALL
-        COMMAND ShaderMake
-            --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_SPIRV_PATH}"
-            --sourceDir "Shaders/Source"
-            --allResourcesBound
-            -p SPIRV --WX
-            -c Shaders.cfg
-            -o "${NRD_SHADERS_PATH}"
-            -I "External/MathLib"
-            -I "Shaders/Include"
-            -I "Shaders/Resources"
-            -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
-            -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
-            -D NRD_INTERNAL
-        DEPENDS ShaderMake
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        VERBATIM
-        SOURCES ${SHADERS}
-    )
+    file (GLOB_RECURSE SHADERS "Shaders/*.hlsl" "Shaders/*.hlsli" "External/MathLib/*.hlsli")
+    set_source_files_properties (${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
+
+    if (WIN32)
+        add_custom_target (${PROJECT_NAME}_Shaders ALL
+            COMMAND ShaderMake --useAPI
+                --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_PATH}"
+                --sourceDir "Shaders/Source"
+                --allResourcesBound
+                -p DXIL --WX
+                -c Shaders.cfg
+                -o "${NRD_SHADERS_PATH}"
+                -I "External/MathLib"
+                -I "Shaders/Include"
+                -I "Shaders/Resources"
+                -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
+                -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
+                -D NRD_INTERNAL
+            COMMAND ShaderMake --useAPI
+                --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_SPIRV_PATH}"
+                --sourceDir "Shaders/Source"
+                --allResourcesBound
+                --sRegShift 100
+                --tRegShift 200
+                --bRegShift 300
+                --uRegShift 400
+                -p SPIRV --WX
+                -c Shaders.cfg
+                -o "${NRD_SHADERS_PATH}"
+                -I "External/MathLib"
+                -I "Shaders/Include"
+                -I "Shaders/Resources"
+                -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
+                -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
+                -D NRD_INTERNAL
+            COMMAND ShaderMake --useAPI
+                --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${FXC_PATH}"
+                --sourceDir "Shaders/Source"
+                --allResourcesBound
+                -p DXBC --WX
+                -c Shaders.cfg
+                -o "${NRD_SHADERS_PATH}"
+                -I "External/MathLib"
+                -I "Shaders/Include"
+                -I "Shaders/Resources"
+                -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
+                -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
+                -D NRD_INTERNAL
+            DEPENDS ShaderMake
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            VERBATIM
+            SOURCES ${SHADERS}
+        )
+    else ()
+        add_custom_target (${PROJECT_NAME}_Shaders ALL
+            COMMAND ShaderMake
+                --header ${NRD_SHADER_BINARIES} --flatten --stripReflection --compiler "${DXC_SPIRV_PATH}"
+                --sourceDir "Shaders/Source"
+                --allResourcesBound
+                -p SPIRV --WX
+                -c Shaders.cfg
+                -o "${NRD_SHADERS_PATH}"
+                -I "External/MathLib"
+                -I "Shaders/Include"
+                -I "Shaders/Resources"
+                -D NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING}
+                -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
+                -D NRD_INTERNAL
+            DEPENDS ShaderMake
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            VERBATIM
+            SOURCES ${SHADERS}
+        )
+    endif ()
+
+    set_property (TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER ${PROJECT_NAME})
+    add_dependencies (${PROJECT_NAME} ${PROJECT_NAME}_Shaders)
 endif ()
-
-set_property (TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER ${PROJECT_NAME})
-add_dependencies (${PROJECT_NAME} ${PROJECT_NAME}_Shaders)

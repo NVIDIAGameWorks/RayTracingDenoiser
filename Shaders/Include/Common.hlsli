@@ -440,6 +440,7 @@ float GetGaussianWeight( float r )
 
 // Upsampling
 
+// TODO: used only for history resampling. This is why "gRectSizePrev" is hardcoded
 #define _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init \
     /* Catmul-Rom with 12 taps ( excluding corners ) */ \
     float2 centerPos = floor( samplePos - 0.5 ) + 0.5; \
@@ -463,11 +464,12 @@ float GetGaussianWeight( float r )
     w4 = useBicubic ? w4 : 0.0; \
     float sum = dot( w, 1.0 ) + w4; \
     /* Texture coordinates */ \
-    float2 uv0 = centerPos + ( useBicubic ? float2( tc.x, -1.0 ) : float2( 0, 0 ) ); \
-    float2 uv1 = centerPos + ( useBicubic ? float2( -1.0, tc.y ) : float2( 1, 0 ) ); \
-    float2 uv2 = centerPos + ( useBicubic ? float2( tc.x, tc.y ) : float2( 0, 1 ) ); \
-    float2 uv3 = centerPos + ( useBicubic ? float2( 2.0, tc.y ) : float2( 1, 1 ) ); \
-    float2 uv4 = centerPos + ( useBicubic ? float2( tc.x, 2.0 ) : f ); // can be used to get a free bilinear sample after some massaging
+    float2 uv0 = min( centerPos + ( useBicubic ? float2( tc.x, -1.0 ) : float2( 0, 0 ) ), gRectSizePrev - 1.0 ); \
+    float2 uv1 = min( centerPos + ( useBicubic ? float2( -1.0, tc.y ) : float2( 1, 0 ) ), gRectSizePrev - 1.0 ); \
+    float2 uv2 = min( centerPos + ( useBicubic ? float2( tc.x, tc.y ) : float2( 0, 1 ) ), gRectSizePrev - 1.0 ); \
+    float2 uv3 = min( centerPos + ( useBicubic ? float2( 2.0, tc.y ) : float2( 1, 1 ) ), gRectSizePrev - 1.0 ); \
+    float2 uv4 = min( centerPos + ( useBicubic ? float2( tc.x, 2.0 ) : f ), gRectSizePrev - 1.0 ); \
+    float4 bilinearTaps
 
 /*
 IMPORTANT:
@@ -488,10 +490,12 @@ IMPORTANT:
 
 #define _BilinearFilterWithCustomWeights_Color( color, tex ) \
     /* Sampling */ \
-    color = tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0 ) * bilinearCustomWeights.x; \
-    color += tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0, int2( 1, 0 ) ) * bilinearCustomWeights.y; \
-    color += tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0, int2( 0, 1 ) ) * bilinearCustomWeights.z; \
-    color += tex.SampleLevel( gNearestClamp, centerPos * invTextureSize, 0, int2( 1, 1 ) ) * bilinearCustomWeights.w; \
+    bilinearTaps = centerPos.xyxy + float4( 0.0, 0.0, 1.0, 1.0 ); \
+    bilinearTaps.zw = min( bilinearTaps.zw, gRectSizePrev - 1.0 ); \
+    color = tex.SampleLevel( gNearestClamp, bilinearTaps.xy * invTextureSize, 0 ) * bilinearCustomWeights.x; \
+    color += tex.SampleLevel( gNearestClamp, bilinearTaps.zy * invTextureSize, 0 ) * bilinearCustomWeights.y; \
+    color += tex.SampleLevel( gNearestClamp, bilinearTaps.xw * invTextureSize, 0 ) * bilinearCustomWeights.z; \
+    color += tex.SampleLevel( gNearestClamp, bilinearTaps.zw * invTextureSize, 0 ) * bilinearCustomWeights.w; \
     /* Normalize similarly to "STL::Filtering::ApplyBilinearCustomWeights()" */ \
     sum = dot( bilinearCustomWeights, 1.0 ); \
     color = sum < 0.0001 ? 0 : color * rcp( sum );

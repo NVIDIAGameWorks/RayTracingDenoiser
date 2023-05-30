@@ -9,12 +9,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 [numthreads( GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId)
+NRD_EXPORT void NRD_CS_MAIN( int2 pixelPos : SV_DispatchThreadId)
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gInvRectSize;
     uint2 pixelPosUser = gRectOrigin + pixelPos;
 
-    if( pixelUv.x > gSplitScreen )
+    if( pixelUv.x > gSplitScreen || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y )
         return;
 
     float viewZ = gIn_ViewZ[ pixelPosUser ];

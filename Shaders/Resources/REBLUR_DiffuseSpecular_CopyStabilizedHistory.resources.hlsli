@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 NRD_CONSTANTS_START
-    NRD_CONSTANT( float, gDebug ) // not bound, only for compilation
+    NRD_CONSTANT( uint, gIsRectChanged )
 NRD_CONSTANTS_END
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )

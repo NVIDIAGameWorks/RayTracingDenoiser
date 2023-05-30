@@ -16,7 +16,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Tile-based early out
     float isSky = gIn_Tiles[ pixelPos >> 4 ];
-    if( isSky != 0.0 )
+    if( isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y )
         return;
 
     // Early out

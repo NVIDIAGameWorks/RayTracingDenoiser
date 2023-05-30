@@ -47,7 +47,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
-    if( isSky != 0.0 )
+    if( isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y )
         return;
 
     // Early out
@@ -337,6 +337,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_OCCLUSION
             uint diffShift = gDiffCheckerboard != 2 ? 1 : 0;
             uint2 diffPos = uint2( pixelPos.x >> diffShift, pixelPos.y ) + gRectOrigin;
+            diffPos.x = min( diffPos.x, gRectSize.x * ( gDiffCheckerboard != 2 ? 0.5 : 1.0 ) - 1.0 );
         #else
             uint2 diffPos = pixelPos;
         #endif
@@ -366,8 +367,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Accumulation with checkerboard resolve // TODO: materialID support?
         #ifdef REBLUR_OCCLUSION
-            float d0 = gIn_Diff[ uint2( ( pixelPos.x - 1 ) >> diffShift, pixelPos.y ) + gRectOrigin ];
-            float d1 = gIn_Diff[ uint2( ( pixelPos.x + 1 ) >> diffShift, pixelPos.y ) + gRectOrigin ];
+            int3 diffCheckerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
+            diffCheckerboardPos.xz >>= diffShift;
+            diffCheckerboardPos.x = max( diffCheckerboardPos.x, 0 );
+            diffCheckerboardPos.z = min( diffCheckerboardPos.z, gRectSize.x * ( gDiffCheckerboard != 2 ? 0.5 : 1.0 ) - 1.0 );
+            diffCheckerboardPos += gRectOrigin.xyx;
+
+            float d0 = gIn_Diff[ diffCheckerboardPos.xy ];
+            float d1 = gIn_Diff[ diffCheckerboardPos.zy ];
 
             if( !diffHasData )
             {
@@ -436,6 +443,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_OCCLUSION
             uint specShift = gSpecCheckerboard != 2 ? 1 : 0;
             uint2 specPos = uint2( pixelPos.x >> specShift, pixelPos.y ) + gRectOrigin;
+            specPos.x = min( specPos.x, gRectSize.x * ( gSpecCheckerboard != 2 ? 0.5 : 1.0 ) - 1.0 );
         #else
             uint2 specPos = pixelPos;
         #endif
@@ -447,8 +455,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Checkerboard resolve // TODO: materialID support?
         #ifdef REBLUR_OCCLUSION
-            float s0 = gIn_Spec[ uint2( ( pixelPos.x - 1 ) >> specShift, pixelPos.y ) + gRectOrigin ];
-            float s1 = gIn_Spec[ uint2( ( pixelPos.x + 1 ) >> specShift, pixelPos.y ) + gRectOrigin ];
+            int3 specCheckerboardPos = pixelPos.xyx + int3( -1, 0, 1 );
+            specCheckerboardPos.xz >>= specShift;
+            specCheckerboardPos.x = max( specCheckerboardPos.x, 0 );
+            specCheckerboardPos.z = min( specCheckerboardPos.z, gRectSize.x * ( gSpecCheckerboard != 2 ? 0.5 : 1.0 ) - 1.0 );
+            specCheckerboardPos += gRectOrigin.xyx;
+
+            float s0 = gIn_Spec[ specCheckerboardPos.xy ];
+            float s1 = gIn_Spec[ specCheckerboardPos.zy ];
 
             if( !specHasData )
             {

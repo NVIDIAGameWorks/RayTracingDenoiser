@@ -13,7 +13,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 {
     // Tile-based early out
     float isSky = gIn_Tiles[ pixelPos >> 4 ];
-    if( isSky != 0.0 )
+    if( isSky != 0.0 && !gIsRectChanged )
         return;
 
     // TODO: is it possible to introduce "CopyResource" in NRD API?

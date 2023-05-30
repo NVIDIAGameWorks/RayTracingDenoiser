@@ -124,7 +124,7 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
         // Append dispatches for the current denoiser
         m_PermanentPoolOffset = (uint16_t)m_PermanentPool.size();
         m_TransientPoolOffset = (uint16_t)m_TransientPool.size();
-        
+
         m_IndexRemap.clear();
 
         DenoiserData denoiserData = {};
@@ -343,7 +343,7 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     uint32_t flags = 0;
     ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
 
-    if ( !(flags & ml::PROJ_POSITIVE_Z) )
+    if ( !(flags & ml::PROJ_LEFT_HANDED) )
     {
         m_ViewToClip.col2 = (-m_ViewToClip.GetCol2()).xmm;
         m_ViewToClipPrev.col2 = (-m_ViewToClipPrev.GetCol2()).xmm;

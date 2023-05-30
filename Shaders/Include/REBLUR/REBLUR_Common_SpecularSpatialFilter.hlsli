@@ -184,9 +184,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             #endif
         #endif
 
-            // Get rid of potentially bad values outside of the screen ( important for checkerboard )
-            w = IsInScreen( uv ) ? w : 0.0;
-            s = w ? s : 0.0;
+            // Get rid of potentially bad values outside of the screen
+            w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;
+            s = w != 0.0 ? s : 0.0;
 
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
             // Min hit distance for tracking

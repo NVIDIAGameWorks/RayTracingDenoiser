@@ -41,7 +41,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
-    if( isSky != 0.0 )
+    if( isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y )
         return;
 
     // Early out
@@ -149,19 +149,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float angle = STL::Math::AcosApprox( cosa );
 
                     // Accumulate
-                    float wd = IsInScreen( uv );
-                    wd *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
-                    wd *= _ComputeWeight( NoX, diffGeometryWeightParams.x, diffGeometryWeightParams.y );
-                    wd *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
+                    float w = IsInScreen( uv );
+                    w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+                    w *= _ComputeWeight( NoX, diffGeometryWeightParams.x, diffGeometryWeightParams.y );
+                    w *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
 
-                    REBLUR_TYPE d = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
+                    REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
 
-                    diff += d * wd;
-                    sumd += wd;
+                    // Get rid of potentially bad values outside of the screen
+                    w = IsInScreen( uv ) ? w : 0.0; // no "!isnan" because "s" is not used for "w" calculations
+                    s = w != 0.0 ? s : 0.0;
+
+                    diff += s * w;
+                    sumd += w;
 
                     #ifdef REBLUR_SH
-                        float4 dh = gIn_DiffSh.SampleLevel( gNearestClamp, uvScaled, 0 );
-                        diffSh += dh * wd;
+                        float4 sh = gIn_DiffSh.SampleLevel( gNearestClamp, uvScaled, 0 );
+                        diffSh += sh * w;
                     #endif
                 }
             }
@@ -329,25 +333,29 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float angle = STL::Math::AcosApprox( cosa );
 
                     // Accumulate
-                    float ws = IsInScreen( uv );
-                    ws *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
-                    ws *= _ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
-                    ws *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
-                    ws *= _ComputeExponentialWeight( Ns.w * Ns.w, specRoughnessWeightParamsSq.x, specRoughnessWeightParamsSq.y );
+                    float w = IsInScreen( uv );
+                    w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
+                    w *= _ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
+                    w *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
+                    w *= _ComputeExponentialWeight( Ns.w * Ns.w, specRoughnessWeightParamsSq.x, specRoughnessWeightParamsSq.y );
 
                     REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
 
                     // TODO: ideally "diffuseness at hit" needed...
                     // TODO: for roughness closer to REBLUR_HISTORY_FIX_BUMPED_ROUGHNESS "saturate( hitDistNormAtCenter - ExtractHitDist( s ) )" could be used.
                     // It allows bleeding of background to foreground, but not vice versa ( doesn't suit for 0 roughness )
-                    ws *= saturate( 1.0 - hitDistWeightScale * abs( ExtractHitDist( s ) - hitDistNormAtCenter ) / ( max( ExtractHitDist( s ), hitDistNormAtCenter ) + NRD_EPS ) );
+                    w *= saturate( 1.0 - hitDistWeightScale * abs( ExtractHitDist( s ) - hitDistNormAtCenter ) / ( max( ExtractHitDist( s ), hitDistNormAtCenter ) + NRD_EPS ) );
 
-                    spec += s * ws;
-                    sums += ws;
+                    // Get rid of potentially bad values outside of the screen
+                    w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;
+                    s = w != 0.0 ? s : 0.0;
+
+                    spec += s * w;
+                    sums += w;
 
                     #ifdef REBLUR_SH
                         float4 sh = gIn_SpecSh.SampleLevel( gNearestClamp, uvScaled, 0 );
-                        specSh += sh * ws;
+                        specSh += sh * w;
                     #endif
                 }
             }

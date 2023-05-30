@@ -15,10 +15,6 @@ NRD_SAMPLER_START
     NRD_SAMPLER( SamplerState, gLinearMirror, s, 3 )
 NRD_SAMPLER_END
 
-NRD_CONSTANTS_START
-    NRD_CONSTANT( float, gDebug ) // not bound, only for compilation
-NRD_CONSTANTS_END
-
 NRD_INPUT_TEXTURE_START
     NRD_OUTPUT_TEXTURE( Texture2D<float4>, gIn_Input, t, 0 )
 NRD_INPUT_TEXTURE_END
