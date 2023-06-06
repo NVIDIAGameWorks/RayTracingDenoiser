@@ -192,7 +192,7 @@ if (NRD_USE_PRECOMPILED_SHADERS)
             SOURCES ${SHADERS})
     else ()
         add_custom_target (${PROJECT_NAME}_Shaders ALL
-            COMMAND ShaderMake -p SPIRV -compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS}
+            COMMAND ShaderMake -p SPIRV --compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS}
             DEPENDS ShaderMake
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             VERBATIM
