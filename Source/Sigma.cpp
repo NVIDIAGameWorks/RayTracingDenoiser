@@ -65,7 +65,7 @@ void nrd::InstanceImpl::Update_SigmaShadow(const DenoiserData& denoiserData)
     // SMOOTH_TILES
     data = PushDispatch(denoiserData, AsUint(Dispatch::SMOOTH_TILES));
     AddSharedConstants_Sigma(denoiserData, settings, data);
-    AddUint2(data, tilesW, tilesH);
+    AddUint2(data, tilesW - 1, tilesH - 1);
     ValidateConstants(data);
 
     // BLUR
@@ -134,52 +134,60 @@ void nrd::InstanceImpl::AddSharedConstants_Sigma(const DenoiserData& denoiserDat
     AddUint(data, m_CommonSettings.frameIndex);
 }
 
-#ifdef NRD_USE_PRECOMPILED_SHADERS
+// SIGMA_SHADOW
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "SIGMA_Shadow_ClassifyTiles.cs.dxbc.h"
+    #include "SIGMA_Shadow_SmoothTiles.cs.dxbc.h"
+    #include "SIGMA_Shadow_Blur.cs.dxbc.h"
+    #include "SIGMA_Shadow_PostBlur.cs.dxbc.h"
+    #include "SIGMA_Shadow_TemporalStabilization.cs.dxbc.h"
+    #include "SIGMA_Shadow_SplitScreen.cs.dxbc.h"
+#endif
 
-    // SIGMA_SHADOW
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "SIGMA_Shadow_ClassifyTiles.cs.dxbc.h"
-        #include "SIGMA_Shadow_ClassifyTiles.cs.dxil.h"
-        #include "SIGMA_Shadow_SmoothTiles.cs.dxbc.h"
-        #include "SIGMA_Shadow_SmoothTiles.cs.dxil.h"
-        #include "SIGMA_Shadow_Blur.cs.dxbc.h"
-        #include "SIGMA_Shadow_Blur.cs.dxil.h"
-        #include "SIGMA_Shadow_PostBlur.cs.dxbc.h"
-        #include "SIGMA_Shadow_PostBlur.cs.dxil.h"
-        #include "SIGMA_Shadow_TemporalStabilization.cs.dxbc.h"
-        #include "SIGMA_Shadow_TemporalStabilization.cs.dxil.h"
-        #include "SIGMA_Shadow_SplitScreen.cs.dxbc.h"
-        #include "SIGMA_Shadow_SplitScreen.cs.dxil.h"
-    #endif
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "SIGMA_Shadow_ClassifyTiles.cs.dxil.h"
+    #include "SIGMA_Shadow_SmoothTiles.cs.dxil.h"
+    #include "SIGMA_Shadow_Blur.cs.dxil.h"
+    #include "SIGMA_Shadow_PostBlur.cs.dxil.h"
+    #include "SIGMA_Shadow_TemporalStabilization.cs.dxil.h"
+    #include "SIGMA_Shadow_SplitScreen.cs.dxil.h"
+#endif
 
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "SIGMA_Shadow_ClassifyTiles.cs.spirv.h"
     #include "SIGMA_Shadow_SmoothTiles.cs.spirv.h"
     #include "SIGMA_Shadow_Blur.cs.spirv.h"
     #include "SIGMA_Shadow_PostBlur.cs.spirv.h"
     #include "SIGMA_Shadow_TemporalStabilization.cs.spirv.h"
     #include "SIGMA_Shadow_SplitScreen.cs.spirv.h"
+#endif
 
-    // SIGMA_SHADOW_TRANSLUCENCY
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxbc.h"
-        #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxil.h"
-        #include "SIGMA_ShadowTranslucency_Blur.cs.dxbc.h"
-        #include "SIGMA_ShadowTranslucency_Blur.cs.dxil.h"
-        #include "SIGMA_ShadowTranslucency_PostBlur.cs.dxbc.h"
-        #include "SIGMA_ShadowTranslucency_PostBlur.cs.dxil.h"
-        #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxbc.h"
-        #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxil.h"
-        #include "SIGMA_ShadowTranslucency_SplitScreen.cs.dxbc.h"
-        #include "SIGMA_ShadowTranslucency_SplitScreen.cs.dxil.h"
-    #endif
+#include "Denoisers/Sigma_Shadow.hpp"
 
+
+// SIGMA_SHADOW_TRANSLUCENCY
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxbc.h"
+    #include "SIGMA_ShadowTranslucency_Blur.cs.dxbc.h"
+    #include "SIGMA_ShadowTranslucency_PostBlur.cs.dxbc.h"
+    #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxbc.h"
+    #include "SIGMA_ShadowTranslucency_SplitScreen.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.dxil.h"
+    #include "SIGMA_ShadowTranslucency_Blur.cs.dxil.h"
+    #include "SIGMA_ShadowTranslucency_PostBlur.cs.dxil.h"
+    #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.dxil.h"
+    #include "SIGMA_ShadowTranslucency_SplitScreen.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "SIGMA_ShadowTranslucency_ClassifyTiles.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_Blur.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_PostBlur.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_TemporalStabilization.cs.spirv.h"
     #include "SIGMA_ShadowTranslucency_SplitScreen.cs.spirv.h"
-
 #endif
 
-#include "Denoisers/Sigma_Shadow.hpp"
 #include "Denoisers/Sigma_ShadowTranslucency.hpp"

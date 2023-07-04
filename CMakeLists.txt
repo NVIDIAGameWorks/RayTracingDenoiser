@@ -1,27 +1,29 @@
 cmake_minimum_required (VERSION 3.15)
 
 # Options
-option (NRD_DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
-option (NRD_USE_PRECOMPILED_SHADERS "Use precompiled (embedded) shaders" ON)
-option (NRD_STATIC_LIBRARY "Build static library" OFF)
+if (WIN32)
+    set (IS_WIN ON)
+else ()
+    set (IS_WIN OFF)
+endif ()
 
-# Windows specific
-if(WIN32)
-    option (NRD_PRECOMPILE_SPIRV_SHADERS "Precompile SPIRV shaders" ON)
-    option (NRD_PRECOMPILE_D3D_SHADERS "Precompile DXIL shaders" ON)
-endif()
+option (NRD_STATIC_LIBRARY "Build static library" OFF)
+option (NRD_EMBEDS_SPIRV_SHADERS "NRD embeds SPIRV shaders" ON)
+option (NRD_EMBEDS_DXIL_SHADERS "NRD embeds DXIL shaders" ${IS_WIN})
+option (NRD_EMBEDS_DXBC_SHADERS "NRD embeds DXBC shaders" ${IS_WIN})
+option (NRD_DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
 
 # Is submodule?
 if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
-    set(IS_SUBMODULE OFF)
-else()
-    set(IS_SUBMODULE ON)
-endif()
+    set (IS_SUBMODULE OFF)
+else ()
+    set (IS_SUBMODULE ON)
+endif ()
 
 # Cached
 if (NOT IS_SUBMODULE)
     set (CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "")
-endif()
+endif ()
 
 set (NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "Custom DXC to use if Vulkan SDK is not installed")
 set (NRD_SHADERS_PATH "" CACHE STRING "Shader output path override")
@@ -73,13 +75,20 @@ endif ()
 # Compile definitions
 set (COMPILE_DEFINITIONS NRD_NORMAL_ENCODING=${NRD_NORMAL_ENCODING} NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING})
 
+if (NRD_EMBEDS_SPIRV_SHADERS)
+    set (COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} NRD_EMBEDS_SPIRV_SHADERS)
+endif ()
+
+if (NRD_EMBEDS_DXIL_SHADERS)
+    set (COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} NRD_EMBEDS_DXIL_SHADERS)
+endif ()
+
+if (NRD_EMBEDS_DXBC_SHADERS)
+    set (COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} NRD_EMBEDS_DXBC_SHADERS)
+endif ()
+
 if (WIN32)
-    if (NRD_PRECOMPILE_SPIRV_SHADERS AND NOT NRD_PRECOMPILE_D3D_SHADERS)
-        set (COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} NRD_ONLY_SPIRV_SHADERS_AVAILABLE=1)
-    endif ()
     set (COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS _UNICODE UNICODE _ENFORCE_MATCHING_ALLOCATORS=0)
-else ()
-    set (COMPILE_DEFINITIONS ${COMPILE_DEFINITIONS} NRD_ONLY_SPIRV_SHADERS_AVAILABLE=1)
 endif ()
 
 # External/MathLib
@@ -135,28 +144,27 @@ set_target_properties (${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${GL
 set_target_properties (${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
 message ("NRD output path: '${GLOBAL_BIN_OUTPUT_PATH}'")
 
-# External/ShaderMake
-if (NOT TARGET ShaderMake)
-    set (SHADERMAKE_BIN_OUTPUT_PATH ${GLOBAL_BIN_OUTPUT_PATH} CACHE STRING "")
-    add_subdirectory (External/ShaderMake)
-endif ()
-
 # Shaders
-if (NRD_USE_PRECOMPILED_SHADERS)
+if (NOT NRD_DISABLE_SHADER_COMPILATION)
     target_include_directories (${PROJECT_NAME} PRIVATE "${NRD_SHADERS_PATH}")
-    target_compile_definitions (${PROJECT_NAME} PRIVATE NRD_USE_PRECOMPILED_SHADERS)
 
     file (GLOB_RECURSE SHADERS "Shaders/*.hlsl" "Shaders/*.hlsli" "External/MathLib/*.hlsli")
     set_source_files_properties (${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
-    
-    # Arguements for ShaderMake
-    set(SHADERMAKE_GENERAL_ARGS 
-        --WX
-        --header ${NRD_SHADER_BINARIES} 
+
+    # External/ShaderMake
+    if (NOT TARGET ShaderMake)
+        set (SHADERMAKE_BIN_OUTPUT_PATH ${GLOBAL_BIN_OUTPUT_PATH} CACHE STRING "")
+        add_subdirectory (External/ShaderMake)
+    endif ()
+
+    # ShaderMake general arguments
+    set (SHADERMAKE_GENERAL_ARGS
+        --header ${NRD_SHADER_BINARIES}
         --flatten
-        --stripReflection 
+        --stripReflection
         --sourceDir "Shaders/Source"
         --allResourcesBound
+        --WX
         -c Shaders.cfg
         -o "${NRD_SHADERS_PATH}"
         -I "External/MathLib"
@@ -166,39 +174,34 @@ if (NRD_USE_PRECOMPILED_SHADERS)
         -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
         -D NRD_INTERNAL
     )
-    if (WIN32)
-        # Arguements for ShaderMake depending on which backend is used
-        set(SHADERMAKE_COMMANDS "")
-        if(NRD_PRECOMPILE_D3D_SHADERS) # DXIL Commands
-            set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake --useAPI -p DXIL  --compiler "${DXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
-        endif()
-        if(NRD_PRECOMPILE_D3D_SHADERS) # DXBC Commands
-            set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake --useAPI -p DXBC  --compiler "${FXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
-        endif()
-        if(NRD_PRECOMPILE_SPIRV_SHADERS)
-            set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake --useAPI -p SPIRV --compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS}
-                --sRegShift 100
-                --tRegShift 200
-                --bRegShift 300
-                --uRegShift 400
-                )
-        endif()
 
-        # Add the target with the commands
-        add_custom_target (${PROJECT_NAME}_Shaders ALL ${SHADERMAKE_COMMANDS}
-            DEPENDS ShaderMake
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            VERBATIM
-            SOURCES ${SHADERS})
-    else ()
-        add_custom_target (${PROJECT_NAME}_Shaders ALL
-            COMMAND ShaderMake -p SPIRV --compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS}
-            DEPENDS ShaderMake
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            VERBATIM
-            SOURCES ${SHADERS}
+    # ShaderMake commands for each shader code container
+    set (SHADERMAKE_COMMANDS "")
+
+    if (NRD_EMBEDS_DXBC_SHADERS)
+        set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXBC --compiler "${FXC_PATH}" --useAPI ${SHADERMAKE_GENERAL_ARGS})
+    endif ()
+
+    if (NRD_EMBEDS_DXIL_SHADERS)
+        set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXIL --compiler "${DXC_PATH}" --useAPI ${SHADERMAKE_GENERAL_ARGS})
+    endif ()
+
+    if (NRD_EMBEDS_SPIRV_SHADERS)
+        set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p SPIRV --compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS}
+            --sRegShift 100
+            --tRegShift 200
+            --bRegShift 300
+            --uRegShift 400
         )
     endif ()
+
+    # Add the target with the commands
+    add_custom_target (${PROJECT_NAME}_Shaders ALL ${SHADERMAKE_COMMANDS}
+        DEPENDS ShaderMake
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        VERBATIM
+        SOURCES ${SHADERS}
+    )
 
     set_property (TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER ${PROJECT_NAME})
     add_dependencies (${PROJECT_NAME} ${PROJECT_NAME}_Shaders)

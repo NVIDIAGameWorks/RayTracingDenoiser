@@ -23,29 +23,32 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 #define _NRD_STRINGIFY(s) #s
 #define NRD_STRINGIFY(s) _NRD_STRINGIFY(s)
 
-#ifdef NRD_USE_PRECOMPILED_SHADERS
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
-            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_## shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
-
-        #define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}, {g_##shaderName##_cs_dxil, GetCountOf(g_##shaderName##_cs_dxil)}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
-    #else
-        #define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
-            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
-
-        #define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
-            AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)})
-    #endif
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #define GET_DXBC_SHADER_DESC(shaderName) {g_##shaderName##_cs_dxbc, GetCountOf(g_##shaderName##_cs_dxbc)}
 #else
-    #define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
-        AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", {}, {}, {})
-
-    #define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
-        AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", {}, {}, {})
+    #define GET_DXBC_SHADER_DESC(shaderName) {}
 #endif
 
-#define PushPass(passName) _PushPass(NRD_STRINGIFY(DENOISER_NAME) " - " passName)
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #define GET_DXIL_SHADER_DESC(shaderName) {g_##shaderName##_cs_dxil, GetCountOf(g_## shaderName##_cs_dxil)}
+#else
+    #define GET_DXIL_SHADER_DESC(shaderName) {}
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
+    #define GET_SPIRV_SHADER_DESC(shaderName) {g_##shaderName##_cs_spirv, GetCountOf(g_##shaderName##_cs_spirv)}
+#else
+    #define GET_SPIRV_SHADER_DESC(shaderName) {}
+#endif
+
+#define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
+    AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", GET_DXBC_SHADER_DESC(shaderName), GET_DXIL_SHADER_DESC(shaderName), GET_SPIRV_SHADER_DESC(shaderName))
+
+#define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
+    AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", GET_DXBC_SHADER_DESC(shaderName), GET_DXIL_SHADER_DESC(shaderName), GET_SPIRV_SHADER_DESC(shaderName))
+
+#define PushPass(passName) \
+    _PushPass(NRD_STRINGIFY(DENOISER_NAME) " - " passName)
 
 // TODO: rework is needed, but still better than copy-pasting
 #define NRD_DECLARE_DIMS \

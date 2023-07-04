@@ -184,7 +184,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             #endif
         #endif
 
-            // Get rid of potentially bad values outside of the screen
+            // Get rid of potential NANs outside of rendering rectangle or denoising range
             w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;
             s = w != 0.0 ? s : 0.0;
 
@@ -222,11 +222,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         REBLUR_TYPE s0 = gIn_Spec[ checkerboardPos.xy ];
         REBLUR_TYPE s1 = gIn_Spec[ checkerboardPos.zy ];
 
+        // Get rid of potential NANs outside of rendering rectangle or denoising range
+        s0 = wc.x != 0.0 ? s0 : 0;
+        s1 = wc.y != 0.0 ? s1 : 0;
+
         spec = s0 * wc.x + s1 * wc.y;
 
     #ifdef REBLUR_SH
         float4 sh0 = gIn_SpecSh[ checkerboardPos.xy ];
         float4 sh1 = gIn_SpecSh[ checkerboardPos.zy ];
+
+        // Get rid of potential NANs outside of rendering rectangle or denoising range
+        sh0 = wc.x != 0.0 ? sh0 : 0;
+        sh1 = wc.y != 0.0 ? sh1 : 0;
 
         specSh = sh0 * wc.x + sh1 * wc.y;
     #endif

@@ -145,7 +145,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns );
             w *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
 
-            // Get rid of potentially bad values outside of the screen
+            // Get rid of potential NANs outside of rendering rectangle or denoising range
             w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;
             s = w != 0.0 ? s : 0.0;
 
@@ -174,11 +174,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         REBLUR_TYPE s0 = gIn_Diff[ checkerboardPos.xy ];
         REBLUR_TYPE s1 = gIn_Diff[ checkerboardPos.zy ];
 
+        // Get rid of potential NANs outside of rendering rectangle or denoising range
+        s0 = wc.x != 0.0 ? s0 : 0;
+        s1 = wc.y != 0.0 ? s1 : 0;
+
         diff = s0 * wc.x + s1 * wc.y;
 
     #ifdef REBLUR_SH
         float4 sh0 = gIn_DiffSh[ checkerboardPos.xy ];
         float4 sh1 = gIn_DiffSh[ checkerboardPos.zy ];
+
+        // Get rid of potential NANs outside of rendering rectangle or denoising range
+        sh0 = wc.x != 0.0 ? sh0 : 0;
+        sh1 = wc.y != 0.0 ? sh1 : 0;
 
         diffSh = sh0 * wc.x + sh1 * wc.y;
     #endif

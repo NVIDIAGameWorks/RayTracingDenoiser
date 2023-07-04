@@ -38,6 +38,9 @@ void Preload( uint2 sharedPos, int2 globalPos )
         #endif
     #endif
 
+    // Get rid of potential NANs outside of rendering rectangle or denoising range
+    hitDist = viewZ > gDenoisingRange ? 0 : hitDist;
+
     s_HitDist_ViewZ[ sharedPos.y ][ sharedPos.x ] = float3( hitDist, viewZ );
 }
 

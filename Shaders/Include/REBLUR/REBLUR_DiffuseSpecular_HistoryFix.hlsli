@@ -156,7 +156,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
                     REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
 
-                    // Get rid of potentially bad values outside of the screen
+                    // Get rid of potential NANs outside of rendering rectangle or denoising range
                     w = IsInScreen( uv ) ? w : 0.0; // no "!isnan" because "s" is not used for "w" calculations
                     s = w != 0.0 ? s : 0.0;
 
@@ -218,7 +218,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     if( abs( i ) <= 1 && abs( j ) <= 1 )
                         continue;
 
-                    float d = gIn_DiffFast.SampleLevel( gNearestClamp, pixelUv + int2( i, j ) * gInvRectSize, 0 ).x;
+                    float2 uv = pixelUv + float2( i, j ) * gInvRectSize;
+                    float2 uvScaled = uv * gResolutionScale;
+
+                    float d = gIn_DiffFast.SampleLevel( gNearestClamp, uvScaled, 0 ).x;
                     m1 += d;
                     m2 += d * d;
                 }
@@ -346,7 +349,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     // It allows bleeding of background to foreground, but not vice versa ( doesn't suit for 0 roughness )
                     w *= saturate( 1.0 - hitDistWeightScale * abs( ExtractHitDist( s ) - hitDistNormAtCenter ) / ( max( ExtractHitDist( s ), hitDistNormAtCenter ) + NRD_EPS ) );
 
-                    // Get rid of potentially bad values outside of the screen
+                    // Get rid of potential NANs outside of rendering rectangle or denoising range
                     w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;
                     s = w != 0.0 ? s : 0.0;
 
@@ -408,7 +411,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     if( abs( i ) <= 1 && abs( j ) <= 1 )
                         continue;
 
-                    float s = gIn_SpecFast.SampleLevel( gNearestClamp, pixelUv + int2( i, j ) * gInvRectSize, 0 ).x;
+                    float2 uv = pixelUv + float2( i, j ) * gInvRectSize;
+                    float2 uvScaled = uv * gResolutionScale;
+
+                    float s = gIn_SpecFast.SampleLevel( gNearestClamp, uvScaled, 0 ).x;
                     m1 += s;
                     m2 += s * s;
                 }

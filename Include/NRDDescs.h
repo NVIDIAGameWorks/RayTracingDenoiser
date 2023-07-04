@@ -266,7 +266,7 @@ namespace nrd
         OUT_DELTA_MV,
 
         // (Optional) Debug output (RGBA8+), .w = transparency
-        // Written to if "InstanceCreationDesc::allowValidation = true" and "CommonSettings::enableValidation = true"
+        // Used if "CommonSettings::enableValidation = true"
         OUT_VALIDATION,
 
         //=============================================================================================================================

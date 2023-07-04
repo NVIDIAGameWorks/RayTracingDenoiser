@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.2.1 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.2.2 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -40,7 +40,7 @@ For diffuse and specular signals de-modulated irradiance (i.e. irradiance with "
 - Install on
     - Windows: latest *WindowsSDK* (22000+), *VulkanSDK* (1.3.216+)
     - Linux (x86-64): latest *VulkanSDK*
-    - Linux (aarch64): find a precompiled binary for [*DXC*](https://github.com/microsoft/DirectXShaderCompiler) or disable shader compilation `NRD_DISABLE_SHADER_COMPILATION=OFF`
+    - Linux (aarch64): find a precompiled binary for [*DXC*](https://github.com/microsoft/DirectXShaderCompiler) or disable shader compilation `NRD_EMBEDS_SPIRV_SHADERS=OFF`
 - Build (variant 1) - using *Git* and *CMake* explicitly
     - Clone project and init submodules
     - Generate and build the project using *CMake*
@@ -49,13 +49,15 @@ For diffuse and specular signals de-modulated irradiance (i.e. irradiance with "
     - Run `2-Build`
 
 CMake options:
-- `NRD_DXC_CUSTOM_PATH = "custom/path/to/dxc"` - custom DXC to use if Vulkan SDK is not installed
 - `NRD_SHADERS_PATH` - shader output path override
+- `NRD_STATIC_LIBRARY` - build static library (OFF by default)
+- `NRD_DXC_CUSTOM_PATH` - custom DXC to use if Vulkan SDK is not installed
 - `NRD_NORMAL_ENCODING` - *normal* encoding for the entire library
 - `NRD_ROUGHNESS_ENCODING` - *roughness* encoding for the entire library
-- `NRD_DISABLE_SHADER_COMPILATION` - disable shader compilation (shaders can be compiled on another platform)
-- `NRD_USE_PRECOMPILED_SHADERS` -  use precompiled shaders (will be embedded into the library)
-- `NRD_STATIC_LIBRARY` - build static library
+- `NRD_EMBEDS_DXBC_SHADERS` - NRD compiles and embeds DXBC shaders (ON by default on Windows)
+- `NRD_EMBEDS_DXIL_SHADERS` - NRD compiles and embeds DXIL shaders (ON by default on Windows)
+- `NRD_EMBEDS_SPIRV_SHADERS` - NRD compiles and embeds SPIRV shaders (ON by default)
+- `NRD_DISABLE_SHADER_COMPILATION` - disable shader compilation on the NRD side, NRD assumes that shaders are already compiled externally and have been put into `NRD_SHADERS_PATH` folder
 
 `NRD_NORMAL_ENCODING` and `NRD_ROUGHNESS_ENCODING` can be defined only *once* during project deployment. These settings are dumped in `NRDEncoding.hlsli` file, which needs to be included on the application side prior `NRD.hlsli` inclusion to deliver encoding settings matching *NRD* settings. `LibraryDesc` includes encoding settings too. It can be used to verify that the library meets the application expectations.
 
@@ -246,6 +248,8 @@ else
     spec.xyz = NRD_SG_ExtractColor( specSg );
 }
 ```
+
+Re-jittering math with minorly modified inputs can also be used with RESTIR produced sampling without involving SH denoisers. You only need to get light direction in the current pixel from RESTIR. Despite that RESTIR produces noisy light selections, its low variations can be easily handled by DLSS or other upscaling techs.
 
 # VALIDATION LAYER
 

@@ -10,37 +10,52 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "InstanceImpl.h"
 
-#ifdef NRD_USE_PRECOMPILED_SHADERS
+// REFERENCE
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "REFERENCE_TemporalAccumulation.cs.dxbc.h"
+    #include "REFERENCE_SplitScreen.cs.dxbc.h"
+#endif
 
-    // REFERENCE
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "REFERENCE_TemporalAccumulation.cs.dxbc.h"
-        #include "REFERENCE_TemporalAccumulation.cs.dxil.h"
-        #include "REFERENCE_SplitScreen.cs.dxbc.h"
-        #include "REFERENCE_SplitScreen.cs.dxil.h"
-    #endif
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "REFERENCE_TemporalAccumulation.cs.dxil.h"
+    #include "REFERENCE_SplitScreen.cs.dxil.h"
+#endif
 
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "REFERENCE_TemporalAccumulation.cs.spirv.h"
     #include "REFERENCE_SplitScreen.cs.spirv.h"
-
-    // SPECULAR_REFLECTION_MV
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "SpecularReflectionMv_Compute.cs.dxbc.h"
-        #include "SpecularReflectionMv_Compute.cs.dxil.h"
-    #endif
-
-    #include "SpecularReflectionMv_Compute.cs.spirv.h"
-
-    // SPECULAR_DELTA_MV
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "SpecularDeltaMv_Compute.cs.dxbc.h"
-        #include "SpecularDeltaMv_Compute.cs.dxil.h"
-    #endif
-
-    #include "SpecularDeltaMv_Compute.cs.spirv.h"
-
 #endif
 
 #include "Denoisers/Reference.hpp"
+
+
+// SPECULAR_REFLECTION_MV
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "SpecularReflectionMv_Compute.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "SpecularReflectionMv_Compute.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
+    #include "SpecularReflectionMv_Compute.cs.spirv.h"
+#endif
+
 #include "Denoisers/SpecularReflectionMv.hpp"
+
+
+// SPECULAR_DELTA_MV
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "SpecularDeltaMv_Compute.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "SpecularDeltaMv_Compute.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
+    #include "SpecularDeltaMv_Compute.cs.spirv.h"
+#endif
+
 #include "Denoisers/SpecularDeltaMv.hpp"

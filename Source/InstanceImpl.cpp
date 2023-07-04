@@ -69,19 +69,19 @@ constexpr std::array<bool, (size_t)nrd::Format::MAX_NUM> g_IsIntegerFormat =
     false,        // R9_G9_B9_E5_UFLOAT
 };
 
-#ifdef NRD_USE_PRECOMPILED_SHADERS
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "Clear_f.cs.dxbc.h"
+    #include "Clear_ui.cs.dxbc.h"
+#endif
 
-    // NRD
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "Clear_f.cs.dxbc.h"
-        #include "Clear_f.cs.dxil.h"
-        #include "Clear_ui.cs.dxbc.h"
-        #include "Clear_ui.cs.dxil.h"
-    #endif
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "Clear_f.cs.dxil.h"
+    #include "Clear_ui.cs.dxil.h"
+#endif
 
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "Clear_f.cs.spirv.h"
     #include "Clear_ui.cs.spirv.h"
-
 #endif
 
 inline bool IsInList(nrd::Identifier identifier, const nrd::Identifier* identifiers, uint32_t identifiersNum)

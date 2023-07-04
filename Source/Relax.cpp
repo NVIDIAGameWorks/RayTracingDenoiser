@@ -128,42 +128,49 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     AddUint(data, 0);
 }
 
-#ifdef NRD_USE_PRECOMPILED_SHADERS
+// RELAX_SHARED
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "RELAX_ClassifyTiles.cs.dxbc.h"
+#endif
 
-    // RELAX_SHARED
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-            #include "RELAX_ClassifyTiles.cs.dxbc.h"
-            #include "RELAX_ClassifyTiles.cs.dxil.h"
-    #endif
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "RELAX_ClassifyTiles.cs.dxil.h"
+#endif
 
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_ClassifyTiles.cs.spirv.h"
+#endif
 
-    // RELAX_DIFFUSE
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_Diffuse_HitDistReconstruction.cs.dxbc.h"
-        #include "RELAX_Diffuse_HitDistReconstruction.cs.dxil.h"
-        #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.dxbc.h"
-        #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.dxil.h"
-        #include "RELAX_Diffuse_PrePass.cs.dxbc.h"
-        #include "RELAX_Diffuse_PrePass.cs.dxil.h"
-        #include "RELAX_Diffuse_TemporalAccumulation.cs.dxbc.h"
-        #include "RELAX_Diffuse_TemporalAccumulation.cs.dxil.h"
-        #include "RELAX_Diffuse_HistoryFix.cs.dxbc.h"
-        #include "RELAX_Diffuse_HistoryFix.cs.dxil.h"
-        #include "RELAX_Diffuse_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_Diffuse_HistoryClamping.cs.dxil.h"
-        #include "RELAX_Diffuse_AntiFirefly.cs.dxbc.h"
-        #include "RELAX_Diffuse_AntiFirefly.cs.dxil.h"
-        #include "RELAX_Diffuse_AtrousSmem.cs.dxbc.h"
-        #include "RELAX_Diffuse_AtrousSmem.cs.dxil.h"
-        #include "RELAX_Diffuse_Atrous.cs.dxbc.h"
-        #include "RELAX_Diffuse_Atrous.cs.dxil.h"
-        #include "RELAX_Diffuse_SplitScreen.cs.dxbc.h"
-        #include "RELAX_Diffuse_SplitScreen.cs.dxil.h"
-        #include "RELAX_Validation.cs.dxbc.h"
-        #include "RELAX_Validation.cs.dxil.h"
-    #endif
+// RELAX_DIFFUSE
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "RELAX_Diffuse_HitDistReconstruction.cs.dxbc.h"
+    #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.dxbc.h"
+    #include "RELAX_Diffuse_PrePass.cs.dxbc.h"
+    #include "RELAX_Diffuse_TemporalAccumulation.cs.dxbc.h"
+    #include "RELAX_Diffuse_HistoryFix.cs.dxbc.h"
+    #include "RELAX_Diffuse_HistoryClamping.cs.dxbc.h"
+    #include "RELAX_Diffuse_AntiFirefly.cs.dxbc.h"
+    #include "RELAX_Diffuse_AtrousSmem.cs.dxbc.h"
+    #include "RELAX_Diffuse_Atrous.cs.dxbc.h"
+    #include "RELAX_Diffuse_SplitScreen.cs.dxbc.h"
+    #include "RELAX_Validation.cs.dxbc.h"
+#endif
 
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "RELAX_Diffuse_HitDistReconstruction.cs.dxil.h"
+    #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.dxil.h"
+    #include "RELAX_Diffuse_PrePass.cs.dxil.h"
+    #include "RELAX_Diffuse_TemporalAccumulation.cs.dxil.h"
+    #include "RELAX_Diffuse_HistoryFix.cs.dxil.h"
+    #include "RELAX_Diffuse_HistoryClamping.cs.dxil.h"
+    #include "RELAX_Diffuse_AntiFirefly.cs.dxil.h"
+    #include "RELAX_Diffuse_AtrousSmem.cs.dxil.h"
+    #include "RELAX_Diffuse_Atrous.cs.dxil.h"
+    #include "RELAX_Diffuse_SplitScreen.cs.dxil.h"
+    #include "RELAX_Validation.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_Diffuse_HitDistReconstruction.cs.spirv.h"
     #include "RELAX_Diffuse_HitDistReconstruction_5x5.cs.spirv.h"
     #include "RELAX_Diffuse_PrePass.cs.spirv.h"
@@ -175,27 +182,35 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_Diffuse_Atrous.cs.spirv.h"
     #include "RELAX_Diffuse_SplitScreen.cs.spirv.h"
     #include "RELAX_Validation.cs.spirv.h"
+#endif
 
-    // RELAX_DIFFUSE_SH
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_DiffuseSh_PrePass.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_PrePass.cs.dxil.h"
-        #include "RELAX_DiffuseSh_TemporalAccumulation.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_TemporalAccumulation.cs.dxil.h"
-        #include "RELAX_DiffuseSh_HistoryFix.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_HistoryFix.cs.dxil.h"
-        #include "RELAX_DiffuseSh_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_HistoryClamping.cs.dxil.h"
-        #include "RELAX_DiffuseSh_AntiFirefly.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_AntiFirefly.cs.dxil.h"
-        #include "RELAX_DiffuseSh_AtrousSmem.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_AtrousSmem.cs.dxil.h"
-        #include "RELAX_DiffuseSh_Atrous.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_Atrous.cs.dxil.h"
-        #include "RELAX_DiffuseSh_SplitScreen.cs.dxbc.h"
-        #include "RELAX_DiffuseSh_SplitScreen.cs.dxil.h"
-    #endif
+#include "Denoisers/Relax_Diffuse.hpp"
 
+
+// RELAX_DIFFUSE_SH
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "RELAX_DiffuseSh_PrePass.cs.dxbc.h"
+    #include "RELAX_DiffuseSh_TemporalAccumulation.cs.dxbc.h"
+    #include "RELAX_DiffuseSh_HistoryFix.cs.dxbc.h"
+    #include "RELAX_DiffuseSh_HistoryClamping.cs.dxbc.h"
+    #include "RELAX_DiffuseSh_AntiFirefly.cs.dxbc.h"
+    #include "RELAX_DiffuseSh_AtrousSmem.cs.dxbc.h"
+    #include "RELAX_DiffuseSh_Atrous.cs.dxbc.h"
+    #include "RELAX_DiffuseSh_SplitScreen.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "RELAX_DiffuseSh_PrePass.cs.dxil.h"
+    #include "RELAX_DiffuseSh_TemporalAccumulation.cs.dxil.h"
+    #include "RELAX_DiffuseSh_HistoryFix.cs.dxil.h"
+    #include "RELAX_DiffuseSh_HistoryClamping.cs.dxil.h"
+    #include "RELAX_DiffuseSh_AntiFirefly.cs.dxil.h"
+    #include "RELAX_DiffuseSh_AtrousSmem.cs.dxil.h"
+    #include "RELAX_DiffuseSh_Atrous.cs.dxil.h"
+    #include "RELAX_DiffuseSh_SplitScreen.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_DiffuseSh_PrePass.cs.spirv.h"
     #include "RELAX_DiffuseSh_TemporalAccumulation.cs.spirv.h"
     #include "RELAX_DiffuseSh_HistoryFix.cs.spirv.h"
@@ -204,31 +219,39 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_DiffuseSh_AtrousSmem.cs.spirv.h"
     #include "RELAX_DiffuseSh_Atrous.cs.spirv.h"
     #include "RELAX_DiffuseSh_SplitScreen.cs.spirv.h"
+#endif
 
-    // RELAX_SPECULAR
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_Specular_HitDistReconstruction.cs.dxbc.h"
-        #include "RELAX_Specular_HitDistReconstruction.cs.dxil.h"
-        #include "RELAX_Specular_HitDistReconstruction_5x5.cs.dxbc.h"
-        #include "RELAX_Specular_HitDistReconstruction_5x5.cs.dxil.h"
-        #include "RELAX_Specular_PrePass.cs.dxbc.h"
-        #include "RELAX_Specular_PrePass.cs.dxil.h"
-        #include "RELAX_Specular_TemporalAccumulation.cs.dxbc.h"
-        #include "RELAX_Specular_TemporalAccumulation.cs.dxil.h"
-        #include "RELAX_Specular_HistoryFix.cs.dxbc.h"
-        #include "RELAX_Specular_HistoryFix.cs.dxil.h"
-        #include "RELAX_Specular_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_Specular_HistoryClamping.cs.dxil.h"
-        #include "RELAX_Specular_AntiFirefly.cs.dxbc.h"
-        #include "RELAX_Specular_AntiFirefly.cs.dxil.h"
-        #include "RELAX_Specular_AtrousSmem.cs.dxbc.h"
-        #include "RELAX_Specular_AtrousSmem.cs.dxil.h"
-        #include "RELAX_Specular_Atrous.cs.dxbc.h"
-        #include "RELAX_Specular_Atrous.cs.dxil.h"
-        #include "RELAX_Specular_SplitScreen.cs.dxbc.h"
-        #include "RELAX_Specular_SplitScreen.cs.dxil.h"
-    #endif
+#include "Denoisers/Relax_DiffuseSh.hpp"
 
+
+// RELAX_SPECULAR
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "RELAX_Specular_HitDistReconstruction.cs.dxbc.h"
+    #include "RELAX_Specular_HitDistReconstruction_5x5.cs.dxbc.h"
+    #include "RELAX_Specular_PrePass.cs.dxbc.h"
+    #include "RELAX_Specular_TemporalAccumulation.cs.dxbc.h"
+    #include "RELAX_Specular_HistoryFix.cs.dxbc.h"
+    #include "RELAX_Specular_HistoryClamping.cs.dxbc.h"
+    #include "RELAX_Specular_AntiFirefly.cs.dxbc.h"
+    #include "RELAX_Specular_AtrousSmem.cs.dxbc.h"
+    #include "RELAX_Specular_Atrous.cs.dxbc.h"
+    #include "RELAX_Specular_SplitScreen.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "RELAX_Specular_HitDistReconstruction.cs.dxil.h"
+    #include "RELAX_Specular_HitDistReconstruction_5x5.cs.dxil.h"
+    #include "RELAX_Specular_PrePass.cs.dxil.h"
+    #include "RELAX_Specular_TemporalAccumulation.cs.dxil.h"
+    #include "RELAX_Specular_HistoryFix.cs.dxil.h"
+    #include "RELAX_Specular_HistoryClamping.cs.dxil.h"
+    #include "RELAX_Specular_AntiFirefly.cs.dxil.h"
+    #include "RELAX_Specular_AtrousSmem.cs.dxil.h"
+    #include "RELAX_Specular_Atrous.cs.dxil.h"
+    #include "RELAX_Specular_SplitScreen.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_Specular_HitDistReconstruction.cs.spirv.h"
     #include "RELAX_Specular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "RELAX_Specular_PrePass.cs.spirv.h"
@@ -239,27 +262,35 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_Specular_AtrousSmem.cs.spirv.h"
     #include "RELAX_Specular_Atrous.cs.spirv.h"
     #include "RELAX_Specular_SplitScreen.cs.spirv.h"
+#endif
 
-    // RELAX_SPECULAR_SH
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_SpecularSh_PrePass.cs.dxbc.h"
-        #include "RELAX_SpecularSh_PrePass.cs.dxil.h"
-        #include "RELAX_SpecularSh_TemporalAccumulation.cs.dxbc.h"
-        #include "RELAX_SpecularSh_TemporalAccumulation.cs.dxil.h"
-        #include "RELAX_SpecularSh_HistoryFix.cs.dxbc.h"
-        #include "RELAX_SpecularSh_HistoryFix.cs.dxil.h"
-        #include "RELAX_SpecularSh_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_SpecularSh_HistoryClamping.cs.dxil.h"
-        #include "RELAX_SpecularSh_AntiFirefly.cs.dxbc.h"
-        #include "RELAX_SpecularSh_AntiFirefly.cs.dxil.h"
-        #include "RELAX_SpecularSh_AtrousSmem.cs.dxbc.h"
-        #include "RELAX_SpecularSh_AtrousSmem.cs.dxil.h"
-        #include "RELAX_SpecularSh_Atrous.cs.dxbc.h"
-        #include "RELAX_SpecularSh_Atrous.cs.dxil.h"
-        #include "RELAX_SpecularSh_SplitScreen.cs.dxbc.h"
-        #include "RELAX_SpecularSh_SplitScreen.cs.dxil.h"
-    #endif
+#include "Denoisers/Relax_Specular.hpp"
 
+
+// RELAX_SPECULAR_SH
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "RELAX_SpecularSh_PrePass.cs.dxbc.h"
+    #include "RELAX_SpecularSh_TemporalAccumulation.cs.dxbc.h"
+    #include "RELAX_SpecularSh_HistoryFix.cs.dxbc.h"
+    #include "RELAX_SpecularSh_HistoryClamping.cs.dxbc.h"
+    #include "RELAX_SpecularSh_AntiFirefly.cs.dxbc.h"
+    #include "RELAX_SpecularSh_AtrousSmem.cs.dxbc.h"
+    #include "RELAX_SpecularSh_Atrous.cs.dxbc.h"
+    #include "RELAX_SpecularSh_SplitScreen.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "RELAX_SpecularSh_PrePass.cs.dxil.h"
+    #include "RELAX_SpecularSh_TemporalAccumulation.cs.dxil.h"
+    #include "RELAX_SpecularSh_HistoryFix.cs.dxil.h"
+    #include "RELAX_SpecularSh_HistoryClamping.cs.dxil.h"
+    #include "RELAX_SpecularSh_AntiFirefly.cs.dxil.h"
+    #include "RELAX_SpecularSh_AtrousSmem.cs.dxil.h"
+    #include "RELAX_SpecularSh_Atrous.cs.dxil.h"
+    #include "RELAX_SpecularSh_SplitScreen.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_SpecularSh_PrePass.cs.spirv.h"
     #include "RELAX_SpecularSh_TemporalAccumulation.cs.spirv.h"
     #include "RELAX_SpecularSh_HistoryFix.cs.spirv.h"
@@ -268,31 +299,39 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_SpecularSh_AtrousSmem.cs.spirv.h"
     #include "RELAX_SpecularSh_Atrous.cs.spirv.h"
     #include "RELAX_SpecularSh_SplitScreen.cs.spirv.h"
+#endif
 
-    // RELAX_DIFFUSE_SPECULAR
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_PrePass.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_PrePass.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_HistoryFix.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_HistoryFix.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_AntiFirefly.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_AntiFirefly.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_AtrousSmem.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_AtrousSmem.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_Atrous.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_Atrous.cs.dxil.h"
-        #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxil.h"
-    #endif
+#include "Denoisers/Relax_SpecularSh.hpp"
 
+
+// RELAX_DIFFUSE_SPECULAR
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_PrePass.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_HistoryFix.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_AntiFirefly.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_AtrousSmem.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_Atrous.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_PrePass.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_HistoryFix.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_HistoryClamping.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_AntiFirefly.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_AtrousSmem.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_Atrous.cs.dxil.h"
+    #include "RELAX_DiffuseSpecular_SplitScreen.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_DiffuseSpecular_HitDistReconstruction.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_HitDistReconstruction_5x5.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_PrePass.cs.spirv.h"
@@ -303,27 +342,35 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_DiffuseSpecular_AtrousSmem.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_Atrous.cs.spirv.h"
     #include "RELAX_DiffuseSpecular_SplitScreen.cs.spirv.h"
+#endif
 
-    // RELAX_DIFFUSE_SPECULAR_SH
-    #if !NRD_ONLY_SPIRV_SHADERS_AVAILABLE
-        #include "RELAX_DiffuseSpecularSh_PrePass.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_PrePass.cs.dxil.h"
-        #include "RELAX_DiffuseSpecularSh_TemporalAccumulation.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_TemporalAccumulation.cs.dxil.h"
-        #include "RELAX_DiffuseSpecularSh_HistoryFix.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_HistoryFix.cs.dxil.h"
-        #include "RELAX_DiffuseSpecularSh_HistoryClamping.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_HistoryClamping.cs.dxil.h"
-        #include "RELAX_DiffuseSpecularSh_AntiFirefly.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_AntiFirefly.cs.dxil.h"
-        #include "RELAX_DiffuseSpecularSh_AtrousSmem.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_AtrousSmem.cs.dxil.h"
-        #include "RELAX_DiffuseSpecularSh_Atrous.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_Atrous.cs.dxil.h"
-        #include "RELAX_DiffuseSpecularSh_SplitScreen.cs.dxbc.h"
-        #include "RELAX_DiffuseSpecularSh_SplitScreen.cs.dxil.h"
-    #endif
+#include "Denoisers/Relax_DiffuseSpecular.hpp"
 
+
+// RELAX_DIFFUSE_SPECULAR_SH
+#ifdef NRD_EMBEDS_DXBC_SHADERS
+    #include "RELAX_DiffuseSpecularSh_PrePass.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecularSh_TemporalAccumulation.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecularSh_HistoryFix.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecularSh_HistoryClamping.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecularSh_AntiFirefly.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecularSh_AtrousSmem.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecularSh_Atrous.cs.dxbc.h"
+    #include "RELAX_DiffuseSpecularSh_SplitScreen.cs.dxbc.h"
+#endif
+
+#ifdef NRD_EMBEDS_DXIL_SHADERS
+    #include "RELAX_DiffuseSpecularSh_PrePass.cs.dxil.h"
+    #include "RELAX_DiffuseSpecularSh_TemporalAccumulation.cs.dxil.h"
+    #include "RELAX_DiffuseSpecularSh_HistoryFix.cs.dxil.h"
+    #include "RELAX_DiffuseSpecularSh_HistoryClamping.cs.dxil.h"
+    #include "RELAX_DiffuseSpecularSh_AntiFirefly.cs.dxil.h"
+    #include "RELAX_DiffuseSpecularSh_AtrousSmem.cs.dxil.h"
+    #include "RELAX_DiffuseSpecularSh_Atrous.cs.dxil.h"
+    #include "RELAX_DiffuseSpecularSh_SplitScreen.cs.dxil.h"
+#endif
+
+#ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_DiffuseSpecularSh_PrePass.cs.spirv.h"
     #include "RELAX_DiffuseSpecularSh_TemporalAccumulation.cs.spirv.h"
     #include "RELAX_DiffuseSpecularSh_HistoryFix.cs.spirv.h"
@@ -332,12 +379,6 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_DiffuseSpecularSh_AtrousSmem.cs.spirv.h"
     #include "RELAX_DiffuseSpecularSh_Atrous.cs.spirv.h"
     #include "RELAX_DiffuseSpecularSh_SplitScreen.cs.spirv.h"
-
 #endif
 
-#include "Denoisers/Relax_Diffuse.hpp"
-#include "Denoisers/Relax_DiffuseSh.hpp"
-#include "Denoisers/Relax_Specular.hpp"
-#include "Denoisers/Relax_SpecularSh.hpp"
-#include "Denoisers/Relax_DiffuseSpecular.hpp"
 #include "Denoisers/Relax_DiffuseSpecularSh.hpp"

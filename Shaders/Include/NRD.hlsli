@@ -595,6 +595,7 @@ float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direct
     {
         radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
         normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
+        direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : clamp( direction, -NRD_FP16_MAX, NRD_FP16_MAX );
     }
 
     // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
@@ -850,6 +851,11 @@ float3 NRD_SG_ExtractDirection( NRD_SG sg )
 float NRD_SG_ExtractRoughnessAA( NRD_SG sg )
 {
     return sg.sharpness;
+}
+
+void NRD_SG_Rotate( inout NRD_SG sg, float3x3 rotation )
+{
+    sg.c1 = mul( rotation, sg.c1 );
 }
 
 float3 NRD_SG_ResolveDiffuse( NRD_SG sg, float3 N )
