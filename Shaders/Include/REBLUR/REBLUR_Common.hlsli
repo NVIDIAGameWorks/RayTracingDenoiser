@@ -16,11 +16,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Storage
 
-// IMPORTANT: if REBLUR_NORMAL_ULP == 1, then "GetEncodingAwareNormalWeight" for 0-roughness
-// can return values < 1 even for same normals due to data re-packing
-#define REBLUR_ROUGHNESS_ULP                            ( 1.5 / 255.0 )
-#define REBLUR_NORMAL_ULP                               ( 2.0 / 255.0 )
-
 #define REBLUR_MAX_ACCUM_FRAME_NUM                      63.0
 #define REBLUR_ACCUMSPEED_BITS                          7 // "( 1 << REBLUR_ACCUMSPEED_BITS ) - 1" must be >= REBLUR_MAX_ACCUM_FRAME_NUM
 #define REBLUR_MATERIALID_BITS                          ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
@@ -96,8 +91,8 @@ float4 UnpackData1( float4 p )
 uint PackData2( float fbits, float curvature, float virtualHistoryAmount )
 {
     // BITS:
-    // 0     - CatRom flag
-    // 1-4   - occlusion 2x2
+    // 0     - smbAllowCatRom
+    // 1-4   - smbOcclusion 2x2
     // other - free // TODO: use if needed
 
     uint p = uint( fbits + 0.5 );
@@ -108,7 +103,7 @@ uint PackData2( float fbits, float curvature, float virtualHistoryAmount )
     return p;
 }
 
-float2 UnpackData2( uint p, float viewZ, out uint bits )
+float2 UnpackData2( uint p, out uint bits )
 {
     bits = p & 0xFF;
 
@@ -116,31 +111,6 @@ float2 UnpackData2( uint p, float viewZ, out uint bits )
     float curvature = f16tof32( p >> 16 );
 
     return float2( virtualHistoryAmount, curvature );
-}
-
-// Accumulation speed
-
-float GetFPS( float period = 1.0 ) // TODO: can be handy, but not used
-{
-    return gFramerateScale * 30.0 * period;
-}
-
-float GetSmbAccumSpeed( float smbSpecAccumSpeedFactor, float diffParallaxInPixels, float viewZ, float specAccumSpeed, float maxAngle )
-{
-    // "diffParallaxInPixels" is the difference between true specular motion (vmb) and surface based motion (smb),
-    // but "vmb" parallax can only be used if virtual motion confidence is high
-    float smbSpecAccumSpeed = gMaxAccumulatedFrameNum / ( 1.0 + smbSpecAccumSpeedFactor * diffParallaxInPixels );
-
-    // Tests 142, 148 and 155 ( or anything with very low roughness and curved surfaces )
-    float ta = PixelRadiusToWorld( gUnproject, gOrthoMode, diffParallaxInPixels, viewZ ) / viewZ;
-    float ca = STL::Math::Rsqrt( 1.0 + ta * ta );
-    float angle = STL::Math::AcosApprox( ca );
-    smbSpecAccumSpeed *= STL::Math::SmoothStep( maxAngle, 0.0, angle );
-
-    // Do not trust too small values
-    smbSpecAccumSpeed *= STL::Math::LinearStep( 0.5, 1.5, smbSpecAccumSpeed );
-
-    return min( smbSpecAccumSpeed, specAccumSpeed );
 }
 
 // Misc
@@ -158,14 +128,9 @@ float3 GetViewVectorPrev( float3 Xprev, float3 cameraDelta )
 float GetMinAllowedLimitForHitDistNonLinearAccumSpeed( float roughness )
 {
     // TODO: accelerate hit dist accumulation instead of limiting max number of frames?
-    /*
-    If hit distance weight is non-exponential:
-        This function can't return 0, because strict hitDist weight and effects of feedback loop lead to color banding (crunched colors)
-    If hit distance weight is exponential:
-        Acceleration is still needed to get better disocclusions from "parallax check"
-    */
-
-    float frameNum = 0.5 * GetSpecMagicCurve2( roughness ) * gMaxAccumulatedFrameNum;
+    // Despite that hit distance weight is exponential, this function can't return 0, because
+    // strict "hitDist" weight and effects of feedback loop lead to color banding ( crunched colors )
+    float frameNum = 0.5 * GetSpecMagicCurve( roughness ) * gMaxAccumulatedFrameNum;
 
     return 1.0 / ( 1.0 + frameNum );
 }
@@ -191,11 +156,6 @@ float GetLumaScale( float currLuma, float newLuma )
     // increase energy ( i.e. clamp a lower value to a bigger one from fast history ).
 
     return ( newLuma + NRD_EPS ) / ( currLuma + NRD_EPS );
-}
-
-float MixFastHistoryAndCurrent( float history, float current, float f )
-{
-    return lerp( history, current, f );
 }
 
 #ifdef REBLUR_OCCLUSION
@@ -305,54 +265,36 @@ float MixFastHistoryAndCurrent( float history, float current, float f )
 
 #endif
 
-float2 GetSensitivityToDarkness( float roughness )
-{
-    // Artificially increase sensitivity to darkness for low roughness, because specular can be very hot
-    // TODO: should depend on curvature for low roughness?
-    float sensitivityToDarknessScale = lerp( 3.0, 1.0, roughness );
-
-    return gSensitivityToDarkness * sensitivityToDarknessScale;
-}
-
 float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, float accumSpeed, float roughness = 1.0 )
 {
     // TODO: track temporal variance instead
     float2 p = float2( GetLuma( prev ), ExtractHitDist( prev ) );
     float2 c = float2( GetLuma( curr ), ExtractHitDist( curr ) );
-    float2 f = abs( c - p ) / ( max( c, p ) + GetSensitivityToDarkness( roughness ) );
 
-    float error = max( f.x, f.y );
-    error = STL::Math::SmoothStep( 0.0, 0.15, error );
+    float2 a = abs( c - p ) - NRD_EPS;
+    float2 b = max( c, p ) + NRD_EPS;
+    float2 d = a / b;
+
+    float error = STL::Math::SmoothStep01( max( d.x, d.y ) );
     error *= GetFadeBasedOnAccumulatedFrames( accumSpeed );
-    error *= gNonReferenceAccumulation;
 
     return error;
 }
 
-float ComputeAntilagScale(
-    REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE m1, REBLUR_TYPE sigma,
-    float4 antilagMinMaxThreshold, float2 antilagSigmaScale, float stabilizationStrength,
-    float curvatureMulPixelSize, float accumSpeed, float roughness = 1.0
-)
+float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma, float4 antilagParams )
 {
-    // On-edge strictness
-    m1 = lerp( m1, signal, saturate( abs( curvatureMulPixelSize ) ) );
-
-    // Antilag
-    float2 h = float2( GetLuma( history ), ExtractHitDist( history ) );
-    float2 c = float2( GetLuma( m1 ), ExtractHitDist( m1 ) ); // using signal leads to bias in test #62
+    float2 slow = float2( GetLuma( history ), ExtractHitDist( history ) );
+    float2 fast = float2( GetLuma( signal ), ExtractHitDist( signal ) );
     float2 s = float2( GetLuma( sigma ), ExtractHitDist( sigma ) );
 
-    float2 delta = abs( h - c ) - s * antilagSigmaScale;
-    delta /= max( h, c ) + GetSensitivityToDarkness( roughness );
+    float2 a = abs( slow - fast ) - antilagParams.xy * s - NRD_EPS;
+    float2 b = max( slow, fast ) + antilagParams.xy * s + NRD_EPS;
+    float2 d = a / b;
 
-    delta = STL::Math::SmoothStep( antilagMinMaxThreshold.zw, antilagMinMaxThreshold.xy, delta );
+    d = STL::Math::SmoothStep01( 1.0 - d );
+    d = STL::Math::Pow01( d, antilagParams.zw );
 
-    float antilag = min( delta.x, delta.y );
-    antilag = lerp( 1.0, antilag, stabilizationStrength );
-    antilag = lerp( 1.0, antilag, GetFadeBasedOnAccumulatedFrames( accumSpeed ) );
-
-    return antilag;
+    return REBLUR_SHOW == 0 ? min( d.x, d.y ) : 1.0;
 }
 
 // Kernel
@@ -384,26 +326,6 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
     return float2x3( T, B );
 }
 
-// Encoding precision aware weight functions ( for reprojection )
-
-float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0 )
-{
-    // Anything below "angleThreshold" is ignored
-    angleThreshold += REBLUR_NORMAL_ULP;
-
-    float cosa = saturate( dot( Ncurr, Nprev ) );
-
-    float a = 1.0 / maxAngle;
-    float d = STL::Math::AcosApprox( cosa );
-
-    float w = STL::Math::SmoothStep01( 1.0 - ( d - angleThreshold ) * a );
-
-    // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
-    w = STL::Math::SmoothStep( 0.05, 0.95, w );
-
-    return w;
-}
-
 // Weight parameters
 
 float GetNormalWeightParams( float nonLinearAccumSpeed, float fraction, float roughness = 1.0 )
@@ -411,18 +333,18 @@ float GetNormalWeightParams( float nonLinearAccumSpeed, float fraction, float ro
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
     angle *= lerp( saturate( fraction ), 1.0, nonLinearAccumSpeed ); // TODO: use as "percentOfVolume" instead?
 
-    return 1.0 / max( angle, REBLUR_NORMAL_ULP );
+    return 1.0 / max( angle, NRD_NORMAL_ULP );
 }
 
 float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed )
 {
+    accumSpeed *= REBLUR_SAMPLES_PER_FRAME;
+
     float w = isInScreenMulFootprintQuality;
     w *= accumSpeed / ( 1.0 + accumSpeed );
+    w *= float( REBLUR_SHOW == 0 );
 
-    float s = w;
-    s *= gNonReferenceAccumulation;
-
-    return float2( w, 1.0 + 3.0 * gFramerateScale * s );
+    return float2( w, 1.0 + 3.0 * gFramerateScale * w );
 }
 
 // Weights
@@ -440,7 +362,7 @@ float GetCombinedWeight
     float3 t;
     t.x = dot( Nv, Xvs );
     t.y = STL::Math::AcosApprox( saturate( dot( N, Ns.xyz ) ) );
-    t.z = Ns.w;
+    t.z = Ns.w; // IMPORTANT: requires "GetRoughnessWeightParams"
 
     float3 w = _ComputeWeight( t, a, b );
 

@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 2
+#define NRD_SETTINGS_VERSION_MINOR 3
 
 static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -173,52 +173,21 @@ namespace nrd
         float D = -25.0f;
     };
 
-    // Antilag logic:
-    //    delta = ( abs( old - new ) - localVariance * sigmaScale ) / ( max( old, new ) + localVariance * sigmaScale + sensitivityToDarkness )
-    //    delta = LinearStep( thresholdMax, thresholdMin, delta )
-    //        - 1 - keep accumulation
-    //        - 0 - history reset
-    struct AntilagIntensitySettings
+    struct ReblurAntilagSettings
     {
-        // (normalized %) - must be big enough to almost ignore residual noise (boiling), default is tuned for 0.5rpp in general
-        float thresholdMin = 0.03f;
+        // [1; 3] - delta is reduced by local variance multiplied by this value
+        float luminanceSigmaScale = 2.0f;
+        float hitDistanceSigmaScale = 2.0f;
 
-        // (normalized %) - max > min, usually 3-5x times greater than min
-        float thresholdMax = 0.2f;
-
-        // (> 0) - real delta is reduced by local variance multiplied by this value
-        float sigmaScale = 1.0f;
-
-        // (intensity units) - bigger values make antilag less sensitive to lightness fluctuations in dark places
-        float sensitivityToDarkness = 0.0f; // IMPORTANT: 0 is a bad default
-
-        // Ideally, must be enabled, but since "sensitivityToDarkness" requires fine tuning from the app side it is disabled by default
-        bool enable = false; // IMPORTANT: doesn't affect "occlusion" denoisers
-    };
-
-    struct AntilagHitDistanceSettings
-    {
-        // (normalized %) - must almost ignore residual noise (boiling), default is tuned for 0.5rpp for the worst case
-        float thresholdMin = 0.03f;
-
-        // (normalized %) - max > min, usually 2-4x times greater than min
-        float thresholdMax = 0.2f;
-
-        // (> 0) - real delta is reduced by local variance multiplied by this value
-        float sigmaScale = 1.0f;
-
-        // (0; 1] - hit distances are normalized
-        float sensitivityToDarkness = 0.1f;
-
-        // Enabled by default
-        bool enable = true;
+        // (0; 1] - antilag = pow( antilag, power )
+        float luminanceAntilagPower = 0.5f;
+        float hitDistanceAntilagPower = 1.0f;
     };
 
     struct ReblurSettings
     {
         HitDistanceParameters hitDistanceParameters = {};
-        AntilagIntensitySettings antilagIntensitySettings = {};
-        AntilagHitDistanceSettings antilagHitDistanceSettings = {};
+        ReblurAntilagSettings antilagSettings = {};
 
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames (= FPS * "time of accumulation")
         uint32_t maxAccumulatedFrameNum = 30;
@@ -229,7 +198,7 @@ namespace nrd
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
         uint32_t historyFixFrameNum = 3;
 
-        // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of probabilistic sampling)
+        // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, recommended in case of probabilistic sampling)
         float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
 
@@ -254,7 +223,7 @@ namespace nrd
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
 
-        // IN_MV = lerp(IN_MV, specularMotion, smoothstep(specularProbabilityThresholdsForMvModification[0], specularProbabilityThresholdsForMvModification[1], specularProbability))
+        // IN_MV = lerp(IN_MV, specularMotion, smoothstep(this[0], this[1], specularProbability))
         float specularProbabilityThresholdsForMvModification[2] = {0.5f, 0.9f};
 
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
@@ -266,15 +235,20 @@ namespace nrd
         // Adds bias in case of badly defined signals, but tries to fight with fireflies
         bool enableAntiFirefly = false;
 
-        // Turns off spatial filtering and virtual motion based specular tracking
-        bool enableReferenceAccumulation = false;
-
         // Boosts performance by sacrificing IQ
         bool enablePerformanceMode = false;
 
         // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
+
+        // In rare cases, when bright samples are so sparse that any other bright neighbor can't
+        // be reached, pre-pass transforms a standalone bright pixel into a standalone bright blob,
+        // worsening the situation. Despite that it's a problem of sampling, the denoiser needs to
+        // handle it somehow on its side too. Diffuse pre-pass can be just disabled, but for specular
+        // it's still needed to find optimal hit distance for tracking. This boolean allow to use
+        // specular pre-pass for tracking purposes only
+        bool usePrepassOnlyForSpecularMotionEstimation = false;
     };
 
     // SIGMA
@@ -292,10 +266,30 @@ namespace nrd
 
     const uint32_t RELAX_MAX_HISTORY_FRAME_NUM = 255;
 
+    struct RelaxAntilagSettings
+    {
+        // IMPORTANT: History acceleration and reset amounts for specular are made 2x-3x weaker than values for diffuse below
+        // due to specific specular logic that does additional history acceleration and reset
+
+        // [0; 1] - amount of history acceleration if history clamping happened in pixel
+        float accelerationAmount = 0.3f;
+
+        // (> 0) - history is being reset if delta between history and raw input is larger than spatial sigma + temporal sigma
+        float spatialSigmaScale = 4.5f;
+
+        // (> 0) - history is being reset if delta between history and raw input is larger than spatial sigma + temporal sigma
+        float temporalSigmaScale = 0.5f;
+
+        // [0; 1] - amount of history reset, 0.0 - no reset, 1.0 - full reset
+        float resetAmount = 0.5f;
+    };
+
     struct RelaxDiffuseSpecularSettings
     {
+        RelaxAntilagSettings antilagSettings = {};
+
         // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of probabilistic sampling)
-        float diffusePrepassBlurRadius = 0.0f;
+        float diffusePrepassBlurRadius = 50.0f;
         float specularPrepassBlurRadius = 50.0f;
 
         // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
@@ -338,7 +332,7 @@ namespace nrd
         // (>= 0) - history length threshold below which spatial variance estimation will be executed
         uint32_t spatialVarianceEstimationHistoryThreshold = 3;
 
-        // [2; 8] - number of iteration for A-Trous wavelet transform
+        // [2; 8] - number of iterations for A-Trous wavelet transform
         uint32_t atrousIterationNum = 5;
 
         // [0; 1] - A-trous edge stopping Luminance weight minimum
@@ -384,7 +378,9 @@ namespace nrd
 
     struct RelaxDiffuseSettings
     {
-        float prepassBlurRadius = 0.0f;
+        RelaxAntilagSettings antilagSettings = {};
+
+        float prepassBlurRadius = 30.0f;
 
         uint32_t diffuseMaxAccumulatedFrameNum = 30;
         uint32_t diffuseMaxFastAccumulatedFrameNum = 6;
@@ -399,6 +395,7 @@ namespace nrd
         float historyClampingColorBoxSigmaScale = 2.0f;
 
         uint32_t spatialVarianceEstimationHistoryThreshold = 3;
+
         uint32_t atrousIterationNum = 5;
         float minLuminanceWeight = 0.0f;
         float depthThreshold = 0.01f;
@@ -419,6 +416,8 @@ namespace nrd
 
     struct RelaxSpecularSettings
     {
+        RelaxAntilagSettings antilagSettings = {};
+
         float prepassBlurRadius = 50.0f;
 
         uint32_t specularMaxAccumulatedFrameNum = 30;
@@ -439,6 +438,7 @@ namespace nrd
         float historyClampingColorBoxSigmaScale = 2.0f;
 
         uint32_t spatialVarianceEstimationHistoryThreshold = 3;
+
         uint32_t atrousIterationNum = 5;
         float minLuminanceWeight = 0.0f;
         float depthThreshold = 0.01f;

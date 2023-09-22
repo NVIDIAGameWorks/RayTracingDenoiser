@@ -89,7 +89,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuse(DenoiserData& denoiserData)
 
     PushPass("Pre-pass"); // After hit distance reconstruction
     {
-        // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+        // Does preblur (if enabled) and checkerboard reconstruction (if enabled)
         PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
@@ -102,7 +102,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuse(DenoiserData& denoiserData)
 
     PushPass("Pre-pass"); // Without hit distance reconstruction
     {
-        // Does preblur (if enabled), checkerboard reconstruction (if enabled) and generates FP16 ViewZ texture
+        // Does preblur (if enabled) and checkerboard reconstruction (if enabled)
         PushInput( AsUint(Transient::TILES) );
         PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
@@ -177,23 +177,10 @@ void nrd::InstanceImpl::Add_RelaxDiffuse(DenoiserData& denoiserData)
         AddDispatch( RELAX_Diffuse_HistoryFix, SumConstants(0, 0, 0, 4), NumThreads(8, 8), 1 );
     }
 
-    PushPass("History clamping"); // with firefly after it
+    PushPass("History clamping");
     {
         PushInput( AsUint(Transient::TILES) );
-        PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
-        PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
-        PushInput( AsUint(Transient::HISTORY_LENGTH) );
-
-        PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
-        PushOutput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV) );
-        PushOutput( AsUint(Permanent::HISTORY_LENGTH_PREV) );
-
-        AddDispatch( RELAX_Diffuse_HistoryClamping, SumConstants(0, 0, 0, 3), NumThreads(8, 8), 1 );
-    }
-
-    PushPass("History clamping"); // without firefly after it
-    {
-        PushInput( AsUint(Transient::TILES) );
+        PushInput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );
         PushInput( AsUint(Transient::HISTORY_LENGTH) );
@@ -202,7 +189,15 @@ void nrd::InstanceImpl::Add_RelaxDiffuse(DenoiserData& denoiserData)
         PushOutput( AsUint(Permanent::DIFF_ILLUM_RESPONSIVE_PREV) );
         PushOutput( AsUint(Permanent::HISTORY_LENGTH_PREV) );
 
-        AddDispatch( RELAX_Diffuse_HistoryClamping, SumConstants(0, 0, 0, 3), NumThreads(8, 8), 1 );
+        AddDispatch( RELAX_Diffuse_HistoryClamping, SumConstants(0, 0, 0, 7), NumThreads(8, 8), 1 );
+    }
+
+    PushPass("Copy");
+    {
+        PushInput( AsUint(Permanent::DIFF_ILLUM_PREV) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
+
+        AddDispatch( RELAX_Diffuse_Copy, SumConstants(0, 0, 0, 0), NumThreads(8, 8), 1 );
     }
 
     PushPass("Anti-firefly");
@@ -330,7 +325,7 @@ void nrd::InstanceImpl::Update_RelaxDiffuse(const DenoiserData& denoiserData)
         TEMPORAL_ACCUMULATION_WITH_CONFIDENCE_INPUTS_WITH_THRESHOLD_MIX,
         HISTORY_FIX,
         HISTORY_CLAMPING,
-        HISTORY_CLAMPING_NO_FIREFLY,
+        COPY,
         FIREFLY,
         ATROUS_SMEM,
         ATROUS_ODD,
@@ -463,29 +458,29 @@ void nrd::InstanceImpl::Update_RelaxDiffuse(const DenoiserData& denoiserData)
     AddFloat(data, float(settings.historyFixFrameNum));
     ValidateConstants(data);
 
+
+    // HISTORY_CLAMPING
+    data = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_CLAMPING));
+    AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
+    AddFloat(data, settings.historyClampingColorBoxSigmaScale);
+    AddFloat(data, float(settings.historyFixFrameNum));
+    AddUint(data, settings.diffuseMaxFastAccumulatedFrameNum < settings.diffuseMaxAccumulatedFrameNum ? 1 : 0);
+    AddFloat(data, float(settings.antilagSettings.accelerationAmount));
+    AddFloat(data, float(settings.antilagSettings.temporalSigmaScale));
+    AddFloat(data, float(settings.antilagSettings.spatialSigmaScale));
+    AddFloat(data, float(settings.antilagSettings.resetAmount));
+    ValidateConstants(data);
+
     if (settings.enableAntiFirefly)
     {
-        // HISTORY_CLAMPING
-        data = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_CLAMPING));
+        // COPY
+        data = PushDispatch(denoiserData, AsUint(Dispatch::COPY));
         AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
-        AddFloat(data, settings.historyClampingColorBoxSigmaScale);
-        AddFloat(data, float(settings.historyFixFrameNum));
-        AddUint(data, settings.diffuseMaxFastAccumulatedFrameNum < settings.diffuseMaxAccumulatedFrameNum ? 1 : 0);
         ValidateConstants(data);
 
         // FIREFLY
         data = PushDispatch(denoiserData, AsUint(Dispatch::FIREFLY));
         AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
-        ValidateConstants(data);
-    }
-    else
-    {
-        // HISTORY_CLAMPING (without firefly)
-        data = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_CLAMPING_NO_FIREFLY));
-        AddSharedConstants_Relax(denoiserData, data, Denoiser::RELAX_DIFFUSE);
-        AddFloat(data, settings.historyClampingColorBoxSigmaScale);
-        AddFloat(data, float(settings.historyFixFrameNum));
-        AddUint(data, settings.diffuseMaxFastAccumulatedFrameNum < settings.diffuseMaxAccumulatedFrameNum ? 1 : 0);
         ValidateConstants(data);
     }
 

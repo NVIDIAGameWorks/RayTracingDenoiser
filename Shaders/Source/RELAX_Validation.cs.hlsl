@@ -190,6 +190,9 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 
         result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
         result.w = 1.0;
+
+        if( historyLength < 2.0 && viewportUv.y <= 0.95 )
+            result.xyz *= STL::Sequence::CheckerBoard( pixelPos >> 2, 0 ) ? 1.0 : 0.5;
     }
 
     // Text

@@ -8,11 +8,11 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#define RELAX_BLACK_OUT_INF_PIXELS                          0 // 1 can be used to avoid killing INF pixels during composition
+#define RELAX_BLACK_OUT_INF_PIXELS                          0 // 1 can be used to set colors of the pixels located beyond denoising range to zero
 #define RELAX_MAX_ACCUM_FRAME_NUM                           255
 #define RELAX_SPEC_DOMINANT_DIRECTION                       STL_SPECULAR_DOMINANT_DIRECTION_G2
-#define RELAX_NORMAL_ULP                                    atan( 1.5 / 255.0 )
-#define RELAX_NORMAL_ENCODING_ERROR                         STL::Math::DegToRad( 0.5 )
+#define RELAX_HIT_DIST_MIN_WEIGHT                           0.2 // Sacrifices spatial fidelity to improve temporal stability. Should be set to 0 for relatively clean input signals like RTXDI and 0.1 .. 0.2 for lower quality input signals
+#define RELAX_ANTILAG_ACCELERATION_AMOUNT_SCALE             10.0 // Multiplier used to put RelaxAntilagSettings::accelerationAmount to convenient [0; 1] range
 
 // Shared constants common to all ReLAX denoisers
 #define RELAX_SHARED_CB_DATA \

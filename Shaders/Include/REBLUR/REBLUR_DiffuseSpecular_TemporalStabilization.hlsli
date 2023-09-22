@@ -219,7 +219,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Shared data
     uint bits;
     float4 data1 = UnpackData1( gIn_Data1[ pixelPos ] );
-    float2 data2 = UnpackData2( gIn_Data2[ pixelPos ], viewZ, bits );
+    float2 data2 = UnpackData2( gIn_Data2[ pixelPos ], bits );
 
     float4 smbOcclusion = float4( ( bits & uint4( 2, 4, 8, 16 ) ) != 0 );
 
@@ -257,18 +257,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Compute antilag
         float diffStabilizationStrength = stabilizationStrength * float( smbPixelUv.x >= gSplitScreen );
-
-        float diffAntilag = ComputeAntilagScale(
-            smbDiffHistory, diff, diffM1, diffSigma,
-            gAntilagMinMaxThreshold, gAntilagSigmaScale, diffStabilizationStrength,
-            0.0, data1.x
-        );
+        float diffAntilag = ComputeAntilag( smbDiffHistory, diff, diffSigma, gAntilagParams );
 
         // Clamp history and combine with the current frame
         float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( smbIsInScreenMulFootprintQuality, data1.x );
 
         float diffHistoryWeight = diffTemporalAccumulationParams.x;
-        diffHistoryWeight *= diffAntilag;
+        diffHistoryWeight *= diffAntilag; // this is important
         diffHistoryWeight *= diffStabilizationStrength;
 
         smbDiffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
@@ -298,13 +293,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float curvature = data2.y;
 
         // Hit distance for tracking ( tests 6, 67, 155 )
-        float hitDistForTracking = min( spec.w, specMin.y );
+        float hitDistForTracking = min( spec.w, specMin.y ) * _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
 
-        float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
-        hitDistForTracking *= hitDistScale;
-
+        [flatten]
         if( gSpecPrepassBlurRadius != 0.0 )
-            hitDistForTracking = min( hitDistForTracking, gIn_Spec_FastHistory[ pixelPos ].y );
+            hitDistForTracking = min( hitDistForTracking, gIn_Spec_HitDistForTracking[ pixelPos ] );
 
         // Sample history - surface motion
         REBLUR_TYPE smbSpecHistory;
@@ -395,10 +388,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         if( virtualHistoryAmount != 0.0 )
             specStabilizationStrength *= float( vmbPixelUv.x >= gSplitScreen );
 
-        float specAntilag = ComputeAntilagScale(
-            specHistory, spec, specM1, specSigma,
-            gAntilagMinMaxThreshold, gAntilagSigmaScale, specStabilizationStrength,
-            curvature * pixelSize, data1.z, roughness );
+        float specAntilag = ComputeAntilag( specHistory, spec, specSigma, gAntilagParams );
 
         // Clamp history and combine with the current frame
         float isInScreenMulFootprintQuality = lerp( smbIsInScreenMulFootprintQuality, 1.0, virtualHistoryAmount );

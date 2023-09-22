@@ -409,7 +409,7 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     m_Timer.SaveCurrentTime();
 
     m_TimeDelta = m_CommonSettings.timeDeltaBetweenFrames > 0.0f ? m_CommonSettings.timeDeltaBetweenFrames : m_Timer.GetSmoothedElapsedTime();
-    m_FrameRateScale = ml::Max(33.333f / m_TimeDelta, 0.5f);
+    m_FrameRateScale = ml::Max(33.333f / m_TimeDelta, 1.0f);
 
     float dx = ml::Abs(m_CommonSettings.cameraJitter[0] - m_CommonSettings.cameraJitterPrev[0]);
     float dy = ml::Abs(m_CommonSettings.cameraJitter[1] - m_CommonSettings.cameraJitterPrev[1]);

@@ -8,10 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-NRD_CONSTANTS_START
-    NRD_CONSTANT( float, gDebug ) // ( must be last ) used for availability in Common.hlsl only
-NRD_CONSTANTS_END
+#include "NRD.hlsli"
+#include "STL.hlsli"
 
-NRD_OUTPUT_TEXTURE_START
-    NRD_OUTPUT_TEXTURE( RWTexture2D<uint4>, gOut, u, 0 )
-NRD_OUTPUT_TEXTURE_END
+#define RELAX_DIFFUSE
+
+#include "RELAX/RELAX_Config.hlsli"
+#include "RELAX_DiffuseSpecular_Copy.resources.hlsli"
+
+#include "Common.hlsli"
+#include "RELAX/RELAX_Common.hlsli"
+#include "RELAX/RELAX_DiffuseSpecular_Copy.hlsli"

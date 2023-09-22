@@ -37,12 +37,23 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // DEFAULT SETTINGS ( can be modified )
 //==================================================================================================================
 
-#define NRD_USE_QUADRATIC_DISTRIBUTION                          0 // bool
-#define NRD_USE_EXPONENTIAL_WEIGHTS                             0 // bool
+// Switches ( default 1 )
+#define NRD_USE_TILE_CHECK                                      1
+
+// Switches ( default 0 )
+#define NRD_USE_QUADRATIC_DISTRIBUTION                          0
+#define NRD_USE_EXPONENTIAL_WEIGHTS                             0
+
+// Settings
 #define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03
 #define NRD_CATROM_SHARPNESS                                    0.5 // [ 0; 1 ], 0.5 matches Catmull-Rom
 #define NRD_RADIANCE_COMPRESSION_MODE                           3 // 0-4, specular color compression for spatial passes
 #define NRD_EXP_WEIGHT_DEFAULT_SCALE                            3.0
+#define NRD_ROUGHNESS_SENSITIVITY                               0.01 // smaller => more sensitive
+
+// IMPORTANT: if == 1, then for 0-roughness "GetEncodingAwareNormalWeight" can return values < 1 even for same normals due to data re-packing
+// IMPORTANT: suits for REBLUR and RELAX because both use RGBA8 normals internally
+#define NRD_NORMAL_ULP                                          ( 1.5 / 255.0 )
 
 #if( NRD_NORMAL_ENCODING < NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     #define NRD_NORMAL_ENCODING_ERROR                           ( 1.0 / 255.0 )
@@ -74,6 +85,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define BUFFER_Y                                                ( GROUP_Y + BORDER * 2 )
 
 #define PRELOAD_INTO_SMEM_WITH_TILE_CHECK \
+    isSky *= NRD_USE_TILE_CHECK; \
     if( isSky == 0.0 ) \
     { \
         int2 groupBase = pixelPos - threadPos - BORDER; \
@@ -189,14 +201,6 @@ float GetSpecMagicCurve( float roughness, float power = 0.25 )
     return f;
 }
 
-float GetSpecMagicCurve2( float roughness, float percentOfVolume = 0.987 )
-{
-    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, percentOfVolume );
-    float almostHalfPi = STL::ImportanceSampling::GetSpecularLobeHalfAngle( 1.0, percentOfVolume );
-
-    return saturate( angle / almostHalfPi );
-}
-
 /*
 Produce same results:
     ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
@@ -238,22 +242,10 @@ float GetColorCompressionExposureForSpatialPasses( float roughness )
 
 // Thin lens
 
-float EstimateCurvature( float3 Nplane, float3 n, float3 v, float3 N, float3 X )
-{
-    // https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
-
-    float NoV = dot( Nplane, v );
-    float3 x = 0 + v * dot( X - 0, Nplane ) / NoV;
-    float3 edge = x - X;
-    float edgeLenSq = STL::Math::LengthSquared( edge );
-    float curvature = dot( n - N, edge ) * STL::Math::PositiveRcp( edgeLenSq );
-
-    return curvature;
-}
-
 float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
 {
     /*
+    https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
     https://www.geeksforgeeks.org/sign-convention-for-spherical-mirrors/
 
     Thin lens equation:
@@ -288,7 +280,7 @@ float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
         https://www.desmos.com/calculator/dn9spdgwiz
     */
 
-    // TODO: dropping NoV improves behavior on curved surfaces in general ( see i76, i148, b7, b22, b26 ), but test i133
+    // TODO: dropping NoV improves behavior on curved surfaces in general ( see 76, 148, b7, b22, b26 ), but test 133
     // ( low curvature surface observed at grazing angle ) looks significantly worse, especially if motion is accelerated
     float hitDistFocused = hitDist / ( 2.0 * curvature * hitDist * NoV + 1.0 );
 
@@ -342,7 +334,7 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
 {
     // IMPORTANT: since this weight is exponential, 3% can lead to leaks from bright objects in reflections.
     // Even 1% is not enough in some cases, but using a lower value makes things even more fragile
-    float smc = GetSpecMagicCurve2( roughness );
+    float smc = GetSpecMagicCurve( roughness );
     float norm = lerp( NRD_EPS, 1.0, min( nonLinearAccumSpeed, smc ) );
     float a = 1.0 / norm;
     float b = hitDist * a;
@@ -352,22 +344,27 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
 
 // Weights params
 
-float2 GetRoughnessWeightParams( float roughness, float fraction )
+float2 GetRoughnessWeightParams( float roughness, float fraction, float sensitivity = NRD_ROUGHNESS_SENSITIVITY )
 {
-    float a = rcp( lerp( 0.01, 1.0, saturate( roughness * fraction ) ) );
+    float a = 1.0 / lerp( sensitivity, 1.0, saturate( roughness * fraction ) );
     float b = roughness * a;
 
     return float2( a, -b );
 }
 
-float2 GetRoughnessWeightParamsSq( float roughness, float fraction )
+float2 GetRelaxedRoughnessWeightParams( float roughness, float roughnessModified = 1.0, float fraction = 1.0, float sensitivity = NRD_ROUGHNESS_SENSITIVITY )
 {
-    return GetRoughnessWeightParams( roughness * roughness, fraction );
-}
+    // IMPORTANT: requires "GetRelaxedRoughnessWeight"
+    // "x ^ 2" makes test less sensitive
+    // Using "roughnessModified" for threshold allows to make test less sensitive on bumpy surfaces
 
-float2 GetCoarseRoughnessWeightParams( float roughness )
-{
-    return float2( 1.0, -roughness );
+    roughness *= roughness;
+    roughnessModified *= roughnessModified;
+
+    float a = 1.0 / lerp( sensitivity, 1.0, saturate( roughnessModified * fraction ) );
+    float b = roughness * a;
+
+    return float2( a, -b );
 }
 
 // Weights
@@ -403,7 +400,7 @@ float GetRoughnessWeight( float2 params, float roughness )
     return _ComputeWeight( roughness, params.x, params.y );
 }
 
-float GetRoughnessWeightSq( float2 params, float roughness )
+float GetRelaxedRoughnessWeight( float2 params, float roughness )
 {
     return GetRoughnessWeight( params, roughness * roughness );
 }
@@ -431,6 +428,26 @@ float GetNormalWeight( float param, float3 N, float3 n )
 float GetGaussianWeight( float r )
 {
     return exp( -0.66 * r * r ); // assuming r is normalized to 1
+}
+
+// Encoding precision aware weight functions ( for reprojection )
+
+float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0 )
+{
+    // Anything below "angleThreshold" is ignored
+    angleThreshold += NRD_NORMAL_ULP;
+
+    float cosa = saturate( dot( Ncurr, Nprev ) );
+
+    float a = 1.0 / maxAngle;
+    float d = STL::Math::AcosApprox( cosa );
+
+    float w = STL::Math::SmoothStep01( 1.0 - ( d - angleThreshold ) * a );
+
+    // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
+    w = STL::Math::SmoothStep( 0.05, 0.95, w );
+
+    return w;
 }
 
 // Only for checkerboard resolve and some "lazy" comparisons

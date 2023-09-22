@@ -13,7 +13,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <array>
 
 // Constants
-#define REBLUR_SET_SHARED_CONSTANTS                                 SetSharedConstants(2, 5, 10, 24)
+#define REBLUR_SET_SHARED_CONSTANTS                                 SetSharedConstants(2, 5, 9, 22)
 
 #define REBLUR_CLASSIFY_TILES_CONSTANT_NUM                          SumConstants(0, 0, 0, 1, false)
 #define REBLUR_CLASSIFY_TILES_NUM_THREADS                           NumThreads(16, 16)
@@ -39,7 +39,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM                 SumConstants(0, 0, 0, 1, false)
 #define REBLUR_COPY_STABILIZED_HISTORY_NUM_THREADS                  NumThreads(16, 16)
 
-#define REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM                  SumConstants(3, 3, 2, 1)
+#define REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM                  SumConstants(3, 3, 1, 1)
 #define REBLUR_TEMPORAL_STABILIZATION_NUM_THREADS                   NumThreads(8, 8)
 
 #define REBLUR_SPLIT_SCREEN_CONSTANT_NUM                            SumConstants(0, 0, 0, 3)
@@ -65,21 +65,20 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_OCCLUSION_SPLIT_SCREEN_PERMUTATION_NUM               1
 
 // Formats
-#define REBLUR_FORMAT                                               Format::RGBA16_SFLOAT
-
-#define REBLUR_FORMAT_DIFF_FAST_HISTORY                             Format::R16_SFLOAT
-#define REBLUR_FORMAT_SPEC_FAST_HISTORY                             Format::RG16_SFLOAT // .y = hit distance for tracking
-
-#define REBLUR_FORMAT_SPEC_HITDIST_FOR_TRACKING                     Format::R16_UNORM // use R16_SFLOAT if pre-pass outputs unnormalized hit distance
+#define REBLUR_FORMAT                                               Format::RGBA16_SFLOAT // .xyz - color, .w - normalized hit distance
+#define REBLUR_FORMAT_FAST_HISTORY                                  Format::R16_SFLOAT // .x - luminance
 
 #define REBLUR_FORMAT_OCCLUSION                                     Format::R16_UNORM
+#define REBLUR_FORMAT_OCCLUSION_FAST_HISTORY                        Format::R16_UNORM
 
 #define REBLUR_FORMAT_DIRECTIONAL_OCCLUSION                         Format::RGBA16_SNORM
-#define REBLUR_FORMAT_DIRECTIONAL_OCCLUSION_FAST_HISTORY            REBLUR_FORMAT_OCCLUSION
+#define REBLUR_FORMAT_DIRECTIONAL_OCCLUSION_FAST_HISTORY            REBLUR_FORMAT_OCCLUSION_FAST_HISTORY
 
 #define REBLUR_FORMAT_PREV_VIEWZ                                    Format::R32_SFLOAT
 #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                         Format::RGBA8_UNORM
 #define REBLUR_FORMAT_PREV_INTERNAL_DATA                            Format::R16_UINT
+
+#define REBLUR_FORMAT_HITDIST_FOR_TRACKING                          Format::R16_SFLOAT
 
 // Other
 #define REBLUR_DUMMY                                                AsUint(ResourceType::IN_VIEWZ)
@@ -150,20 +149,6 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
     float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
     float disocclusionThreshold = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
     float disocclusionThresholdAlternate = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
-
-    ml::float4 antilagMinMaxThreshold = ml::float4(settings.antilagIntensitySettings.thresholdMin, settings.antilagHitDistanceSettings.thresholdMin, settings.antilagIntensitySettings.thresholdMax, settings.antilagHitDistanceSettings.thresholdMax);
-
-    if (!settings.antilagIntensitySettings.enable || settings.enableReferenceAccumulation)
-    {
-        antilagMinMaxThreshold.x = 99998.0f;
-        antilagMinMaxThreshold.z = 99999.0f;
-    }
-
-    if (!settings.antilagHitDistanceSettings.enable || settings.enableReferenceAccumulation)
-    {
-        antilagMinMaxThreshold.y = 99998.0f;
-        antilagMinMaxThreshold.w = 99999.0f;
-    }
 
     uint32_t specCheckerboard = 2;
     uint32_t diffCheckerboard = 2;
@@ -282,9 +267,8 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
         AddFloat4x4(data, m_WorldToClipPrev);
         AddFloat4x4(data, m_WorldToViewPrev);
         AddFloat4(data, m_FrustumPrev);
-        AddFloat4(data, antilagMinMaxThreshold );
         AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, settings.stabilizationStrength));
-        AddFloat2(data, settings.antilagIntensitySettings.sigmaScale, settings.antilagHitDistanceSettings.sigmaScale);
+        AddFloat4(data, ml::float4(settings.antilagSettings.luminanceSigmaScale, settings.antilagSettings.hitDistanceSigmaScale, settings.antilagSettings.luminanceAntilagPower, settings.antilagSettings.hitDistanceAntilagPower));
         if (m_CommonSettings.isBaseColorMetalnessAvailable)
             AddFloat2(data, settings.specularProbabilityThresholdsForMvModification[0], settings.specularProbabilityThresholdsForMvModification[1]);
         else
@@ -482,40 +466,36 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const DenoiserData& denoiserDa
     AddFloat2(data, float(rectWprev) / float(screenW), float(rectHprev) / float(screenH));
 
     AddFloat2(data, float(rectWprev), float(rectHprev));
-    AddFloat2(data, settings.antilagIntensitySettings.sensitivityToDarkness + 1e-6f, settings.antilagHitDistanceSettings.sensitivityToDarkness + 1e-6f);
-
     AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
-    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
 
-    AddFloat(data, settings.enableReferenceAccumulation ? 0.0f : 1.0f);
+    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
     AddFloat(data, m_IsOrtho);
     AddFloat(data, unproject);
-    AddFloat(data, m_CommonSettings.denoisingRange);
 
+    AddFloat(data, m_CommonSettings.denoisingRange);
     AddFloat(data, settings.planeDistanceSensitivity);
     AddFloat(data, m_FrameRateScale);
-    AddFloat(data, settings.enableReferenceAccumulation ? 0.0f : settings.blurRadius);
-    AddFloat(data, isHistoryReset ? 0 : float(maxAccumulatedFrameNum));
+    AddFloat(data, settings.blurRadius);
 
+    AddFloat(data, isHistoryReset ? 0 : float(maxAccumulatedFrameNum));
     AddFloat(data, float(settings.maxFastAccumulatedFrameNum));
     AddFloat(data, settings.enableAntiFirefly ? 1.0f : 0.0f);
     AddFloat(data, settings.lobeAngleFraction);
-    AddFloat(data, settings.roughnessFraction);
 
+    AddFloat(data, settings.roughnessFraction);
     AddFloat(data, settings.responsiveAccumulationRoughnessThreshold);
     AddFloat(data, settings.diffusePrepassBlurRadius);
     AddFloat(data, settings.specularPrepassBlurRadius);
-    AddFloat(data, (float)settings.historyFixFrameNum);
 
+    AddFloat(data, (float)settings.historyFixFrameNum);
     AddFloat(data, (float)ml::Min(rectW, rectH) * unproject);
+    AddFloat(data, settings.usePrepassOnlyForSpecularMotionEstimation ? 0.0f : 1.0f);
     AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
+
     AddUint(data, m_CommonSettings.frameIndex);
     AddUint(data, settings.enableMaterialTestForDiffuse ? 1 : 0);
-
     AddUint(data, settings.enableMaterialTestForSpecular ? 1 : 0);
     AddUint(data, isHistoryReset ? 1 : 0);
-    AddUint(data, 0);
-    AddUint(data, 0);
 }
 
 // REBLUR_SHARED

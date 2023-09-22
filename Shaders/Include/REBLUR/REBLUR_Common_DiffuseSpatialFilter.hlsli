@@ -67,7 +67,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.x );
         boost *= 1.0 - STL::BRDF::Pow5( NoV );
 
-        float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + ( 1.0 - boost ) * data1.x );
+        float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + REBLUR_SAMPLES_PER_FRAME * ( 1.0 - boost ) * data1.x );
 
         // Blur radius - main
         float blurRadius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
@@ -85,7 +85,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
         float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed, lobeAngleFractionScale );
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed );
-        float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT * fractionScale;
+        float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( 1.0 ) * fractionScale;
 
         // Sampling
         diff *= sum;
@@ -117,26 +117,32 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         #endif
 
             float2 uvScaled = uv * gResolutionScale;
+            float2 uvScaledWithOffset = gRectOffset + uvScaled;
+            float2 checkerboardUvScaled = uvScaled;
+
+        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+            checkerboardUvScaled = gRectOffset + float2( uvScaled.x * ( gDiffCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y );
+        #endif
+
+        #if( REBLUR_USE_LOADS == 1 )
+            uint2 uvScaledi = clamp( uvScaled * gScreenSize, 0.0, gScreenSize - 1.0 );
+            uint2 uvScaledWithOffseti = clamp( uvScaledWithOffset * gScreenSize, 0.0, gScreenSize - 1.0 );
+            uint2 checkerboardUvScaledi = clamp( checkerboardUvScaled * gScreenSize, 0.0, gScreenSize - 1.0 );
+        #endif
 
             // Fetch data
         #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
-            float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled, 0 ) );
+            float zs = UnpackViewZ( REBLUR_SAMPLE_TEXTURE( gIn_ViewZ, uvScaled ) );
         #else
-            float zs = abs( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 ) );
+            float zs = abs( REBLUR_SAMPLE_TEXTURE( gIn_ViewZ, uvScaledWithOffset ) );
         #endif
 
-        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 checkerboardUvScaled = float2( uvScaled.x * ( gDiffCheckerboard != 2 ? 0.5 : 1.0 ), uvScaled.y ) + gRectOffset;
-        #else
-            float2 checkerboardUvScaled = uvScaled;
-        #endif
-
-            REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
+            REBLUR_TYPE s = REBLUR_SAMPLE_TEXTURE( gIn_Diff, checkerboardUvScaled );
 
             float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
             float materialIDs;
-            float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvScaled + gRectOffset, 0 );
+            float4 Ns = REBLUR_SAMPLE_TEXTURE( gIn_Normal_Roughness, uvScaledWithOffset );
             Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
             // Sample weights
@@ -153,7 +159,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             sum += w;
             diff += s * w;
         #ifdef REBLUR_SH
-            float4 sh = gIn_DiffSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
+            float4 sh = REBLUR_SAMPLE_TEXTURE( gIn_DiffSh, checkerboardUvScaled );
             diffSh += sh * w;
         #endif
         }

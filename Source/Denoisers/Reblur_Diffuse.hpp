@@ -28,16 +28,14 @@ void nrd::InstanceImpl::Add_ReblurDiffuse(DenoiserData& denoiserData)
         PREV_NORMAL_ROUGHNESS,
         PREV_INTERNAL_DATA,
         DIFF_HISTORY,
-        DIFF_FAST_HISTORY_PING,
-        DIFF_FAST_HISTORY_PONG,
+        DIFF_FAST_HISTORY,
     };
 
     AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
 
     enum class Transient
     {
@@ -45,6 +43,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuse(DenoiserData& denoiserData)
         DATA2,
         DIFF_TMP1,
         DIFF_TMP2,
+        DIFF_FAST_HISTORY,
         TILES,
     };
 
@@ -52,6 +51,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuse(DenoiserData& denoiserData)
     AddTextureToTransientPool( {Format::R8_UINT, w, h, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
     AddTextureToTransientPool( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
@@ -143,12 +143,12 @@ void nrd::InstanceImpl::Add_ReblurDiffuse(DenoiserData& denoiserData)
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterPrepass ? DIFF_TEMP1 : AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_HISTORY) : AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
-            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PONG) );
+            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY) );
 
             // Outputs
             PushOutput( DIFF_TEMP2 );
+            PushOutput( AsUint(Transient::DIFF_FAST_HISTORY) );
             PushOutput( AsUint(Transient::DATA1) );
-            PushOutput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
             PushOutput( AsUint(Transient::DATA2) );
 
             // Shaders
@@ -167,10 +167,11 @@ void nrd::InstanceImpl::Add_ReblurDiffuse(DenoiserData& denoiserData)
             PushInput( AsUint(Transient::DATA1) );
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( DIFF_TEMP2 );
-            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
+            PushInput( AsUint(Transient::DIFF_FAST_HISTORY) );
 
             // Outputs
             PushOutput( DIFF_TEMP1 );
+            PushOutput( AsUint(Permanent::DIFF_FAST_HISTORY) );
 
             // Shaders
             AddDispatch( REBLUR_Diffuse_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );

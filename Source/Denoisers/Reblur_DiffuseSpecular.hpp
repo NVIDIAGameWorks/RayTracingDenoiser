@@ -30,22 +30,22 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
         PREV_NORMAL_ROUGHNESS,
         PREV_INTERNAL_DATA,
         DIFF_HISTORY,
-        DIFF_FAST_HISTORY_PING,
-        DIFF_FAST_HISTORY_PONG,
+        DIFF_FAST_HISTORY,
         SPEC_HISTORY,
-        SPEC_FAST_HISTORY_PING,
-        SPEC_FAST_HISTORY_PONG,
+        SPEC_FAST_HISTORY,
+        SPEC_HITDIST_FOR_TRACKING_PING,
+        SPEC_HITDIST_FOR_TRACKING_PONG,
     };
 
     AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_DIFF_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_SPEC_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, w, h, 1} );
 
     enum class Transient
     {
@@ -54,18 +54,22 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
         SPEC_HITDIST_FOR_TRACKING,
         DIFF_TMP1,
         DIFF_TMP2,
+        DIFF_FAST_HISTORY,
         SPEC_TMP1,
         SPEC_TMP2,
+        SPEC_FAST_HISTORY,
         TILES,
     };
 
     AddTextureToTransientPool( {Format::RGBA8_UNORM, w, h, 1} );
     AddTextureToTransientPool( {Format::R32_UINT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT_SPEC_HITDIST_FOR_TRACKING, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, w, h, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
     AddTextureToTransientPool( {Format::R8_UNORM, tilesW, tilesH, 1} );
 
     REBLUR_SET_SHARED_CONSTANTS;
@@ -165,16 +169,18 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
             PushInput( isAfterPrepass ? SPEC_TEMP1 : AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_HISTORY) : AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
-            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PONG) );
-            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PING), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PONG) );
+            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY) );
+            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY) );
+            PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING), 0, 1, AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG) );
             PushInput( AsUint(Transient::SPEC_HITDIST_FOR_TRACKING) );
-            
+
             // Outputs
             PushOutput( DIFF_TEMP2 );
             PushOutput( SPEC_TEMP2 );
+            PushOutput( AsUint(Transient::DIFF_FAST_HISTORY) );
+            PushOutput( AsUint(Transient::SPEC_FAST_HISTORY) );
+            PushOutput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG), 0, 1, AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING) );
             PushOutput( AsUint(Transient::DATA1) );
-            PushOutput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
-            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
             PushOutput( AsUint(Transient::DATA2) );
 
             // Shaders
@@ -194,12 +200,14 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
             PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( DIFF_TEMP2 );
             PushInput( SPEC_TEMP2 );
-            PushInput( AsUint(Permanent::DIFF_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::DIFF_FAST_HISTORY_PING) );
-            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
+            PushInput( AsUint(Transient::DIFF_FAST_HISTORY) );
+            PushInput( AsUint(Transient::SPEC_FAST_HISTORY) );
 
             // Outputs
             PushOutput( DIFF_TEMP1 );
             PushOutput( SPEC_TEMP1 );
+            PushOutput( AsUint(Permanent::DIFF_FAST_HISTORY) );
+            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY) );
 
             // Shaders
             AddDispatch( REBLUR_DiffuseSpecular_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );
@@ -308,7 +316,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
             PushInput( AsUint(Permanent::SPEC_HISTORY) );
             PushInput( DIFF_TEMP2 );
             PushInput( SPEC_TEMP2 );
-            PushInput( AsUint(Permanent::SPEC_FAST_HISTORY_PONG), 0, 1, AsUint(Permanent::SPEC_FAST_HISTORY_PING) );
+            PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG), 0, 1, AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING) );
 
             // Outputs
             PushOutput( AsUint(ResourceType::IN_MV) );

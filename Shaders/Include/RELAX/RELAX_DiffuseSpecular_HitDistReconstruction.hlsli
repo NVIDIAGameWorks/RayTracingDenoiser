@@ -16,7 +16,7 @@ float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float rou
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);
     angle *= lerp(saturate(fraction), 1.0, nonLinearAccumSpeed); // TODO: use as "percentOfVolume" instead?
 
-    return 1.0 / max(angle, RELAX_NORMAL_ENCODING_ERROR);
+    return 1.0 / max(angle, NRD_NORMAL_ULP);
 }
 
 void Preload(uint2 sharedPos, int2 globalPos)
@@ -72,7 +72,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
 #ifdef RELAX_SPECULAR
     float3 centerSpecularIllumination = gSpecularIllumination[pixelPos].xyz;
     float centerSpecularHitDist = centerHitdistViewZ.x;
-    float2 roughnessWeightParams = GetCoarseRoughnessWeightParams(centerRoughness);
+    float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams(centerRoughness);
     float specularNormalWeightParam = GetNormalWeightParams(1.0, 1.0, centerRoughness);
 
     float sumSpecularWeight = 1000.0 * float(centerSpecularHitDist != 0.0);
@@ -116,7 +116,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
             float sampleSpecularHitDist = sampleHitdistViewZ.x;
             float specularWeight = w;
             specularWeight *= _ComputeExponentialWeight(angle, specularNormalWeightParam, 0.0);
-            specularWeight *= _ComputeExponentialWeight(normalAndRoughness.w, roughnessWeightParams.x, roughnessWeightParams.y);
+            specularWeight *= _ComputeExponentialWeight(normalAndRoughness.w * normalAndRoughness.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y);
             specularWeight *= float(sampleSpecularHitDist != 0.0);
             sumSpecularHitDist += sampleSpecularHitDist * specularWeight;
             sumSpecularWeight += specularWeight;

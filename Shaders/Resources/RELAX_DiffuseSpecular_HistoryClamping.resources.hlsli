@@ -25,22 +25,28 @@ NRD_CONSTANTS_START
     #if( defined RELAX_DIFFUSE )
         NRD_CONSTANT( uint, gDiffFastHistory )
     #endif
+    NRD_CONSTANT(float, gHistoryAccelerationAmount)
+    NRD_CONSTANT(float, gHistoryResetTemporalSigmaScale)
+    NRD_CONSTANT(float, gHistoryResetSpatialSigmaScale)
+    NRD_CONSTANT(float, gHistoryResetAmount)
 NRD_CONSTANTS_END
 
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
 
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationResponsive, t, 3 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationResponsive, t, 4 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNoisySpecularIllumination, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNoisyDiffuseIllumination, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 4 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationResponsive, t, 5 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationResponsive, t, 6 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 7 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 6 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 7 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularResponsiveSH1, t, 8 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseResponsiveSH1, t, 9 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 8 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 9 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularResponsiveSH1, t, 10 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseResponsiveSH1, t, 11 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -62,12 +68,13 @@ NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationResponsive, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNoisyDiffuseIllumination, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIllumination, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseIlluminationResponsive, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 4 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 4 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseResponsiveSH1, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseSH1, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gDiffuseResponsiveSH1, t, 6 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -85,12 +92,13 @@ NRD_CONSTANTS_END
 
     NRD_INPUT_TEXTURE_START
         NRD_INPUT_TEXTURE( Texture2D<float>, gTiles, t, 0 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 1 )
-        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationResponsive, t, 2 )
-        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gNoisySpecularIllumination, t, 1 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIllumination, t, 2 )
+        NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularIlluminationResponsive, t, 3 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gHistoryLength, t, 4 )
         #ifdef RELAX_SH
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 4 )
-            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularResponsiveSH1, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularSH1, t, 5 )
+            NRD_INPUT_TEXTURE( Texture2D<float4>, gSpecularResponsiveSH1, t, 6 )
         #endif
     NRD_INPUT_TEXTURE_END
 
@@ -110,3 +118,4 @@ NRD_CONSTANTS_END
 #define GROUP_X 8
 #define GROUP_Y 8
 #define NRD_USE_BORDER_2
+

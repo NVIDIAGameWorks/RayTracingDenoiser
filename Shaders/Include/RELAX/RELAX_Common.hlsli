@@ -143,29 +143,10 @@ float GetSpecularNormalWeight_ATrous(float2 params0, float3 n0, float3 n, float3
 
 float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
 {
-    // This is the main parameter - cone angle
     float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness, angleFraction);
-    angle = 1.0 / max(angle, RELAX_NORMAL_ENCODING_ERROR);
+    angle = 1.0 / max(angle, NRD_NORMAL_ULP);
 
     return angle;
-}
-
-float GetEncodingAwareNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0)
-{
-    // Anything below "angleThreshold" is ignored
-    angleThreshold += RELAX_NORMAL_ULP;
-
-    float cosa = saturate(dot(Ncurr, Nprev));
-
-    float a = 1.0 / maxAngle;
-    float d = STL::Math::AcosApprox(cosa);
-
-    float w = STL::Math::SmoothStep01(1.0 - (d - angleThreshold) * a);
-
-    // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
-    w = STL::Math::SmoothStep(0.05, 0.95, w);
-
-    return w;
 }
 
 float GetNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)

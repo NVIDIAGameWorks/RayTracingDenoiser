@@ -52,29 +52,31 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec_History, t, 13 )
         NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_DiffFast_History, t, 14 )
         NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_SpecFast_History, t, 15 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_Spec_HitDistForTracking, t, 16 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 16 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 17 )
         #endif
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 17 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 18 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_History, t, 19 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 20 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 18 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 19 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_History, t, 20 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 21 )
         #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Diff, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Spec, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 2 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 3 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 4 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 3 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Spec_HitDistForTracking, u, 4 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 5 )
         #ifndef REBLUR_OCCLUSION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Data2, u, 5 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Data2, u, 6 )
         #endif
         #ifdef REBLUR_SH
-            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_DiffSh, u, 6 )
-            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 7 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_DiffSh, u, 7 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 8 )
         #endif
     NRD_OUTPUT_TEXTURE_END
 
@@ -101,8 +103,8 @@ NRD_CONSTANTS_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Diff, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 2 )
         #ifndef REBLUR_OCCLUSION
             NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Data2, u, 3 )
         #endif
@@ -126,24 +128,26 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 9 )
         NRD_INPUT_TEXTURE( Texture2D<REBLUR_TYPE>, gIn_Spec_History, t, 10 )
         NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_SpecFast_History, t, 11 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Prev_Spec_HitDistForTracking, t, 12 )
         #ifndef REBLUR_OCCLUSION
-            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 12 )
+            NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 13 )
         #endif
         #ifdef REBLUR_SH
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 13 )
-            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 14 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 14 )
+            NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_History, t, 15 )
         #endif
     NRD_INPUT_TEXTURE_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Spec, u, 0 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 1 )
-        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float>, gOut_Spec_HitDistForTracking, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<float4>, gOut_Data1, u, 3 )
         #ifndef REBLUR_OCCLUSION
-            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Data2, u, 3 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<uint>, gOut_Data2, u, 4 )
         #endif
         #ifdef REBLUR_SH
-            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 4 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 5 )
         #endif
     NRD_OUTPUT_TEXTURE_END
 

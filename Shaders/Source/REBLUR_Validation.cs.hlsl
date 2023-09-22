@@ -58,7 +58,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     data1.xz *= REBLUR_MAX_ACCUM_FRAME_NUM;
 
     uint bits;
-    float2 data2 = UnpackData2( gIn_Data2[ uint2( viewportUvScaled * gScreenSize ) ], abs( viewZ ), bits );
+    float2 data2 = UnpackData2( gIn_Data2[ uint2( viewportUvScaled * gScreenSize ) ], bits );
 
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;
@@ -213,10 +213,13 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'E', textState );
         STL::Text::Print_ch( 'S', textState );
 
-        float diffFrameNum = 1.0 - saturate( data1.x / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
+        float diffFrameNum = 1.0 - saturate( data1.x / max( gMaxAccumulatedFrameNum, 1.0 ) );
 
         result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : diffFrameNum * float( !isInf ) );
         result.w = 1.0;
+
+        if( data1.x < 1.0 && viewportUv.y <= 0.95 )
+            result.xyz *= STL::Sequence::CheckerBoard( pixelPos >> 2, 0 ) ? 1.0 : 0.5;
     }
     // Specular frames
     else if( viewportIndex == 11 && gHasSpecular )
@@ -233,10 +236,13 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'E', textState );
         STL::Text::Print_ch( 'S', textState );
 
-        float specFrameNum = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
+        float specFrameNum = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) );
 
         result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : specFrameNum * float( !isInf ) );
         result.w = 1.0;
+
+        if( data1.z < 1.0 && viewportUv.y <= 0.95 )
+            result.xyz *= STL::Sequence::CheckerBoard( pixelPos >> 2, 0 ) ? 1.0 : 0.5;
     }
     // Diff hitT
     else if( viewportIndex == 12 && gHasDiffuse )

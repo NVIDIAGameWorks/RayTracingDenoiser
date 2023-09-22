@@ -174,3 +174,12 @@ A single NRD instance can now include any combination of denoisers, including re
 - *NRD INTEGRATION*:
   - Introduced `NewFrame`
   - Introduced `SetCommonSettings`
+
+## To v4.3
+
+- *RELAX*:
+  - Introduced `AntilagSettings`
+- *REBLUR*:
+  - Removed `enableReferenceAccumulation`
+  - Introduced `usePrepassOnlyForSpecularMotionEstimation`
+  - `AntilagIntensitySettings` and `AntilagHitDistanceSettings` replaced with simpler `ReblurAntilagSettings`

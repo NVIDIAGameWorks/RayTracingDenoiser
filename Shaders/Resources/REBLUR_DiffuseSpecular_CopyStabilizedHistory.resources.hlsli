@@ -10,6 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRD_CONSTANTS_START
     NRD_CONSTANT( uint, gIsRectChanged )
+    NRD_CONSTANT( float, gDebug ) // ( must be last ) used for availability in Common.hlsl only
 NRD_CONSTANTS_END
 
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )

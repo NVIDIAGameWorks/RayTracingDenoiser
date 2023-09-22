@@ -62,10 +62,16 @@ if (MSVC)
 endif ()
 
 # Compile options
+IF(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+  SET(SIMD -msse4.1)
+ELSE(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
+  SET(SIMD -fPIC)
+ENDIF()
+
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set (COMPILE_OPTIONS -msse4.1 -Wextra)
+    set (COMPILE_OPTIONS ${SIMD} -Wextra)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set (COMPILE_OPTIONS -msse4.1 -Wextra)
+    set (COMPILE_OPTIONS ${SIMD} -Wextra)
 elseif (MSVC)
     set (COMPILE_OPTIONS /W4 /WX /wd4324)
 else ()

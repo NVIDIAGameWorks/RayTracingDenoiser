@@ -74,7 +74,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
 
-    float2 roughnessWeightParams = GetCoarseRoughnessWeightParams( roughness );
+    float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness );
     float diffNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, 1.0 );
     float specNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, roughness );
 
@@ -112,7 +112,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 // These weights have infinite exponential tails, because with strict weights we are reducing a chance to find a valid sample in 3x3 or 5x5 area
                 ww.x *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
                 ww.y *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
-                ww.y *= _ComputeExponentialWeight( normalAndRoughness.w, roughnessWeightParams.x, roughnessWeightParams.y );
+                ww.y *= _ComputeExponentialWeight( normalAndRoughness.w * normalAndRoughness.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
             #endif
 
             center.xy += temp.xy * ww;

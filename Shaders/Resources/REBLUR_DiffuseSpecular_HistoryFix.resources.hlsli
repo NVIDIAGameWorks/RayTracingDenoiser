@@ -40,9 +40,11 @@ NRD_CONSTANTS_END
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Diff, u, 0 )
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Spec, u, 1 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 2 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 3 )
         #ifdef REBLUR_SH
-            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_DiffSh, u, 2 )
-            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 3 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_DiffSh, u, 4 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 5 )
         #endif
     NRD_OUTPUT_TEXTURE_END
 
@@ -62,8 +64,9 @@ NRD_CONSTANTS_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Diff, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 1 )
         #ifdef REBLUR_SH
-            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_DiffSh, u, 1 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_DiffSh, u, 2 )
         #endif
     NRD_OUTPUT_TEXTURE_END
 
@@ -83,8 +86,9 @@ NRD_CONSTANTS_END
 
     NRD_OUTPUT_TEXTURE_START
         NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_TYPE>, gOut_Spec, u, 0 )
+        NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 1 )
         #ifdef REBLUR_SH
-            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 1 )
+            NRD_OUTPUT_TEXTURE( RWTexture2D<REBLUR_SH_TYPE>, gOut_SpecSh, u, 2 )
         #endif
     NRD_OUTPUT_TEXTURE_END
 

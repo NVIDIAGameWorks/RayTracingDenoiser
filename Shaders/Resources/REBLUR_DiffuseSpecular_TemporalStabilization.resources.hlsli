@@ -21,10 +21,9 @@ NRD_CONSTANTS_START
     NRD_CONSTANT( float4x4, gWorldToClipPrev )
     NRD_CONSTANT( float4x4, gWorldToViewPrev )
     NRD_CONSTANT( float4, gFrustumPrev )
-    NRD_CONSTANT( float4, gAntilagMinMaxThreshold )
     NRD_CONSTANT( float3, gCameraDelta )
     NRD_CONSTANT( float, gStabilizationStrength )
-    NRD_CONSTANT( float2, gAntilagSigmaScale )
+    NRD_CONSTANT( float4, gAntilagParams )
     NRD_CONSTANT( float2, gSpecularProbabilityThresholdsForMvModification )
     NRD_CONSTANT( float, gSplitScreen )
 NRD_CONSTANTS_END
@@ -42,7 +41,7 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 7 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Diff_StabilizedHistory, t, 8 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 9 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_Spec_FastHistory, t, 10 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 10 )
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 11 )
             NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 12 )
@@ -98,7 +97,7 @@ NRD_CONSTANTS_END
         NRD_INPUT_TEXTURE( Texture2D<uint>, gIn_Data2, t, 5 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec, t, 6 )
         NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_Spec_StabilizedHistory, t, 7 )
-        NRD_INPUT_TEXTURE( Texture2D<REBLUR_FAST_TYPE>, gIn_Spec_FastHistory, t, 8 )
+        NRD_INPUT_TEXTURE( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 8 )
         #ifdef REBLUR_SH
             NRD_INPUT_TEXTURE( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 9 )
             NRD_INPUT_TEXTURE( Texture2D<float4>, gIn_SpecSh_StabilizedHistory, t, 10 )

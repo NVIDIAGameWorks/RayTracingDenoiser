@@ -8,10 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-NRD_CONSTANTS_START
-    NRD_CONSTANT( float, gDebug ) // ( must be last ) used for availability in Common.hlsl only
-NRD_CONSTANTS_END
+[numthreads( GROUP_X, GROUP_Y, 1 )]
+NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
+{
+#ifdef RELAX_SPECULAR
+    gOutSpecularIllumination[pixelPos.xy] = gSpecularIllumination[pixelPos.xy];
+#endif
 
-NRD_OUTPUT_TEXTURE_START
-    NRD_OUTPUT_TEXTURE( RWTexture2D<uint4>, gOut, u, 0 )
-NRD_OUTPUT_TEXTURE_END
+#ifdef RELAX_DIFFUSE
+    gOutDiffuseIllumination[pixelPos.xy] = gDiffuseIllumination[pixelPos.xy];
+#endif
+}

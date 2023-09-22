@@ -277,21 +277,6 @@ float loadVirtualMotionBasedPrevData(
     prevVirtualClipPos.xy /= prevVirtualClipPos.w;
     prevUVVMB = prevVirtualClipPos.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
 
-    // If the focused HitT puts the UV for virtual motion based specular
-    // too far from surface motion based UV,
-    // then recalculate UV using the non-focused HitT
-    [flatten]
-    if (length((prevUVVMB - prevSurfaceMotionBasedUV) * gRectSize) > parallaxInPixels + 0.001)
-    {
-        virtualViewVector = normalize(currentViewVector) * hitDistOriginal;
-        prevVirtualWorldPos = prevWorldPos + virtualViewVector;
-        currentViewVectorLength = length(currentViewVector);
-        accumulatedSpecularVMBZ = currentViewVectorLength + hitDistOriginal;
-        prevVirtualClipPos = mul(gPrevWorldToClip, float4(prevVirtualWorldPos, 1.0));
-        prevVirtualClipPos.xy /= prevVirtualClipPos.w;
-        prevUVVMB = prevVirtualClipPos.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
-    }
-
     float2 prevVirtualPixelPosFloat = prevUVVMB * gRectSizePrev;
     float disocclusionThreshold = mixedDisocclusionDepthThreshold * (gOrthoMode == 0 ? currentLinearZ : 1.0);
 
@@ -467,8 +452,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Calculating average normal, minHitDist and specular sigma
     float hitTM1 = sharedNormalSpecHitT[sharedMemoryIndex.y][sharedMemoryIndex.x].a;
-    float hitTM2 = hitTM1 * hitTM1;
-    float minHitDist3x3 = (hitTM1 != 0.0) ? hitTM1 : gDenoisingRange;
+    float minHitDist3x3 = hitTM1 == 0.0 ? NRD_INF : hitTM1;
     float3 currentNormalAveraged = currentNormal;
 
     [unroll]
@@ -482,16 +466,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
                 continue;
 
             float4 normalSpecHitT = sharedNormalSpecHitT[sharedMemoryIndex.y + j][sharedMemoryIndex.x + i];
-            hitTM1 += normalSpecHitT.a;
-            hitTM2 += normalSpecHitT.a * normalSpecHitT.a;
 
-            minHitDist3x3 = (normalSpecHitT.a != 0) ? min(normalSpecHitT.a, minHitDist3x3) : minHitDist3x3;
+            minHitDist3x3 = min(minHitDist3x3, normalSpecHitT.a == 0.0 ? NRD_INF : normalSpecHitT.a);
             currentNormalAveraged += normalSpecHitT.rgb;
         }
     }
-    hitTM1 /= 9.0;
-    hitTM2 /= 9.0;
-    float hitTSigma = GetStdDev(hitTM1, hitTM2);
     currentNormalAveraged /= 9.0;
 
 #ifdef RELAX_SPECULAR
@@ -511,46 +490,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Calculating surface parallax
     float parallaxInPixels = ComputeParallaxInPixels(prevWorldPos - gPrevCameraPosition.xyz, gOrthoMode == 0.0 ? pixelUv : prevUVSMB, gWorldToClip, gRectSize);
-
-    // Calculating curvature along the direction of motion
-#ifdef RELAX_SPECULAR
-    float curvature = 0;
-    float2 motionUv = STL::Geometry::GetScreenUv(gWorldToClip, prevWorldPos - gPrevCameraPosition.xyz, false);
-    float2 cameraMotion2d = (pixelUv - motionUv) * gRectSize;
-    cameraMotion2d /= max(length(cameraMotion2d), 1.0 / (1.0 + gSpecularMaxAccumulatedFrameNum));
-    cameraMotion2d *= 0.5 * gInvRectSize;
-
-    [unroll]
-    for (int dir = -1; dir <= 1; dir += 2)
-    {
-        float2 uv = pixelUv + dir * cameraMotion2d;
-        STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter(uv, gRectSize);
-        sharedMemoryIndex = threadPos + BORDER + int2(f.origin) - pixelPos;
-        // WAR for out of shmem bounds fetch on some systems in VK
-        if (any(sharedMemoryIndex.xy < 0) || sharedMemoryIndex.x >= BUFFER_X - 1 || sharedMemoryIndex.y >= BUFFER_Y - 1)
-        {
-            curvature = 0;
-            break;
-        }
-        float3 n00 = sharedNormalSpecHitT[sharedMemoryIndex.y][sharedMemoryIndex.x].xyz;
-        float3 n10 = sharedNormalSpecHitT[sharedMemoryIndex.y][sharedMemoryIndex.x + 1].xyz;
-        float3 n01 = sharedNormalSpecHitT[sharedMemoryIndex.y + 1][sharedMemoryIndex.x].xyz;
-        float3 n11 = sharedNormalSpecHitT[sharedMemoryIndex.y + 1][sharedMemoryIndex.x + 1].xyz;
-
-        float3 pNormal = STL::Filtering::ApplyBilinearFilter(n00, n10, n01, n11, f);
-        pNormal = normalize(pNormal);
-
-        float3 x = GetCurrentWorldPosFromClipSpaceXY(uv * 2.0 - 1.0, 1.0);
-        float3 v = normalize(gOrthoMode ? gFrustumForward.xyz : x);
-
-        // Values below this threshold get turned into garbage due to numerical imprecision
-        float d = STL::Math::ManhattanDistance(pNormal, currentNormal);
-        float s = STL::Math::LinearStep(NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d);
-
-        curvature += EstimateCurvature(normalize(currentNormalAveraged), pNormal, v, currentNormal, currentWorldPos) * s;
-    }
-    curvature *= 0.5;
-#endif
 
     // Calculating disocclusion threshold
     float mixedDisocclusionDepthThreshold = gDisocclusionDepthThreshold;
@@ -713,15 +652,54 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float specHistoryResponsiveFrames = min(specMaxFastAccumulatedFrameNum, specHistoryLength);
 
     // Picking hitDist as minimal value in 3x3 area
-    // and clamping to M1 with 3 sigma to avoid picking too small values
-    float hitDist = minHitDist3x3;
-    hitDist = clamp(hitDist, hitTM1 - hitTSigma * 3.0, hitTM1 + hitTSigma * 3.0);
+    float hitDist = minHitDist3x3 == NRD_INF ? 0.0 : minHitDist3x3;
+
+    // Calculating curvature along the direction of motion
+    // IMPORTANT: this code allows to get non-zero parallax on objects attached to the camera
+    float2 uvForZeroParallax = gOrthoMode == 0.0 ? prevUVSMB : pixelUv;
+    float2 deltaUv = STL::Geometry::GetScreenUv(gPrevWorldToClip, prevWorldPos - gPrevCameraPosition.xyz) - uvForZeroParallax;
+    float len = length(deltaUv);
+    float2 motionUv = pixelUv + deltaUv * 0.99 * gInvRectSize / max(len, gInvRectSize.x / 256.0); // stay in SMEM
+
+    // Construct the other edge point "x"
+    float z = abs(gViewZ.SampleLevel(gLinearClamp, gRectOffset + motionUv * gResolutionScale, 0));
+    float3 x = GetCurrentWorldPosFromClipSpaceXY(motionUv * 2.0 - 1.0, z);
+
+    // Interpolate normal at "x"
+    STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter(motionUv, gRectSize);
+
+    int2 pos = threadPos + BORDER + int2(f.origin) - pixelPos;
+    pos = clamp(pos, 0, int2(BUFFER_X, BUFFER_Y) - 2); // just in case?
+
+    float3 n00 = sharedNormalSpecHitT[pos.y][pos.x].xyz;
+    float3 n10 = sharedNormalSpecHitT[pos.y][pos.x + 1].xyz;
+    float3 n01 = sharedNormalSpecHitT[pos.y + 1][pos.x].xyz;
+    float3 n11 = sharedNormalSpecHitT[pos.y + 1][pos.x + 1].xyz;
+
+    float3 n = normalize(STL::Filtering::ApplyBilinearFilter(n00, n10, n01, n11, f));
+
+    // Estimate curvature for the edge { x; currentWorldPos }
+    float3 edge = x - currentWorldPos;
+    float edgeLenSq = STL::Math::LengthSquared(edge);
+    float curvature = dot(n - currentNormal, edge) * STL::Math::PositiveRcp(edgeLenSq);
+
+    // Correction #1 - values below this threshold get turned into garbage due to numerical imprecision
+    float d = STL::Math::ManhattanDistance(currentNormal, n);
+    float s = STL::Math::LinearStep(NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d);
+    curvature *= s;
+
+    // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
+    float2 uv1 = STL::Geometry::GetScreenUv(gPrevWorldToClip, currentWorldPos - V * ApplyThinLensEquation(NoV, hitDist, curvature));
+    float2 uv2 = STL::Geometry::GetScreenUv(gPrevWorldToClip, currentWorldPos);
+    float a = length((uv1 - uv2) * gRectSize);
+    float b = length(deltaUv * gRectSize);
+    curvature *= float(a < 3.0 * b + gInvRectSize.x); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
 
     // Thin lens equation for adjusting reflection HitT
     float hitDistFocused = ApplyThinLensEquation(NoV, hitDist, curvature);
 
     [flatten]
-    if (abs(hitDistFocused) < 0.001)
+    if (abs(hitDistFocused) < 0.001) // TODO: why?
         hitDistFocused = 0.001;
 
     // Loading specular data based on virtual motion
@@ -785,14 +763,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float curvatureAngle = atan(tanCurvature);
 
     // Normal weight for virtual motion based reprojection
-    float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(currentRoughnessModified) + RELAX_NORMAL_ENCODING_ERROR;
+    float lobeHalfAngle = max(STL::ImportanceSampling::GetSpecularLobeHalfAngle(currentRoughnessModified), NRD_NORMAL_ULP);
     float angle = lobeHalfAngle + curvatureAngle;
     float normalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, angle);
     virtualHistoryAmount *= lerp(1.0 - saturate(uvDiffLengthInPixels), 1.0, normalWeight); // jitter friendly
 
     // Roughness weight for virtual motion based reprojection
-    float2 roughnessParams = GetRoughnessWeightParamsSq(currentRoughness, gRoughnessFraction);
-    float virtualRoughnessWeight = GetRoughnessWeightSq(roughnessParams, prevRoughnessVMB);
+    float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams(currentRoughness, currentRoughnessModified, gRoughnessFraction);
+    float virtualRoughnessWeight = GetRelaxedRoughnessWeight(relaxedRoughnessWeightParams, prevRoughnessVMB);
     virtualRoughnessWeight = lerp(1.0 - saturate(uvDiffLengthInPixels), 1.0, virtualRoughnessWeight); // jitter friendly
     virtualHistoryAmount *= (gOrthoMode == 0) ? virtualRoughnessWeight : 1.0;
     float specVMBConfidence = virtualRoughnessWeight * 0.9 + 0.1;
@@ -809,15 +787,15 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float4 backNormalRoughness2 = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, backUV2, 0));
     backNormalRoughness1.rgb = gUseWorldPrevToWorld ? STL::Geometry::RotateVector(gWorldPrevToWorld, backNormalRoughness1.rgb) : backNormalRoughness1.rgb;
     backNormalRoughness2.rgb = gUseWorldPrevToWorld ? STL::Geometry::RotateVector(gWorldPrevToWorld, backNormalRoughness2.rgb) : backNormalRoughness2.rgb;
-    float maxAngle1 = angle + 1.0 * curvatureAngle + RELAX_NORMAL_ENCODING_ERROR;
-    float maxAngle2 = angle + 2.0 * curvatureAngle + RELAX_NORMAL_ENCODING_ERROR;
+    float maxAngle1 = angle + 1.0 * curvatureAngle;
+    float maxAngle2 = angle + 2.0 * curvatureAngle;
     float prevPrevNormalWeight = IsInScreen(backUV1) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness1.rgb, maxAngle1, curvatureAngle) : 1.0;
     prevPrevNormalWeight *= IsInScreen(backUV2) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness2.rgb, maxAngle2, curvatureAngle) : 1.0;
     virtualHistoryAmount *= 0.33 + 0.67 * prevPrevNormalWeight;
     specVMBConfidence *= 0.33 + 0.67 * prevPrevNormalWeight;
     // Taking in account roughness 1 and 2 frames back helps cleaning up surfaces wigh varying roughness
-    float rw = GetRoughnessWeightSq(roughnessParams, backNormalRoughness1.w);
-    rw *= GetRoughnessWeightSq(roughnessParams, backNormalRoughness2.w);
+    float rw = GetRelaxedRoughnessWeight(relaxedRoughnessWeightParams, backNormalRoughness1.w);
+    rw *= GetRelaxedRoughnessWeight(relaxedRoughnessWeightParams, backNormalRoughness2.w);
     virtualHistoryAmount *= (gOrthoMode == 0) ? rw * 0.9 + 0.1 : 1.0;
 
     // Virtual history confidence - hit distance

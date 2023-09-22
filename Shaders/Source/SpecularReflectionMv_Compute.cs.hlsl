@@ -45,15 +45,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     if( viewZ > gDenoisingRange )
         return;
 
-    // Current position
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
-    float3 X = STL::Geometry::RotateVector( gViewToWorld, Xv );
-
     // Normal and roughness
     int2 smemPos = threadPos + BORDER;
     float4 normalAndRoughness = s_Normal_Roughness[ smemPos.y ][ smemPos.x ];
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;
+
+    // Current position and view vectir
+    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
+    float3 X = STL::Geometry::RotateVector( gViewToWorld, Xv );
+    float3 V = GetViewVector( X );
+    float NoV = abs( dot( N, V ) );
 
     // Previous position and surface motion uv
     float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
@@ -97,85 +99,59 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Parallax
     float smbParallaxInPixels = ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
 
-    // Camera motion in screen-space
-    float2 motionUv = STL::Geometry::GetScreenUv( gWorldToClip, Xprev - gCameraDelta );
-    float2 cameraMotion2d = ( motionUv - pixelUv ) * gRectSize;
-    cameraMotion2d /= max( length( cameraMotion2d ), 1.0 / 64.0 );
-    cameraMotion2d *= gInvRectSize;
+    // Hit distance
+    float hitDistForTracking = gIn_HitDist[ pixelPosUser ]; // TODO: min hitDist logic from REBLUR / RELAX needed
 
-    // Low parallax
-    float2 uv = pixelUv + cameraMotion2d * 0.99;
-    STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( uv, gRectSize );
+    // Curvature
+    float curvature;
+    {
+        // IMPORTANT: this code allows to get non-zero parallax on objects attached to the camera
+        float2 uvForZeroParallax = gOrthoMode == 0.0 ? smbPixelUv : pixelUv;
+        float2 deltaUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev - gCameraDelta ) - uvForZeroParallax;
+        float len = length( deltaUv );
+        float2 motionUv = pixelUv + deltaUv * 0.99 * gInvRectSize / max( len, gInvRectSize.x / 256.0 ); // stay in SMEM
 
-    int2 pos = threadPos + BORDER + int2( f.origin ) - pixelPos;
-    pos = clamp( pos, 0, int2( BUFFER_X, BUFFER_Y ) - 2 );
+        // Construct the other edge point "x"
+        float z = abs( gIn_ViewZ.SampleLevel( gLinearClamp, gRectOffset + motionUv * gResolutionScale, 0 ) );
+        float3 x = STL::Geometry::ReconstructViewPosition( motionUv, gFrustum, z, gOrthoMode );
+        x = STL::Geometry::RotateVector( gViewToWorld, x );
 
-    float3 n00 = s_Normal_Roughness[ pos.y ][ pos.x ].xyz;
-    float3 n10 = s_Normal_Roughness[ pos.y ][ pos.x + 1 ].xyz;
-    float3 n01 = s_Normal_Roughness[ pos.y + 1 ][ pos.x ].xyz;
-    float3 n11 = s_Normal_Roughness[ pos.y + 1 ][ pos.x + 1 ].xyz;
+        // Interpolate normal at "x"
+        STL::Filtering::Bilinear f = STL::Filtering::GetBilinearFilter( motionUv, gRectSize );
 
-    float3 n = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
-    n = normalize( n );
+        int2 pos = threadPos + BORDER + int2( f.origin ) - pixelPos;
+        pos = clamp( pos, 0, int2( BUFFER_X, BUFFER_Y ) - 2 ); // just in case?
 
-    // High parallax
-    float2 uvHigh = pixelUv + cameraMotion2d * smbParallaxInPixels;
+        float3 n00 = s_Normal_Roughness[ pos.y ][ pos.x ].xyz;
+        float3 n10 = s_Normal_Roughness[ pos.y ][ pos.x + 1 ].xyz;
+        float3 n01 = s_Normal_Roughness[ pos.y + 1 ][ pos.x ].xyz;
+        float3 n11 = s_Normal_Roughness[ pos.y + 1 ][ pos.x + 1 ].xyz;
 
-    #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-        f = STL::Filtering::GetBilinearFilter( uvHigh, gRectSize );
+        float3 n = normalize( STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f ) );
 
-        pos = gRectOrigin + int2( f.origin );
-        pos = clamp( pos, 0, int2( gRectSize ) - 2 );
+        // Estimate curvature for the edge { x; X }
+        float3 edge = x - X;
+        float edgeLenSq = STL::Math::LengthSquared( edge );
+        curvature = dot( n - N, edge ) * STL::Math::PositiveRcp( edgeLenSq );
 
-        n00 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos ] ).xyz;
-        n10 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 1, 0 ) ] ).xyz;
-        n01 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 0, 1 ) ] ).xyz;
-        n11 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 1, 1 ) ] ).xyz;
+        // Correction #1 - values below this threshold get turned into garbage due to numerical imprecision
+        float d = STL::Math::ManhattanDistance( N, n );
+        float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
+        curvature *= s;
 
-        float3 nHigh = STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f );
-        nHigh = normalize( nHigh );
-    #else
-        float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gLinearClamp, gRectOffset + uvHigh * gResolutionScale, 0 ) ).xyz;
-    #endif
-
-    float zHigh = abs( gIn_ViewZ.SampleLevel( gLinearClamp, gRectOffset + uvHigh * gResolutionScale, 0 ) );
-    float zError = abs( zHigh - viewZ ) * rcp( max( zHigh, viewZ ) );
-    bool cmp = smbParallaxInPixels > 1.0 && zError < 0.1 && IsInScreen( uvHigh );
-
-    uv = cmp ? uvHigh : uv;
-    n = cmp ? nHigh : n;
-
-    // Estimate curvature
-    float3 xv = STL::Geometry::ReconstructViewPosition( uv, gFrustum, 1.0, gOrthoMode );
-    float3 x = STL::Geometry::RotateVector( gViewToWorld, xv );
-    float3 v = GetViewVector( x );
-
-    // Values below this threshold get turned into garbage due to numerical imprecision
-    float d = STL::Math::ManhattanDistance( N, n );
-    float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
-
-    float curvature = EstimateCurvature( normalize( Navg ), n, v, N, X ) * s;
+        // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
+        float2 uv1 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X - V * ApplyThinLensEquation( NoV, hitDistForTracking, curvature ) );
+        float2 uv2 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X );
+        float a = length( ( uv1 - uv2 ) * gRectSize );
+        float b = length( deltaUv * gRectSize );
+        curvature *= float( a < 3.0 * b + gInvRectSize.x ); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
+    }
 
     // Virtual motion
-    float3 V = GetViewVector( X );
-    float NoV = abs( dot( N, V ) );
-    float hitDist = gIn_HitDist[ pixelPosUser ];
-
     float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughnessModified, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
 
-    float3 Xvirtual = GetXvirtual( NoV, hitDist, curvature, X, Xprev, V, dominantFactor );
+    float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
     float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
-
-    float2 vmbDelta = vmbPixelUv - smbPixelUv;
-    float vmbPixelsTraveled = length( vmbDelta * gRectSize );
-
-    // Adjust curvature if curvature sign oscillation is forseen // TODO: is there a better way? fix curvature?
-    float curvatureCorrectionThreshold = smbParallaxInPixels + gInvRectSize.x;
-    float curvatureCorrection = STL::Math::SmoothStep( 1.05 * curvatureCorrectionThreshold, 0.95 * curvatureCorrectionThreshold, vmbPixelsTraveled );
-    curvature *= curvatureCorrection;
-
-    Xvirtual = GetXvirtual( NoV, hitDist, curvature, X, Xprev, V, dominantFactor );
-    vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
 
     gOut_SpecularReflectionMv[ pixelPos ] = vmbPixelUv - pixelUv;
 }

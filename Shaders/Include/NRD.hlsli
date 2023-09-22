@@ -8,17 +8,15 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.2
+// NRD v4.3
 
 //=================================================================================================================================
 // INPUT PARAMETERS
 //=================================================================================================================================
 /*
 float3 radiance:
-    - radiance != irradiance, it's pure energy coming from a particular direction
-    - radiance should not include any BRDFs ( material information )
-    - radiance can be premultiplied with "exposure"
-    - radiance should not include PI for diffuse ( it will be canceled out later when the denoised output will be multiplied with albedo / PI )
+    - radiance should not include material information ( use material de-modulation to decouple materials )
+    - radiance should not be premultiplied by "exposure"
     - for diffuse rays
         - use COS-distribution ( or custom importance sampling )
         - if radiance is the result of path tracing, pass normalized hit distance as the sum of 1-all hits (always ignore primary hit!)
@@ -26,8 +24,25 @@ float3 radiance:
         - use VNDF sampling ( or custom importance sampling )
         - if radiance is the result of path tracing, pass normalized hit distance as the sum of first 1-3 hits (always ignore primary hit!)
 
+float hitDist:
+    - can't be negative
+    - must not include primary hit distance
+    - for the first bounce after the primary hit or PSR must be provided "as is"
+    - for susequent bounces must be adjusted by curvature and lobe energy dissipation on the application side
+    - must be explicitly set to 0 for rays pointing inside the surface ( better to nopt cast such rays )
+
+float normHitDist:
+    - normalized hit distance, gotten by using "REBLUR_FrontEnd_GetNormHitDist"
+    - REBLUR must be aware of the normalization function via "nrd::HitDistanceParameters"
+    - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse and SO ( specular occlusion ) for specular
+    - AO can be used to emulate 2nd+ diffuse bounces
+    - SO can be used to adjust IBL lighting
+    - ".w" channel of diffuse / specular output is AO / SO
+    - if you don't know which normalization function to choose use default values of "nrd::HitDistanceParameters"
+
 float roughness:
     - "linear roughness" = sqrt( "m" ), where "m" = "alpha" - GGX roughness
+    - usage: "isDiffuse ? 1.0 : roughness"
 
 float normal:
     - world-space normal
@@ -44,18 +59,7 @@ float distanceToOccluder:
 float tanOfLightAngularRadius:
     - tan( lightAngularSize * 0.5 )
     - angular size is computed from the shadow receiving point
-    - in other words, tanOfLightAngularRadius = distanceToLight / lightRadius
-
-float normHitDist:
-    - normalized hit distance, gotten by using "REBLUR_FrontEnd_GetNormHitDist"
-    - REBLUR must be aware of the normalization function via "nrd::HitDistanceParameters"
-    - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse and SO ( specular occlusion ) for specular
-    - AO can be used to emulate 2nd+ diffuse bounces
-    - SO can be used to adjust IBL lighting
-    - ".w" channel of diffuse / specular output is AO / SO
-    - if you don't know which normalization function to choose use default values of "nrd::HitDistanceParameters"
-
-NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : roughness"
+    - in other words, tanOfLightAngularRadius = lightRadius / distanceToLight
 */
 
 // IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
@@ -237,7 +241,6 @@ NOTE: if "roughness" is needed as an input parameter use is as "isDiffuse ? 1 : 
 #define NRD_ROUGHNESS_ENCODING_LINEAR                                                   1 // linearRoughness
 #define NRD_ROUGHNESS_ENCODING_SQRT_LINEAR                                              2 // sqrt( linearRoughness )
 
-#define NRD_FP16_MIN                                                                    1e-7 // min allowed hitDist (0 = no data)
 #define NRD_FP16_MAX                                                                    65504.0
 #define NRD_FP16_VIEWZ_SCALE                                                            0.125 // TODO: tuned for meters, needs to be scaled down for cm and mm
 #define NRD_PI                                                                          3.14159265358979323846
@@ -561,6 +564,10 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, float mat
 // This function returns AO / SO which REBLUR can decode back to "hit distance" internally
 float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness = 1.0 )
 {
+    // TODO: Sampling can produce rays pointing inside surface, i.e. "hitDist = 0". But due to ray offsetting
+    // actual "hitDist" can be a very small value in this case. Since NRD handles "hitDist = 0" case, should be
+    // small "hitDist" values trimmed to 0?
+
     float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, roughness );
 
     return saturate( hitDist / f );
@@ -576,10 +583,6 @@ float4 REBLUR_FrontEnd_PackRadianceAndNormHitDist( float3 radiance, float normHi
         radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
         normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
     }
-
-    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
-    if( normHitDist != 0 )
-        normHitDist = max( normHitDist, NRD_FP16_MIN );
 
     radiance = _NRD_LinearToYCoCg( radiance );
 
@@ -597,10 +600,6 @@ float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direct
         normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
         direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : clamp( direction, -NRD_FP16_MAX, NRD_FP16_MAX );
     }
-
-    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
-    if( normHitDist != 0 )
-        normHitDist = max( normHitDist, NRD_FP16_MIN );
 
     NRD_SG sg = _NRD_SG_Create( radiance, direction, normHitDist );
 
@@ -623,10 +622,6 @@ float4 REBLUR_FrontEnd_PackDirectionalOcclusion( float3 direction, float normHit
         normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
     }
 
-    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
-    if( normHitDist != 0 )
-        normHitDist = max( normHitDist, NRD_FP16_MIN );
-
     NRD_SG sg = _NRD_SG_Create( normHitDist, direction, normHitDist );
 
     return float4( sg.c1, sg.c0 );
@@ -646,10 +641,6 @@ float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bo
         hitDist = ( isnan( hitDist ) | isinf( hitDist ) ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
     }
 
-    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
-    if( hitDist != 0 )
-        hitDist = max( hitDist, NRD_FP16_MIN );
-
     return float4( radiance, hitDist );
 }
 
@@ -663,10 +654,6 @@ float4 RELAX_FrontEnd_PackSh( float3 radiance, float hitDist, float3 direction, 
         hitDist = ( isnan( hitDist ) | isinf( hitDist ) ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
     }
 
-    // "0" is reserved to mark "no data" samples, skipped due to probabilistic sampling
-    if( hitDist != 0 )
-        hitDist = max( hitDist, NRD_FP16_MIN );
-
     // IN_DIFF_SH0 / IN_SPEC_SH0
     float4 out0 = float4( radiance, hitDist );
 
@@ -679,8 +666,6 @@ float4 RELAX_FrontEnd_PackSh( float3 radiance, float hitDist, float3 direction, 
 //=================================================================================================================================
 // FRONT-END - SIGMA
 //=================================================================================================================================
-
-#define SIGMA_MIN_DISTANCE      0.0001 // not 0, because it means "NoL < 0, stop processing"
 
 // SIGMA ( single light )
 
@@ -697,7 +682,7 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
     else if( distanceToOccluder != 0.0 )
     {
         float distanceToOccluderProj = distanceToOccluder * tanOfLightAngularRadius;
-        r.x = clamp( distanceToOccluderProj, SIGMA_MIN_DISTANCE, 32768.0 );
+        r.x = min( distanceToOccluderProj, 32768.0 );
     }
 
     return r;
