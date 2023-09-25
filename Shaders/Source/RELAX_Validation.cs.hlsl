@@ -57,7 +57,6 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     float3 X = GetCurrentWorldPosFromClipSpaceXY( viewportUv * 2.0 - 1.0, abs( viewZ ) );
 
     bool isInf = abs( viewZ ) > gDenoisingRange;
-    uint checkerboard = 0;//STL::Sequence::CheckerBoard( pixelPos >> 2, 0 );
 
     uint4 textState = STL::Text::Init( pixelPos, viewportId * gResourceSize * VIEWPORT_SIZE + OFFSET, 1 );
 
@@ -191,9 +190,6 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 
         result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
         result.w = 1.0;
-
-        if( historyLength < 2.0 && viewportUv.y <= 0.95 )
-            result.xyz *= checkerboard ? 1.0 : 0.5;
     }
 
     // Text
