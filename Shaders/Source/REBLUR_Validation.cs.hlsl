@@ -67,7 +67,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     float3 X = STL::Geometry::RotateVector( gViewToWorld, Xv );
 
     bool isInf = abs( viewZ ) > gDenoisingRange;
-    uint checkerboard = STL::Sequence::CheckerBoard( pixelPos >> 2, 0 );
+    uint checkerboard = 0;//STL::Sequence::CheckerBoard( pixelPos >> 2, 0 );
 
     uint4 textState = STL::Text::Init( pixelPos, viewportId * gScreenSize * VIEWPORT_SIZE + OFFSET, 1 );
 
