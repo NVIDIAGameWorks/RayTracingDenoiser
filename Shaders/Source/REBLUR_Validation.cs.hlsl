@@ -214,14 +214,11 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'E', textState );
         STL::Text::Print_ch( 'S', textState );
 
-        float diffFrameNum = 1.0 - saturate( data1.x / max( gMaxAccumulatedFrameNum, 1.0 ) );
+        float f = 1.0 - saturate( data1.x / max( gMaxAccumulatedFrameNum, 1.0 ) );
+        f = checkerboard && data1.x < 1.0 ? 0.75 : f;
 
-        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : diffFrameNum * float( !isInf ) );
+        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
         result.w = 1.0;
-
-        [flatten]
-        if( data1.x < 1.0 && viewportUv.y < 0.95 )
-            result.xyz *= checkerboard ? 1.0 : 0.5;
     }
     // Specular frames
     else if( viewportIndex == 11 && gHasSpecular )
@@ -238,14 +235,11 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'E', textState );
         STL::Text::Print_ch( 'S', textState );
 
-        float specFrameNum = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) );
+        float f = 1.0 - saturate( data1.z / max( gMaxAccumulatedFrameNum, 1.0 ) );
+        f = checkerboard && data1.z < 1.0 ? 0.75 : f;
 
-        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : specFrameNum * float( !isInf ) );
+        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
         result.w = 1.0;
-
-        [flatten]
-        if( data1.z < 1.0 && viewportUv.y < 0.95 )
-            result.xyz *= checkerboard ? 1.0 : 0.5;
     }
     // Diff hitT
     else if( viewportIndex == 12 && gHasDiffuse )

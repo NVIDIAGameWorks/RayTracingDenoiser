@@ -187,14 +187,11 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'E', textState );
         STL::Text::Print_ch( 'S', textState );
 
-        float f = 1.0 - saturate( historyLength / max( gMaxAccumulatedFrameNum, 1.0 ) ); // map history reset to red
+        float f = 1.0 - saturate( historyLength / max( gMaxAccumulatedFrameNum, 1.0 ) );
+        f = checkerboard && historyLength < 2.0 ? 0.75 : f;
 
         result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
         result.w = 1.0;
-
-        [flatten]
-        if( historyLength < 2.0 && viewportUv.y < 0.95 )
-            result.xyz *= checkerboard ? 1.0 : 0.5;
     }
 
     // Text
