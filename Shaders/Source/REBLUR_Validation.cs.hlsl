@@ -67,6 +67,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     float3 X = STL::Geometry::RotateVector( gViewToWorld, Xv );
 
     bool isInf = abs( viewZ ) > gDenoisingRange;
+    bool checkerboard = ( ( ( pixelPos.x >> 2 ) ^ ( pixelPos.y >> 2 ) ) & 0x1 ) == 0;
 
     uint4 textState = STL::Text::Init( pixelPos, viewportId * gScreenSize * VIEWPORT_SIZE + OFFSET, 1 );
 
@@ -219,8 +220,8 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         result.w = 1.0;
 
         [flatten]
-        if( data1.x < 1.0 && viewportUv.y <= 0.95 )
-            result.xyz *= STL::Sequence::CheckerBoard( pixelPos >> 2, 0 ) ? 1.0 : 0.5;
+        if( data1.x < 1.0 && viewportUv.y < 0.95 )
+            result.xyz *= checkerboard ? 1.0 : 0.5;
     }
     // Specular frames
     else if( viewportIndex == 11 && gHasSpecular )
@@ -243,8 +244,8 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         result.w = 1.0;
 
         [flatten]
-        if( data1.z < 1.0 && viewportUv.y <= 0.95 )
-            result.xyz *= STL::Sequence::CheckerBoard( pixelPos >> 2, 0 ) ? 1.0 : 0.5;
+        if( data1.z < 1.0 && viewportUv.y < 0.95 )
+            result.xyz *= checkerboard ? 1.0 : 0.5;
     }
     // Diff hitT
     else if( viewportIndex == 12 && gHasDiffuse )
