@@ -165,7 +165,6 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
 
     # ShaderMake general arguments
     set (SHADERMAKE_GENERAL_ARGS
-        --useAPI
         --header ${NRD_SHADER_BINARIES}
         --flatten
         --stripReflection
@@ -181,6 +180,10 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
         -D NRD_ROUGHNESS_ENCODING=${NRD_ROUGHNESS_ENCODING}
         -D NRD_INTERNAL
     )
+
+    if (WIN32)
+        set (SHADERMAKE_GENERAL_ARGS --useAPI ${SHADERMAKE_GENERAL_ARGS})
+    endif ()
 
     # ShaderMake commands for each shader code container
     set (SHADERMAKE_COMMANDS "")
