@@ -165,6 +165,7 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
 
     # ShaderMake general arguments
     set (SHADERMAKE_GENERAL_ARGS
+        --useAPI
         --header ${NRD_SHADER_BINARIES}
         --flatten
         --stripReflection
@@ -184,12 +185,8 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
     # ShaderMake commands for each shader code container
     set (SHADERMAKE_COMMANDS "")
 
-    if (NRD_EMBEDS_DXBC_SHADERS)
-        set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXBC --compiler "${FXC_PATH}" --useAPI ${SHADERMAKE_GENERAL_ARGS})
-    endif ()
-
     if (NRD_EMBEDS_DXIL_SHADERS)
-        set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXIL --compiler "${DXC_PATH}" --useAPI ${SHADERMAKE_GENERAL_ARGS})
+        set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXIL --compiler "${DXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
     endif ()
 
     if (NRD_EMBEDS_SPIRV_SHADERS)
@@ -199,6 +196,10 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
             --bRegShift 300
             --uRegShift 400
         )
+    endif ()
+
+    if (NRD_EMBEDS_DXBC_SHADERS)
+        set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXBC --compiler "${FXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
     endif ()
 
     # Add the target with the commands
