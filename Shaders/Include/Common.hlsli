@@ -39,10 +39,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Switches ( default 1 )
 #define NRD_USE_TILE_CHECK                                      1
+#define NRD_USE_HIGH_PARALLAX_CURVATURE                         1
 
 // Switches ( default 0 )
 #define NRD_USE_QUADRATIC_DISTRIBUTION                          0
 #define NRD_USE_EXPONENTIAL_WEIGHTS                             0
+#define NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX          0 // it fixes silhouettes, but leads to less flattening on bumpy surfaces ( worse for bumpy surfaces ) and shorter arcs on smooth curved surfaces ( worse for low bit normals )
 
 // Settings
 #define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03
@@ -50,17 +52,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_RADIANCE_COMPRESSION_MODE                           3 // 0-4, specular color compression for spatial passes
 #define NRD_EXP_WEIGHT_DEFAULT_SCALE                            3.0
 #define NRD_ROUGHNESS_SENSITIVITY                               0.01 // smaller => more sensitive
+#define NRD_CURVATURE_Z_THRESHOLD                               0.1 // normalized %
 
 // IMPORTANT: if == 1, then for 0-roughness "GetEncodingAwareNormalWeight" can return values < 1 even for same normals due to data re-packing
 // IMPORTANT: suits for REBLUR and RELAX because both use RGBA8 normals internally
 #define NRD_NORMAL_ULP                                          ( 1.5 / 255.0 )
 
+// IMPORTANT: best fit is critical for non oct-packed variants!
 #if( NRD_NORMAL_ENCODING < NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 1.0 / 255.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 255.0 )
 #elif( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 1.0 / 1023.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 1023.0 )
 #else
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 1.0 / 65535.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 65535.0 )
 #endif
 
 //==================================================================================================================
@@ -342,8 +346,6 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
     return float2( a, -b );
 }
 
-// Weights params
-
 float2 GetRoughnessWeightParams( float roughness, float fraction, float sensitivity = NRD_ROUGHNESS_SENSITIVITY )
 {
     float a = 1.0 / lerp( sensitivity, 1.0, saturate( roughness * fraction ) );
@@ -352,17 +354,13 @@ float2 GetRoughnessWeightParams( float roughness, float fraction, float sensitiv
     return float2( a, -b );
 }
 
-float2 GetRelaxedRoughnessWeightParams( float roughness, float roughnessModified = 1.0, float fraction = 1.0, float sensitivity = NRD_ROUGHNESS_SENSITIVITY )
+float2 GetRelaxedRoughnessWeightParams( float m, float fraction = 1.0, float sensitivity = NRD_ROUGHNESS_SENSITIVITY )
 {
-    // IMPORTANT: requires "GetRelaxedRoughnessWeight"
-    // "x ^ 2" makes test less sensitive
-    // Using "roughnessModified" for threshold allows to make test less sensitive on bumpy surfaces
+    // "m" makes test less sensitive to small deltas
 
-    roughness *= roughness;
-    roughnessModified *= roughnessModified;
-
-    float a = 1.0 / lerp( sensitivity, 1.0, saturate( roughnessModified * fraction ) );
-    float b = roughness * a;
+    // https://www.desmos.com/calculator/wkvacka5za
+    float a = 1.0 / lerp( lerp( m * m, m, fraction ), 1.0, sensitivity );
+    float b = m * a;
 
     return float2( a, -b );
 }
@@ -378,52 +376,20 @@ float2 GetRelaxedRoughnessWeightParams( float roughness, float roughnessModified
 
 // Must be used for noisy data
 // https://www.desmos.com/calculator/9yoyc3is2g
-// scale = 3-5 is needed to match energy in "_ComputeNonExponentialWeight" ( especially when used in a recurrent loop )
-#define _ComputeExponentialWeight( x, px, py ) \
-    ExpApprox( -NRD_EXP_WEIGHT_DEFAULT_SCALE * abs( ( x ) * ( px ) + ( py ) ) )
+// scale = 3-5 is needed to match energy in "ComputeNonExponentialWeight" ( especially when used in a recurrent loop )
+#define ComputeExponentialWeight( x, px, py ) \
+    ExpApprox( -NRD_EXP_WEIGHT_DEFAULT_SCALE * abs( ( x ) * px + py ) )
 
 // A good choice for non noisy data
 // IMPORTANT: cutoffs are needed to minimize floating point precision drifting
-#define _ComputeNonExponentialWeight( x, px, py ) \
-    STL::Math::SmoothStep( 0.999, 0.001, abs( ( x ) * ( px ) + ( py ) ) )
+#define ComputeNonExponentialWeight( x, px, py ) \
+    STL::Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) )
 
 #if( NRD_USE_EXPONENTIAL_WEIGHTS == 1 )
-    #define _ComputeWeight( x, px, py ) \
-        _ComputeExponentialWeight( x, px, py )
+    #define ComputeWeight( x, px, py )     ComputeExponentialWeight( x, px, py )
 #else
-    #define _ComputeWeight( x, px, py ) \
-        _ComputeNonExponentialWeight( x, px, py )
+    #define ComputeWeight( x, px, py )     ComputeNonExponentialWeight( x, px, py )
 #endif
-
-float GetRoughnessWeight( float2 params, float roughness )
-{
-    return _ComputeWeight( roughness, params.x, params.y );
-}
-
-float GetRelaxedRoughnessWeight( float2 params, float roughness )
-{
-    return GetRoughnessWeight( params, roughness * roughness );
-}
-
-float GetHitDistanceWeight( float2 params, float hitDist )
-{
-    return _ComputeExponentialWeight( hitDist, params.x, params.y );
-}
-
-float GetGeometryWeight( float2 params, float3 n0, float3 p )
-{
-    float d = dot( n0, p );
-
-    return _ComputeWeight( d, params.x, params.y );
-}
-
-float GetNormalWeight( float param, float3 N, float3 n )
-{
-    float cosa = saturate( dot( N, n ) );
-    float angle = STL::Math::AcosApprox( cosa );
-
-    return _ComputeWeight( angle, param, 0.0 );
-}
 
 float GetGaussianWeight( float r )
 {
@@ -437,7 +403,7 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, 
     // Anything below "angleThreshold" is ignored
     angleThreshold += NRD_NORMAL_ULP;
 
-    float cosa = saturate( dot( Ncurr, Nprev ) );
+    float cosa = dot( Ncurr, Nprev );
 
     float a = 1.0 / maxAngle;
     float d = STL::Math::AcosApprox( cosa );

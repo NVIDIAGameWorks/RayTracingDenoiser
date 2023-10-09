@@ -282,11 +282,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 // Getting sample view vector closer to center view vector
                 // by adding gRoughnessEdgeStoppingRelaxation * centerWorldPos
                 // relaxes view direction based rejection
+                float angles = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
                 float3 sampleV = -normalize(sampleWorldPos + gRoughnessEdgeStoppingRelaxation * centerWorldPos);
-                float normalWSpecularSimplified = GetNormalWeight(specularNormalWeightParamsSimplified, centerNormal, sampleNormal);
+                float normalWSpecularSimplified = ComputeWeight(angles, specularNormalWeightParamsSimplified, 0.0);
                 float normalWSpecular = GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
 
-                float roughnessWSpecular = GetRoughnessWeight(roughnessWeightParams, sampleRoughness);
+                float roughnessWSpecular = ComputeWeight(sampleRoughness, roughnessWeightParams.x, roughnessWeightParams.y);
 
                 // Summing up specular
                 float4 sampleSpecularIlluminationAnd2ndMoment = sharedSpecular[sharedMemoryIndexP.y][sharedMemoryIndexP.x];
@@ -309,7 +310,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 #endif
 #ifdef RELAX_DIFFUSE
                 // Calculating weights for diffuse
-                float normalWDiffuse = GetNormalWeight(diffuseNormalWeightParams, centerNormal, sampleNormal);
+                float angled = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+                float normalWDiffuse = ComputeWeight(angled, diffuseNormalWeightParams, 0.0);
 
                 // Summing up diffuse
                 float4 sampleDiffuseIlluminationAnd2ndMoment = sharedDiffuse[sharedMemoryIndexP.y][sharedMemoryIndexP.x];
@@ -399,7 +401,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
                 // Calculating weights
                 float depthW = 1.0;// TODO: should we take in account depth here?
-                float normalW = GetNormalWeight(diffuseNormalWeightParams, centerNormal, sampleNormal);
+                float angle = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+                float normalW = ComputeWeight(angle, diffuseNormalWeightParams, 0.0);
 
 #ifdef RELAX_SPECULAR
                 float4 sampleSpecular = sharedSpecular[sharedMemoryIndexP.y][sharedMemoryIndexP.x];

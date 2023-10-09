@@ -74,7 +74,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
 
-    float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness );
+    float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness );
     float diffNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, 1.0 );
     float specNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, roughness );
 
@@ -100,19 +100,20 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             // This weight is strict ( non exponential ) because we need to avoid accessing data from other surfaces
             float3 Xvs = STL::Geometry::ReconstructViewPosition( pixelUv + o * gInvRectSize, gFrustum, temp.z, gOrthoMode );
-            w *= GetGeometryWeight( geometryWeightParams, Nv, Xvs );
+            float NoX = dot( Nv, Xvs );
+            w *= ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
 
             float2 ww = w * float2( temp.xy != 0.0 );
             #ifndef REBLUR_PERFORMANCE_MODE
                 float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
 
-                float cosa = saturate( dot( N, normalAndRoughness.xyz ) );
+                float cosa = dot( N, normalAndRoughness.xyz );
                 float angle = STL::Math::AcosApprox( cosa );
 
                 // These weights have infinite exponential tails, because with strict weights we are reducing a chance to find a valid sample in 3x3 or 5x5 area
-                ww.x *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
-                ww.y *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
-                ww.y *= _ComputeExponentialWeight( normalAndRoughness.w * normalAndRoughness.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
+                ww.x *= ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
+                ww.y *= ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
+                ww.y *= ComputeExponentialWeight( normalAndRoughness.w * normalAndRoughness.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
             #endif
 
             center.xy += temp.xy * ww;

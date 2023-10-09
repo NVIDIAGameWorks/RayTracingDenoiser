@@ -164,9 +164,11 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 gOrthoMode == 0 ? centerViewZ : 1.0,
                 sampleWorldPos,
                 gDepthThreshold);
-            sampleWeight *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
 
-            sampleWeight *= lerp(diffMinHitDistanceWeight, 1.0, GetHitDistanceWeight(hitDistanceWeightParams, sampleDiffuseIllumination.a));
+            float angle = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            sampleWeight *= ComputeWeight(angle, normalWeightParams, 0.0);
+
+            sampleWeight *= lerp(diffMinHitDistanceWeight, 1.0, ComputeExponentialWeight(sampleDiffuseIllumination.a, hitDistanceWeightParams.x, hitDistanceWeightParams.y));
 
             diffuseIllumination += (sampleWeight > 0) ? sampleDiffuseIllumination * sampleWeight : 0;
 
@@ -290,8 +292,10 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             float sampleWeight = IsInScreen(uv);
             sampleWeight *= GetGaussianWeight(offset.z);
             sampleWeight *= CompareMaterials(centerMaterialID, sampleMaterialID, gSpecMaterialMask);
-            sampleWeight *= GetRoughnessWeight(roughnessWeightParams, sampleRoughness);
-            sampleWeight *= GetNormalWeight(normalWeightParams, centerNormal, sampleNormal);
+            sampleWeight *= ComputeWeight(sampleRoughness, roughnessWeightParams.x, roughnessWeightParams.y);
+
+            float angle = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            sampleWeight *= ComputeWeight(angle, normalWeightParams, 0.0);
 
             float3 sampleWorldPos = GetCurrentWorldPosFromClipSpaceXY(uv * 2.0 - 1.0, sampleViewZ);
             sampleWeight *= GetPlaneDistanceWeight(
@@ -301,7 +305,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 sampleWorldPos,
                 gDepthThreshold);
 
-            sampleWeight *= lerp(specMinHitDistanceWeight, 1.0, GetHitDistanceWeight(hitDistanceWeightParams, sampleSpecularIllumination.a));
+            sampleWeight *= lerp(specMinHitDistanceWeight, 1.0, ComputeExponentialWeight(sampleSpecularIllumination.a, hitDistanceWeightParams.x, hitDistanceWeightParams.y));
 
             // Decreasing weight for samples that most likely are very close to reflection contact
             // which should not be pre-blurred

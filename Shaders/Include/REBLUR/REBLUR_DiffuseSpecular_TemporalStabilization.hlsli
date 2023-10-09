@@ -200,15 +200,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Previous position and surface motion uv
     float4 mv = gInOut_Mv[ pixelPosUser ] * float4( gMvScale, 1.0 );
-    float3 Xprev = X;
+    if( gMvScale.z == 0.0 )
+        mv.z = STL::Geometry::AffineTransform( gWorldToViewPrev, X ).z - viewZ;
 
+    float3 Xprev = X;
     float2 smbPixelUv = pixelUv + mv.xy;
     if( gIsWorldSpaceMotionEnabled )
     {
         Xprev += mv.xyz;
         smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
     }
-    else if( gMvScale.z != 0.0 )
+    else
     {
         float viewZprev = viewZ + mv.z;
         float3 Xvprevlocal = STL::Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
@@ -295,6 +297,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Hit distance for tracking ( tests 6, 67, 155 )
         float hitDistForTracking = min( spec.w, specMin.y ) * _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
 
+        // Needed to preserve contact ( test 3, 8 ), but adds pixelation in some cases ( test 160 ). More fun if lobe trimming is off.
         [flatten]
         if( gSpecPrepassBlurRadius != 0.0 )
             hitDistForTracking = min( hitDistForTracking, gIn_Spec_HitDistForTracking[ pixelPos ] );

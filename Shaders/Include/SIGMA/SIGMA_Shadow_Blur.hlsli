@@ -191,8 +191,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Sample weight
-        float3 samplePos = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
-        float w = GetGeometryWeight( geometryWeightParams, Nv, samplePos );
+        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+        float NoX = dot( Nv, Xvs );
+
+        float w = ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
         w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
         w *= IsInScreen( uv );
 

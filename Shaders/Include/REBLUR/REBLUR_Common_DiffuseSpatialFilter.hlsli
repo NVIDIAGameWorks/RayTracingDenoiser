@@ -42,7 +42,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #endif
 
-        float lobeAngleFractionScale = gLobeAngleFraction * fractionScale;
+        float lobeAngleFractionScale = saturate( gLobeAngleFraction * fractionScale );
 
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
         float hitDist = ExtractHitDist( diff ) * hitDistScale;
@@ -84,6 +84,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // Weights
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
         float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed, lobeAngleFractionScale );
+        float2 px = float2( geometryWeightParams.x, normalWeightParams );
+        float2 py = float2( geometryWeightParams.y, 0.0 );
+
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( 1.0 ) * fractionScale;
 
@@ -147,9 +150,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Sample weights
             float w = CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+
+            float2 x;
+            x.x = dot( Nv, Xvs );
+            x.y = STL::Math::AcosApprox( dot( N, Ns.xyz ) );
+            x = ComputeWeight( x, px, py );
+            w *= x.x * x.y;
+
             w *= GetGaussianWeight( offset.z );
-            w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns );
-            w *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
+            w *= lerp( minHitDistWeight, 1.0, ComputeExponentialWeight( ExtractHitDist( s ), hitDistanceWeightParams.x, hitDistanceWeightParams.y ) );
 
             // Get rid of potential NANs outside of rendering rectangle or denoising range
             w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;

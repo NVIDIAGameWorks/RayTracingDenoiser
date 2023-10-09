@@ -72,7 +72,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
 #ifdef RELAX_SPECULAR
     float3 centerSpecularIllumination = gSpecularIllumination[pixelPos].xyz;
     float centerSpecularHitDist = centerHitdistViewZ.x;
-    float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams(centerRoughness);
+    float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams(centerRoughness * centerRoughness);
     float specularNormalWeightParam = GetNormalWeightParams(1.0, 1.0, centerRoughness);
 
     float sumSpecularWeight = 1000.0 * float(centerSpecularHitDist != 0.0);
@@ -105,7 +105,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
             float3 sampleRoughness = sampleNormalRoughness.w;
             float3 sampleHitdistViewZ = sharedHitdistViewZ[pos.y][pos.x];
             float sampleViewZ = sampleHitdistViewZ.z;
-            float cosa = saturate(dot(centerNormal, sampleNormal));
+            float cosa = dot(centerNormal, sampleNormal);
             float angle = STL::Math::AcosApprox(cosa);
 
             float w = IsInScreen(pixelUv + o * gInvRectSize);
@@ -115,8 +115,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
 #ifdef RELAX_SPECULAR
             float sampleSpecularHitDist = sampleHitdistViewZ.x;
             float specularWeight = w;
-            specularWeight *= _ComputeExponentialWeight(angle, specularNormalWeightParam, 0.0);
-            specularWeight *= _ComputeExponentialWeight(normalAndRoughness.w * normalAndRoughness.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y);
+            specularWeight *= ComputeExponentialWeight(angle, specularNormalWeightParam, 0.0);
+            specularWeight *= ComputeExponentialWeight(normalAndRoughness.w * normalAndRoughness.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y);
             specularWeight *= float(sampleSpecularHitDist != 0.0);
             sumSpecularHitDist += sampleSpecularHitDist * specularWeight;
             sumSpecularWeight += specularWeight;
@@ -125,7 +125,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
 #ifdef RELAX_DIFFUSE
             float sampleDiffuseHitDist = sampleHitdistViewZ.y;
             float diffuseWeight = w;
-            diffuseWeight *= _ComputeExponentialWeight(angle, diffuseNormalWeightParam, 0.0);
+            diffuseWeight *= ComputeExponentialWeight(angle, diffuseNormalWeightParam, 0.0);
             diffuseWeight *= float(sampleDiffuseHitDist != 0.0);
 
             sumDiffuseHitDist += sampleDiffuseHitDist * diffuseWeight;

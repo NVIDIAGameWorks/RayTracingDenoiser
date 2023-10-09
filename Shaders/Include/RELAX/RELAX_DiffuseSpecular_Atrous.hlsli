@@ -184,9 +184,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             float3 sampleV = -normalize(sampleWorldPos + gRoughnessEdgeStoppingRelaxation * centerWorldPos);
 
             // Calculating weights for specular
-            float normalWSpecularSimplified = GetNormalWeight(specularNormalWeightParamsSimplified, centerNormal, sampleNormal);
+            float angles = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            float normalWSpecularSimplified = ComputeWeight(angles, specularNormalWeightParamsSimplified, 0.0);
             float normalWSpecular = GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
-            float roughnessWSpecular = GetRoughnessWeight(roughnessWeightParams, sampleRoughness);
+            float roughnessWSpecular = ComputeWeight(sampleRoughness, roughnessWeightParams.x, roughnessWeightParams.y);
 
             // Summing up specular
             float wSpecular = geometryW * (gRoughnessEdgeStoppingEnabled ? (normalWSpecular * roughnessWSpecular) : normalWSpecularSimplified);
@@ -211,7 +212,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
 #ifdef RELAX_DIFFUSE
             // Calculating weights for diffuse
-            float normalWDiffuse = GetNormalWeight(diffuseNormalWeightParams, centerNormal, sampleNormal);
+            float angled = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            float normalWDiffuse = ComputeWeight(angled, diffuseNormalWeightParams, 0.0);
 
             // Summing up diffuse
             float wDiffuse = geometryW * normalWDiffuse;

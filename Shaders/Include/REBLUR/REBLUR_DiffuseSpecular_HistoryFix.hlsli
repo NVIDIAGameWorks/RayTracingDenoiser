@@ -145,14 +145,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
                     float NoX = dot( Nv, Xvs );
 
-                    float cosa = saturate( dot( Ns.xyz, N ) );
-                    float angle = STL::Math::AcosApprox( cosa );
+                    float angle = STL::Math::AcosApprox( dot( Ns.xyz, N ) );
 
                     // Accumulate
                     float w = IsInScreen( uv );
                     w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
-                    w *= _ComputeWeight( NoX, diffGeometryWeightParams.x, diffGeometryWeightParams.y );
-                    w *= _ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
+                    w *= ComputeWeight( NoX, diffGeometryWeightParams.x, diffGeometryWeightParams.y );
+                    w *= ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
 
                     REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, uvScaled, 0 );
 
@@ -302,7 +301,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             float specNormalWeightParam = 1.0 / max( lobeHalfAngle, NRD_NORMAL_ULP );
             float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
-            float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness, roughness, gRoughnessFraction );
+            float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness, sqrt( gRoughnessFraction ) );
 
             float hitDistNormAtCenter = ExtractHitDist( spec );
             float smc = GetSpecMagicCurve( roughness );
@@ -338,15 +337,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
                     float NoX = dot( Nv, Xvs );
 
-                    float cosa = saturate( dot( Ns.xyz, N ) );
-                    float angle = STL::Math::AcosApprox( cosa );
+                    float angle = STL::Math::AcosApprox( dot( Ns.xyz, N ) );
 
                     // Accumulate
                     float w = IsInScreen( uv );
                     w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
-                    w *= _ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
-                    w *= _ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
-                    w *= _ComputeExponentialWeight( Ns.w * Ns.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
+                    w *= ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
+                    w *= ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
+                    w *= ComputeExponentialWeight( Ns.w * Ns.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
 
                     REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, uvScaled, 0 );
 

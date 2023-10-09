@@ -46,8 +46,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #endif
 
-        float lobeAngleFractionScale = gLobeAngleFraction * fractionScale;
-        float roughnessFractionScale = gRoughnessFraction * fractionScale;
+        float lobeAngleFractionScale = saturate( gLobeAngleFraction * fractionScale );
+        float roughnessFractionScale = saturate( gRoughnessFraction * fractionScale );
 
         float hitDist = ExtractHitDist( spec ) * _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
 
@@ -102,8 +102,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // Weights
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
         float normalWeightParams = GetNormalWeightParams( specNonLinearAccumSpeed, lobeAngleFractionScale, roughness );
-        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScale );
+        float3 px = float3( geometryWeightParams.x, normalWeightParams, roughnessWeightParams.x );
+        float3 py = float3( geometryWeightParams.y, 0.0, roughnessWeightParams.y );
+
+        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( smc ) * fractionScale;
 
         // Sampling
@@ -166,10 +169,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Sample weights
             float w = CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
-            w *= GetCombinedWeight( geometryWeightParams, Nv, Xvs, normalWeightParams, N, Ns, roughnessWeightParams );
+
+            float3 x;
+            x.x = dot( Nv, Xvs );
+            x.y = STL::Math::AcosApprox( dot( N, Ns.xyz ) );
+            x.z = Ns.w;
+            x = ComputeWeight( x, px, py );
+            w *= x.x * x.y * x.z;
+
             float geometryWeight = w;
             w *= GetGaussianWeight( offset.z );
-            w *= lerp( minHitDistWeight, 1.0, GetHitDistanceWeight( hitDistanceWeightParams, ExtractHitDist( s ) ) );
+            w *= lerp( minHitDistWeight, 1.0, ComputeExponentialWeight( ExtractHitDist( s ), hitDistanceWeightParams.x, hitDistanceWeightParams.y ) );
 
             // Get rid of potential NANs outside of rendering rectangle or denoising range
             w = ( IsInScreen( uv ) && !isnan( w ) ) ? w : 0.0;

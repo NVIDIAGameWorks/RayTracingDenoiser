@@ -96,7 +96,6 @@ uint PackData2( float fbits, float curvature, float virtualHistoryAmount )
     // other - free // TODO: use if needed
 
     uint p = uint( fbits + 0.5 );
-
     p |= uint( saturate( virtualHistoryAmount ) * 255.0 + 0.5 ) << 8;
     p |= f32tof16( curvature ) << 16;
 
@@ -348,26 +347,6 @@ float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float
 }
 
 // Weights
-
-float GetCombinedWeight
-(
-    float2 geometryWeightParams, float3 Nv, float3 Xvs,
-    float normalWeightParams, float3 N, float4 Ns,
-    float2 roughnessWeightParams = 0
-)
-{
-    float3 a = float3( geometryWeightParams.x, normalWeightParams, roughnessWeightParams.x );
-    float3 b = float3( geometryWeightParams.y, 0.0, roughnessWeightParams.y );
-
-    float3 t;
-    t.x = dot( Nv, Xvs );
-    t.y = STL::Math::AcosApprox( saturate( dot( N, Ns.xyz ) ) );
-    t.z = Ns.w; // IMPORTANT: requires "GetRoughnessWeightParams"
-
-    float3 w = _ComputeWeight( t, a, b );
-
-    return w.x * w.y * w.z;
-}
 
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invTextureSize,

@@ -134,7 +134,7 @@ float GetSpecularNormalWeight_ATrous(float2 params0, float3 n0, float3 n, float3
 {
     float cosaN = dot(n0, n);
     float cosaV = dot(v0, v);
-    float cosa = saturate(min(cosaN, cosaV));
+    float cosa = min(cosaN, cosaV);
     float a = STL::Math::AcosApprox(cosa);
     a = STL::Math::SmoothStep(0.0, params0.x, a);
 
@@ -151,7 +151,7 @@ float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
 
 float GetNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
 {
-    float cosa = saturate(dot(Ncurr, Nprev));
+    float cosa = dot(Ncurr, Nprev);
 
     float a = 1.0 / maxAngle;
     float d = STL::Math::AcosApprox(cosa);

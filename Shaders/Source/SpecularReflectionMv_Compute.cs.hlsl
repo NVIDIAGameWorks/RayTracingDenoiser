@@ -59,15 +59,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Previous position and surface motion uv
     float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
-    float3 Xprev = X;
+    if( gMvScale.z == 0.0 )
+        mv.z = STL::Geometry::AffineTransform( gWorldToViewPrev, X ).z - viewZ;
 
+    float3 Xprev = X;
     float2 smbPixelUv = pixelUv + mv.xy;
     if( gIsWorldSpaceMotionEnabled )
     {
         Xprev += mv;
         smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
     }
-    else if( gMvScale.z != 0.0 )
+    else
     {
         float viewZprev = viewZ + mv.z;
         float3 Xvprevlocal = STL::Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
@@ -108,8 +110,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // IMPORTANT: this code allows to get non-zero parallax on objects attached to the camera
         float2 uvForZeroParallax = gOrthoMode == 0.0 ? smbPixelUv : pixelUv;
         float2 deltaUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev - gCameraDelta ) - uvForZeroParallax;
-        float len = length( deltaUv );
-        float2 motionUv = pixelUv + deltaUv * 0.99 * gInvRectSize / max( len, gInvRectSize.x / 256.0 ); // stay in SMEM
+        deltaUv *= gRectSize;
+        float deltaUvLen = length( deltaUv );
+        deltaUv /= max( deltaUvLen, 1.0 / 256.0 );
+        float2 motionUv = pixelUv + 0.99 * deltaUv * gInvRectSize; // stay in SMEM
 
         // Construct the other edge point "x"
         float z = abs( gIn_ViewZ.SampleLevel( gLinearClamp, gRectOffset + motionUv * gResolutionScale, 0 ) );
@@ -128,6 +132,42 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float3 n11 = s_Normal_Roughness[ pos.y + 1 ][ pos.x + 1 ].xyz;
 
         float3 n = normalize( STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f ) );
+
+        // ( Optional ) High parallax - flattens surface on high motion ( test 132, e9 )
+        // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33 )
+        deltaUvLen *= NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0;
+        float2 motionUvHigh = pixelUv + deltaUvLen * deltaUv * gInvRectSize;
+        if( NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLen > 1.0 && IsInScreen( motionUvHigh ) )
+        {
+            // Construct the other edge point "xHigh"
+            float zHigh = abs( gIn_ViewZ.SampleLevel( gLinearClamp, gRectOffset + motionUvHigh * gResolutionScale, 0 ) );
+            float3 xHigh = STL::Geometry::ReconstructViewPosition( motionUvHigh, gFrustum, zHigh, gOrthoMode );
+            xHigh = STL::Geometry::RotateVector( gViewToWorld, xHigh );
+
+            // Interpolate normal at "xHigh"
+            #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
+                f = STL::Filtering::GetBilinearFilter( motionUvHigh, gRectSize );
+
+                pos = gRectOrigin + int2( f.origin );
+                pos = clamp( pos, 0, int2( gRectSize ) - 2 );
+
+                n00 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos ] ).xyz;
+                n10 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 1, 0 ) ] ).xyz;
+                n01 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 0, 1 ) ] ).xyz;
+                n11 = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ pos + int2( 1, 1 ) ] ).xyz;
+
+                float3 nHigh = normalize( STL::Filtering::ApplyBilinearFilter( n00, n10, n01, n11, f ) );
+            #else
+                float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gLinearClamp, gRectOffset + motionUvHigh * gResolutionScale, 0 ) ).xyz;
+            #endif
+
+            // Replace if same surface
+            float zError = abs( zHigh - viewZ ) * rcp( max( zHigh, viewZ ) );
+            bool cmp = zError < NRD_CURVATURE_Z_THRESHOLD;
+
+            n = cmp ? nHigh : n;
+            x = cmp ? xHigh : x;
+        }
 
         // Estimate curvature for the edge { x; X }
         float3 edge = x - X;
