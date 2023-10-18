@@ -280,7 +280,7 @@ float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, f
     return error;
 }
 
-float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma, float4 antilagParams )
+float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma, float4 antilagParams, float accumSpeed )
 {
     float2 slow = float2( GetLuma( history ), ExtractHitDist( history ) );
     float2 fast = float2( GetLuma( signal ), ExtractHitDist( signal ) );
@@ -292,6 +292,9 @@ float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma
 
     d = STL::Math::SmoothStep01( 1.0 - d );
     d = STL::Math::Pow01( d, antilagParams.zw );
+
+    // Needed at least for test 156, especially when motion is accelerated
+    d = lerp( 1.0, d, GetFadeBasedOnAccumulatedFrames( accumSpeed ) );
 
     return REBLUR_SHOW == 0 ? min( d.x, d.y ) : 1.0;
 }

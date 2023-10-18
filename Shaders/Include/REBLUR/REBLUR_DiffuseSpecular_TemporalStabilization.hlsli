@@ -199,7 +199,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     // Previous position and surface motion uv
-    float4 mv = gInOut_Mv[ pixelPosUser ] * float4( gMvScale, 1.0 );
+    float4 inMv = gInOut_Mv[ pixelPosUser ];
+    float3 mv = inMv.xyz * gMvScale;
     if( gMvScale.z == 0.0 )
         mv.z = STL::Geometry::AffineTransform( gWorldToViewPrev, X ).z - viewZ;
 
@@ -207,7 +208,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float2 smbPixelUv = pixelUv + mv.xy;
     if( gIsWorldSpaceMotionEnabled )
     {
-        Xprev += mv.xyz;
+        Xprev += mv;
         smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
     }
     else
@@ -259,7 +260,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Compute antilag
         float diffStabilizationStrength = stabilizationStrength * float( smbPixelUv.x >= gSplitScreen );
-        float diffAntilag = ComputeAntilag( smbDiffHistory, diff, diffSigma, gAntilagParams );
+        float diffAntilag = ComputeAntilag( smbDiffHistory, diff, diffSigma, gAntilagParams, data1.x );
 
         // Clamp history and combine with the current frame
         float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( smbIsInScreenMulFootprintQuality, data1.x );
@@ -302,40 +303,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         if( gSpecPrepassBlurRadius != 0.0 )
             hitDistForTracking = min( hitDistForTracking, gIn_Spec_HitDistForTracking[ pixelPos ] );
 
-        // Sample history - surface motion
-        REBLUR_TYPE smbSpecHistory;
-        REBLUR_SH_TYPE smbSpecShHistory;
-
-        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-            saturate( smbPixelUv ) * gRectSizePrev, gInvScreenSize,
-            smbOcclusionWeights, smbIsCatromAllowed,
-            gIn_Spec_StabilizedHistory, smbSpecHistory
-            #ifdef REBLUR_SH
-                , gIn_SpecSh_StabilizedHistory, smbSpecShHistory
-            #endif
-        );
-
-        // Sample history - virtual motion
+        // Virtual motion
         float3 V = GetViewVector( X );
         float NoV = abs( dot( N, V ) );
         float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
         float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
         float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
-
-        REBLUR_TYPE vmbSpecHistory;
-        #if( REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS == 1 )
-            BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
-                saturate( vmbPixelUv ) * gRectSizePrev, gInvScreenSize,
-                0, true,
-                gIn_Spec_StabilizedHistory, vmbSpecHistory
-            );
-        #else
-            vmbSpecHistory = gIn_Spec_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
-        #endif
-
-        #ifdef REBLUR_SH
-            float4 vmbSpecShHistory = gIn_SpecSh_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
-        #endif
 
         // Modify MVs if requested
         if( gSpecularProbabilityThresholdsForMvModification.x < 1.0 )
@@ -360,17 +333,47 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 if( !gIsWorldSpaceMotionEnabled )
                 {
                     specMv.xy = vmbPixelUv - pixelUv;
-                    specMv.z = 0.0; // TODO: nice to have, but not needed for TAA & upscaling techniques
+                    specMv.z = STL::Geometry::AffineTransform( gWorldToViewPrev, Xvirtual ).z - viewZ; // TODO: is it useful?
                 }
 
-                mv.xyz = lerp( mv.xyz, specMv, f );
+                mv = lerp( mv, specMv, f );
 
-                mv.xy /= gMvScale.xy;
-                mv.z /= gMvScale.z == 0.0 ? 1.0 : gMvScale.z;
+                // Modify only .xy for 2D and .xyz for 2.5D and 3D MVs
+                inMv.xy = mv.xy / gMvScale.xy;
+                inMv.z = gMvScale.z == 0.0 ? inMv.z : mv.z / gMvScale.z;
 
-                gInOut_Mv[ pixelPosUser ] = mv;
+                gInOut_Mv[ pixelPosUser ] = inMv;
             }
         }
+
+        // Sample history - surface motion
+        REBLUR_TYPE smbSpecHistory;
+        REBLUR_SH_TYPE smbSpecShHistory;
+
+        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+            saturate( smbPixelUv ) * gRectSizePrev, gInvScreenSize,
+            smbOcclusionWeights, smbIsCatromAllowed,
+            gIn_Spec_StabilizedHistory, smbSpecHistory
+            #ifdef REBLUR_SH
+                , gIn_SpecSh_StabilizedHistory, smbSpecShHistory
+            #endif
+        );
+
+        // Sample history - virtual motion
+        REBLUR_TYPE vmbSpecHistory;
+        #if( REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS == 1 )
+            BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+                saturate( vmbPixelUv ) * gRectSizePrev, gInvScreenSize,
+                0, true,
+                gIn_Spec_StabilizedHistory, vmbSpecHistory
+            );
+        #else
+            vmbSpecHistory = gIn_Spec_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
+        #endif
+
+        #ifdef REBLUR_SH
+            float4 vmbSpecShHistory = gIn_SpecSh_StabilizedHistory.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
+        #endif
 
         // Avoid negative values
         smbSpecHistory = ClampNegativeToZero( smbSpecHistory );
@@ -391,7 +394,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         if( virtualHistoryAmount != 0.0 )
             specStabilizationStrength *= float( vmbPixelUv.x >= gSplitScreen );
 
-        float specAntilag = ComputeAntilag( specHistory, spec, specSigma, gAntilagParams );
+        float specAntilag = ComputeAntilag( specHistory, spec, specSigma, gAntilagParams, data1.z );
 
         // Clamp history and combine with the current frame
         float isInScreenMulFootprintQuality = lerp( smbIsInScreenMulFootprintQuality, 1.0, virtualHistoryAmount );

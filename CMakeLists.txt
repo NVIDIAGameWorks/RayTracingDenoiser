@@ -25,6 +25,10 @@ if (NOT IS_SUBMODULE)
     set (CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "")
 endif ()
 
+# Generate PDB for Release builds
+set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+set (CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+
 set (NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "Custom DXC to use if Vulkan SDK is not installed")
 set (NRD_SHADERS_PATH "" CACHE STRING "Shader output path override")
 set (NRD_NORMAL_ENCODING "2" CACHE STRING "Normal encoding variant (0-4, matches nrd::NormalEncoding)")
@@ -146,8 +150,6 @@ target_compile_options (${PROJECT_NAME} PRIVATE ${COMPILE_OPTIONS})
 set_property (TARGET ${PROJECT_NAME} PROPERTY FOLDER "${PROJECT_NAME}")
 
 set_target_properties (${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
-set_target_properties (${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
-set_target_properties (${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
 message ("NRD output path: '${GLOBAL_BIN_OUTPUT_PATH}'")
 
 # Shaders
