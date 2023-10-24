@@ -180,9 +180,22 @@ float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float
     return baseRotator;
 }
 
+// IMPORTANT: use "IsInScreen2x2" in critical places
 float IsInScreen( float2 uv )
 {
     return float( all( saturate( uv ) == uv ) );
+}
+
+// x y
+// z w
+float4 IsInScreen2x2( float2 footprintOrigin, float2 rectSize )
+{
+    float4 p = footprintOrigin.xyxy + float4( 0, 0, 1, 1 );
+
+    float4 r = float4( p >= 0.0 );
+    r *= float4( p < rectSize.xyxy );
+
+    return r.xzxz * r.yyww;
 }
 
 float2 ApplyCheckerboardShift( float2 uv, uint mode, uint counter, float2 screenSize, float2 invScreenSize, uint frameIndex )
@@ -384,6 +397,9 @@ float2 GetRelaxedRoughnessWeightParams( float m, float fraction = 1.0, float sen
 // IMPORTANT: cutoffs are needed to minimize floating point precision drifting
 #define ComputeNonExponentialWeight( x, px, py ) \
     STL::Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) )
+
+#define ComputeNonExponentialWeightWithSigma( x, px, py, sigma ) \
+    STL::Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) - sigma * px )
 
 #if( NRD_USE_EXPONENTIAL_WEIGHTS == 1 )
     #define ComputeWeight( x, px, py )     ComputeExponentialWeight( x, px, py )

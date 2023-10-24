@@ -512,7 +512,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
     #if( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQRT_LINEAR )
         r.w *= r.w;
     #elif( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQ_LINEAR )
-        r.w = sqrt( r.w );
+        r.w = sqrt( saturate( r.w ) );
     #endif
 
     return r;

@@ -161,6 +161,14 @@ static const float3 g_Special8[ 8 ] =
     float3( -0.25 * sqrt( 2.0 ) , -0.25 * sqrt( 2.0 ) , 0.5 )
 };
 
+#ifdef REBLUR_DIRECTIONAL_OCCLUSION
+    #undef REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA
+    #define REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA          0
+
+    #undef REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA
+    #define REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA          0
+#endif
+
 // PERFORMANCE MODE: x1.25 perf boost by sacrificing IQ ( DIFFUSE_SPECULAR on RTX 3090 @ 1440p 2.05 vs 2.55 ms )
 #ifdef REBLUR_PERFORMANCE_MODE
     #undef REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA

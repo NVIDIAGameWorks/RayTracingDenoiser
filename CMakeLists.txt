@@ -66,11 +66,11 @@ if (MSVC)
 endif ()
 
 # Compile options
-IF(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
-  SET(SIMD -msse4.1)
-ELSE(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
-  SET(SIMD -fPIC)
-ENDIF()
+if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+  set (SIMD -msse4.1)
+elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
+  set (SIMD -fPIC)
+endif ()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set (COMPILE_OPTIONS ${SIMD} -Wextra)

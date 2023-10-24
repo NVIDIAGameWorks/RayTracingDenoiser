@@ -91,9 +91,8 @@ float4 UnpackData1( float4 p )
 uint PackData2( float fbits, float curvature, float virtualHistoryAmount )
 {
     // BITS:
-    // 0     - smbAllowCatRom
-    // 1-4   - smbOcclusion 2x2
-    // other - free // TODO: use if needed
+    // 0-3 - smbOcclusion 2x2
+    // 4-7 - vmbOcclusion 2x2
 
     uint p = uint( fbits + 0.5 );
     p |= uint( saturate( virtualHistoryAmount ) * 255.0 + 0.5 ) << 8;

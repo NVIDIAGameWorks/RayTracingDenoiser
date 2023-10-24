@@ -63,11 +63,6 @@ float loadSurfaceMotionBasedPrevData(
 #endif
 )
 {
-    // Calculating disocclusion threshold
-    float pixelSize = PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, currentLinearZ);
-    float frustumSize = pixelSize * min(gRectSize.x, gRectSize.y);
-    float disocclusionThreshold = mixedDisocclusionDepthThreshold * frustumSize / lerp(NdotV, 1.0, saturate(parallaxInPixels / 30.0));
-
     // Calculating previous pixel position
     float2 prevPixelPosFloat = prevUVSMB * gRectSizePrev;
 
@@ -106,16 +101,23 @@ float loadSurfaceMotionBasedPrevData(
     float4 prevMaterialIDs01 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin01).wzxy;
     float4 prevMaterialIDs11 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin11).wzxy;
 
+    // Calculating disocclusion threshold
+    float pixelSize = PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, currentLinearZ);
+    float frustumSize = pixelSize * min(gRectSize.x, gRectSize.y);
+    float4 disocclusionThreshold = mixedDisocclusionDepthThreshold * frustumSize / lerp(NdotV, 1.0, saturate(parallaxInPixels / 30.0));
+    disocclusionThreshold *= IsInScreen2x2( bilinearOrigin, gRectSizePrev );
+    disocclusionThreshold -= NRD_EPS;
+
     // Calculating validity of 12 bicubic taps, 4 of those are bilinear taps
     float3 prevViewPos = STL::Geometry::AffineTransform(gPrevWorldToView, prevWorldPos);
     float3 planeDist0 = abs(prevViewZs00.yzw - prevViewPos.zzz);
     float3 planeDist1 = abs(prevViewZs10.xzw - prevViewPos.zzz);
     float3 planeDist2 = abs(prevViewZs01.xyw - prevViewPos.zzz);
     float3 planeDist3 = abs(prevViewZs11.xyz - prevViewPos.zzz);
-    float3 tapsValid0 = step(planeDist0, disocclusionThreshold);
-    float3 tapsValid1 = step(planeDist1, disocclusionThreshold);
-    float3 tapsValid2 = step(planeDist2, disocclusionThreshold);
-    float3 tapsValid3 = step(planeDist3, disocclusionThreshold);
+    float3 tapsValid0 = step(planeDist0, disocclusionThreshold.x);
+    float3 tapsValid1 = step(planeDist1, disocclusionThreshold.y);
+    float3 tapsValid2 = step(planeDist2, disocclusionThreshold.z);
+    float3 tapsValid3 = step(planeDist3, disocclusionThreshold.w);
     tapsValid0 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs00.yzw, materialIDMask);
     tapsValid1 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs10.xzw, materialIDMask);
     tapsValid2 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs01.xyw, materialIDMask);
@@ -137,16 +139,6 @@ float loadSurfaceMotionBasedPrevData(
         bilinearTapsValid = 0;
         bicubicFootprintValid = 0;
     }
-
-    // Checking bicubic footprint validity for being in screen
-    [flatten]
-    if (any(bilinearOrigin < int2(1, 1)) || any(bilinearOrigin >= int2(gRectSizePrev)-int2(2, 2)))
-    {
-        bicubicFootprintValid = 0;
-    }
-
-    // Checking bilinear footprint validity for being in screen
-    bilinearTapsValid *= IsInScreen(prevUVSMB);
 
     // Calculating bilinear weights in advance
     STL::Filtering::Bilinear bilinear;
@@ -278,7 +270,6 @@ float loadVirtualMotionBasedPrevData(
     prevUVVMB = prevVirtualClipPos.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
 
     float2 prevVirtualPixelPosFloat = prevUVVMB * gRectSizePrev;
-    float disocclusionThreshold = mixedDisocclusionDepthThreshold * (gOrthoMode == 0 ? currentLinearZ : 1.0);
 
     // Consider reprojection to the same pixel index a small motion.
     // It is useful for skipping reprojection test for static camera when the jitter is the only source of motion.
@@ -294,6 +285,11 @@ float loadVirtualMotionBasedPrevData(
     // Taking care of camera motion, because world-space is always centered at camera position in NRD
     currentWorldPos -= gPrevCameraPosition.xyz;
 
+    // Calculating disocclusion threshold
+    float4 disocclusionThreshold = mixedDisocclusionDepthThreshold * (gOrthoMode == 0 ? currentLinearZ : 1.0);
+    disocclusionThreshold *= IsInScreen2x2( bilinearOrigin, gRectSizePrev );
+    disocclusionThreshold -= NRD_EPS;
+
     // Checking bilinear footprint only for virtual motion based specular reprojection
     float4 prevViewZs = gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin).wzxy;
     float4 prevMaterialIDs = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin).wzxy;
@@ -301,19 +297,16 @@ float loadVirtualMotionBasedPrevData(
     float4 bilinearTapsValid;
 
     prevWorldPosInTap = GetPreviousWorldPosFromPixelPos(bilinearOrigin + int2(0, 0), prevViewZs.x);
-    bilinearTapsValid.x = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
+    bilinearTapsValid.x = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold.x);
     prevWorldPosInTap = GetPreviousWorldPosFromPixelPos(bilinearOrigin + int2(1, 0), prevViewZs.y);
-    bilinearTapsValid.y = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
+    bilinearTapsValid.y = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold.y);
     prevWorldPosInTap = GetPreviousWorldPosFromPixelPos(bilinearOrigin + int2(0, 1), prevViewZs.z);
-    bilinearTapsValid.z = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
+    bilinearTapsValid.z = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold.z);
     prevWorldPosInTap = GetPreviousWorldPosFromPixelPos(bilinearOrigin + int2(1, 1), prevViewZs.w);
-    bilinearTapsValid.w = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold);
+    bilinearTapsValid.w = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, disocclusionThreshold.w);
 
     bilinearTapsValid *= CompareMaterials(currentMaterialID.xxxx, prevMaterialIDs.xyzw, materialIDMask);
     bilinearTapsValid = skipReprojectionTest ? float4(1.0, 1.0, 1.0, 1.0) : bilinearTapsValid;
-
-    // Checking bilinear footprint validity for being in screen
-    bilinearTapsValid *= IsInScreen(prevUVVMB);
 
     // Applying reprojection
     prevSpecularIllumAnd2ndMoment = 0;
@@ -684,9 +677,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // ( Optional ) High parallax - flattens surface on high motion ( test 132, e9 )
     // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33 )
-    deltaUvLen *= NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0;
-    float2 motionUvHigh = pixelUv + deltaUvLen * deltaUv * gInvRectSize;
-    if (NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLen > 1.0 && IsInScreen(motionUvHigh))
+    float deltaUvLenFixed = deltaUvLen * ( NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0 ); // it fixes silhouettes, but leads to less flattening
+    float2 motionUvHigh = pixelUv + deltaUvLenFixed * deltaUv * gInvRectSize;
+    if (NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLenFixed > 1.0 && IsInScreen(motionUvHigh))
     {
         float zHigh = abs(gViewZ.SampleLevel(gLinearClamp, gRectOffset + motionUvHigh * gResolutionScale, 0));
         float3 xHigh = GetCurrentWorldPosFromClipSpaceXY(motionUvHigh * 2.0 - 1.0, zHigh);
@@ -728,8 +721,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float2 uv1 = STL::Geometry::GetScreenUv(gPrevWorldToClip, currentWorldPos - V * ApplyThinLensEquation(NoV, hitDist, curvature));
     float2 uv2 = STL::Geometry::GetScreenUv(gPrevWorldToClip, currentWorldPos);
     float a = length((uv1 - uv2) * gRectSize);
-    float b = length(deltaUv * gRectSize);
-    curvature *= float(a < 3.0 * b + gInvRectSize.x); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
+    curvature *= float(a < 3.0 * deltaUvLen + gInvRectSize.x); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
 
     // Thin lens equation for adjusting reflection HitT
     float hitDistFocused = ApplyThinLensEquation(NoV, hitDist, curvature);
@@ -861,10 +853,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     virtualHistoryHitDistConfidence *= STL::Math::SmoothStep(lobeRadiusInPixels + 0.25, 0.0, deltaParallaxInPixels);
 
     // Current specular signal ( surface motion )
-    float smcFactor = lerp(0.25, 0.001, SMC); // TODO: tune better?
-    smcFactor *= lerp(1.0, lerp(1.0, 0.25, SMC), NoV);
-    float specSMBConfidence = (SMBReprojectionFound > 0 ? 1.0 : 0.0) / (1.0 + smcFactor * parallaxInPixels);
-    specSMBConfidence *= GetNormalWeight(V, Vprev, lobeHalfAngle * NoV / gFramerateScale);
+    float specSMBConfidence = (SMBReprojectionFound > 0 ? 1.0 : 0.0) *
+        GetNormalWeight(V, Vprev, lobeHalfAngle * NoV / gFramerateScale);
 
     float specSMBAlpha = 1.0 - specSMBConfidence;
     float specSMBResponsiveAlpha = 1.0 - specSMBConfidence;

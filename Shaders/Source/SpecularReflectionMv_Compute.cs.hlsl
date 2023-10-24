@@ -135,9 +135,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // ( Optional ) High parallax - flattens surface on high motion ( test 132, e9 )
         // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33 )
-        deltaUvLen *= NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0;
-        float2 motionUvHigh = pixelUv + deltaUvLen * deltaUv * gInvRectSize;
-        if( NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLen > 1.0 && IsInScreen( motionUvHigh ) )
+        float deltaUvLenFixed = deltaUvLen * ( NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0 ); // it fixes silhouettes, but leads to less flattening
+        float2 motionUvHigh = pixelUv + deltaUvLenFixed * deltaUv * gInvRectSize;
+        if( NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLenFixed > 1.0 && IsInScreen( motionUvHigh ) )
         {
             // Construct the other edge point "xHigh"
             float zHigh = abs( gIn_ViewZ.SampleLevel( gLinearClamp, gRectOffset + motionUvHigh * gResolutionScale, 0 ) );
@@ -183,8 +183,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float2 uv1 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X - V * ApplyThinLensEquation( NoV, hitDistForTracking, curvature ) );
         float2 uv2 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X );
         float a = length( ( uv1 - uv2 ) * gRectSize );
-        float b = length( deltaUv * gRectSize );
-        curvature *= float( a < 3.0 * b + gInvRectSize.x ); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
+        curvature *= float( a < 3.0 * deltaUvLen + gInvRectSize.x ); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
     }
 
     // Virtual motion
