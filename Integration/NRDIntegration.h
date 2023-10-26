@@ -23,15 +23,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <map>
 
 #define NRD_INTEGRATION_MAJOR 1
-#define NRD_INTEGRATION_MINOR 6
-#define NRD_INTEGRATION_DATE "30 April 2023"
+#define NRD_INTEGRATION_MINOR 7
+#define NRD_INTEGRATION_DATE "25 October 2023"
 #define NRD_INTEGRATION 1
 
 #define NRD_INTEGRATION_DEBUG_LOGGING 0
 
 #ifndef NRD_INTEGRATION_ASSERT
     #include <assert.h>
-    #define NRD_INTEGRATION_ASSERT(expr, msg) (assert(expr && msg))
+    #define NRD_INTEGRATION_ASSERT(expr, msg) assert(expr && msg)
 #endif
 
 // User inputs / outputs are not mipmapped, thus only 1 entry is needed.
@@ -58,12 +58,16 @@ inline void NrdIntegration_SetResource(NrdUserPool& pool, nrd::ResourceType slot
 class NrdIntegration
 {
 public:
-    // The application must provide number of buffered frames, it's needed to guarantee that
-    // constant data and descriptor sets are not overwritten while being executed on the GPU.
-    // Usually it's 2-3 frames.
-    NrdIntegration(uint32_t bufferedFramesNum, const char* persistentName = "") :
+    // bufferedFramesNum (usually 2-3 frames):
+    //      The application must provide number of buffered frames, it's needed to guarantee that
+    //      constant data and descriptor sets are not overwritten while being executed on the GPU.
+    // enableDescriptorCaching:
+    //      true - enables descriptor caching for the whole lifetime of an NrdIntegration instance
+    //      false - descriptors are cached only within a single "Denoise" call
+    NrdIntegration(uint32_t bufferedFramesNum, bool enableDescriptorCaching, const char* persistentName = "") :
         m_Name(persistentName)
         , m_BufferedFramesNum(bufferedFramesNum)
+        , m_IsDescriptorCachingEnabled(enableDescriptorCaching)
     {}
 
     ~NrdIntegration()
@@ -72,22 +76,16 @@ public:
     // There is no "Resize" functionality, because NRD full recreation costs nothing.
     // The main cost comes from render targets resizing, which needs to be done in any case
     // (call Destroy beforehand)
-    bool Initialize(const nrd::InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice,
-        const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
+    bool Initialize(const nrd::InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice, const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
 
     // Must be called once on a frame start
-    void NewFrame(uint32_t frameIndex);
+    void NewFrame();
 
-    // Explcitly calls eponymous NRD API functions
+    // Explicitly calls eponymous NRD API functions
     bool SetCommonSettings(const nrd::CommonSettings& commonSettings);
     bool SetDenoiserSettings(nrd::Identifier denoiser, const void* denoiserSettings);
 
-    // Better use "enableDescriptorCaching = true" if resources are not changing between frames
-    // (i.e. not suballocated from a heap)
-    void Denoise(const nrd::Identifier* denoisers, uint32_t denoisersNum,
-        nri::CommandBuffer& commandBuffer, const NrdUserPool& userPool,
-        bool enableDescriptorCaching
-    );
+    void Denoise(const nrd::Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, const NrdUserPool& userPool);
 
     // This function assumes that the device is in the IDLE state, i.e. there is no work in flight
     void Destroy();
@@ -110,22 +108,19 @@ private:
 
     void CreateResources();
     void AllocateAndBindMemory();
-    void Dispatch
-    (
-        nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool,
-        const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool,
-        bool enableDescriptorCaching
-    );
+    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
 
 private:
     std::vector<NrdIntegrationTexture> m_TexturePool;
-    std::map<uint64_t, nri::Descriptor*> m_Descriptors;
+    std::map<uint64_t, nri::Descriptor*> m_CachedDescriptors;
+    std::vector<std::vector<nri::Descriptor*>> m_DescriptorsInFlight;
     std::vector<nri::TextureTransitionBarrierDesc> m_ResourceState;
     std::vector<nri::PipelineLayout*> m_PipelineLayouts;
     std::vector<nri::Pipeline*> m_Pipelines;
     std::vector<nri::Memory*> m_MemoryAllocations;
     std::vector<nri::Descriptor*> m_Samplers;
-    std::array<nri::DescriptorPool*, 16> m_DescriptorPools = {};
+    std::vector<nri::DescriptorPool*> m_DescriptorPools = {};
+    std::vector<nri::DescriptorSet*> m_DescriptorSetSamplers = {};
     const nri::CoreInterface* m_NRI = nullptr;
     const nri::HelperInterface* m_NRIHelper = nullptr;
     nri::Device* m_Device = nullptr;
@@ -140,7 +135,9 @@ private:
     uint32_t m_ConstantBufferOffset = 0;
     uint32_t m_BufferedFramesNum = 0;
     uint32_t m_DescriptorPoolIndex = 0;
+    uint32_t m_FrameIndex = 0;
     bool m_IsShadersReloadRequested = false;
+    bool m_IsDescriptorCachingEnabled = false;
 };
 
 #define NRD_INTEGRATION_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_INTEGRATION_ASSERT(false, "Abort on failure!")

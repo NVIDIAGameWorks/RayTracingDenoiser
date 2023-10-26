@@ -612,6 +612,10 @@ void nrd::InstanceImpl::PrepareDesc()
     m_Desc.transientPool = m_TransientPool.data();
     m_Desc.transientPoolSize = (uint32_t)m_TransientPool.size();
 
+    const bool samplersAreInSeparateSet = NRD_SAMPLERS_SPACE_INDEX != NRD_CONSTANT_BUFFER_SPACE_INDEX && NRD_SAMPLERS_SPACE_INDEX != NRD_RESOURCES_SPACE_INDEX;
+    if (samplersAreInSeparateSet)
+        m_Desc.descriptorPoolDesc.samplersMaxNum += m_Desc.samplersNum;
+
     // Calculate descriptor heap (sets) requirements
     for (InternalDispatchDesc& dispatchDesc : m_Dispatches)
     {
@@ -628,7 +632,9 @@ void nrd::InstanceImpl::PrepareDesc()
         }
 
         m_Desc.descriptorPoolDesc.setsMaxNum += dispatchDesc.maxRepeatsNum;
-        m_Desc.descriptorPoolDesc.samplersMaxNum += dispatchDesc.maxRepeatsNum * m_Desc.samplersNum;
+
+        if (!samplersAreInSeparateSet)
+            m_Desc.descriptorPoolDesc.samplersMaxNum += dispatchDesc.maxRepeatsNum * m_Desc.samplersNum;
 
         if (dispatchDesc.constantBufferDataSize != 0)
         {
@@ -641,7 +647,9 @@ void nrd::InstanceImpl::PrepareDesc()
     uint32_t clearNum = (uint32_t)m_ClearResources.size();
     m_Desc.descriptorPoolDesc.storageTexturesMaxNum += clearNum;
     m_Desc.descriptorPoolDesc.setsMaxNum += clearNum;
-    m_Desc.descriptorPoolDesc.samplersMaxNum += clearNum * m_Desc.samplersNum;
+
+    if (!samplersAreInSeparateSet)
+        m_Desc.descriptorPoolDesc.samplersMaxNum += clearNum * m_Desc.samplersNum;
 
     // Assign resources
     for (PipelineDesc& pipelineDesc : m_Pipelines)

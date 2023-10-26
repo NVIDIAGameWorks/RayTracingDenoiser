@@ -23,17 +23,17 @@ endif ()
 # Cached
 if (NOT IS_SUBMODULE)
     set (CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "")
+    set (CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/_Bin" CACHE STRING "")
 endif ()
-
-# Generate PDB for Release builds
-set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
-set (CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
 
 set (NRD_DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "Custom DXC to use if Vulkan SDK is not installed")
 set (NRD_SHADERS_PATH "" CACHE STRING "Shader output path override")
 set (NRD_NORMAL_ENCODING "2" CACHE STRING "Normal encoding variant (0-4, matches nrd::NormalEncoding)")
 set (NRD_ROUGHNESS_ENCODING "1" CACHE STRING "Roughness encoding variant (0-2, matches nrd::RoughnessEncoding)")
-set (GLOBAL_BIN_OUTPUT_PATH "${CMAKE_SOURCE_DIR}/_Build" CACHE STRING "")
+
+# Generate PDB for Release builds
+set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+set (CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
 
 # Create project
 file (READ "Include/NRD.h" ver_h)
@@ -149,8 +149,8 @@ target_compile_options (${PROJECT_NAME} PRIVATE ${COMPILE_OPTIONS})
 
 set_property (TARGET ${PROJECT_NAME} PROPERTY FOLDER "${PROJECT_NAME}")
 
-set_target_properties (${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${GLOBAL_BIN_OUTPUT_PATH}/$<CONFIG>")
-message ("NRD output path: '${GLOBAL_BIN_OUTPUT_PATH}'")
+set_target_properties (${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message ("NRD output path: '${CMAKE_RUNTIME_OUTPUT_DIRECTORY}'")
 
 # Shaders
 if (NOT NRD_DISABLE_SHADER_COMPILATION)
@@ -161,7 +161,7 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
 
     # External/ShaderMake
     if (NOT TARGET ShaderMake)
-        set (SHADERMAKE_BIN_OUTPUT_PATH ${GLOBAL_BIN_OUTPUT_PATH} CACHE STRING "")
+        set (SHADERMAKE_BIN_OUTPUT_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} CACHE STRING "")
         add_subdirectory (External/ShaderMake)
     endif ()
 

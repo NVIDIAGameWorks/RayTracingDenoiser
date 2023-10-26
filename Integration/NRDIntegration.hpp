@@ -10,13 +10,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRDIntegration.h"
 
-static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 2, "Unsupported NRD version!");
+static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 3, "Unsupported NRD version!");
 static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 93, "Unsupported NRI version!");
 
-#if _WIN32
-    #define NRD_INTEGRATION_ALLOCA _alloca
-#else
-    #define NRD_INTEGRATION_ALLOCA alloca
+#ifdef _WIN32
+    #define alloca _alloca
 #endif
 
 constexpr std::array<nri::Format, (size_t)nrd::Format::MAX_NUM> g_NRD_NrdToNriFormat =
@@ -90,6 +88,8 @@ template<typename T, typename A> constexpr T NRD_GetAlignedSize(const T& size, A
 bool NrdIntegration::Initialize(const nrd::InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice,
     const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper)
 {
+    NRD_INTEGRATION_ASSERT(!m_Instance, "Already initialized! Did you forget to call 'Destroy'?");
+
     const nri::DeviceDesc& deviceDesc = nriCore.GetDeviceDesc(nriDevice);
     if (deviceDesc.nriVersionMajor != NRI_VERSION_MAJOR || deviceDesc.nriVersionMinor != NRI_VERSION_MINOR)
     {
@@ -149,7 +149,7 @@ void NrdIntegration::CreatePipelines()
     uint32_t descriptorSetResourcesIndex = instanceDesc.resourcesSpaceIndex == instanceDesc.constantBufferSpaceIndex ? 0 : (instanceDesc.resourcesSpaceIndex == instanceDesc.samplersSpaceIndex ? descriptorSetSamplersIndex : descriptorSetSamplersIndex + 1);
     uint32_t descriptorSetNum = std::max(descriptorSetSamplersIndex, descriptorSetResourcesIndex) + 1;
 
-    nri::DescriptorSetDesc* descriptorSetDescs = (nri::DescriptorSetDesc*)NRD_INTEGRATION_ALLOCA(sizeof(nri::DescriptorSetDesc) * descriptorSetNum);
+    nri::DescriptorSetDesc* descriptorSetDescs = (nri::DescriptorSetDesc*)alloca(sizeof(nri::DescriptorSetDesc) * descriptorSetNum);
     memset(descriptorSetDescs, 0, sizeof(nri::DescriptorSetDesc) * descriptorSetNum);
 
     nri::DescriptorSetDesc& descriptorSetConstantBuffer = descriptorSetDescs[0];
@@ -170,7 +170,7 @@ void NrdIntegration::CreatePipelines()
     }
     resourceRangesNum += 1; // samplers
 
-    nri::DescriptorRangeDesc* descriptorRanges = (nri::DescriptorRangeDesc*)NRD_INTEGRATION_ALLOCA(sizeof(nri::DescriptorRangeDesc) * resourceRangesNum);
+    nri::DescriptorRangeDesc* descriptorRanges = (nri::DescriptorRangeDesc*)alloca(sizeof(nri::DescriptorRangeDesc) * resourceRangesNum);
     memset(descriptorRanges, 0, sizeof(nri::DescriptorRangeDesc) * resourceRangesNum);
 
     nri::DescriptorRangeDesc* samplersRange = descriptorRanges;
@@ -327,9 +327,9 @@ void NrdIntegration::CreateResources()
     #endif
     }
 
-    #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("%s: %.1f Mb (permanent), %.1f Mb (transient)\n\n", m_Name, double(m_PermanentPoolSize) / (1024.0f * 1024.0f), double(m_TransientPoolSize) / (1024.0f * 1024.0f));
-    #endif
+#if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
+    printf("%s: %.1f Mb (permanent), %.1f Mb (transient)\n\n", m_Name, double(m_PermanentPoolSize) / (1024.0f * 1024.0f), double(m_TransientPoolSize) / (1024.0f * 1024.0f));
+#endif
 
     // Samplers
     for (uint32_t i = 0; i < instanceDesc.samplersNum; i++)
@@ -386,8 +386,15 @@ void NrdIntegration::CreateResources()
     descriptorPoolDesc.dynamicConstantBufferMaxNum = instanceDesc.descriptorPoolDesc.constantBuffersMaxNum;
     descriptorPoolDesc.samplerMaxNum = instanceDesc.descriptorPoolDesc.samplersMaxNum;
 
-    for (nri::DescriptorPool*& descriptorPool : m_DescriptorPools)
+    for (uint32_t i = 0; i < m_BufferedFramesNum; i++)
+    {
+        nri::DescriptorPool* descriptorPool = nullptr;
         NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->CreateDescriptorPool(*m_Device, descriptorPoolDesc, descriptorPool));
+        m_DescriptorPools.push_back(descriptorPool);
+        
+        m_DescriptorSetSamplers.push_back(nullptr);
+        m_DescriptorsInFlight.push_back({});
+    }
 }
 
 void NrdIntegration::AllocateAndBindMemory()
@@ -416,38 +423,63 @@ void NrdIntegration::AllocateAndBindMemory()
     NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRIHelper->AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 }
 
-void NrdIntegration::NewFrame(uint32_t frameIndex)
+void NrdIntegration::NewFrame()
 {
-    #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
+    NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
+
+#if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
         printf("%s (frame %u) ==============================================================================\n\n", m_Name, frameIndex);
     #endif
 
-    m_DescriptorPoolIndex = frameIndex % m_BufferedFramesNum;
+    m_DescriptorPoolIndex = m_FrameIndex % m_BufferedFramesNum;
     nri::DescriptorPool* descriptorPool = m_DescriptorPools[m_DescriptorPoolIndex];
     m_NRI->ResetDescriptorPool(*descriptorPool);
+
+    // Needs to be reset because the corresponding descriptor pool has been just reset
+    m_DescriptorSetSamplers[m_DescriptorPoolIndex] = nullptr;
+
+    // Referenced by the GPU descriptors can't be destroyed...
+    if (!m_IsDescriptorCachingEnabled)
+    {
+        for (const auto& entry : m_DescriptorsInFlight[m_DescriptorPoolIndex])
+            m_NRI->DestroyDescriptor(*entry);
+        m_DescriptorsInFlight[m_DescriptorPoolIndex].clear();
+    }
+
+    m_FrameIndex++;
 }
 
 bool NrdIntegration::SetCommonSettings(const nrd::CommonSettings& commonSettings)
 {
+    NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
+
     nrd::Result result = nrd::SetCommonSettings(*m_Instance, commonSettings);
-    assert(result == nrd::Result::SUCCESS);
+    NRD_INTEGRATION_ASSERT(result == nrd::Result::SUCCESS, "nrd::SetCommonSettings(): failed!");
 
     return result == nrd::Result::SUCCESS;
 }
 
 bool NrdIntegration::SetDenoiserSettings(nrd::Identifier denoiser, const void* denoiserSettings)
 {
+    NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
+
     nrd::Result result = nrd::SetDenoiserSettings(*m_Instance, denoiser, denoiserSettings);
-    assert(result == nrd::Result::SUCCESS);
+    NRD_INTEGRATION_ASSERT(result == nrd::Result::SUCCESS, "nrd::SetDenoiserSettings(): failed!");
 
     return result == nrd::Result::SUCCESS;
 }
 
-void NrdIntegration::Denoise(const nrd::Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, const NrdUserPool& userPool, bool enableDescriptorCaching)
+void NrdIntegration::Denoise(const nrd::Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, const NrdUserPool& userPool)
 {
+    NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
+
     const nrd::DispatchDesc* dispatchDescs = nullptr;
     uint32_t dispatchDescsNum = 0;
     nrd::GetComputeDispatches(*m_Instance, denoisers, denoisersNum, dispatchDescs, dispatchDescsNum);
+
+    // Even if descriptor caching is disabled it's better to cache descriptors inside a single "Denoise" call
+    if (!m_IsDescriptorCachingEnabled)
+        m_CachedDescriptors.clear();
 
     nri::DescriptorPool* descriptorPool = m_DescriptorPools[m_DescriptorPoolIndex];
     m_NRI->CmdSetDescriptorPool(commandBuffer, *descriptorPool);
@@ -457,13 +489,13 @@ void NrdIntegration::Denoise(const nrd::Identifier* denoisers, uint32_t denoiser
         const nrd::DispatchDesc& dispatchDesc = dispatchDescs[i];
         m_NRI->CmdBeginAnnotation(commandBuffer, dispatchDesc.name);
 
-        Dispatch(commandBuffer, *descriptorPool, dispatchDesc, userPool, enableDescriptorCaching);
+        Dispatch(commandBuffer, *descriptorPool, dispatchDesc, userPool);
 
         m_NRI->CmdEndAnnotation(commandBuffer);
     }
 }
 
-void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool, bool enableDescriptorCaching)
+void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool)
 {
     const nrd::InstanceDesc& instanceDesc = nrd::GetInstanceDesc(*m_Instance);
     const nrd::PipelineDesc& pipelineDesc = instanceDesc.pipelines[dispatchDesc.pipelineIndex];
@@ -472,13 +504,13 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     for (uint32_t i = 0; i < dispatchDesc.resourcesNum; i++)
         transitionNum += dispatchDesc.resources[i].mipNum;
 
-    nri::Descriptor** descriptors = (nri::Descriptor**)NRD_INTEGRATION_ALLOCA(sizeof(nri::Descriptor*) * dispatchDesc.resourcesNum);
+    nri::Descriptor** descriptors = (nri::Descriptor**)alloca(sizeof(nri::Descriptor*) * dispatchDesc.resourcesNum);
     memset(descriptors, 0, sizeof(nri::Descriptor*) * dispatchDesc.resourcesNum);
 
-    nri::DescriptorRangeUpdateDesc* resourceRanges = (nri::DescriptorRangeUpdateDesc*)NRD_INTEGRATION_ALLOCA(sizeof(nri::DescriptorRangeUpdateDesc) * pipelineDesc.resourceRangesNum);
+    nri::DescriptorRangeUpdateDesc* resourceRanges = (nri::DescriptorRangeUpdateDesc*)alloca(sizeof(nri::DescriptorRangeUpdateDesc) * pipelineDesc.resourceRangesNum);
     memset(resourceRanges, 0, sizeof(nri::DescriptorRangeUpdateDesc) * pipelineDesc.resourceRangesNum);
 
-    nri::TextureTransitionBarrierDesc* transitions = (nri::TextureTransitionBarrierDesc*)NRD_INTEGRATION_ALLOCA(sizeof(nri::TextureTransitionBarrierDesc) * transitionNum);
+    nri::TextureTransitionBarrierDesc* transitions = (nri::TextureTransitionBarrierDesc*)alloca(sizeof(nri::TextureTransitionBarrierDesc) * transitionNum);
     memset(transitions, 0, sizeof(nri::TextureTransitionBarrierDesc) * transitionNum);
 
     nri::TransitionBarrierDesc transitionBarriers = {};
@@ -507,7 +539,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
                 nrdTexture = (NrdIntegrationTexture*)&userPool[(uint32_t)nrdResource.type];
 
                 NRD_INTEGRATION_ASSERT(nrdTexture && nrdTexture->subresourceStates && nrdTexture->subresourceStates->texture, "'userPool' entry can't be NULL if it's in use!");
-                NRD_INTEGRATION_ASSERT(nrdTexture->format != nri::Format::UNKNOWN, "Format must be a valid format!");
+                NRD_INTEGRATION_ASSERT(nrdTexture->format != nri::Format::UNKNOWN, "Format must be valid!");
             }
 
             const nri::AccessBits nextAccess = nrdResource.stateNeeded == nrd::DescriptorType::TEXTURE ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::SHADER_RESOURCE_STORAGE;
@@ -523,14 +555,15 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
 
             uint64_t resource = m_NRI->GetTextureNativeObject(*nrdTexture->subresourceStates->texture, 0);
             uint64_t key = NRD_CreateDescriptorKey(resource, isStorage, (uint8_t)nrdResource.mipOffset, (uint8_t)nrdResource.mipNum);
-            const auto& entry = enableDescriptorCaching ? m_Descriptors.find(key) : m_Descriptors.end();
+            const auto& entry = m_CachedDescriptors.find(key);
 
             nri::Descriptor* descriptor = nullptr;
-            if (entry == m_Descriptors.end())
+            if (entry == m_CachedDescriptors.end())
             {
                 nri::Texture2DViewDesc desc = {nrdTexture->subresourceStates->texture, isStorage ? nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D : nri::Texture2DViewType::SHADER_RESOURCE_2D, nrdTexture->format, nrdResource.mipOffset, nrdResource.mipNum};
                 NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->CreateTexture2DView(desc, descriptor));
-                m_Descriptors.insert( std::make_pair(key, descriptor) );
+                m_CachedDescriptors.insert( std::make_pair(key, descriptor) );
+                m_DescriptorsInFlight[m_DescriptorPoolIndex].push_back(descriptor);
             }
             else
                 descriptor = entry->second;
@@ -543,12 +576,16 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     uint32_t descriptorSetSamplersIndex = instanceDesc.constantBufferSpaceIndex == instanceDesc.samplersSpaceIndex ? 0 : 1;
     uint32_t descriptorSetResourcesIndex = instanceDesc.resourcesSpaceIndex == instanceDesc.constantBufferSpaceIndex ? 0 : (instanceDesc.resourcesSpaceIndex == instanceDesc.samplersSpaceIndex ? descriptorSetSamplersIndex : descriptorSetSamplersIndex + 1);
     uint32_t descriptorSetNum = std::max(descriptorSetSamplersIndex, descriptorSetResourcesIndex) + 1;
+    bool samplersAreInSeparateSet = instanceDesc.samplersSpaceIndex != instanceDesc.constantBufferSpaceIndex && instanceDesc.samplersSpaceIndex != instanceDesc.resourcesSpaceIndex;
 
-    nri::DescriptorSet** descriptorSets = (nri::DescriptorSet**)NRD_INTEGRATION_ALLOCA(sizeof(nri::DescriptorSet*) * descriptorSetNum);
+    nri::DescriptorSet** descriptorSets = (nri::DescriptorSet**)alloca(sizeof(nri::DescriptorSet*) * descriptorSetNum);
     nri::PipelineLayout* pipelineLayout = m_PipelineLayouts[dispatchDesc.pipelineIndex];
 
     for (uint32_t i = 0; i < descriptorSetNum; i++)
-        NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->AllocateDescriptorSets(descriptorPool, *pipelineLayout, i, &descriptorSets[i], 1, nri::WHOLE_DEVICE_GROUP, 0));
+    {
+        if (!samplersAreInSeparateSet || i != descriptorSetSamplersIndex)
+            NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->AllocateDescriptorSets(descriptorPool, *pipelineLayout, i, &descriptorSets[i], 1, nri::WHOLE_DEVICE_GROUP, 0));
+    }
 
     // Updating constants
     uint32_t dynamicConstantBufferOffset = 0;
@@ -569,8 +606,20 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     }
 
     // Updating samplers
-    nri::DescriptorRangeUpdateDesc samplersDescriptorRange = {m_Samplers.data(), instanceDesc.samplersNum, 0};
-    m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetSamplersIndex], nri::WHOLE_DEVICE_GROUP, 0, 1, &samplersDescriptorRange);
+    const nri::DescriptorRangeUpdateDesc samplersDescriptorRange = {m_Samplers.data(), instanceDesc.samplersNum, 0};
+    if (samplersAreInSeparateSet)
+    {
+        nri::DescriptorSet*& descriptorSetSamplers = m_DescriptorSetSamplers[m_DescriptorPoolIndex];
+        if (!descriptorSetSamplers)
+        {
+            NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->AllocateDescriptorSets(descriptorPool, *pipelineLayout, descriptorSetSamplersIndex, &descriptorSetSamplers, 1, nri::WHOLE_DEVICE_GROUP, 0));
+            m_NRI->UpdateDescriptorRanges(*descriptorSetSamplers, nri::WHOLE_DEVICE_GROUP, 0, 1, &samplersDescriptorRange);
+        }
+
+        descriptorSets[descriptorSetSamplersIndex] = descriptorSetSamplers;
+    }
+    else
+        m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetSamplersIndex], nri::WHOLE_DEVICE_GROUP, 0, 1, &samplersDescriptorRange);
 
     // Updating resources
     m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetResourcesIndex], nri::WHOLE_DEVICE_GROUP, instanceDesc.samplersSpaceIndex == instanceDesc.resourcesSpaceIndex ? 1 : 0, pipelineDesc.resourceRangesNum, resourceRanges);
@@ -586,14 +635,6 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
         m_NRI->CmdSetDescriptorSet(commandBuffer, i, *descriptorSets[i], i == 0 ? &dynamicConstantBufferOffset : nullptr);
 
     m_NRI->CmdDispatch(commandBuffer, dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1);
-
-    // Cleanup
-    if (!enableDescriptorCaching)
-    {
-        for (const auto& entry : m_Descriptors)
-            m_NRI->DestroyDescriptor(*entry.second);
-        m_Descriptors.clear();
-    }
 
     // Debug logging
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
@@ -623,15 +664,21 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
 
 void NrdIntegration::Destroy()
 {
+    NRD_INTEGRATION_ASSERT(m_Instance, "Already destroyed! Did you forget to call 'Initialize'?");
+
+    m_ResourceState.clear();
+
     m_NRI->DestroyDescriptor(*m_ConstantBufferView);
-    m_ConstantBufferView = nullptr;
-
     m_NRI->DestroyBuffer(*m_ConstantBuffer);
-    m_ConstantBuffer = nullptr;
 
-    for (const auto& entry : m_Descriptors)
-        m_NRI->DestroyDescriptor(*entry.second);
-    m_Descriptors.clear();
+    for (auto& descriptors : m_DescriptorsInFlight)
+    {
+        for (const auto& entry : descriptors)
+            m_NRI->DestroyDescriptor(*entry);
+        descriptors.clear();
+    }
+    m_DescriptorsInFlight.clear();
+    m_CachedDescriptors.clear();
 
     for (const NrdIntegrationTexture& nrdTexture : m_TexturePool)
         m_NRI->DestroyTexture(*(nri::Texture*)nrdTexture.subresourceStates->texture);
@@ -655,16 +702,26 @@ void NrdIntegration::Destroy()
 
     for (nri::DescriptorPool* descriptorPool : m_DescriptorPools)
         m_NRI->DestroyDescriptorPool(*descriptorPool);
+    m_DescriptorPools.clear();
+    m_DescriptorSetSamplers.clear();
 
     nrd::DestroyInstance(*m_Instance);
-    m_Instance = nullptr;
 
     m_NRI = nullptr;
+    m_NRIHelper = nullptr;
     m_Device = nullptr;
+    m_ConstantBuffer = nullptr;
+    m_ConstantBufferView = nullptr;
+    m_Instance = nullptr;
+    m_Name = nullptr;
     m_PermanentPoolSize = 0;
     m_TransientPoolSize = 0;
     m_ConstantBufferSize = 0;
     m_ConstantBufferViewSize = 0;
     m_ConstantBufferOffset = 0;
+    m_BufferedFramesNum = 0;
+    m_DescriptorPoolIndex = 0;
+    m_FrameIndex = 0;
     m_IsShadersReloadRequested = false;
+    m_IsDescriptorCachingEnabled = false;
 }
