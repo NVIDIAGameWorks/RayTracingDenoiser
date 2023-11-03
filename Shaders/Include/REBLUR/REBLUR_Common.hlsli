@@ -35,7 +35,7 @@ float4 UnpackNormalAndRoughness( float4 p, bool isNormalized = true )
     p.xyz = p.xyz * 2.0 - 1.0;
 
     if( isNormalized )
-        p.xyz = normalize( p.xyz );
+        p.xyz /= max( length( p.xyz ), NRD_EPS );
 
     return p;
 }
