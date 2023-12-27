@@ -1098,7 +1098,7 @@ float3 NRD_SH_ResolveSpecular( NRD_SG sh, float3 N, float3 V, float roughness )
 // Needs to be used to avoid summing up NAN/INF values in many rays per pixel scenarios
 bool NRD_IsValidRadiance( float3 radiance )
 {
-    return _NRD_IsInvalid( radiance );
+    return !_NRD_IsInvalid( radiance );
 }
 
 // Scales normalized hit distance back to real length
