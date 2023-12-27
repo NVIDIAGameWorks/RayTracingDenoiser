@@ -8,14 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
+#include "../Shaders/Resources/SpecularReflectionMv_Compute.resources.hlsli"
+
 void nrd::InstanceImpl::Add_SpecularReflectionMv(DenoiserData& denoiserData)
 {
     #define DENOISER_NAME SpecularReflectionMv
 
     denoiserData.settings.specularReflectionMv = SpecularReflectionMvSettings();
     denoiserData.settingsSize = sizeof(denoiserData.settings.specularReflectionMv);
-            
-    SetSharedConstants(0, 0, 0, 0);
 
     PushPass("Compute");
     {
@@ -26,7 +26,7 @@ void nrd::InstanceImpl::Add_SpecularReflectionMv(DenoiserData& denoiserData)
 
         PushOutput( AsUint(ResourceType::OUT_REFLECTION_MV) );
 
-        AddDispatch( SpecularReflectionMv_Compute, SumConstants(4, 5, 5, 2), NumThreads(16, 16), 1 );
+        AddDispatch( SpecularReflectionMv_Compute, SpecularReflectionMv_Compute, 1 );
     }
 
     #undef DENOISER_NAME
@@ -41,26 +41,27 @@ void nrd::InstanceImpl::Update_SpecularReflectionMv(const DenoiserData& denoiser
 
     NRD_DECLARE_DIMS;
 
-    // DRS will increase reprojected values, needed for stability, compensated by blur radius adjustment
     float unproject = 1.0f / (0.5f * rectH * m_ProjectY);
 
-    // COMPUTE
-    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::COMPUTE));
-    AddFloat4x4(data, m_ViewToWorld);
-    AddFloat4x4(data, m_WorldToClip);
-    AddFloat4x4(data, m_WorldToClipPrev);
-    AddFloat4x4(data, m_WorldToViewPrev);
-    AddFloat4(data, m_FrustumPrev);
-    AddFloat4(data, m_Frustum);
-    AddFloat4(data, ml::float4(m_ViewDirection.x, m_ViewDirection.y, m_ViewDirection.z, m_IsOrtho));
-    AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, unproject));
-    AddFloat4(data, ml::float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.debug));
-    AddFloat2(data, float(rectW), float(rectH));
-    AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
-    AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
-    AddFloat2(data, float(rectW) / float(screenW), float(rectH) / float(screenH));
-    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
-    AddFloat(data, m_CommonSettings.denoisingRange);
-    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
-    ValidateConstants(data);
+    { // COMPUTE
+    SpecularReflectionMv_ComputeConstants* consts = (SpecularReflectionMv_ComputeConstants*)PushDispatch(denoiserData, AsUint(Dispatch::COMPUTE));
+    consts->gViewToWorld            = m_ViewToWorld;
+    consts->gWorldToClip            = m_WorldToClip;
+    consts->gWorldToClipPrev        = m_WorldToClipPrev;
+    consts->gWorldToViewPrev        = m_WorldToViewPrev;
+    consts->gFrustumPrev            = m_FrustumPrev;
+    consts->gFrustum                = m_Frustum;
+    consts->gViewVectorWorld        = float4(m_ViewDirection.x, m_ViewDirection.y, m_ViewDirection.z, 0.0f);
+    consts->gCameraDelta            = float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f);
+    consts->gMvScale                = float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.isMotionVectorInWorldSpace ? 1.0f : 0.0f);
+    consts->gRectSize               = float2(float(rectW), float(rectH));
+    consts->gRectSizeInv            = float2(1.0f / float(rectW), 1.0f / float(rectH));
+    consts->gRectOffset             = float2(float(m_CommonSettings.rectOrigin[0]) / float(resourceW), float(m_CommonSettings.rectOrigin[1]) / float(resourceH));
+    consts->gResolutionScale        = float2(float(rectW) / float(resourceW), float(rectH) / float(resourceH));
+    consts->gRectOrigin             = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
+    consts->gDenoisingRange         = m_CommonSettings.denoisingRange;
+    consts->gOrthoMode              = m_OrthoMode;
+    consts->gUnproject              = unproject;
+    consts->gDebug                  = m_CommonSettings.debug;
+    }
 }

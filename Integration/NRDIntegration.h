@@ -23,23 +23,21 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <map>
 
 #define NRD_INTEGRATION_MAJOR 1
-#define NRD_INTEGRATION_MINOR 7
-#define NRD_INTEGRATION_DATE "25 October 2023"
+#define NRD_INTEGRATION_MINOR 10
+#define NRD_INTEGRATION_DATE "26 December 2023"
 #define NRD_INTEGRATION 1
 
 #define NRD_INTEGRATION_DEBUG_LOGGING 0
 
 #ifndef NRD_INTEGRATION_ASSERT
     #include <assert.h>
-    #define NRD_INTEGRATION_ASSERT(expr, msg) assert(expr && msg)
+    #define NRD_INTEGRATION_ASSERT(expr, msg) assert(msg && expr)
 #endif
 
-// User inputs / outputs are not mipmapped, thus only 1 entry is needed.
-// "TextureTransitionBarrierDesc::texture" is used to store the resource.
-// "TextureTransitionBarrierDesc::next..." are used to represent the current state of the subresource.
+// "state->texture" represents the resource, the rest represents the state.
 struct NrdIntegrationTexture
 {
-    nri::TextureTransitionBarrierDesc* subresourceStates;
+    nri::TextureTransitionBarrierDesc* state;
     nri::Format format;
 };
 
@@ -49,7 +47,7 @@ typedef std::array<NrdIntegrationTexture, (size_t)nrd::ResourceType::MAX_NUM - 2
 // the entire pool must be zero-ed during initialization
 inline void NrdIntegration_SetResource(NrdUserPool& pool, nrd::ResourceType slot, const NrdIntegrationTexture& texture)
 {
-    NRD_INTEGRATION_ASSERT( texture.subresourceStates->texture != nullptr, "Invalid texture!" );
+    NRD_INTEGRATION_ASSERT( texture.state->texture != nullptr, "Invalid texture!" );
     NRD_INTEGRATION_ASSERT( texture.format != nri::Format::UNKNOWN, "Invalid format!" );
 
     pool[(size_t)slot] = texture;
@@ -76,7 +74,7 @@ public:
     // There is no "Resize" functionality, because NRD full recreation costs nothing.
     // The main cost comes from render targets resizing, which needs to be done in any case
     // (call Destroy beforehand)
-    bool Initialize(const nrd::InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice, const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
+    bool Initialize(uint16_t resourceWidth, uint16_t resourceHeight, const nrd::InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice, const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
 
     // Must be called once on a frame start
     void NewFrame();
@@ -106,7 +104,7 @@ public:
 private:
     NrdIntegration(const NrdIntegration&) = delete;
 
-    void CreateResources();
+    void CreateResources(uint16_t resourceWidth, uint16_t resourceHeight);
     void AllocateAndBindMemory();
     void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
 

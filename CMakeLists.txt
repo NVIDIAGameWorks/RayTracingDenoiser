@@ -61,7 +61,7 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_C_STANDARD 99)
 
-if (MSVC)
+if (MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
     set (CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif ()
 
@@ -103,14 +103,14 @@ endif ()
 
 # External/MathLib
 file (READ "External/MathLib/MathLib.h" ver_h)
-string (REGEX MATCH "MATHLIB_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
-set (MATHLIB_VERSION_MAJOR ${CMAKE_MATCH_1})
-string (REGEX MATCH "MATHLIB_VERSION_MINOR ([0-9]*)" _ ${ver_h})
-set (MATHLIB_VERSION_MINOR ${CMAKE_MATCH_1})
-message ("MathLib v${MATHLIB_VERSION_MAJOR}.${MATHLIB_VERSION_MINOR}")
+string (REGEX MATCH "ML_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
+set (ML_VERSION_MAJOR ${CMAKE_MATCH_1})
+string (REGEX MATCH "ML_VERSION_MINOR ([0-9]*)" _ ${ver_h})
+set (ML_VERSION_MINOR ${CMAKE_MATCH_1})
+message ("MathLib v${ML_VERSION_MAJOR}.${ML_VERSION_MINOR}")
 
-file (GLOB MATHLIB_FILES "External/MathLib/*.h" "External/MathLib/*.hpp")
-source_group ("MathLib" FILES ${MATHLIB_FILES})
+file (GLOB ML_FILES "External/MathLib/*.h" "External/MathLib/*.hpp")
+source_group ("MathLib" FILES ${ML_FILES})
 
 # NRD
 file (GLOB GLOB_INCUDE "Include/*")
@@ -123,9 +123,9 @@ file (GLOB GLOB_RESOURCES "Resources/*")
 source_group ("Resources" FILES ${GLOB_RESOURCES})
 
 if (NRD_STATIC_LIBRARY)
-    add_library (${PROJECT_NAME} STATIC ${GLOB_SOURCE} ${GLOB_DENOISERS} ${MATHLIB_FILES} ${GLOB_RESOURCES} ${GLOB_INCUDE})
+    add_library (${PROJECT_NAME} STATIC ${GLOB_SOURCE} ${GLOB_DENOISERS} ${ML_FILES} ${GLOB_RESOURCES} ${GLOB_INCUDE})
 else ()
-    add_library (${PROJECT_NAME} SHARED ${GLOB_SOURCE} ${GLOB_DENOISERS} ${MATHLIB_FILES} ${GLOB_RESOURCES} ${GLOB_INCUDE})
+    add_library (${PROJECT_NAME} SHARED ${GLOB_SOURCE} ${GLOB_DENOISERS} ${ML_FILES} ${GLOB_RESOURCES} ${GLOB_INCUDE})
 
     if (WIN32)
         target_compile_definitions (${PROJECT_NAME} PRIVATE "NRD_API=extern \"C\" __declspec(dllexport)")

@@ -11,9 +11,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "SIGMA/SIGMA_Config.hlsli"
-#include "SIGMA_Shadow_SplitScreen.resources.hlsli"
+#include "SIGMA_Config.hlsli"
+#include "SIGMA_SplitScreen.resources.hlsli"
 
 #include "Common.hlsli"
-#include "SIGMA/SIGMA_Common.hlsli"
-#include "SIGMA/SIGMA_Shadow_SplitScreen.hlsli"
+#include "SIGMA_Common.hlsli"
+#include "SIGMA_SplitScreen.hlsli"

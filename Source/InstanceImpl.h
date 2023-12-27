@@ -11,14 +11,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #include "NRD.h"
-
-#define MATH_NAMESPACE
 #include "MathLib/MathLib.h"
 
 typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 #include "StdAllocator.h"
 
 #include "Timer.h"
+#include <assert.h>
 
 #define _NRD_STRINGIFY(s) #s
 #define NRD_STRINGIFY(s) _NRD_STRINGIFY(s)
@@ -41,29 +40,64 @@ typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
     #define GET_SPIRV_SHADER_DESC(shaderName) {}
 #endif
 
-#define AddDispatch(shaderName, constantNum, numThreads, downsampleFactor) \
-    AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, 1, #shaderName ".cs", GET_DXBC_SHADER_DESC(shaderName), GET_DXIL_SHADER_DESC(shaderName), GET_SPIRV_SHADER_DESC(shaderName))
+#define AddDispatch(shaderName, passName, downsampleFactor) \
+    AddComputeDispatchDesc(NumThreads(passName ## GroupX, passName ## GroupY), \
+        downsampleFactor, sizeof(passName ## Constants), 1, #shaderName ".cs", \
+        GET_DXBC_SHADER_DESC(shaderName), GET_DXIL_SHADER_DESC(shaderName), GET_SPIRV_SHADER_DESC(shaderName))
 
-#define AddDispatchRepeated(shaderName, constantNum, numThreads, downsampleFactor, repeatNum) \
-    AddComputeDispatchDesc(numThreads, downsampleFactor, constantNum, repeatNum, #shaderName ".cs", GET_DXBC_SHADER_DESC(shaderName), GET_DXIL_SHADER_DESC(shaderName), GET_SPIRV_SHADER_DESC(shaderName))
+#define AddDispatchNoConstants(shaderName, passName, downsampleFactor) \
+    AddComputeDispatchDesc(NumThreads(passName ## GroupX, passName ## GroupY), \
+        downsampleFactor, 0, 1, #shaderName ".cs", \
+        GET_DXBC_SHADER_DESC(shaderName), GET_DXIL_SHADER_DESC(shaderName), GET_SPIRV_SHADER_DESC(shaderName))
+
+#define AddDispatchRepeated(shaderName, passName, downsampleFactor, repeatNum) \
+    AddComputeDispatchDesc(NumThreads(passName ## GroupX, passName ## GroupY), \
+        downsampleFactor, sizeof(passName ## Constants), repeatNum, #shaderName ".cs", \
+        GET_DXBC_SHADER_DESC(shaderName), GET_DXIL_SHADER_DESC(shaderName), GET_SPIRV_SHADER_DESC(shaderName))
 
 #define PushPass(passName) \
     _PushPass(NRD_STRINGIFY(DENOISER_NAME) " - " passName)
 
 // TODO: rework is needed, but still better than copy-pasting
 #define NRD_DECLARE_DIMS \
-    uint16_t screenW = denoiserData.desc.renderWidth; \
-    uint16_t screenH = denoiserData.desc.renderHeight; \
-    [[maybe_unused]] uint16_t rectW = uint16_t(screenW * m_CommonSettings.resolutionScale[0] + 0.5f); \
-    [[maybe_unused]] uint16_t rectH = uint16_t(screenH * m_CommonSettings.resolutionScale[1] + 0.5f); \
-    [[maybe_unused]] uint16_t rectWprev = uint16_t(screenW * m_CommonSettings.resolutionScalePrev[0] + 0.5f); \
-    [[maybe_unused]] uint16_t rectHprev = uint16_t(screenH * m_CommonSettings.resolutionScalePrev[1] + 0.5f)
+    [[maybe_unused]] uint16_t resourceW = m_CommonSettings.resourceSize[0]; \
+    [[maybe_unused]] uint16_t resourceH = m_CommonSettings.resourceSize[1]; \
+    [[maybe_unused]] uint16_t resourceWprev = m_CommonSettings.resourceSizePrev[0]; \
+    [[maybe_unused]] uint16_t resourceHprev = m_CommonSettings.resourceSizePrev[1]; \
+    [[maybe_unused]] uint16_t rectW = m_CommonSettings.rectSize[0]; \
+    [[maybe_unused]] uint16_t rectH = m_CommonSettings.rectSize[1]; \
+    [[maybe_unused]] uint16_t rectWprev = m_CommonSettings.rectSizePrev[0]; \
+    [[maybe_unused]] uint16_t rectHprev = m_CommonSettings.rectSizePrev[1];
 
+
+// IMPORTANT: needed only for DXBC produced by ShaderMake without "--useAPI"
+#undef BYTE
+#define BYTE uint8_t
+
+// Macro magic for shared headers
+// IMPORTANT: do not use "float3" constants because of sizeof( ml::float3 ) = 16!
+#define NRD_CONSTANTS_START( name ) struct name {
+#define NRD_CONSTANT( type, name ) type name;
+#define NRD_CONSTANTS_END };
+
+#define NRD_INPUTS_START
+#define NRD_INPUT(...)
+#define NRD_INPUTS_END
+#define NRD_OUTPUTS_START
+#define NRD_OUTPUT(...)
+#define NRD_OUTPUTS_END
+#define NRD_SAMPLERS_START
+#define NRD_SAMPLER(...)
+#define NRD_SAMPLERS_END
+
+typedef uint32_t uint;
+
+// Implementation
 namespace nrd
 {
     constexpr uint16_t PERMANENT_POOL_START = 1000;
     constexpr uint16_t TRANSIENT_POOL_START = 2000;
-    constexpr size_t CONSTANT_DATA_SIZE = 2 * 1024 * 2014;
+    constexpr size_t CONSTANT_DATA_SIZE = 128 * 1024; // TODO: improve
 
     constexpr uint16_t USE_MAX_DIMS = 0xFFFF;
     constexpr uint16_t IGNORE_RS = 0xFFFE;
@@ -75,20 +109,12 @@ namespace nrd
     inline uint16_t AsUint(T x)
     { return (uint16_t)x; }
 
-    union Constant
-    {
-        float f;
-        uint32_t ui;
-    };
-
     union Settings
     {
         // Add settings here
         ReblurSettings reblur;
         SigmaSettings sigma;
-        RelaxDiffuseSettings diffuseRelax;
-        RelaxSpecularSettings specularRelax;
-        RelaxDiffuseSpecularSettings diffuseSpecularRelax;
+        RelaxSettings relax;
         ReferenceSettings reference;
         SpecularReflectionMvSettings specularReflectionMv;
         SpecularDeltaMvSettings specularDeltaMv;
@@ -129,6 +155,7 @@ namespace nrd
         uint32_t resourcesNum;
         const uint8_t* constantBufferData;
         uint32_t constantBufferDataSize;
+        Identifier identifier;
         uint16_t pipelineIndex;
         uint16_t downsampleFactor;
         uint16_t maxRepeatsNum; // mostly for internal use
@@ -139,8 +166,7 @@ namespace nrd
     {
         Identifier identifier;
         ResourceDesc resource;
-        uint32_t w;
-        uint32_t h;
+        uint16_t downsampleFactor;
         bool isInteger;
     };
 
@@ -159,19 +185,9 @@ namespace nrd
         void Add_ReblurDiffuseSpecularOcclusion(DenoiserData& denoiserData);
         void Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData);
         void Add_ReblurDiffuseDirectionalOcclusion(DenoiserData& denoiserData);
-
         void Update_Reblur(const DenoiserData& denoiserData);
         void Update_ReblurOcclusion(const DenoiserData& denoiserData);
-
-        void AddSharedConstants_Reblur(const DenoiserData& denoiserData, const ReblurSettings& settings, Constant*& data);
-
-        // Sigma
-        void Add_SigmaShadow(DenoiserData& denoiserData);
-        void Add_SigmaShadowTranslucency(DenoiserData& denoiserData);
-
-        void Update_SigmaShadow(const DenoiserData& denoiserData);
-
-        void AddSharedConstants_Sigma(const DenoiserData& denoiserData, const SigmaSettings& settings, Constant*& data);
+        void AddSharedConstants_Reblur(const ReblurSettings& settings, void* data);
 
         // Relax
         void Add_RelaxDiffuse(DenoiserData& denoiserData);
@@ -180,15 +196,14 @@ namespace nrd
         void Add_RelaxSpecularSh(DenoiserData& denoiserData);
         void Add_RelaxDiffuseSpecular(DenoiserData& denoiserData);
         void Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData);
+        void Update_Relax(const DenoiserData& denoiserData);
+        void AddSharedConstants_Relax(const RelaxSettings& settings, void* data);
 
-        void Update_RelaxDiffuse(const DenoiserData& denoiserData);
-        void Update_RelaxDiffuseSh(const DenoiserData& denoiserData);
-        void Update_RelaxSpecular(const DenoiserData& denoiserData);
-        void Update_RelaxSpecularSh(const DenoiserData& denoiserData);
-        void Update_RelaxDiffuseSpecular(const DenoiserData& denoiserData);
-        void Update_RelaxDiffuseSpecularSh(const DenoiserData& denoiserData);
-
-        void AddSharedConstants_Relax(const DenoiserData& denoiserData, Constant*& data, Denoiser denoiser);
+        // Sigma
+        void Add_SigmaShadow(DenoiserData& denoiserData);
+        void Add_SigmaShadowTranslucency(DenoiserData& denoiserData);
+        void Update_SigmaShadow(const DenoiserData& denoiserData);
+        void AddSharedConstants_Sigma(const SigmaSettings& settings, void* data);
 
         // Other
         void Add_Reference(DenoiserData& denoiserData);
@@ -216,7 +231,13 @@ namespace nrd
             , m_ActiveDispatches(GetStdAllocator())
             , m_IndexRemap(GetStdAllocator())
         {
-            m_ConstantData = m_StdAllocator.allocate(CONSTANT_DATA_SIZE);
+            m_ConstantDataUnaligned = m_StdAllocator.allocate(CONSTANT_DATA_SIZE + sizeof(float4));
+
+            // IMPORTANT: underlying memory for constants must be aligned, as well as any individual SSE-type containing member,
+            // because a compiler can generate dangerous "movaps" instruction!
+            m_ConstantData = Align(m_ConstantDataUnaligned, sizeof(float4));
+            memset(m_ConstantData, 0, CONSTANT_DATA_SIZE);
+
             m_DenoiserData.reserve(8);
             m_PermanentPool.reserve(32);
             m_TransientPool.reserve(32);
@@ -230,7 +251,7 @@ namespace nrd
         }
 
         ~InstanceImpl()
-        { m_StdAllocator.deallocate(m_ConstantData, 0); }
+        { m_StdAllocator.deallocate(m_ConstantDataUnaligned, 0); }
 
         inline const InstanceDesc& GetDesc() const
         { return m_Desc; }
@@ -258,44 +279,26 @@ namespace nrd
 
         void PrepareDesc();
         void UpdatePingPong(const DenoiserData& denoiserData);
-        void PushTexture(DescriptorType descriptorType, uint16_t localIndex, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith = uint16_t(-1));
+        void PushTexture(DescriptorType descriptorType, uint16_t localIndex, uint16_t indexToSwapWith = uint16_t(-1));
 
     // Available in denoiser implementations
     private:
         void AddTextureToTransientPool(const TextureDesc& textureDesc);
-        Constant* PushDispatch(const DenoiserData& denoiserData, uint32_t localIndex);
+        void* PushDispatch(const DenoiserData& denoiserData, uint32_t localIndex);
 
         inline void AddTextureToPermanentPool(const TextureDesc& textureDesc)
         { m_PermanentPool.push_back(textureDesc); }
 
-        inline void SetSharedConstants(uint32_t num4x4, uint32_t num4, uint32_t num2, uint32_t num1)
-        {
-            m_SharedConstantNum = 16 * num4x4 + 4 * num4 + 2 * num2 + 1 * num1;
-            assert( m_SharedConstantNum % 4 == 0 );
-        }
+        inline void PushInput(uint16_t indexInPool, uint16_t indexToSwapWith = uint16_t(-1))
+        { PushTexture(DescriptorType::TEXTURE, indexInPool, indexToSwapWith); }
 
-        inline uint32_t SumConstants(uint32_t num4x4, uint32_t num4, uint32_t num2, uint32_t num1, bool addShared = true)
-        { return ( 16 * num4x4 + 4 * num4 + 2 * num2 + 1 * num1 + ( addShared ? m_SharedConstantNum : 0 ) ) * sizeof(uint32_t); }
-
-        inline void PushInput(uint16_t indexInPool, uint16_t mipOffset = 0, uint16_t mipNum = 1, uint16_t indexToSwapWith = uint16_t(-1))
-        { PushTexture(DescriptorType::TEXTURE, indexInPool, mipOffset, mipNum, indexToSwapWith); }
-
-        inline void PushOutput(uint16_t indexInPool, uint16_t mipOffset = 0, uint16_t mipNum = 1, uint16_t indexToSwapWith = uint16_t(-1))
-        { PushTexture(DescriptorType::STORAGE_TEXTURE, indexInPool, mipOffset, mipNum, indexToSwapWith); }
+        inline void PushOutput(uint16_t indexInPool, uint16_t indexToSwapWith = uint16_t(-1))
+        { PushTexture(DescriptorType::STORAGE_TEXTURE, indexInPool, indexToSwapWith); }
 
         inline void _PushPass(const char* name)
         {
             m_PassName = name;
             m_ResourceOffset = m_Resources.size();
-        }
-
-        inline void ValidateConstants(const Constant* lastConstant) const
-        {
-            const DispatchDesc& dispatchDesc = m_ActiveDispatches.back();
-
-            [[maybe_unused]] size_t num = size_t(lastConstant - (const Constant*)dispatchDesc.constantBufferData);
-            [[maybe_unused]] size_t bytes = num * sizeof(uint32_t);
-            assert( bytes == dispatchDesc.constantBufferDataSize );
         }
 
     private:
@@ -312,91 +315,45 @@ namespace nrd
         Vector<DispatchDesc> m_ActiveDispatches;
         Vector<uint16_t> m_IndexRemap;
         Timer m_Timer;
-        ml::sFastRand m_FastRandState = {};
+        sFastRand m_FastRandState = {};
         InstanceDesc m_Desc = {};
         CommonSettings m_CommonSettings = {};
-        ml::float4x4 m_ViewToClip = ml::float4x4::Identity();
-        ml::float4x4 m_ViewToClipPrev = ml::float4x4::Identity();
-        ml::float4x4 m_ClipToView = ml::float4x4::Identity();
-        ml::float4x4 m_ClipToViewPrev = ml::float4x4::Identity();
-        ml::float4x4 m_WorldToView = ml::float4x4::Identity();
-        ml::float4x4 m_WorldToViewPrev = ml::float4x4::Identity();
-        ml::float4x4 m_ViewToWorld = ml::float4x4::Identity();
-        ml::float4x4 m_ViewToWorldPrev = ml::float4x4::Identity();
-        ml::float4x4 m_WorldToClip = ml::float4x4::Identity();
-        ml::float4x4 m_WorldToClipPrev = ml::float4x4::Identity();
-        ml::float4x4 m_ClipToWorld = ml::float4x4::Identity();
-        ml::float4x4 m_ClipToWorldPrev = ml::float4x4::Identity();
-        ml::float4x4 m_WorldPrevToWorld = ml::float4x4::Identity();
-        ml::float4 m_Rotator_PrePass = ml::float4::Zero();
-        ml::float4 m_Rotator_Blur = ml::float4::Zero();
-        ml::float4 m_Rotator_PostBlur = ml::float4::Zero();
-        ml::float4 m_Frustum = ml::float4::Zero();
-        ml::float4 m_FrustumPrev = ml::float4::Zero();
-        ml::float3 m_CameraDelta = ml::float3::Zero();
-        ml::float3 m_ViewDirection = ml::float3::Zero();
-        ml::float3 m_ViewDirectionPrev = ml::float3::Zero();
+        float4x4 m_ViewToClip = float4x4::Identity();
+        float4x4 m_ViewToClipPrev = float4x4::Identity();
+        float4x4 m_ClipToView = float4x4::Identity();
+        float4x4 m_ClipToViewPrev = float4x4::Identity();
+        float4x4 m_WorldToView = float4x4::Identity();
+        float4x4 m_WorldToViewPrev = float4x4::Identity();
+        float4x4 m_ViewToWorld = float4x4::Identity();
+        float4x4 m_ViewToWorldPrev = float4x4::Identity();
+        float4x4 m_WorldToClip = float4x4::Identity();
+        float4x4 m_WorldToClipPrev = float4x4::Identity();
+        float4x4 m_ClipToWorld = float4x4::Identity();
+        float4x4 m_ClipToWorldPrev = float4x4::Identity();
+        float4x4 m_WorldPrevToWorld = float4x4::Identity();
+        float4 m_Rotator_PrePass = float4::Zero();
+        float4 m_Rotator_Blur = float4::Zero();
+        float4 m_Rotator_PostBlur = float4::Zero();
+        float4 m_Frustum = float4::Zero();
+        float4 m_FrustumPrev = float4::Zero();
+        float3 m_CameraDelta = float3::Zero();
+        float3 m_ViewDirection = float3::Zero();
+        float3 m_ViewDirectionPrev = float3::Zero();
         const char* m_PassName = nullptr;
+        uint8_t* m_ConstantDataUnaligned = nullptr;
         uint8_t* m_ConstantData = nullptr;
         size_t m_ConstantDataOffset = 0;
         size_t m_ResourceOffset = 0;
         size_t m_DispatchClearIndex[2] = {};
-        float m_IsOrtho = 0.0f;
+        float m_OrthoMode = 0.0f;
         float m_CheckerboardResolveAccumSpeed = 0.0f;
         float m_JitterDelta = 0.0f;
         float m_TimeDelta = 0.0f;
         float m_FrameRateScale = 0.0f;
         float m_ProjectY = 0.0f;
-        uint32_t m_SharedConstantNum = 0;
         uint32_t m_AccumulatedFrameNum = 0;
         uint16_t m_TransientPoolOffset = 0;
         uint16_t m_PermanentPoolOffset = 0;
         bool m_IsFirstUse = true;
     };
-
-    inline void AddFloat4x4(Constant*& dst, const ml::float4x4& x)
-    {
-        memcpy(dst, &x, sizeof(ml::float4x4));
-        dst += 16;
-    }
-
-    inline void AddFloat4(Constant*& dst, const ml::float4& x)
-    {
-        memcpy(dst, &x, sizeof(ml::float4));
-        dst += 4;
-    }
-
-    inline void AddFloat2(Constant*& dst, float x, float y)
-    {
-        dst->f = x;
-        dst++;
-
-        dst->f = y;
-        dst++;
-    }
-
-    inline void AddFloat(Constant*& dst, float x)
-    {
-        dst->f = x;
-        dst++;
-    }
-
-    inline void AddUint(Constant*& dst, uint32_t x)
-    {
-        dst->ui = x;
-        dst++;
-    }
-
-    inline void AddUint2(Constant*& dst, uint32_t x, uint32_t y)
-    {
-        dst->ui = x;
-        dst++;
-
-        dst->ui = y;
-        dst++;
-    }
 }
-
-// IMPORTANT: needed only for DXBC produced by ShaderMake without "--useAPI"
-#undef BYTE
-#define BYTE uint8_t

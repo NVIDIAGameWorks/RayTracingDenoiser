@@ -10,9 +10,32 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "InstanceImpl.h"
 
-constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
+#include "../Shaders/Include/RELAX_Config.hlsli"
+#include "../Shaders/Resources/RELAX_AntiFirefly.resources.hlsli"
+#include "../Shaders/Resources/RELAX_Atrous.resources.hlsli"
+#include "../Shaders/Resources/RELAX_AtrousSmem.resources.hlsli"
+#include "../Shaders/Resources/RELAX_ClassifyTiles.resources.hlsli"
+#include "../Shaders/Resources/RELAX_Copy.resources.hlsli"
+#include "../Shaders/Resources/RELAX_HistoryClamping.resources.hlsli"
+#include "../Shaders/Resources/RELAX_HistoryFix.resources.hlsli"
+#include "../Shaders/Resources/RELAX_HitDistReconstruction.resources.hlsli"
+#include "../Shaders/Resources/RELAX_PrePass.resources.hlsli"
+#include "../Shaders/Resources/RELAX_SplitScreen.resources.hlsli"
+#include "../Shaders/Resources/RELAX_TemporalAccumulation.resources.hlsli"
+#include "../Shaders/Resources/RELAX_Validation.resources.hlsli"
 
-#define RELAX_SET_SHARED_CONSTANTS SetSharedConstants(5, 8, 7, 14)
+// Permutations
+#define RELAX_HITDIST_RECONSTRUCTION_PERMUTATION_NUM        2
+#define RELAX_PREPASS_PERMUTATION_NUM                       2
+#define RELAX_TEMPORAL_ACCUMULATION_PERMUTATION_NUM         4
+#define RELAX_ATROUS_PERMUTATION_NUM                        2 // * RELAX_ATROUS_BINDING_VARIANT_NUM
+
+// Other
+#define RELAX_DUMMY                                         AsUint(ResourceType::IN_VIEWZ)
+#define RELAX_NO_PERMUTATIONS                               1
+#define RELAX_ATROUS_BINDING_VARIANT_NUM                    5
+
+constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
 
 #define RELAX_ADD_VALIDATION_DISPATCH \
     PushPass("Validation"); \
@@ -22,123 +45,259 @@ constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
         PushInput( AsUint(ResourceType::IN_MV) ); \
         PushInput( AsUint(Transient::HISTORY_LENGTH) ); \
         PushOutput( AsUint(ResourceType::OUT_VALIDATION) ); \
-        AddDispatch( RELAX_Validation, SumConstants(1, 0, 1, 1), NumThreads(16, 16), IGNORE_RS ); \
+        AddDispatch( RELAX_Validation, RELAX_Validation, IGNORE_RS ); \
     }
 
-inline ml::float3 RELAX_GetFrustumForward(const ml::float4x4& viewToWorld, const ml::float4& frustum)
+inline float3 RELAX_GetFrustumForward(const float4x4& viewToWorld, const float4& frustum)
 {
-    // Note: this vector is not normalized for non-symmetric projections but that's correct.
-    // It has to have .z coordinate equal to 1.0 to correctly reconstruct world position in shaders.
-    ml::float4 frustumForwardView = ml::float4(0.5f, 0.5f, 1.0f, 0.0f) * ml::float4(frustum.z, frustum.w, 1.0f, 0.0f) + ml::float4(frustum.x, frustum.y, 0.0f, 0.0f);
-    ml::float3 frustumForwardWorld = (viewToWorld * frustumForwardView).To3d();
+    float4 frustumForwardView = float4(0.5f, 0.5f, 1.0f, 0.0f) * float4(frustum.z, frustum.w, 1.0f, 0.0f) + float4(frustum.x, frustum.y, 0.0f, 0.0f);
+    float3 frustumForwardWorld = (viewToWorld * frustumForwardView).To3d();
+
+    // Vector is not normalized for non-symmetric projections, it has to have .z = 1.0 to correctly reconstruct world position in shaders
     return frustumForwardWorld;
 }
 
-inline bool RELAX_IsCameraStatic
-(
-    const ml::float3& cameraDelta,
-    const ml::float3& frustumRight, const ml::float3& frustumUp, const ml::float3& frustumForward,
-    const ml::float3& prevFrustumRight, const ml::float3& prevFrustumUp, const ml::float3& prevFrustumForward, float eps = ml::c_fEps
-)
+void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, void* data)
 {
-    return ml::Length(cameraDelta) < eps && ml::Length(frustumRight - prevFrustumRight) < eps && ml::Length(frustumUp - prevFrustumUp) < eps && ml::Length(frustumForward - prevFrustumForward) < eps;
-}
+    struct SharedConstants
+    {
+        RELAX_SHARED_CONSTANTS
+    };
 
-void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserData, Constant*& data, Denoiser denoiser)
-{
     NRD_DECLARE_DIMS;
 
-    // Calculate camera right and up vectors in worldspace scaled according to frustum extents,
-    // and unit forward vector, for fast worldspace position reconstruction in shaders
     float tanHalfFov = 1.0f / m_ViewToClip.a00;
     float aspect = m_ViewToClip.a00 / m_ViewToClip.a11;
-    ml::float3 frustumRight = m_WorldToView.GetRow0().To3d() * tanHalfFov;
-    ml::float3 frustumUp = m_WorldToView.GetRow1().To3d() * tanHalfFov * aspect;
-    ml::float3 frustumForward = RELAX_GetFrustumForward(m_ViewToWorld, m_Frustum);
+    float3 frustumRight = m_WorldToView.GetRow0().To3d() * tanHalfFov;
+    float3 frustumUp = m_WorldToView.GetRow1().To3d() * tanHalfFov * aspect;
+    float3 frustumForward = RELAX_GetFrustumForward(m_ViewToWorld, m_Frustum);
 
     float prevTanHalfFov = 1.0f / m_ViewToClipPrev.a00;
     float prevAspect = m_ViewToClipPrev.a00 / m_ViewToClipPrev.a11;
-    ml::float3 prevFrustumRight = m_WorldToViewPrev.GetRow0().To3d() * prevTanHalfFov;
-    ml::float3 prevFrustumUp = m_WorldToViewPrev.GetRow1().To3d() * prevTanHalfFov * prevAspect;
-    ml::float3 prevFrustumForward = RELAX_GetFrustumForward(m_ViewToWorldPrev, m_FrustumPrev);
+    float3 prevFrustumRight = m_WorldToViewPrev.GetRow0().To3d() * prevTanHalfFov;
+    float3 prevFrustumUp = m_WorldToViewPrev.GetRow1().To3d() * prevTanHalfFov * prevAspect;
+    float3 prevFrustumForward = RELAX_GetFrustumForward(m_ViewToWorldPrev, m_FrustumPrev);
 
-    AddFloat4x4(data, m_WorldToClipPrev);
-    AddFloat4x4(data, m_WorldToViewPrev);
-    AddFloat4x4(data, m_WorldToClip);
-    AddFloat4x4(data, m_WorldPrevToWorld);
-    AddFloat4x4(data, m_ViewToWorld);
+    float maxDiffuseLuminanceRelativeDifference = -Log( Saturate(settings.diffuseMinLuminanceWeight) );
+    float maxSpecularLuminanceRelativeDifference = -Log( Saturate(settings.specularMinLuminanceWeight) );
+    float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
+    float disocclusionThreshold = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
+    float disocclusionThresholdAlternate = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
 
-    AddFloat4(data, ml::float4(frustumRight.x, frustumRight.y, frustumRight.z, 0));
-    AddFloat4(data, ml::float4(frustumUp.x, frustumUp.y, frustumUp.z, 0));
-    AddFloat4(data, ml::float4(frustumForward.x, frustumForward.y, frustumForward.z, 0));
-    AddFloat4(data, ml::float4(prevFrustumRight.x, prevFrustumRight.y, prevFrustumRight.z, 0));
-    AddFloat4(data, ml::float4(prevFrustumUp.x, prevFrustumUp.y, prevFrustumUp.z, 0));
-    AddFloat4(data, ml::float4(prevFrustumForward.x, prevFrustumForward.y, prevFrustumForward.z, 0));
-    AddFloat4(data, ml::float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f));
-    AddFloat4(data, ml::float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.debug));
-
-    AddFloat2(data, float(rectW) / float(screenW), float(rectH) / float(screenH));
-    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
-
-    AddFloat2(data, float(m_CommonSettings.inputSubrectOrigin[0]) / float(screenW), float(m_CommonSettings.inputSubrectOrigin[1]) / float(screenH));
-    AddUint2(data, rectW, rectH);
-
-    AddFloat2(data, 1.0f / screenW, 1.0f / screenH);
-    AddFloat2(data, 1.0f / rectW, 1.0f / rectH);
-
-    AddFloat2(data, float(rectWprev), float(rectHprev));
-    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
-    AddFloat(data, m_IsOrtho);
-
-    AddFloat(data, 1.0f / (0.5f * rectH * m_ProjectY));
-    AddUint(data, m_CommonSettings.frameIndex);
-    AddFloat(data, m_CommonSettings.denoisingRange);
-    AddFloat(data, ml::Clamp(16.66f / m_TimeDelta, 0.25f, 4.0f)); // Normalizing to 60 FPS
-
-    AddFloat(data, m_CheckerboardResolveAccumSpeed);
-    AddFloat(data, m_JitterDelta);
-    switch (denoiser)
+    // Checkerboard logic
+    uint32_t specCheckerboard = 2;
+    uint32_t diffCheckerboard = 2;
+    switch (settings.checkerboardMode)
     {
-    case Denoiser::RELAX_DIFFUSE:
-    case Denoiser::RELAX_DIFFUSE_SH:
-        AddUint(data, denoiserData.settings.diffuseRelax.enableMaterialTest ? 1 : 0);
-        AddUint(data, 0);
+    case CheckerboardMode::BLACK:
+        diffCheckerboard = 0;
+        specCheckerboard = 1;
         break;
-    case Denoiser::RELAX_SPECULAR:
-    case Denoiser::RELAX_SPECULAR_SH:
-        AddUint(data, 0);
-        AddUint(data, denoiserData.settings.specularRelax.enableMaterialTest ? 1 : 0);
-        break;
-    case Denoiser::RELAX_DIFFUSE_SPECULAR:
-    case Denoiser::RELAX_DIFFUSE_SPECULAR_SH:
-        AddUint(data, denoiserData.settings.diffuseSpecularRelax.enableMaterialTestForDiffuse ? 1 : 0);
-        AddUint(data, denoiserData.settings.diffuseSpecularRelax.enableMaterialTestForSpecular ? 1 : 0);
-        break;
-    default:
-        // Should never get here
-        AddUint(data, 0);
-        AddUint(data, 0);
+    case CheckerboardMode::WHITE:
+        diffCheckerboard = 1;
+        specCheckerboard = 0;
         break;
     }
 
-    // 1 if m_WorldPrevToWorld should be used in shader, otherwise we can skip multiplication
-    AddUint(data, (m_WorldPrevToWorld != ml::float4x4::Identity()) ? 1 : 0);
-    AddUint(data, m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0);
-    AddUint(data, 0);
-    AddUint(data, 0);
+    SharedConstants* consts                                     = (SharedConstants*)data;
+    consts->gWorldToClipPrev                                    = m_WorldToClipPrev;
+    consts->gWorldToViewPrev                                    = m_WorldToViewPrev;
+    consts->gWorldPrevToWorld                                   = m_WorldPrevToWorld;
+    consts->gFrustumRight                                       = float4(frustumRight.x, frustumRight.y, frustumRight.z, 0.0f);
+    consts->gFrustumUp                                          = float4(frustumUp.x, frustumUp.y, frustumUp.z, 0.0f);
+    consts->gFrustumForward                                     = float4(frustumForward.x, frustumForward.y, frustumForward.z, 0.0f);
+    consts->gPrevFrustumRight                                   = float4(prevFrustumRight.x, prevFrustumRight.y, prevFrustumRight.z, 0.0f);
+    consts->gPrevFrustumUp                                      = float4(prevFrustumUp.x, prevFrustumUp.y, prevFrustumUp.z, 0.0f);
+    consts->gPrevFrustumForward                                 = float4(prevFrustumForward.x, prevFrustumForward.y, prevFrustumForward.z, 0.0f);
+    consts->gCameraDelta                                        = float4(m_CameraDelta.x, m_CameraDelta.y, m_CameraDelta.z, 0.0f);
+    consts->gMvScale                                            = float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.isMotionVectorInWorldSpace ? 1.0f : 0.0f);
+    consts->gJitter                                             = float2(m_CommonSettings.cameraJitter[0], m_CommonSettings.cameraJitter[1]);
+    consts->gResolutionScale                                    = float2(float(rectW) / float(resourceW), float(rectH) / float(resourceH));
+    consts->gRectOffset                                         = float2(float(m_CommonSettings.rectOrigin[0]) / float(resourceW), float(m_CommonSettings.rectOrigin[1]) / float(resourceH));
+    consts->gResourceSizeInv                                    = float2(1.0f / resourceW, 1.0f / resourceH);
+    consts->gResourceSize                                       = float2(resourceW, resourceH);
+    consts->gRectSizeInv                                        = float2(1.0f / rectW, 1.0f / rectH);
+    consts->gRectSizePrev                                       = float2(float(rectWprev), float(rectHprev));
+    consts->gResourceSizeInvPrev                                = float2(1.0f / resourceWprev, 1.0f / resourceHprev);
+    consts->gRectOrigin                                         = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
+    consts->gRectSize                                           = uint2(rectW, rectH);
+    consts->gSpecMaxAccumulatedFrameNum                         = (float)settings.specularMaxAccumulatedFrameNum;
+    consts->gSpecMaxFastAccumulatedFrameNum                     = (float)settings.specularMaxFastAccumulatedFrameNum;
+    consts->gDiffMaxAccumulatedFrameNum                         = (float)settings.diffuseMaxAccumulatedFrameNum;
+    consts->gDiffMaxFastAccumulatedFrameNum                     = (float)settings.diffuseMaxFastAccumulatedFrameNum;
+    consts->gDisocclusionDepthThreshold                         = disocclusionThreshold;
+    consts->gDisocclusionDepthThresholdAlternate                = disocclusionThresholdAlternate;
+    consts->gRoughnessFraction                                  = settings.roughnessFraction;
+    consts->gSpecVarianceBoost                                  = settings.specularVarianceBoost;
+    consts->gSplitScreen                                        = m_CommonSettings.splitScreen;
+    consts->gDiffBlurRadius                                     = settings.diffusePrepassBlurRadius;
+    consts->gSpecBlurRadius                                     = settings.specularPrepassBlurRadius;
+    consts->gDepthThreshold                                     = settings.depthThreshold;
+    consts->gDiffLobeAngleFraction                              = settings.diffuseLobeAngleFraction;
+    consts->gSpecLobeAngleFraction                              = settings.specularLobeAngleFraction;
+    consts->gSpecLobeAngleSlack                                 = DegToRad(settings.specularLobeAngleSlack);
+    consts->gHistoryFixEdgeStoppingNormalPower                  = settings.historyFixEdgeStoppingNormalPower;
+    consts->gRoughnessEdgeStoppingRelaxation                    = settings.roughnessEdgeStoppingRelaxation;
+    consts->gNormalEdgeStoppingRelaxation                       = settings.normalEdgeStoppingRelaxation;
+    consts->gColorBoxSigmaScale                                 = settings.historyClampingColorBoxSigmaScale;
+    consts->gHistoryAccelerationAmount                          = settings.antilagSettings.accelerationAmount;
+    consts->gHistoryResetTemporalSigmaScale                     = settings.antilagSettings.temporalSigmaScale;
+    consts->gHistoryResetSpatialSigmaScale                      = settings.antilagSettings.spatialSigmaScale;
+    consts->gHistoryResetAmount                                 = settings.antilagSettings.resetAmount;
+    consts->gDenoisingRange                                     = m_CommonSettings.denoisingRange;
+    consts->gSpecPhiLuminance                                   = settings.specularPhiLuminance;
+    consts->gDiffPhiLuminance                                   = settings.diffusePhiLuminance;
+    consts->gDiffMaxLuminanceRelativeDifference                 = maxDiffuseLuminanceRelativeDifference;
+    consts->gSpecMaxLuminanceRelativeDifference                 = maxSpecularLuminanceRelativeDifference;
+    consts->gLuminanceEdgeStoppingRelaxation                    = settings.roughnessEdgeStoppingRelaxation;
+    consts->gConfidenceDrivenRelaxationMultiplier               = settings.confidenceDrivenRelaxationMultiplier;
+    consts->gConfidenceDrivenLuminanceEdgeStoppingRelaxation    = settings.confidenceDrivenLuminanceEdgeStoppingRelaxation;
+    consts->gConfidenceDrivenNormalEdgeStoppingRelaxation       = settings.confidenceDrivenNormalEdgeStoppingRelaxation;
+    consts->gDebug                                              = m_CommonSettings.debug;
+    consts->gOrthoMode                                          = m_OrthoMode;
+    consts->gUnproject                                          = 1.0f / (0.5f * rectH * m_ProjectY);
+    consts->gFramerateScale                                     = Clamp(16.66f / m_TimeDelta, 0.25f, 4.0f); // TODO: use m_FrameRateScale?
+    consts->gCheckerboardResolveAccumSpeed                      = m_CheckerboardResolveAccumSpeed;
+    consts->gJitterDelta                                        = m_JitterDelta;
+    consts->gHistoryFixFrameNum                                 = Min(settings.historyFixFrameNum, 3u) + 1.0f;
+    consts->gHistoryThreshold                                   = (float)settings.spatialVarianceEstimationHistoryThreshold;
+    consts->gRoughnessEdgeStoppingEnabled                       = settings.enableRoughnessEdgeStopping ? 1 : 0;
+    consts->gFrameIndex                                         = m_CommonSettings.frameIndex;
+    consts->gDiffCheckerboard                                   = diffCheckerboard;
+    consts->gSpecCheckerboard                                   = specCheckerboard;
+    consts->gUseConfidenceInputs                                = m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0;
+    consts->gUseDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0;
+    consts->gDiffMaterialMask                                   = settings.enableMaterialTestForDiffuse ? 1 : 0;
+    consts->gSpecMaterialMask                                   = settings.enableMaterialTestForSpecular ? 1 : 0;
+    consts->gResetHistory                                       = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0;
+}
+
+void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
+{
+    enum class Dispatch
+    {
+        CLASSIFY_TILES,
+        HITDIST_RECONSTRUCTION  = CLASSIFY_TILES + RELAX_NO_PERMUTATIONS,
+        PREPASS                 = HITDIST_RECONSTRUCTION + RELAX_HITDIST_RECONSTRUCTION_PERMUTATION_NUM,
+        TEMPORAL_ACCUMULATION   = PREPASS + RELAX_PREPASS_PERMUTATION_NUM,
+        HISTORY_FIX             = TEMPORAL_ACCUMULATION + RELAX_TEMPORAL_ACCUMULATION_PERMUTATION_NUM,
+        HISTORY_CLAMPING        = HISTORY_FIX + RELAX_NO_PERMUTATIONS,
+        COPY                    = HISTORY_CLAMPING + RELAX_NO_PERMUTATIONS,
+        ANTI_FIREFLY            = COPY + RELAX_NO_PERMUTATIONS,
+        ATROUS                  = ANTI_FIREFLY + RELAX_NO_PERMUTATIONS,
+        SPLIT_SCREEN            = ATROUS + RELAX_ATROUS_PERMUTATION_NUM * RELAX_ATROUS_BINDING_VARIANT_NUM,
+        VALIDATION              = SPLIT_SCREEN + RELAX_NO_PERMUTATIONS,
+    };
+
+    NRD_DECLARE_DIMS;
+
+    const RelaxSettings& settings = denoiserData.settings.relax;
+    bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
+    uint32_t iterationNum = Clamp(settings.atrousIterationNum, 2u, RELAX_MAX_ATROUS_PASS_NUM);
+
+    // SPLIT_SCREEN (passthrough)
+    if (m_CommonSettings.splitScreen >= 1.0f)
+    {
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Relax(settings, consts);
+
+        return;
+    }
+
+    { // CLASSIFY_TILES
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::CLASSIFY_TILES));
+        AddSharedConstants_Relax(settings, consts);
+    }
+
+    // HITDIST_RECONSTRUCTION
+    if (enableHitDistanceReconstruction)
+    {
+        bool is5x5 = settings.hitDistanceReconstructionMode == HitDistanceReconstructionMode::AREA_5X5;
+        uint32_t passIndex = AsUint(Dispatch::HITDIST_RECONSTRUCTION) + (is5x5 ? 1 : 0);
+        void* consts = PushDispatch(denoiserData, passIndex);
+        AddSharedConstants_Relax(settings, consts);
+    }
+
+    { // PREPASS
+        uint32_t passIndex = AsUint(Dispatch::PREPASS) + (enableHitDistanceReconstruction ? 1 : 0);
+        RELAX_PrePassConstants* consts = (RELAX_PrePassConstants*)PushDispatch(denoiserData, passIndex);
+        AddSharedConstants_Relax(settings, consts);
+        consts->gRotator = m_Rotator_PrePass; // TODO: push constant
+    }
+    
+    { // TEMPORAL_ACCUMULATION
+        uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 2 : 0) + (m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0);
+        void* consts = PushDispatch(denoiserData, passIndex);
+        AddSharedConstants_Relax(settings, consts);
+    }
+
+    { // HISTORY_FIX
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_FIX));
+        AddSharedConstants_Relax(settings, consts);
+    }
+
+    { // HISTORY_CLAMPING
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::HISTORY_CLAMPING));
+        AddSharedConstants_Relax(settings, consts);
+    }
+
+    if (settings.enableAntiFirefly)
+    {
+        { // COPY
+            void* consts = PushDispatch(denoiserData, AsUint(Dispatch::COPY));
+            AddSharedConstants_Relax(settings, consts);
+        }
+
+        { // ANTI_FIREFLY
+            void* consts = PushDispatch(denoiserData, AsUint(Dispatch::ANTI_FIREFLY));
+            AddSharedConstants_Relax(settings, consts);
+        }
+    }
+
+    // A-TROUS
+    for (uint32_t i = 0; i < iterationNum; i++)
+    {
+        uint32_t passIndex = AsUint(Dispatch::ATROUS) + (m_CommonSettings.isHistoryConfidenceAvailable ? RELAX_ATROUS_BINDING_VARIANT_NUM : 0);
+        if (i != 0)
+            passIndex += 2 - (i & 0x1);
+        if (i == iterationNum - 1)
+            passIndex += 2;
+
+        RELAX_AtrousConstants* consts = (RELAX_AtrousConstants*)PushDispatch(denoiserData, AsUint(passIndex)); // TODO: same as "RELAX_AtrousSmemConstants"
+        AddSharedConstants_Relax(settings, consts);
+        consts->gStepSize = 1 << i; // TODO: push constants
+        consts->gIsLastPass = i == iterationNum - 1 ? 1 : 0; // TODO: push constants
+    }
+
+    // SPLIT_SCREEN
+    if (m_CommonSettings.splitScreen > 0.0f)
+    {
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Relax(settings, consts);
+    }
+
+    // VALIDATION
+    if (m_CommonSettings.enableValidation)
+    {
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::VALIDATION));
+        AddSharedConstants_Relax(settings, consts);
+    }
 }
 
 // RELAX_SHARED
 #ifdef NRD_EMBEDS_DXBC_SHADERS
     #include "RELAX_ClassifyTiles.cs.dxbc.h"
+    #include "RELAX_Validation.cs.dxbc.h"
 #endif
 
 #ifdef NRD_EMBEDS_DXIL_SHADERS
     #include "RELAX_ClassifyTiles.cs.dxil.h"
+    #include "RELAX_Validation.cs.dxil.h"
 #endif
 
 #ifdef NRD_EMBEDS_SPIRV_SHADERS
     #include "RELAX_ClassifyTiles.cs.spirv.h"
+    #include "RELAX_Validation.cs.spirv.h"
 #endif
 
 // RELAX_DIFFUSE
@@ -154,7 +313,6 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_Diffuse_AtrousSmem.cs.dxbc.h"
     #include "RELAX_Diffuse_Atrous.cs.dxbc.h"
     #include "RELAX_Diffuse_SplitScreen.cs.dxbc.h"
-    #include "RELAX_Validation.cs.dxbc.h"
 #endif
 
 #ifdef NRD_EMBEDS_DXIL_SHADERS
@@ -169,7 +327,6 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_Diffuse_AtrousSmem.cs.dxil.h"
     #include "RELAX_Diffuse_Atrous.cs.dxil.h"
     #include "RELAX_Diffuse_SplitScreen.cs.dxil.h"
-    #include "RELAX_Validation.cs.dxil.h"
 #endif
 
 #ifdef NRD_EMBEDS_SPIRV_SHADERS
@@ -184,7 +341,6 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const DenoiserData& denoiserDat
     #include "RELAX_Diffuse_AtrousSmem.cs.spirv.h"
     #include "RELAX_Diffuse_Atrous.cs.spirv.h"
     #include "RELAX_Diffuse_SplitScreen.cs.spirv.h"
-    #include "RELAX_Validation.cs.spirv.h"
 #endif
 
 #include "Denoisers/Relax_Diffuse.hpp"

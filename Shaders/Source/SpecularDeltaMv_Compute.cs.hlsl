@@ -27,7 +27,7 @@ float GetAngle(float3 a, float3 b)
 
 float3 LoadCandidate(float2 samplePos)
 {
-    return gIn_PrevDeltaSecondaryPos.SampleLevel(gLinearClamp, samplePos * gInvRectSize, 0.f).xyz;
+    return gIn_PrevDeltaSecondaryPos.SampleLevel(gLinearClamp, samplePos * gRectSizeInv, 0.f).xyz;
 }
 
 float LoadAngle(float2 samplePos, float3 primaryPos, float3 refDir)
@@ -49,21 +49,19 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     static const uint  kMaxNewtonMethodIterations = 5;
     static const uint  kMaxLineSearchIterations = 10;
 
-    const uint2 pixelPosUser = gRectOrigin + pixelPos;
-
-    if (any(pixelPosUser >= gRectSize))
+    if (any(pixelPos >= gRectSize))
         return;
 
-    float3 primaryPos = gIn_DeltaPrimaryPos[pixelPosUser].xyz;
-    float3 secondaryPos = gIn_DeltaSecondaryPos[pixelPosUser].xyz;
+    float3 primaryPos = gIn_DeltaPrimaryPos[ pixelPos ].xyz;
+    float3 secondaryPos = gIn_DeltaSecondaryPos[ pixelPos ].xyz;
 
-    float3 mv = gIn_Mv[ pixelPosUser ] * gMvScale;
-    float2 pixelUv = float2(pixelPos + 0.5) * gInvRectSize;
+    float3 mv = gIn_Mv[ WithRectOrigin( pixelPos ) ] * gMvScale.xyz;
+    float2 pixelUv = float2(pixelPos + 0.5) * gRectSizeInv;
     float2 prevPixelUV = pixelUv + mv.xy;
-    if( gIsWorldSpaceMotionEnabled )
+    if( gMvScale.w != 0.0 )
         prevPixelUV = STL::Geometry::GetScreenUv( gWorldToClipPrev, primaryPos + mv );
 
-    gOut_DeltaSecondaryPos[pixelPosUser] = secondaryPos;
+    gOut_DeltaSecondaryPos[ pixelPos ] = secondaryPos;
 
     float2 initialScreenMotion = prevPixelUV - pixelUv;
 
@@ -80,7 +78,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
         {
             if (currAngle < kAngleEpsilon)
             {
-                gOut_DeltaMv[pixelPosUser] = prevSamplePos * gInvRectSize - pixelUv;
+                gOut_DeltaMv[ pixelPos ] = prevSamplePos * gRectSizeInv - pixelUv;
                 return;
             }
 
@@ -111,7 +109,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             // Can't find a suitable position, fallback to primary surface mvec
             if (abs(tmp1) < 1e-15)
             {
-                gOut_DeltaMv[pixelPosUser] = initialScreenMotion;
+                gOut_DeltaMv[ pixelPos ] = initialScreenMotion;
                 return;
             }
 
@@ -142,10 +140,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
         if (currAngle < kAngleConvergenceEpsilon)
         {
-            gOut_DeltaMv[pixelPosUser] = prevSamplePos * gInvRectSize - pixelUv;
+            gOut_DeltaMv[ pixelPos ] = prevSamplePos * gRectSizeInv - pixelUv;
             return;
         }
     }
 
-    gOut_DeltaMv[pixelPosUser] = initialScreenMotion;
+    gOut_DeltaMv[ pixelPos ] = initialScreenMotion;
 }

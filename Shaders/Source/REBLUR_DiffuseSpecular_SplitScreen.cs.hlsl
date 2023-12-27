@@ -14,9 +14,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_DIFFUSE
 #define REBLUR_SPECULAR
 
-#include "REBLUR/REBLUR_Config.hlsli"
-#include "REBLUR_DiffuseSpecular_SplitScreen.resources.hlsli"
+#include "REBLUR_Config.hlsli"
+#include "REBLUR_SplitScreen.resources.hlsli"
 
 #include "Common.hlsli"
-#include "REBLUR/REBLUR_Common.hlsli"
-#include "REBLUR/REBLUR_DiffuseSpecular_SplitScreen.hlsli"
+#include "REBLUR_Common.hlsli"
+#include "REBLUR_SplitScreen.hlsli"

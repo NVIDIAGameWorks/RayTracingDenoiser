@@ -23,11 +23,6 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
     denoiserData.settings.reblur = ReblurSettings();
     denoiserData.settingsSize = sizeof(denoiserData.settings.reblur);
 
-    uint16_t w = denoiserData.desc.renderWidth;
-    uint16_t h = denoiserData.desc.renderHeight;
-    uint16_t tilesW = DivideUp(w, 16);
-    uint16_t tilesH = DivideUp(h, 16);
-
     enum class Permanent
     {
         PREV_VIEWZ = PERMANENT_POOL_START,
@@ -43,17 +38,17 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
         SPEC_HITDIST_FOR_TRACKING_PONG,
     };
 
-    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_VIEWZ, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_INTERNAL_DATA, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, w, h, 1} );
-    AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, w, h, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_VIEWZ, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_INTERNAL_DATA, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, 1} );
+    AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, 1} );
 
     enum class Transient
     {
@@ -73,36 +68,31 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
         TILES,
     };
 
-    AddTextureToTransientPool( {Format::RGBA8_UNORM, w, h, 1} );
-    AddTextureToTransientPool( {Format::R32_UINT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, w, h, 1} );
-    AddTextureToTransientPool( {Format::R8_UNORM, tilesW, tilesH, 1} );
+    AddTextureToTransientPool( {Format::RGBA8_UNORM, 1} );
+    AddTextureToTransientPool( {Format::R32_UINT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, 16} );
 
-    REBLUR_SET_SHARED_CONSTANTS;
-
-    for (int i = 0; i < REBLUR_CLASSIFY_TILES_PERMUTATION_NUM; i++)
+    PushPass("Classify tiles");
     {
-        PushPass("Classify tiles");
-        {
-            // Inputs
-            PushInput( AsUint(ResourceType::IN_VIEWZ) );
+        // Inputs
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
-            // Outputs
-            PushOutput( AsUint(Transient::TILES) );
+        // Outputs
+        PushOutput( AsUint(Transient::TILES) );
 
-            // Shaders
-            AddDispatch( REBLUR_ClassifyTiles, REBLUR_CLASSIFY_TILES_CONSTANT_NUM, REBLUR_CLASSIFY_TILES_NUM_THREADS, 1 );
-        }
+        // Shaders
+        AddDispatch( REBLUR_ClassifyTiles, REBLUR_ClassifyTiles, 1 );
     }
 
     for (int i = 0; i < REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM; i++)
@@ -126,13 +116,13 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
             // Shaders
             if (is5x5)
             {
-                AddDispatch( REBLUR_DiffuseSpecular_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_DiffuseSpecular_HitDistReconstruction_5x5, REBLUR_HitDistReconstruction, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecular_HitDistReconstruction_5x5, REBLUR_HitDistReconstruction, 1 );
             }
             else
             {
-                AddDispatch( REBLUR_DiffuseSpecular_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecular_HitDistReconstruction, REBLUR_HITDIST_RECONSTRUCTION_CONSTANT_NUM, REBLUR_HITDIST_RECONSTRUCTION_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_DiffuseSpecular_HitDistReconstruction, REBLUR_HitDistReconstruction, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecular_HitDistReconstruction, REBLUR_HitDistReconstruction, 1 );
             }
         }
     }
@@ -160,8 +150,8 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
             PushOutput( SPEC_SH_TEMP1 );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularSh_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_NUM_THREADS, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_PrePass, REBLUR_PREPASS_CONSTANT_NUM, REBLUR_PREPASS_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_DiffuseSpecularSh_PrePass, REBLUR_PrePass, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_PrePass, REBLUR_PrePass, 1 );
         }
     }
 
@@ -191,7 +181,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
             PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_SH0) );
             PushInput( AsUint(Permanent::DIFF_FAST_HISTORY) );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY) );
-            PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING), 0, 1, AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG) );
+            PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING), AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG) );
             PushInput( AsUint(Transient::SPEC_HITDIST_FOR_TRACKING) );
             PushInput( isAfterPrepass ? DIFF_SH_TEMP1 : AsUint(ResourceType::IN_DIFF_SH1) );
             PushInput( isAfterPrepass ? SPEC_SH_TEMP1 : AsUint(ResourceType::IN_SPEC_SH1) );
@@ -203,73 +193,67 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
             PushOutput( SPEC_TEMP2 );
             PushOutput( AsUint(Transient::DIFF_FAST_HISTORY) );
             PushOutput( AsUint(Transient::SPEC_FAST_HISTORY) );
-            PushOutput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG), 0, 1, AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING) );
+            PushOutput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG), AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING) );
             PushOutput( AsUint(Transient::DATA1) );
             PushOutput( AsUint(Transient::DATA2) );
             PushOutput( DIFF_SH_TEMP2 );
             PushOutput( SPEC_SH_TEMP2 );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularSh_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation, REBLUR_TEMPORAL_ACCUMULATION_CONSTANT_NUM, REBLUR_TEMPORAL_ACCUMULATION_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_DiffuseSpecularSh_TemporalAccumulation, REBLUR_TemporalAccumulation, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_TemporalAccumulation, REBLUR_TemporalAccumulation, 1 );
         }
     }
 
-    for (int i = 0; i < REBLUR_HISTORY_FIX_PERMUTATION_NUM; i++)
+    PushPass("History fix");
     {
-        PushPass("History fix");
-        {
-            // Inputs
-            PushInput( AsUint(Transient::TILES) );
-            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Transient::DATA1) );
-            PushInput( AsUint(ResourceType::IN_VIEWZ) );
-            PushInput( DIFF_TEMP2 );
-            PushInput( SPEC_TEMP2 );
-            PushInput( AsUint(Transient::DIFF_FAST_HISTORY) );
-            PushInput( AsUint(Transient::SPEC_FAST_HISTORY) );
-            PushInput( DIFF_SH_TEMP2 );
-            PushInput( SPEC_SH_TEMP2 );
+        // Inputs
+        PushInput( AsUint(Transient::TILES) );
+        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+        PushInput( AsUint(Transient::DATA1) );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
+        PushInput( DIFF_TEMP2 );
+        PushInput( SPEC_TEMP2 );
+        PushInput( AsUint(Transient::DIFF_FAST_HISTORY) );
+        PushInput( AsUint(Transient::SPEC_FAST_HISTORY) );
+        PushInput( DIFF_SH_TEMP2 );
+        PushInput( SPEC_SH_TEMP2 );
 
-            // Outputs
-            PushOutput( DIFF_TEMP1 );
-            PushOutput( SPEC_TEMP1 );
-            PushOutput( AsUint(Permanent::DIFF_FAST_HISTORY) );
-            PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY) );
-            PushOutput( DIFF_SH_TEMP1 );
-            PushOutput( SPEC_SH_TEMP1 );
+        // Outputs
+        PushOutput( DIFF_TEMP1 );
+        PushOutput( SPEC_TEMP1 );
+        PushOutput( AsUint(Permanent::DIFF_FAST_HISTORY) );
+        PushOutput( AsUint(Permanent::SPEC_FAST_HISTORY) );
+        PushOutput( DIFF_SH_TEMP1 );
+        PushOutput( SPEC_SH_TEMP1 );
 
-            // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularSh_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_HistoryFix, REBLUR_HISTORY_FIX_CONSTANT_NUM, REBLUR_HISTORY_FIX_NUM_THREADS, 1 );
-        }
+        // Shaders
+        AddDispatch( REBLUR_DiffuseSpecularSh_HistoryFix, REBLUR_HistoryFix, 1 );
+        AddDispatch( REBLUR_Perf_DiffuseSpecularSh_HistoryFix, REBLUR_HistoryFix, 1 );
     }
 
-    for (int i = 0; i < REBLUR_BLUR_PERMUTATION_NUM; i++)
+    PushPass("Blur");
     {
-        PushPass("Blur");
-        {
-            // Inputs
-            PushInput( AsUint(Transient::TILES) );
-            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-            PushInput( AsUint(Transient::DATA1) );
-            PushInput( DIFF_TEMP1 );
-            PushInput( SPEC_TEMP1 );
-            PushInput( AsUint(ResourceType::IN_VIEWZ) );
-            PushInput( DIFF_SH_TEMP1 );
-            PushInput( SPEC_SH_TEMP1 );
+        // Inputs
+        PushInput( AsUint(Transient::TILES) );
+        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+        PushInput( AsUint(Transient::DATA1) );
+        PushInput( DIFF_TEMP1 );
+        PushInput( SPEC_TEMP1 );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
+        PushInput( DIFF_SH_TEMP1 );
+        PushInput( SPEC_SH_TEMP1 );
 
-            // Outputs
-            PushOutput( DIFF_TEMP2 );
-            PushOutput( SPEC_TEMP2 );
-            PushOutput( AsUint(Permanent::PREV_VIEWZ) );
-            PushOutput( DIFF_SH_TEMP2 );
-            PushOutput( SPEC_SH_TEMP2 );
+        // Outputs
+        PushOutput( DIFF_TEMP2 );
+        PushOutput( SPEC_TEMP2 );
+        PushOutput( AsUint(Permanent::PREV_VIEWZ) );
+        PushOutput( DIFF_SH_TEMP2 );
+        PushOutput( SPEC_SH_TEMP2 );
 
-            // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularSh_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_NUM_THREADS, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_Blur, REBLUR_BLUR_CONSTANT_NUM, REBLUR_BLUR_NUM_THREADS, 1 );
-        }
+        // Shaders
+        AddDispatch( REBLUR_DiffuseSpecularSh_Blur, REBLUR_Blur, 1 );
+        AddDispatch( REBLUR_Perf_DiffuseSpecularSh_Blur, REBLUR_Blur, 1 );
     }
 
     for (int i = 0; i < REBLUR_POST_BLUR_PERMUTATION_NUM; i++)
@@ -310,37 +294,34 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
             // Shaders
             if (isTemporalStabilization)
             {
-                AddDispatch( REBLUR_DiffuseSpecularSh_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecularSh_PostBlur, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_DiffuseSpecularSh_PostBlur, REBLUR_PostBlur, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecularSh_PostBlur, REBLUR_PostBlur, 1 );
             }
             else
             {
-                AddDispatch( REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
-                AddDispatch( REBLUR_Perf_DiffuseSpecularSh_PostBlur_NoTemporalStabilization, REBLUR_POST_BLUR_CONSTANT_NUM, REBLUR_POST_BLUR_NUM_THREADS, 1 );
+                AddDispatch( REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization, REBLUR_PostBlur, 1 );
+                AddDispatch( REBLUR_Perf_DiffuseSpecularSh_PostBlur_NoTemporalStabilization, REBLUR_PostBlur, 1 );
             }
         }
     }
 
-    for (int i = 0; i < REBLUR_COPY_STABILIZED_HISTORY_PERMUTATION_NUM; i++)
+    PushPass("Copy");
     {
-        PushPass("Copy stabilized history");
-        {
-            // Inputs
-            PushInput( AsUint(Transient::TILES) );
-            PushInput( AsUint(ResourceType::OUT_DIFF_SH0) );
-            PushInput( AsUint(ResourceType::OUT_SPEC_SH0) );
-            PushInput( AsUint(ResourceType::OUT_DIFF_SH1) );
-            PushInput( AsUint(ResourceType::OUT_SPEC_SH1) );
+        // Inputs
+        PushInput( AsUint(Transient::TILES) );
+        PushInput( AsUint(ResourceType::OUT_DIFF_SH0) );
+        PushInput( AsUint(ResourceType::OUT_SPEC_SH0) );
+        PushInput( AsUint(ResourceType::OUT_DIFF_SH1) );
+        PushInput( AsUint(ResourceType::OUT_SPEC_SH1) );
 
-            // Outputs
-            PushOutput( DIFF_TEMP2 );
-            PushOutput( SPEC_TEMP2 );
-            PushOutput( DIFF_SH_TEMP2 );
-            PushOutput( SPEC_SH_TEMP2 );
+        // Outputs
+        PushOutput( DIFF_TEMP2 );
+        PushOutput( SPEC_TEMP2 );
+        PushOutput( DIFF_SH_TEMP2 );
+        PushOutput( SPEC_SH_TEMP2 );
 
-            // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularSh_CopyStabilizedHistory, REBLUR_COPY_STABILIZED_HISTORY_CONSTANT_NUM, REBLUR_COPY_STABILIZED_HISTORY_NUM_THREADS, USE_MAX_DIMS );
-        }
+        // Shaders
+        AddDispatch( REBLUR_DiffuseSpecularSh_Copy, REBLUR_Copy, USE_MAX_DIMS );
     }
 
     for (int i = 0; i < REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM; i++)
@@ -360,7 +341,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
             PushInput( AsUint(Permanent::SPEC_HISTORY) );
             PushInput( DIFF_TEMP2 );
             PushInput( SPEC_TEMP2 );
-            PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG), 0, 1, AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING) );
+            PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG), AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING) );
             PushInput( AsUint(Permanent::DIFF_SH_HISTORY) );
             PushInput( AsUint(Permanent::SPEC_SH_HISTORY) );
             PushInput( DIFF_SH_TEMP2 );
@@ -375,31 +356,28 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecularSh(DenoiserData& denoiserData)
             PushOutput( AsUint(ResourceType::OUT_SPEC_SH1) );
 
             // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularSh_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_NUM_THREADS, 1 );
-            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_TemporalStabilization, REBLUR_TEMPORAL_STABILIZATION_CONSTANT_NUM, REBLUR_TEMPORAL_STABILIZATION_NUM_THREADS, 1 );
+            AddDispatch( REBLUR_DiffuseSpecularSh_TemporalStabilization, REBLUR_TemporalStabilization, 1 );
+            AddDispatch( REBLUR_Perf_DiffuseSpecularSh_TemporalStabilization, REBLUR_TemporalStabilization, 1 );
         }
     }
 
-    for (int i = 0; i < REBLUR_SPLIT_SCREEN_PERMUTATION_NUM; i++)
+    PushPass("Split screen");
     {
-        PushPass("Split screen");
-        {
-            // Inputs
-            PushInput( AsUint(ResourceType::IN_VIEWZ) );
-            PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
-            PushInput( AsUint(ResourceType::IN_SPEC_SH0) );
-            PushInput( AsUint(ResourceType::IN_DIFF_SH1) );
-            PushInput( AsUint(ResourceType::IN_SPEC_SH1) );
+        // Inputs
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
+        PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
+        PushInput( AsUint(ResourceType::IN_SPEC_SH0) );
+        PushInput( AsUint(ResourceType::IN_DIFF_SH1) );
+        PushInput( AsUint(ResourceType::IN_SPEC_SH1) );
 
-            // Outputs
-            PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
-            PushOutput( AsUint(ResourceType::OUT_SPEC_SH0) );
-            PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );
-            PushOutput( AsUint(ResourceType::OUT_SPEC_SH1) );
+        // Outputs
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
+        PushOutput( AsUint(ResourceType::OUT_SPEC_SH0) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );
+        PushOutput( AsUint(ResourceType::OUT_SPEC_SH1) );
 
-            // Shaders
-            AddDispatch( REBLUR_DiffuseSpecularSh_SplitScreen, REBLUR_SPLIT_SCREEN_CONSTANT_NUM, REBLUR_SPLIT_SCREEN_NUM_THREADS, 1 );
-        }
+        // Shaders
+        AddDispatch( REBLUR_DiffuseSpecularSh_SplitScreen, REBLUR_SplitScreen, 1 );
     }
 
     REBLUR_ADD_VALIDATION_DISPATCH( Transient::DATA2, ResourceType::IN_DIFF_SH0, ResourceType::IN_SPEC_SH0 );

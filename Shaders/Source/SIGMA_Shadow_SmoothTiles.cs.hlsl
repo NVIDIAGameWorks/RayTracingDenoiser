@@ -11,11 +11,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "SIGMA/SIGMA_Config.hlsli"
-#include "SIGMA_Shadow_SmoothTiles.resources.hlsli"
+#include "SIGMA_Config.hlsli"
+#include "SIGMA_SmoothTiles.resources.hlsli"
 
 #include "Common.hlsli"
-#include "SIGMA/SIGMA_Common.hlsli"
+#include "SIGMA_Common.hlsli"
 
 groupshared float s_Tile[ BUFFER_Y ][ BUFFER_X ];
 

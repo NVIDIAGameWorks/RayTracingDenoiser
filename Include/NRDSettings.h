@@ -11,9 +11,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 3
+#define NRD_SETTINGS_VERSION_MINOR 4
 
-static_assert (NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
+static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
 namespace nrd
 {
@@ -103,9 +103,11 @@ namespace nrd
         float cameraJitter[2] = {};
         float cameraJitterPrev[2] = {};
 
-        // (0; 1] - dynamic resolution scaling
-        float resolutionScale[2] = {1.0f, 1.0f};
-        float resolutionScalePrev[2] = {1.0f, 1.0f};
+        // Flexible dynamic resolution scaling support
+        uint16_t resourceSize[2] = {};
+        uint16_t resourceSizePrev[2] = {};
+        uint16_t rectSize[2] = {};
+        uint16_t rectSizePrev[2] = {};
 
         // (ms) - user provided if > 0, otherwise - tracked internally
         float timeDeltaBetweenFrames = 0.0f;
@@ -125,8 +127,10 @@ namespace nrd
         // For internal needs
         float debug = 0.0f;
 
-        // (pixels) - data rectangle origin in ALL input textures
-        uint32_t inputSubrectOrigin[2] = {};
+        // (pixels) - viewport origin
+        // IMPORTANT: gets applied only to non-noisy guides (aka g-buffer), including IN_DIFF_CONFIDENCE, IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX and IN_BASECOLOR_METALNESS
+        // Must be manually enabled via NRD_USE_VIEWPORT_OFFSET macro switch
+        uint32_t rectOrigin[2] = {};
 
         // A consecutive number
         uint32_t frameIndex = 0;
@@ -147,7 +151,7 @@ namespace nrd
         // If "true" IN_BASECOLOR_METALNESS is available
         bool isBaseColorMetalnessAvailable = false;
 
-        // Enables debug overlay in OUT_VALIDATION, requires "InstanceCreationDesc::allowValidation = true"
+        // Enables debug overlay in OUT_VALIDATION
         bool enableValidation = false;
     };
 
@@ -195,7 +199,7 @@ namespace nrd
         // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames in fast history (less than "maxAccumulatedFrameNum")
         uint32_t maxFastAccumulatedFrameNum = 6;
 
-        // [0; REBLUR_MAX_HISTORY_FRAME_NUM] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
+        // [0; 3] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
         uint32_t historyFixFrameNum = 3;
 
         // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, recommended in case of probabilistic sampling)
@@ -204,9 +208,6 @@ namespace nrd
 
         // (pixels) - base denoising radius (30 is a baseline for 1440p)
         float blurRadius = 15.0f;
-
-        // (pixels) - base stride between samples in history reconstruction pass
-        float historyFixStrideBetweenSamples = 14.0f;
 
         // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
         float lobeAngleFraction = 0.15f;
@@ -262,7 +263,7 @@ namespace nrd
         float blurRadiusScale = 2.0f;
     };
 
-    // RELAX_DIFFUSE_SPECULAR
+    // RELAX
 
     const uint32_t RELAX_MAX_HISTORY_FRAME_NUM = 255;
 
@@ -284,12 +285,12 @@ namespace nrd
         float resetAmount = 0.5f;
     };
 
-    struct RelaxDiffuseSpecularSettings
+    struct RelaxSettings
     {
         RelaxAntilagSettings antilagSettings = {};
 
         // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of probabilistic sampling)
-        float diffusePrepassBlurRadius = 50.0f;
+        float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
 
         // [0; RELAX_MAX_HISTORY_FRAME_NUM] - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
@@ -300,7 +301,7 @@ namespace nrd
         uint32_t diffuseMaxFastAccumulatedFrameNum = 6;
         uint32_t specularMaxFastAccumulatedFrameNum = 6;
 
-        // [0; RELAX_MAX_HISTORY_FRAME_NUM] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
+        // [0; 3] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
         uint32_t historyFixFrameNum = 3;
 
         // A-trous edge stopping Luminance sensitivity
@@ -319,9 +320,6 @@ namespace nrd
 
         // (degrees) - slack for the specular lobe angle used in normal based rejection of specular during A-Trous passes
         float specularLobeAngleSlack = 0.15f;
-
-        // (pixels) - base stride between samples in history reconstruction pass
-        float historyFixStrideBetweenSamples = 14.0f;
 
         // (> 0) - normal edge stopper for history reconstruction pass
         float historyFixEdgeStoppingNormalPower = 8.0f;
@@ -363,101 +361,12 @@ namespace nrd
         // Firefly suppression
         bool enableAntiFirefly = false;
 
-        // Skip reprojection test when there is no motion, might improve quality along the edges for static camera with a jitter
-        bool enableReprojectionTestSkippingWithoutMotion = false;
-
         // Roughness based rejection
         bool enableRoughnessEdgeStopping = true;
 
         // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
-    };
-
-    // RELAX_DIFFUSE
-
-    struct RelaxDiffuseSettings
-    {
-        RelaxAntilagSettings antilagSettings = {};
-
-        float prepassBlurRadius = 30.0f;
-
-        uint32_t diffuseMaxAccumulatedFrameNum = 30;
-        uint32_t diffuseMaxFastAccumulatedFrameNum = 6;
-        uint32_t historyFixFrameNum = 3;
-
-        float diffusePhiLuminance = 2.0f;
-        float diffuseLobeAngleFraction = 0.5f;
-
-        float historyFixEdgeStoppingNormalPower = 8.0f;
-        float historyFixStrideBetweenSamples = 14.0f;
-
-        float historyClampingColorBoxSigmaScale = 2.0f;
-
-        uint32_t spatialVarianceEstimationHistoryThreshold = 3;
-
-        uint32_t atrousIterationNum = 5;
-        float minLuminanceWeight = 0.0f;
-        float depthThreshold = 0.01f;
-
-        float confidenceDrivenRelaxationMultiplier = 0.0f;
-        float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
-        float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
-
-        CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
-        HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;
-
-        bool enableAntiFirefly = false;
-        bool enableReprojectionTestSkippingWithoutMotion = false;
-        bool enableMaterialTest = false;
-    };
-
-    // RELAX_SPECULAR
-
-    struct RelaxSpecularSettings
-    {
-        RelaxAntilagSettings antilagSettings = {};
-
-        float prepassBlurRadius = 50.0f;
-
-        uint32_t specularMaxAccumulatedFrameNum = 30;
-        uint32_t specularMaxFastAccumulatedFrameNum = 6;
-        uint32_t historyFixFrameNum = 3;
-
-        float specularPhiLuminance = 1.0f;
-        float diffuseLobeAngleFraction = 0.5f;
-        float specularLobeAngleFraction = 0.5f;
-        float roughnessFraction = 0.15f;
-
-        float specularVarianceBoost = 0.0f;
-        float specularLobeAngleSlack = 0.15f;
-
-        float historyFixEdgeStoppingNormalPower = 8.0f;
-        float historyFixStrideBetweenSamples = 14.0f;
-
-        float historyClampingColorBoxSigmaScale = 2.0f;
-
-        uint32_t spatialVarianceEstimationHistoryThreshold = 3;
-
-        uint32_t atrousIterationNum = 5;
-        float minLuminanceWeight = 0.0f;
-        float depthThreshold = 0.01f;
-
-        float confidenceDrivenRelaxationMultiplier = 0.0f;
-        float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
-        float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
-
-        float luminanceEdgeStoppingRelaxation = 0.5f;
-        float normalEdgeStoppingRelaxation = 0.3f;
-        float roughnessEdgeStoppingRelaxation = 1.0f;
-
-        CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
-        HitDistanceReconstructionMode hitDistanceReconstructionMode = HitDistanceReconstructionMode::OFF;
-
-        bool enableAntiFirefly = false;
-        bool enableReprojectionTestSkippingWithoutMotion = false;
-        bool enableRoughnessEdgeStopping = true;
-        bool enableMaterialTest = false;
     };
 
     // REFERENCE

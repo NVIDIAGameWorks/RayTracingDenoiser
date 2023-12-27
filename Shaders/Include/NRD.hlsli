@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.3
+// NRD v4.4
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -17,12 +17,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 float3 radiance:
     - radiance should not include material information ( use material de-modulation to decouple materials )
     - radiance should not be premultiplied by "exposure"
+    - for Primary Surface Replacements ( PSR ) throughput should be de-modulated as much as possible ( see test 184 from the sample and TraceOpaque.hlsl )
     - for diffuse rays
         - use COS-distribution ( or custom importance sampling )
         - if radiance is the result of path tracing, pass normalized hit distance as the sum of 1-all hits (always ignore primary hit!)
     - for specular
         - use VNDF sampling ( or custom importance sampling )
-        - if radiance is the result of path tracing, pass normalized hit distance as the sum of first 1-3 hits (always ignore primary hit!)
+            - most advanced v3 version: https://gpuopen.com/download/publications/Bounded_VNDF_Sampling_for_Smith-GGX_Reflections.pdf
+        - if radiance is the result of path tracing, pass hit distance for the 1st bounce for the first time (always ignore primary hit!)
 
 float hitDist:
     - can't be negative
@@ -71,9 +73,12 @@ float tanOfLightAngularRadius:
 // SETTINGS
 //=================================================================================================================================
 
-// ( Optional ) Register spaces
+// ( Optional ) Bindings
 #define NRD_CONSTANT_BUFFER_SPACE_INDEX                                                 0
-#define NRD_SAMPLERS_SPACE_INDEX                                                        0
+#define NRD_CONSTANT_BUFFER_REGISTER_INDEX                                              0
+
+#define NRD_SAMPLERS_SPACE_INDEX                                                        0 // TODO: better keep in a separate space for sharing
+
 #define NRD_RESOURCES_SPACE_INDEX                                                       0
 
 // ( Optional ) Entry point
@@ -90,33 +95,44 @@ float tanOfLightAngularRadius:
 #define NRD_MERGE_TOKENS_( _0, _1 )                                                     _0 ## _1
 #define NRD_MERGE_TOKENS( _0, _1 )                                                      NRD_MERGE_TOKENS_( _0, _1 )
 
-// Custom engine that has already defined all the macros
-#if( defined( NRD_INPUT_TEXTURE ) && defined( NRD_OUTPUT_TEXTURE ) && defined( NRD_CONSTANTS_START ) && defined( NRD_CONSTANT ) && defined( NRD_CONSTANTS_END ) )
+// Custom engine that defined all the macros
+#if( defined( NRD_CONSTANTS_START ) && \
+     defined( NRD_CONSTANT ) && \
+     defined( NRD_CONSTANTS_END ) && \
+     defined( NRD_INPUTS_START ) && \
+     defined( NRD_INPUT ) && \
+     defined( NRD_INPUTS_END ) && \
+     defined( NRD_OUTPUTS_START ) && \
+     defined( NRD_OUTPUT ) && \
+     defined( NRD_OUTPUTS_END ) && \
+     defined( NRD_SAMPLERS_START ) && \
+     defined( NRD_SAMPLER ) && \
+     defined( NRD_SAMPLERS_END ) )
 
     #define NRD_EXPORT
 
 // DXC
 #elif( defined( NRD_COMPILER_DXC ) || defined( __hlsl_dx_compiler ) )
 
-    #define NRD_CONSTANTS_START                                                         cbuffer globalConstants : register( b0, NRD_MERGE_TOKENS( space, NRD_CONSTANT_BUFFER_SPACE_INDEX ) ) {
+    #define NRD_CONSTANTS_START( resourceName )                                         cbuffer resourceName : register( NRD_MERGE_TOKENS( b, NRD_CONSTANT_BUFFER_REGISTER_INDEX ), NRD_MERGE_TOKENS( space, NRD_CONSTANT_BUFFER_SPACE_INDEX ) ) {
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
     #define NRD_CONSTANTS_END                                                           };
 
-    #define NRD_INPUT_TEXTURE_START
-    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex, NRD_MERGE_TOKENS( space, NRD_RESOURCES_SPACE_INDEX ) );
-    #define NRD_INPUT_TEXTURE_END
+    #define NRD_INPUTS_START
+    #define NRD_INPUT( resourceType, resourceName, regName, bindingIndex )              resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ), NRD_MERGE_TOKENS( space, NRD_RESOURCES_SPACE_INDEX ) );
+    #define NRD_INPUTS_END
 
-    #define NRD_OUTPUT_TEXTURE_START
-    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex, NRD_MERGE_TOKENS( space, NRD_RESOURCES_SPACE_INDEX ) );
-    #define NRD_OUTPUT_TEXTURE_END
+    #define NRD_OUTPUTS_START
+    #define NRD_OUTPUT( resourceType, resourceName, regName, bindingIndex )             resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ), NRD_MERGE_TOKENS( space, NRD_RESOURCES_SPACE_INDEX ) );
+    #define NRD_OUTPUTS_END
 
-    #define NRD_SAMPLER_START
-    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex, NRD_MERGE_TOKENS( space, NRD_SAMPLERS_SPACE_INDEX ) );
-    #define NRD_SAMPLER_END
+    #define NRD_SAMPLERS_START
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ), NRD_MERGE_TOKENS( space, NRD_SAMPLERS_SPACE_INDEX ) );
+    #define NRD_SAMPLERS_END
 
     #define NRD_EXPORT
 
-// PlayStation
+// PlayStation // TODO: register spaces?
 #elif( defined( NRD_COMPILER_PSSLC ) || defined( __PSSL__ ) )
 
     #define EXPAND( x )                                                                 x
@@ -129,21 +145,21 @@ float tanOfLightAngularRadius:
     #define GatherGreen3( a, b, c )                                                     GatherGreen( ( a ), ( b ), int2( c ) )
     #define GatherGreen2( a, b )                                                        GatherGreen( ( a ), ( b ) )
 
-    #define NRD_CONSTANTS_START                                                         ConstantBuffer globalConstants : register( b0 ) {
+    #define NRD_CONSTANTS_START( resourceName )                                         ConstantBuffer resourceName : register( NRD_MERGE_TOKENS( b, NRD_CONSTANT_BUFFER_REGISTER_INDEX ) ) {
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
     #define NRD_CONSTANTS_END                                                           };
 
-    #define NRD_INPUT_TEXTURE_START
-    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_INPUT_TEXTURE_END
+    #define NRD_INPUTS_START
+    #define NRD_INPUT( resourceType, resourceName, regName, bindingIndex )              resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ) );
+    #define NRD_INPUTS_END
 
-    #define NRD_OUTPUT_TEXTURE_START
-    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_OUTPUT_TEXTURE_END
+    #define NRD_OUTPUTS_START
+    #define NRD_OUTPUT( resourceType, resourceName, regName, bindingIndex )             resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ) );
+    #define NRD_OUTPUTS_END
 
-    #define NRD_SAMPLER_START
-    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_SAMPLER_END
+    #define NRD_SAMPLERS_START
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ) );
+    #define NRD_SAMPLERS_END
 
     #define numthreads                                                                  NUM_THREADS
     #define groupshared                                                                 thread_group_memory
@@ -172,45 +188,61 @@ float tanOfLightAngularRadius:
 // Unreal Engine
 #elif( defined( NRD_COMPILER_UNREAL_ENGINE ) ) // TODO: is there a predefined macro in UE?
 
-    #define NRD_CONSTANTS_START
+    #define NRD_CONSTANTS_START( resourceName )
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
     #define NRD_CONSTANTS_END
 
-    #define NRD_INPUT_TEXTURE_START
-    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName;
-    #define NRD_INPUT_TEXTURE_END
+    #define NRD_INPUTS_START
+    #define NRD_INPUT( resourceType, resourceName, regName, bindingIndex )              resourceType resourceName;
+    #define NRD_INPUTS_END
 
-    #define NRD_OUTPUT_TEXTURE_START
-    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName;
-    #define NRD_OUTPUT_TEXTURE_END
+    #define NRD_OUTPUTS_START
+    #define NRD_OUTPUT( resourceType, resourceName, regName, bindingIndex )             resourceType resourceName;
+    #define NRD_OUTPUTS_END
 
-    #define NRD_SAMPLER_START
+    #define NRD_SAMPLERS_START
     #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName;
-    #define NRD_SAMPLER_END
+    #define NRD_SAMPLERS_END
 
     #define NRD_EXPORT
 
 // FXC
 #else // TODO: is there a predefined macro in FXC?
 
-    #define NRD_CONSTANTS_START                                                         cbuffer globalConstants : register( b0 ) {
+    #define NRD_CONSTANTS_START( resourceName )                                         cbuffer resourceName : register( NRD_MERGE_TOKENS( b, NRD_CONSTANT_BUFFER_REGISTER_INDEX ) ) {
     #define NRD_CONSTANT( constantType, constantName )                                  constantType constantName;
     #define NRD_CONSTANTS_END                                                           };
 
-    #define NRD_INPUT_TEXTURE_START
-    #define NRD_INPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )      resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_INPUT_TEXTURE_END
+    #define NRD_INPUTS_START
+    #define NRD_INPUT( resourceType, resourceName, regName, bindingIndex )              resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ) );
+    #define NRD_INPUTS_END
 
-    #define NRD_OUTPUT_TEXTURE_START
-    #define NRD_OUTPUT_TEXTURE( resourceType, resourceName, regName, bindingIndex )     resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_OUTPUT_TEXTURE_END
+    #define NRD_OUTPUTS_START
+    #define NRD_OUTPUT( resourceType, resourceName, regName, bindingIndex )             resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ) );
+    #define NRD_OUTPUTS_END
 
-    #define NRD_SAMPLER_START
-    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( regName ## bindingIndex );
-    #define NRD_SAMPLER_END
+    #define NRD_SAMPLERS_START
+    #define NRD_SAMPLER( resourceType, resourceName, regName, bindingIndex )            resourceType resourceName : register( NRD_MERGE_TOKENS( regName, bindingIndex ) );
+    #define NRD_SAMPLERS_END
 
     #define NRD_EXPORT
 
+#endif
+
+//=================================================================================================================================
+// GLSL
+//=================================================================================================================================
+
+#ifdef NRD_GLSL
+    #define float4                                                                      vec4
+    #define float3                                                                      vec3
+    #define float2                                                                      vec2
+    #define float2x3                                                                    mat2x3
+    #define float3x3                                                                    mat3x3
+    #define rsqrt                                                                       inversesqrt
+    #define saturate( x )                                                               clamp( x, 0.0, 1.0 )
+    #define lerp                                                                        mix
+    #define mul( x, y )                                                                 ( x * y )
 #endif
 
 //=================================================================================================================================
@@ -218,6 +250,7 @@ float tanOfLightAngularRadius:
 //=================================================================================================================================
 
 #ifdef NRD_INTERNAL
+    // Explicitly set matrix layout for shader compilation outside of NRD environment
     #pragma pack_matrix( column_major )
 #endif
 
@@ -247,17 +280,23 @@ float tanOfLightAngularRadius:
 #define NRD_EPS                                                                         1e-6
 #define NRD_REJITTER_VIEWZ_THRESHOLD                                                    0.01 // normalized %
 #define NRD_ROUGHNESS_EPS                                                               sqrt( sqrt( NRD_EPS ) ) // "m2" fitting in FP32 to "linear roughness"
+#define NRD_INF                                                                         1e6
 
-// ViewZ packing into FP16
+// Misc
 float _NRD_PackViewZ( float z )
 {
     return clamp( z * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
 }
 
-// Oct packing
-float2 _NRD_EncodeUnitVector( float3 v, const bool bSigned = false )
+float3 _NRD_SafeNormalize( float3 v )
 {
-    v /= dot( abs( v ), 1.0 );
+    return v * rsqrt( dot( v, v ) + 1e-9 );
+}
+
+// Oct packing
+float2 _NRD_EncodeUnitVector( float3 v, const bool bSigned )
+{
+    v /= dot( abs( v ), float3( 1.0, 1.0, 1.0 ) );
 
     float2 octWrap = ( 1.0 - abs( v.yx ) ) * ( step( 0.0, v.xy ) * 2.0 - 1.0 );
     v.xy = v.z >= 0.0 ? v.xy : octWrap;
@@ -265,7 +304,7 @@ float2 _NRD_EncodeUnitVector( float3 v, const bool bSigned = false )
     return bSigned ? v.xy : v.xy * 0.5 + 0.5;
 }
 
-float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned = false, const bool bNormalize = true )
+float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned, const bool bNormalize )
 {
     p = bSigned ? p : ( p * 2.0 - 1.0 );
 
@@ -419,9 +458,20 @@ float2 _NRD_ComputeBrdfs( float3 Ld, float3 Ls, float3 N, float3 V, float Rf0, f
 }
 
 // Hit distance normalization
-float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float roughness = 1.0 )
+float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float roughness )
 {
     return ( hitDistParams.x + abs( viewZ ) * hitDistParams.y ) * lerp( 1.0, hitDistParams.z, saturate( exp2( hitDistParams.w * roughness * roughness ) ) );
+}
+
+// Is valid?
+bool _NRD_IsInvalid( float3 x )
+{
+    return any( isnan( x ) ) || any( isinf( x ) );
+}
+
+bool _NRD_IsInvalid( float x )
+{
+    return isnan( x ) || isinf( x );
 }
 
 //==============================================================================================================================================
@@ -507,7 +557,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
         materialID = 0;
     #endif
 
-    r.xyz = normalize( r.xyz );
+    r.xyz = _NRD_SafeNormalize( r.xyz );
 
     #if( NRD_ROUGHNESS_ENCODING == NRD_ROUGHNESS_ENCODING_SQRT_LINEAR )
         r.w *= r.w;
@@ -528,7 +578,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p )
 
 // Not used in NRD
 // X => IN_NORMAL_ROUGHNESS
-float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, float materialID = 0.0 )
+float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, float materialID )
 {
     float4 p;
 
@@ -558,11 +608,30 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, float mat
 }
 
 //=================================================================================================================================
+// FRONT-END - SPECULAR HIT DISTANCE AVERAGING ( in case of rpp > 1 )
+//=================================================================================================================================
+
+float NRD_FrontEnd_SpecHitDistAveraging_Begin( )
+{
+    return NRD_INF;
+}
+
+void NRD_FrontEnd_SpecHitDistAveraging_Add( inout float accumulatedSpecHitDist, float hitDist )
+{
+    accumulatedSpecHitDist = min( accumulatedSpecHitDist, hitDist == 0.0 ? NRD_INF : hitDist );
+}
+
+void NRD_FrontEnd_SpecHitDistAveraging_End( inout float accumulatedSpecHitDist )
+{
+    accumulatedSpecHitDist = accumulatedSpecHitDist == NRD_INF ? 0.0 : accumulatedSpecHitDist;
+}
+
+//=================================================================================================================================
 // FRONT-END - REBLUR
 //=================================================================================================================================
 
 // This function returns AO / SO which REBLUR can decode back to "hit distance" internally
-float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness = 1.0 )
+float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness )
 {
     // TODO: Sampling can produce rays pointing inside surface, i.e. "hitDist = 0". But due to ray offsetting
     // actual "hitDist" can be a very small value in this case. Since NRD handles "hitDist = 0" case, should be
@@ -576,12 +645,12 @@ float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDist
 // X => IN_DIFF_RADIANCE_HITDIST
 // X => IN_SPEC_RADIANCE_HITDIST
 // normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
-float4 REBLUR_FrontEnd_PackRadianceAndNormHitDist( float3 radiance, float normHitDist, bool sanitize = true )
+float4 REBLUR_FrontEnd_PackRadianceAndNormHitDist( float3 radiance, float normHitDist, bool sanitize )
 {
     if( sanitize )
     {
-        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
-        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
+        radiance = _NRD_IsInvalid( radiance ) ? float3( 0, 0, 0 ) : clamp( radiance, 0, NRD_FP16_MAX );
+        normHitDist = _NRD_IsInvalid( normHitDist ) ? 0 : saturate( normHitDist );
     }
 
     radiance = _NRD_LinearToYCoCg( radiance );
@@ -592,13 +661,13 @@ float4 REBLUR_FrontEnd_PackRadianceAndNormHitDist( float3 radiance, float normHi
 // X => IN_DIFF_SH0 and IN_DIFF_SH1
 // X => IN_SPEC_SH0 and IN_SPEC_SH1
 // normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
-float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direction, out float4 out1, bool sanitize = true )
+float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direction, out float4 out1, bool sanitize )
 {
     if( sanitize )
     {
-        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
-        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
-        direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : clamp( direction, -NRD_FP16_MAX, NRD_FP16_MAX );
+        radiance = _NRD_IsInvalid( radiance ) ? float3( 0, 0, 0 ) : clamp( radiance, 0, NRD_FP16_MAX );
+        normHitDist = _NRD_IsInvalid( normHitDist ) ? 0 : saturate( normHitDist );
+        direction = _NRD_IsInvalid( direction ) ? float3( 0, 0, 0 ) : clamp( direction, -1.0, 1.0 );
     }
 
     NRD_SG sg = _NRD_SG_Create( radiance, direction, normHitDist );
@@ -614,15 +683,15 @@ float4 REBLUR_FrontEnd_PackSh( float3 radiance, float normHitDist, float3 direct
 
 // X => IN_DIFF_DIRECTION_HITDIST
 // normHitDist must be packed by "REBLUR_FrontEnd_GetNormHitDist"
-float4 REBLUR_FrontEnd_PackDirectionalOcclusion( float3 direction, float normHitDist, bool sanitize = true )
+float4 REBLUR_FrontEnd_PackDirectionalOcclusion( float3 direction, float normHitDist, bool sanitize )
 {
     if( sanitize )
     {
-        direction = any( isnan( direction ) | isinf( direction ) ) ? 0 : direction;
-        normHitDist = ( isnan( normHitDist ) | isinf( normHitDist ) ) ? 0 : saturate( normHitDist );
+        direction = _NRD_IsInvalid( direction ) ? float3( 0, 0, 0 ) : clamp( direction, -1.0, 1.0 );
+        normHitDist = _NRD_IsInvalid( normHitDist ) ? 0 : saturate( normHitDist );
     }
 
-    NRD_SG sg = _NRD_SG_Create( normHitDist, direction, normHitDist );
+    NRD_SG sg = _NRD_SG_Create( normHitDist.xxx, direction, normHitDist );
 
     return float4( sg.c1, sg.c0 );
 }
@@ -633,12 +702,12 @@ float4 REBLUR_FrontEnd_PackDirectionalOcclusion( float3 direction, float normHit
 
 // X => IN_DIFF_RADIANCE_HITDIST
 // X => IN_SPEC_RADIANCE_HITDIST
-float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bool sanitize = true )
+float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bool sanitize )
 {
     if( sanitize )
     {
-        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
-        hitDist = ( isnan( hitDist ) | isinf( hitDist ) ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
+        radiance = _NRD_IsInvalid( radiance ) ? float3( 0, 0, 0 ) : clamp( radiance, 0, NRD_FP16_MAX );
+        hitDist = _NRD_IsInvalid( hitDist ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
     }
 
     return float4( radiance, hitDist );
@@ -646,12 +715,13 @@ float4 RELAX_FrontEnd_PackRadianceAndHitDist( float3 radiance, float hitDist, bo
 
 // X => IN_DIFF_SH0 and IN_DIFF_SH1
 // X => IN_SPEC_SH0 and IN_SPEC_SH1
-float4 RELAX_FrontEnd_PackSh( float3 radiance, float hitDist, float3 direction, out float4 out1, bool sanitize = true )
+float4 RELAX_FrontEnd_PackSh( float3 radiance, float hitDist, float3 direction, out float4 out1, bool sanitize )
 {
     if( sanitize )
     {
-        radiance = any( isnan( radiance ) | isinf( radiance ) ) ? 0 : clamp( radiance, 0, NRD_FP16_MAX );
-        hitDist = ( isnan( hitDist ) | isinf( hitDist ) ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
+        radiance = _NRD_IsInvalid( radiance ) ? float3( 0, 0, 0 ) : clamp( radiance, 0, NRD_FP16_MAX );
+        hitDist = _NRD_IsInvalid( hitDist ) ? 0 : clamp( hitDist, 0, NRD_FP16_MAX );
+        direction = _NRD_IsInvalid( direction ) ? float3( 0, 0, 0 ) : clamp( direction, -1.0, 1.0 );
     }
 
     // IN_DIFF_SH0 / IN_SPEC_SH0
@@ -676,7 +746,6 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
     r.x = 0.0;
     r.y = _NRD_PackViewZ( viewZ );
 
-    [flatten]
     if( distanceToOccluder == NRD_FP16_MAX )
         r.x = NRD_FP16_MAX;
     else if( distanceToOccluder != 0.0 )
@@ -705,9 +774,9 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
 
 #define SIGMA_MULTILIGHT_DATATYPE float2x3
 
-SIGMA_MULTILIGHT_DATATYPE SIGMA_FrontEnd_MultiLightStart()
+SIGMA_MULTILIGHT_DATATYPE SIGMA_FrontEnd_MultiLightStart( )
 {
-    return ( SIGMA_MULTILIGHT_DATATYPE )0;
+    return float2x3( float3( 0, 0, 0 ), float3( 0, 0, 0 ) );
 }
 
 void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float tanOfLightAngularRadius, float weight, inout SIGMA_MULTILIGHT_DATATYPE multiLightShadowData )
@@ -817,7 +886,8 @@ NRD_SG RELAX_BackEnd_UnpackSh( float4 sh0, float4 sh1 )
 //      float3 finalShadowCommon = lerp( shadowData.yzw, 1.0, shadowData.x ); // or
 //      float3 finalShadowExotic = shadowData.yzw * shadowData.x; // or
 //      float3 finalShadowMoreExotic = shadowData.yzw;
-#define SIGMA_BackEnd_UnpackShadow( color )  ( color * color )
+// IMPORTANT: use "^ 3" to compensate over-blurring ( it really makes the result closer to the reference )
+#define SIGMA_BackEnd_UnpackShadow( color )  ( color * color * color )
 
 //=================================================================================================================================
 // BACK-END - HIGH QUALITY RESOLVE
@@ -856,7 +926,7 @@ float3 NRD_SG_ResolveDiffuse( NRD_SG sg, float3 N )
 
     float e = exp( -sg.sharpness );
     float e2 = e * e;
-    float r = rcp( sg.sharpness );
+    float r = 1.0 / sg.sharpness;
 
     float scale = 1.0 + 2.0 * e2 - r;
     float bias = ( e - e2 ) * r - e2;
@@ -878,10 +948,12 @@ float3 NRD_SG_ResolveDiffuse( NRD_SG sg, float3 N )
     sg.sharpness = 2.0; // TODO: another sharpness = another normalization needed...
 
     // Approximate NDF
-    NRD_SG ndf = ( NRD_SG )0;
+    NRD_SG ndf;
     ndf.c0 = 1.0;
     ndf.c1 = N;
     ndf.sharpness = 2.0;
+    ndf.chroma = float2( 0, 0 );
+    ndf.normHitDist = 0;
 
     // Non-magic scale
     ndf.c0 *= 0.75;
@@ -910,19 +982,23 @@ float3 NRD_SG_ResolveSpecular( NRD_SG sg, float3 N, float3 V, float roughness )
     float m = roughness * roughness;
     float m2 = m * m;
 
-    NRD_SG ndf = ( NRD_SG )0;
+    NRD_SG ndf;
     ndf.c0 = 1.0 / ( NRD_PI * m2 );
     ndf.c1 = H;
     ndf.sharpness = 2.0 / m2;
+    ndf.chroma = float2( 0, 0 );
+    ndf.normHitDist = 0;
 
     // Non-magic scale
     ndf.c0 *= lerp( 1.0, 0.75 * 2.0 * NRD_PI, m2 );
 
     // Warp NDF
     NRD_SG ndfWarped;
-    ndfWarped.c1 = reflect( -V, ndf.c1 );
     ndfWarped.c0 = ndf.c0;
+    ndfWarped.c1 = reflect( -V, ndf.c1 );
     ndfWarped.sharpness = ndf.sharpness / ( 4.0 * abs( dot( ndf.c1, V ) ) + NRD_EPS );
+    ndfWarped.chroma = float2( 0, 0 );
+    ndfWarped.normHitDist = 0;
 
     // Cosine term & visibility term evaluated at the center of the warped BRDF lobe
     float NoV = abs( dot( N, V ) );
@@ -990,7 +1066,7 @@ float2 NRD_SG_ReJitter(
     float2 f = ( brdfCenter * 4.0 + NRD_EPS ) / ( brdfAverage + NRD_EPS );
 
     // Use re-jitter only if all samples are valid to minimize ringing
-    return sum != 4 ? 1.0 : clamp( f, 1.0 / NRD_PI, NRD_PI );
+    return sum != 4 ? float2( 1, 1 ) : clamp( f, 1.0 / NRD_PI, NRD_PI );
 }
 
 //=================================================================================================================================
@@ -1022,7 +1098,7 @@ float3 NRD_SH_ResolveSpecular( NRD_SG sh, float3 N, float3 V, float roughness )
 // Needs to be used to avoid summing up NAN/INF values in many rays per pixel scenarios
 bool NRD_IsValidRadiance( float3 radiance )
 {
-    return any( isnan( radiance ) | isinf( radiance ) ) ? false : true;
+    return _NRD_IsInvalid( radiance );
 }
 
 // Scales normalized hit distance back to real length

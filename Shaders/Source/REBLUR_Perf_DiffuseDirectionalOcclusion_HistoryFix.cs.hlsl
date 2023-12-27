@@ -15,9 +15,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_DIFFUSE
 #define REBLUR_DIRECTIONAL_OCCLUSION
 
-#include "REBLUR/REBLUR_Config.hlsli"
-#include "REBLUR_DiffuseSpecular_HistoryFix.resources.hlsli"
+#include "REBLUR_Config.hlsli"
+#include "REBLUR_HistoryFix.resources.hlsli"
 
 #include "Common.hlsli"
-#include "REBLUR/REBLUR_Common.hlsli"
-#include "REBLUR/REBLUR_DiffuseSpecular_HistoryFix.hlsli"
+#include "REBLUR_Common.hlsli"
+#include "REBLUR_HistoryFix.hlsli"

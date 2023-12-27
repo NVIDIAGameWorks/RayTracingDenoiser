@@ -14,9 +14,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_DIFFUSE
 #define REBLUR_SPECULAR
 
-#include "REBLUR/REBLUR_Config.hlsli"
-#include "REBLUR_DiffuseSpecular_HitDistReconstruction.resources.hlsli"
+#include "REBLUR_Config.hlsli"
+#include "REBLUR_HitDistReconstruction.resources.hlsli"
 
 #include "Common.hlsli"
-#include "REBLUR/REBLUR_Common.hlsli"
-#include "REBLUR/REBLUR_DiffuseSpecular_HitDistReconstruction.hlsli"
+#include "REBLUR_Common.hlsli"
+#include "REBLUR_HitDistReconstruction.hlsli"

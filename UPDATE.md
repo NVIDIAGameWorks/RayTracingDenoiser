@@ -183,3 +183,33 @@ A single NRD instance can now include any combination of denoisers, including re
   - Removed `enableReferenceAccumulation`
   - Introduced `usePrepassOnlyForSpecularMotionEstimation`
   - `AntilagIntensitySettings` and `AntilagHitDistanceSettings` replaced with simpler `ReblurAntilagSettings`
+
+## To v4.4
+
+- *API*:
+  - `inputSubrectOrigin` => `rectOrigin` and clarified usage
+  - improved dynamic resolution scaling support: now not only viewport can be adjusted on the fly, but resources can be suballocated from a heap on the fly too
+    - removed `DenoiserDesc::renderWidth` and `DenoiserDesc::renderHeight`
+    - removed `CommonSettings::resolutionScale` and `CommonSettings::resolutionScalePrev`
+    - exposed `CommonSettings::resourceSize` and `CommonSettings::resourceSizePrev`
+    - exposed `CommonSettings::rectSize` and `CommonSettings::rectSizePrev`
+    - *NRD INTEGRATION*: currently statically allocates resources at NRD instance creation time
+  - all denoisers use resources without mips:
+    - removed `TextureDesc::mipNum`
+    - removed `ResourceDesc::mipNum` and `ResourceDesc::mipOffset`
+  - simplified number of samplers
+    - removed `Sampler::NEAREST_MIRRORED_REPEAT` and `Sampler::LINEAR_MIRRORED_REPEAT`
+- *NRD.hlsli*:
+  - added `NRD_FrontEnd_SpecHitDistAveraging_X` functions, needed to properly average specular hit distance for correct specular tracking in case of many RPP
+  - `NRD_INPUT/OUTPUT_TEXTURE_START` renamed to `NRD_INPUTS/OUTPUTS_START`
+  - `NRD_INPUT/OUTPUT_TEXTURE` renamed to `NRD_INPUT/OUTPUT`
+  - `NRD_INPUT/OUTPUT_TEXTURE_END` renamed to `NRD_INPUTS/OUTPUTS_END`
+  - `NRD_SAMPLER_START/END` renamed to `NRD_SAMPLERS_START/END`
+- *REBLUR*:
+  - removed `historyFixStrideBetweenSamples`
+- *RELAX*:
+  - removed `historyFixStrideBetweenSamples`
+  - removed `enableReprojectionTestSkippingWithoutMotion`
+- *REFERENCE*:
+  - `IN_RADIANCE` renamed to `IN_SIGNAL`
+  - `OUT_RADIANCE` renamed to `OUT_SIGNAL`

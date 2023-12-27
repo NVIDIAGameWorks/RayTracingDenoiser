@@ -15,11 +15,6 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
     denoiserData.settings.sigma = SigmaSettings();
     denoiserData.settingsSize = sizeof(denoiserData.settings.sigma);
             
-    uint16_t w = denoiserData.desc.renderWidth;
-    uint16_t h = denoiserData.desc.renderHeight;
-    uint16_t tilesW = DivideUp(w, 16);
-    uint16_t tilesH = DivideUp(h, 16);
-
     enum class Transient
     {
         DATA_1 = TRANSIENT_POOL_START,
@@ -31,15 +26,13 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
         SMOOTHED_TILES,
     };
 
-    AddTextureToTransientPool( {Format::RG16_SFLOAT, w, h, 1} );
-    AddTextureToTransientPool( {Format::RG16_SFLOAT, w, h, 1} );
-    AddTextureToTransientPool( {Format::RGBA8_UNORM, w, h, 1} );
-    AddTextureToTransientPool( {Format::RGBA8_UNORM, w, h, 1} );
-    AddTextureToTransientPool( {Format::RGBA8_UNORM, w, h, 1} );
-    AddTextureToTransientPool( {Format::RGBA8_UNORM, tilesW, tilesH, 1} );
-    AddTextureToTransientPool( {Format::RG8_UNORM, tilesW, tilesH, 1} );
-
-    SIGMA_SET_SHARED_CONSTANTS;
+    AddTextureToTransientPool( {Format::RG16_SFLOAT, 1} );
+    AddTextureToTransientPool( {Format::RG16_SFLOAT, 1} );
+    AddTextureToTransientPool( {Format::RGBA8_UNORM, 1} );
+    AddTextureToTransientPool( {Format::RGBA8_UNORM, 1} );
+    AddTextureToTransientPool( {Format::RGBA8_UNORM, 1} );
+    AddTextureToTransientPool( {Format::RGBA8_UNORM, 16} );
+    AddTextureToTransientPool( {Format::RG8_UNORM, 16} );
 
     PushPass("Classify tiles");
     {
@@ -48,7 +41,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
         PushOutput( AsUint(Transient::TILES) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_ClassifyTiles, SIGMA_CLASSIFY_TILES_SET_CONSTANTS, SIGMA_CLASSIFY_TILES_NUM_THREADS, 16 );
+        AddDispatch( SIGMA_ShadowTranslucency_ClassifyTiles, SIGMA_ClassifyTiles, 1 );
     }
 
     PushPass("Smooth tiles");
@@ -57,7 +50,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
         PushOutput( AsUint(Transient::SMOOTHED_TILES) );
 
-        AddDispatch( SIGMA_Shadow_SmoothTiles, SIGMA_SMOOTH_TILES_SET_CONSTANTS, SIGMA_SMOOTH_TILES_NUM_THREADS, 16 );
+        AddDispatch( SIGMA_Shadow_SmoothTiles, SIGMA_SmoothTiles, 16 );
     }
 
     PushPass("Blur");
@@ -72,7 +65,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
         PushOutput( AsUint(Transient::TEMP_1) );
         PushOutput( AsUint(Transient::HISTORY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_Blur, SIGMA_BLUR_SET_CONSTANTS, SIGMA_BLUR_NUM_THREADS, USE_MAX_DIMS );
+        AddDispatch( SIGMA_ShadowTranslucency_Blur, SIGMA_Blur, USE_MAX_DIMS );
     }
 
     PushPass("Post-blur");
@@ -85,7 +78,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
         PushOutput( AsUint(Transient::DATA_2) );
         PushOutput( AsUint(Transient::TEMP_2) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_PostBlur, SIGMA_BLUR_SET_CONSTANTS, SIGMA_BLUR_NUM_THREADS, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_PostBlur, SIGMA_Blur, 1 );
     }
 
     PushPass("Temporal stabilization");
@@ -98,7 +91,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_TemporalStabilization, SIGMA_TEMPORAL_STABILIZATION_SET_CONSTANTS, SIGMA_TEMPORAL_STABILIZATION_NUM_THREADS, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_TemporalStabilization, SIGMA_TemporalStabilization, 1 );
     }
 
     PushPass("Split screen");
@@ -108,7 +101,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_SplitScreen, SIGMA_SPLIT_SCREEN_SET_CONSTANTS, SIGMA_SPLIT_SCREEN_NUM_THREADS, 1 );
+        AddDispatch( SIGMA_ShadowTranslucency_SplitScreen, SIGMA_SplitScreen, 1 );
     }
 
     #undef DENOISER_NAME

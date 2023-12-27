@@ -16,9 +16,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SPECULAR
 #define REBLUR_SH
 
-#include "REBLUR/REBLUR_Config.hlsli"
-#include "REBLUR_DiffuseSpecular_PrePass.resources.hlsli"
+#include "REBLUR_Config.hlsli"
+#include "REBLUR_PrePass.resources.hlsli"
 
 #include "Common.hlsli"
-#include "REBLUR/REBLUR_Common.hlsli"
-#include "REBLUR/REBLUR_DiffuseSpecular_PrePass.hlsli"
+#include "REBLUR_Common.hlsli"
+#include "REBLUR_PrePass.hlsli"

@@ -8,15 +8,14 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
+#include "../Shaders/Resources/SpecularDeltaMv_Compute.resources.hlsli"
+
 void nrd::InstanceImpl::Add_SpecularDeltaMv(DenoiserData& denoiserData)
 {
     #define DENOISER_NAME SpecularDeltaMv
 
     denoiserData.settings.specularDeltaMv = SpecularDeltaMvSettings();
     denoiserData.settingsSize = sizeof(denoiserData.settings.specularDeltaMv);
-            
-    uint16_t w = denoiserData.desc.renderWidth;
-    uint16_t h = denoiserData.desc.renderHeight;
 
     enum class Permanent
     {
@@ -24,22 +23,20 @@ void nrd::InstanceImpl::Add_SpecularDeltaMv(DenoiserData& denoiserData)
         DELTA_SECONDARY_POS_PREV
     };
 
-    AddTextureToPermanentPool( {Format::RGBA32_SFLOAT, w, h, 1} );
-    AddTextureToPermanentPool( {Format::RGBA32_SFLOAT, w, h, 1} );
-
-    SetSharedConstants(0, 0, 0, 0);
+    AddTextureToPermanentPool( {Format::RGBA32_SFLOAT, 1} );
+    AddTextureToPermanentPool( {Format::RGBA32_SFLOAT, 1} );
 
     PushPass("Compute");
     {
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(ResourceType::IN_DELTA_PRIMARY_POS) );
         PushInput( AsUint(ResourceType::IN_DELTA_SECONDARY_POS) );
-        PushInput( AsUint(Permanent::DELTA_SECONDARY_POS_PREV), 0, 1, AsUint(Permanent::DELTA_SECONDARY_POS_CURR) );
+        PushInput( AsUint(Permanent::DELTA_SECONDARY_POS_PREV), AsUint(Permanent::DELTA_SECONDARY_POS_CURR) );
 
         PushOutput( AsUint(ResourceType::OUT_DELTA_MV) );
-        PushOutput( AsUint(Permanent::DELTA_SECONDARY_POS_CURR), 0, 1, AsUint(Permanent::DELTA_SECONDARY_POS_PREV) );
+        PushOutput( AsUint(Permanent::DELTA_SECONDARY_POS_CURR), AsUint(Permanent::DELTA_SECONDARY_POS_PREV) );
 
-        AddDispatch( SpecularDeltaMv_Compute, SumConstants(1, 1, 3, 1), NumThreads(16, 16), 1 );
+        AddDispatch( SpecularDeltaMv_Compute, SpecularDeltaMv_Compute, 1 );
     }
 
     #undef DENOISER_NAME
@@ -54,13 +51,13 @@ void nrd::InstanceImpl::Update_SpecularDeltaMv(const DenoiserData& denoiserData)
 
     NRD_DECLARE_DIMS;
 
-    // COMPUTE
-    Constant* data = PushDispatch(denoiserData, AsUint(Dispatch::COMPUTE));
-    AddFloat4x4(data, m_WorldToClipPrev);
-    AddFloat4(data, ml::float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.debug));
-    AddUint2(data, rectW, rectH);
-    AddFloat2(data, 1.0f / float(rectW), 1.0f / float(rectH));
-    AddUint2(data, m_CommonSettings.inputSubrectOrigin[0], m_CommonSettings.inputSubrectOrigin[1]);
-    AddUint(data, m_CommonSettings.isMotionVectorInWorldSpace ? 1 : 0);
-    ValidateConstants(data);
+    { // COMPUTE
+        SpecularDeltaMv_ComputeConstants* consts = (SpecularDeltaMv_ComputeConstants*)PushDispatch(denoiserData, AsUint(Dispatch::COMPUTE));
+        consts->gWorldToClipPrev    = m_WorldToClipPrev;
+        consts->gMvScale            = float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.isMotionVectorInWorldSpace ? 1.0f : 0.0f);
+        consts->gRectOrigin         = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
+        consts->gRectSize           = uint2(rectW, rectH);
+        consts->gRectSizeInv        = float2(1.0f / float(rectW), 1.0f / float(rectH));
+        consts->gDebug              = m_CommonSettings.debug;
+    }
 }

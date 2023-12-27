@@ -14,9 +14,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define RELAX_DIFFUSE
 #define RELAX_SH
 
-#include "RELAX/RELAX_Config.hlsli"
-#include "RELAX_DiffuseSpecular_Atrous.resources.hlsli"
+#include "RELAX_Config.hlsli"
+#include "RELAX_Atrous.resources.hlsli"
 
 #include "Common.hlsli"
-#include "RELAX/RELAX_Common.hlsli"
-#include "RELAX/RELAX_DiffuseSpecular_Atrous.hlsli"
+#include "RELAX_Common.hlsli"
+#include "RELAX_Atrous.hlsli"

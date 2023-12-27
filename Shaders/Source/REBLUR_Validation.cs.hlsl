@@ -11,11 +11,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "REBLUR/REBLUR_Config.hlsli"
+#include "REBLUR_Config.hlsli"
 #include "REBLUR_Validation.resources.hlsli"
 
 #include "Common.hlsli"
-#include "REBLUR/REBLUR_Common.hlsli"
+#include "REBLUR_Common.hlsli"
 
 #define VIEWPORT_SIZE   0.25
 #define OFFSET          5
@@ -37,7 +37,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         return;
     }
 
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gInvScreenSize;
+    float2 pixelUv = float2( pixelPos + 0.5 ) / gResourceSize;
 
     float2 viewportUv = frac( pixelUv / VIEWPORT_SIZE );
     float2 viewportId = floor( pixelUv / VIEWPORT_SIZE );
@@ -47,7 +47,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) );
     float viewZ = gIn_ViewZ.SampleLevel( gNearestClamp, viewportUvScaled, 0 );
-    float3 mv = gIn_Mv.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) * gMvScale;
+    float3 mv = gIn_Mv.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) * gMvScale.xyz;
     float4 diff = gIn_Diff.SampleLevel( gNearestClamp, viewportUvScaled * float2( gDiffCheckerboard != 2 ? 0.5 : 1.0, 1.0 ), 0 );
     float4 spec = gIn_Spec.SampleLevel( gNearestClamp, viewportUvScaled * float2( gSpecCheckerboard != 2 ? 0.5 : 1.0, 1.0 ), 0 );
 
@@ -58,7 +58,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     data1.xz *= REBLUR_MAX_ACCUM_FRAME_NUM;
 
     uint bits;
-    float2 data2 = UnpackData2( gIn_Data2[ uint2( viewportUvScaled * gScreenSize ) ], bits );
+    float2 data2 = UnpackData2( gIn_Data2[ uint2( viewportUvScaled * gResourceSize ) ], bits );
 
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;
@@ -69,7 +69,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     bool isInf = abs( viewZ ) > gDenoisingRange;
     bool checkerboard = STL::Sequence::CheckerBoard( pixelPos >> 2, 0 );
 
-    uint4 textState = STL::Text::Init( pixelPos, viewportId * gScreenSize * VIEWPORT_SIZE + OFFSET, 1 );
+    uint4 textState = STL::Text::Init( pixelPos, viewportId * gResourceSize * VIEWPORT_SIZE + OFFSET, 1 );
 
     float4 result = gOut_Validation[ pixelPos ];
 
@@ -125,12 +125,12 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         float2 viewportUvPrevExpected = STL::Geometry::GetScreenUv( gWorldToClipPrev, X );
 
         float2 viewportUvPrev = viewportUv + mv.xy;
-        if( gIsWorldSpaceMotionEnabled )
+        if( gMvScale.w != 0.0 )
             viewportUvPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, X + mv );
 
         float2 uvDelta = ( viewportUvPrev - viewportUvPrevExpected ) * gRectSize;
 
-        result.xyz = IsInScreen( viewportUvPrev ) ? float3( abs( uvDelta ), 0 ) : float3( 0, 0, 1 );
+        result.xyz = IsInScreenNearest( viewportUvPrev ) ? float3( abs( uvDelta ), 0 ) : float3( 0, 0, 1 );
         result.w = 1.0;
     }
     // World units
@@ -151,12 +151,12 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
         STL::Text::Print_ch( 'E', textState );
         STL::Text::Print_ch( 'R', textState );
 
-        float2 dim = float2( 0.5 * gScreenSize.y * gInvScreenSize.x, 0.5 );
+        float2 dim = float2( 0.5 * gResourceSize.y / gResourceSize.x, 0.5 );
         float2 remappedUv = ( viewportUv - ( 1.0 - dim ) ) / dim;
 
         if( all( remappedUv > 0.0 ) )
         {
-            float2 dimInPixels = gScreenSize * VIEWPORT_SIZE * dim;
+            float2 dimInPixels = gResourceSize * VIEWPORT_SIZE * dim;
             float2 uv = gJitter + 0.5;
             bool isValid = all( saturate( uv ) == uv );
             int2 a = int2( saturate( uv ) * dimInPixels );

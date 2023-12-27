@@ -17,8 +17,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_PIXEL                                               2
 #define NRD_RANDOM                                              3 // for experiments only
 
-#define NRD_INF                                                 1e6
-
 // FP16
 
 #ifdef NRD_COMPILER_DXC
@@ -40,11 +38,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // Switches ( default 1 )
 #define NRD_USE_TILE_CHECK                                      1
 #define NRD_USE_HIGH_PARALLAX_CURVATURE                         1
+#define NRD_USE_DENANIFICATION                                  1 // needed only if inputs have NAN / INF outside of viewport or denoising range range
 
 // Switches ( default 0 )
 #define NRD_USE_QUADRATIC_DISTRIBUTION                          0
 #define NRD_USE_EXPONENTIAL_WEIGHTS                             0
 #define NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX          0 // it fixes silhouettes, but leads to less flattening on bumpy surfaces ( worse for bumpy surfaces ) and shorter arcs on smooth curved surfaces ( worse for low bit normals )
+#define NRD_USE_VIEWPORT_OFFSET                                 0 // enable if "CommonSettings::rectOrigin" is used
 
 // Settings
 #define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03
@@ -70,14 +70,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 //==================================================================================================================
 // CTA & preloading
 //==================================================================================================================
-
-#ifndef GROUP_X
-    #define GROUP_X                                             16
-#endif
-
-#ifndef GROUP_Y
-    #define GROUP_Y                                             16
-#endif
 
 #ifdef NRD_USE_BORDER_2
     #define BORDER                                              2
@@ -125,6 +117,32 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 //==================================================================================================================
 // SHARED FUNCTIONS
 //==================================================================================================================
+
+// Texture access
+
+#if( NRD_USE_VIEWPORT_OFFSET == 1 )
+    #define WithRectOrigin( pos )               ( gRectOrigin + pos )
+    #define WithRectOffset( uv )                ( gRectOffset + uv )
+#else
+    #define WithRectOrigin( pos )               ( pos )
+    #define WithRectOffset( uv )                ( uv )
+#endif
+
+#if( NRD_USE_DENANIFICATION == 1 )
+    // clamp( uv * gRectSize, 0.0, gRectSize - 0.5 ) * gResourceSizeInv
+    // = clamp( uv * gRectSize * gResourceSizeInv, 0.0, ( gRectSize - 0.5 ) * gResourceSizeInv )
+    // = clamp( uv * gResolutionScale, 0.0, gResolutionScale - 0.5 * gResourceSizeInv )
+
+    #if( NRD_USE_VIEWPORT_OFFSET == 1 )
+        #define ClampUvToViewport( uv )         clamp( uv * gResolutionScale, 0.0, gResolutionScale - 0.5 * gResourceSizeInv )
+    #else
+        #define ClampUvToViewport( uv )         min( uv * gResolutionScale, gResolutionScale - 0.5 * gResourceSizeInv )
+    #endif
+    #define Denanify( w, x )                    ( ( w ) == 0.0 ? 0.0 : ( x ) )
+#else
+    #define ClampUvToViewport( uv )             ( uv * gResolutionScale )
+    #define Denanify( w, x )                    ( x )
+#endif
 
 // Misc
 
@@ -180,15 +198,14 @@ float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float
     return baseRotator;
 }
 
-// IMPORTANT: use "IsInScreen2x2" in critical places
-float IsInScreen( float2 uv )
+float IsInScreenNearest( float2 uv )
 {
-    return float( all( saturate( uv ) == uv ) );
+    return float( all( uv >= 0.0 ) && all( uv < 1.0 ) );
 }
 
 // x y
 // z w
-float4 IsInScreen2x2( float2 footprintOrigin, float2 rectSize )
+float4 IsInScreenBilinear( float2 footprintOrigin, float2 rectSize )
 {
     float4 p = footprintOrigin.xyxy + float4( 0, 0, 1, 1 );
 
@@ -198,14 +215,15 @@ float4 IsInScreen2x2( float2 footprintOrigin, float2 rectSize )
     return r.xzxz * r.yyww;
 }
 
-float2 ApplyCheckerboardShift( float2 uv, uint mode, uint counter, float2 screenSize, float2 invScreenSize, uint frameIndex )
+float2 ApplyCheckerboardShift( float2 pos, uint mode, uint counter, uint frameIndex )
 {
-    int2 uvi = int2( uv * screenSize );
-    bool hasData = STL::Sequence::CheckerBoard( uvi, frameIndex ) == mode;
-    if( !hasData )
-        uvi.x += ( ( counter & 0x1 ) == 0 ) ? -1 : 1;
+    // IMPORTANT: "pos" must be snapped to the pixel center
+    uint checkerboard = STL::Sequence::CheckerBoard( uint2( pos ), frameIndex );
+    float shift = ( ( counter & 0x1 ) == 0 ) ? -1.0 : 1.0;
 
-    return ( float2( uvi ) + 0.5 ) * invScreenSize;
+    pos.x += shift * float( checkerboard != mode && mode != 2 );
+
+    return pos;
 }
 
 // Comparison of two methods:
@@ -218,13 +236,12 @@ float GetSpecMagicCurve( float roughness, float power = 0.25 )
     return f;
 }
 
-/*
-Produce same results:
-    ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
-    ComputeParallaxInPixels( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize );
-*/
 float ComputeParallaxInPixels( float3 X, float2 uvForZeroParallax, float4x4 mWorldToClip, float2 rectSize )
 {
+    // Produce same results:
+    // - ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
+    // - ComputeParallaxInPixels( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize );
+
     float2 uv = STL::Geometry::GetScreenUv( mWorldToClip, X );
     float2 parallaxInUv = uv - uvForZeroParallax;
     float parallaxInPixels = length( parallaxInUv * rectSize );
@@ -435,21 +452,18 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, 
 // Only for checkerboard resolve and some "lazy" comparisons
 
 #define GetBilateralWeight( z, zc ) \
-    STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( abs( z ), abs( zc ) ) ) )
+    STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( z, zc ) ) )
 
 // Upsampling
 
-// TODO: used only for history resampling. This is why "gRectSizePrev" is hardcoded
 #define _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init \
     /* Catmul-Rom with 12 taps ( excluding corners ) */ \
     float2 centerPos = floor( samplePos - 0.5 ) + 0.5; \
     float2 f = saturate( samplePos - centerPos ); \
-    float2 f2 = f * f; \
-    float2 f3 = f * f2; \
-    float2 w0 = -NRD_CATROM_SHARPNESS * f3 + 2.0 * NRD_CATROM_SHARPNESS * f2 - NRD_CATROM_SHARPNESS * f; \
-    float2 w1 = ( 2.0 - NRD_CATROM_SHARPNESS ) * f3 - ( 3.0 - NRD_CATROM_SHARPNESS ) * f2 + 1.0; \
-    float2 w2 = -( 2.0 - NRD_CATROM_SHARPNESS ) * f3 + ( 3.0 - 2.0 * NRD_CATROM_SHARPNESS ) * f2 + NRD_CATROM_SHARPNESS * f; \
-    float2 w3 = NRD_CATROM_SHARPNESS * f3 - NRD_CATROM_SHARPNESS * f2; \
+    float2 w0 = f * ( f * ( -NRD_CATROM_SHARPNESS * f + 2.0 * NRD_CATROM_SHARPNESS ) - NRD_CATROM_SHARPNESS ); \
+    float2 w1 = f * ( f * ( ( 2.0 - NRD_CATROM_SHARPNESS ) * f - ( 3.0 - NRD_CATROM_SHARPNESS ) ) ) + 1.0; \
+    float2 w2 = f * ( f * ( -( 2.0 - NRD_CATROM_SHARPNESS ) * f + ( 3.0 - 2.0 * NRD_CATROM_SHARPNESS ) ) + NRD_CATROM_SHARPNESS ); \
+    float2 w3 = f * ( f * ( NRD_CATROM_SHARPNESS * f - NRD_CATROM_SHARPNESS ) ); \
     float2 w12 = w1 + w2; \
     float2 tc = w2 / w12; \
     float4 w; \
@@ -463,12 +477,13 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, 
     w4 = useBicubic ? w4 : 0.0; \
     float sum = dot( w, 1.0 ) + w4; \
     /* Texture coordinates */ \
-    float2 uv0 = min( centerPos + ( useBicubic ? float2( tc.x, -1.0 ) : float2( 0, 0 ) ), gRectSizePrev - 1.0 ); \
-    float2 uv1 = min( centerPos + ( useBicubic ? float2( -1.0, tc.y ) : float2( 1, 0 ) ), gRectSizePrev - 1.0 ); \
-    float2 uv2 = min( centerPos + ( useBicubic ? float2( tc.x, tc.y ) : float2( 0, 1 ) ), gRectSizePrev - 1.0 ); \
-    float2 uv3 = min( centerPos + ( useBicubic ? float2( 2.0, tc.y ) : float2( 1, 1 ) ), gRectSizePrev - 1.0 ); \
-    float2 uv4 = min( centerPos + ( useBicubic ? float2( tc.x, 2.0 ) : f ), gRectSizePrev - 1.0 ); \
-    float4 bilinearTaps
+    float4 uv01 = centerPos.xyxy + ( useBicubic ? float4( tc.x, -1.0, -1.0, tc.y ) : float4( 0, 0, 1, 0 ) ); \
+    float4 uv23 = centerPos.xyxy + ( useBicubic ? float4( tc.x, tc.y, 2.0, tc.y ) : float4( 0, 1, 1, 1 ) ); \
+    float2 uv4 = centerPos + ( useBicubic ? float2( tc.x, 2.0 ) : f ); \
+    uv01 *= invResourceSize.xyxy; \
+    uv23 *= invResourceSize.xyxy; \
+    uv4 *= invResourceSize; \
+    int3 bilinearOrigin = int3( centerPos, 0 );
 
 /*
 IMPORTANT:
@@ -479,22 +494,20 @@ IMPORTANT:
 */
 #define _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( color, tex ) \
     /* Sampling */ \
-    color = tex.SampleLevel( gLinearClamp, uv0 * invTextureSize, 0 ) * w.x; \
-    color += tex.SampleLevel( gLinearClamp, uv1 * invTextureSize, 0 ) * w.y; \
-    color += tex.SampleLevel( gLinearClamp, uv2 * invTextureSize, 0 ) * w.z; \
-    color += tex.SampleLevel( gLinearClamp, uv3 * invTextureSize, 0 ) * w.w; \
-    color += tex.SampleLevel( gLinearClamp, uv4 * invTextureSize, 0 ) * w4; \
+    color = tex.SampleLevel( gLinearClamp, uv01.xy, 0 ) * w.x; \
+    color += tex.SampleLevel( gLinearClamp, uv01.zw, 0 ) * w.y; \
+    color += tex.SampleLevel( gLinearClamp, uv23.xy, 0 ) * w.z; \
+    color += tex.SampleLevel( gLinearClamp, uv23.zw, 0 ) * w.w; \
+    color += tex.SampleLevel( gLinearClamp, uv4, 0 ) * w4; \
     /* Normalize similarly to "STL::Filtering::ApplyBilinearCustomWeights()" */ \
-    color = sum < 0.0001 ? 0 : color * rcp( sum );
+    color = sum < 0.0001 ? 0 : color / sum;
 
 #define _BilinearFilterWithCustomWeights_Color( color, tex ) \
     /* Sampling */ \
-    bilinearTaps = centerPos.xyxy + float4( 0.0, 0.0, 1.0, 1.0 ); \
-    bilinearTaps.zw = min( bilinearTaps.zw, gRectSizePrev - 1.0 ); \
-    color = tex.SampleLevel( gNearestClamp, bilinearTaps.xy * invTextureSize, 0 ) * bilinearCustomWeights.x; \
-    color += tex.SampleLevel( gNearestClamp, bilinearTaps.zy * invTextureSize, 0 ) * bilinearCustomWeights.y; \
-    color += tex.SampleLevel( gNearestClamp, bilinearTaps.xw * invTextureSize, 0 ) * bilinearCustomWeights.z; \
-    color += tex.SampleLevel( gNearestClamp, bilinearTaps.zw * invTextureSize, 0 ) * bilinearCustomWeights.w; \
+    color = tex.Load( bilinearOrigin ) * bilinearCustomWeights.x; \
+    color += tex.Load( bilinearOrigin, int2( 1, 0 ) ) * bilinearCustomWeights.y; \
+    color += tex.Load( bilinearOrigin, int2( 0, 1 ) ) * bilinearCustomWeights.z; \
+    color += tex.Load( bilinearOrigin, int2( 1, 1 ) ) * bilinearCustomWeights.w; \
     /* Normalize similarly to "STL::Filtering::ApplyBilinearCustomWeights()" */ \
     sum = dot( bilinearCustomWeights, 1.0 ); \
-    color = sum < 0.0001 ? 0 : color * rcp( sum );
+    color = sum < 0.0001 ? 0 : color / sum;

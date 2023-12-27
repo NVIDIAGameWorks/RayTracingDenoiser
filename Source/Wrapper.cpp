@@ -75,7 +75,7 @@ const char* g_NrdResourceTypeNames[] =
     "IN_BASECOLOR_METALNESS",
     "IN_SHADOWDATA",
     "IN_SHADOW_TRANSLUCENCY",
-    "IN_RADIANCE",
+    "IN_SIGNAL",
     "IN_DELTA_PRIMARY_POS",
     "IN_DELTA_SECONDARY_POS",
 
@@ -89,7 +89,7 @@ const char* g_NrdResourceTypeNames[] =
     "OUT_SPEC_HITDIST",
     "OUT_DIFF_DIRECTION_HITDIST",
     "OUT_SHADOW_TRANSLUCENCY",
-    "OUT_RADIANCE",
+    "OUT_SIGNAL",
     "OUT_REFLECTION_MV",
     "OUT_DELTA_MV",
     "OUT_VALIDATION",

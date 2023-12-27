@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.3.6 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.4.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -12,8 +12,13 @@ For quick starting see *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSampl
 
 *NRD* includes the following denoisers:
 - *REBLUR* - recurrent blur based denoiser
-- *RELAX* - SVGF based denoiser using clamping to fast history to minimize temporal lag, has been designed for *[RTXDI (RTX Direct Illumination)](https://developer.nvidia.com/rtxdi)*. It uses 30% more memory and 20% slower than *REBLUR*
+- *RELAX* - A-trous based denoiser, has been designed for *[RTXDI (RTX Direct Illumination)](https://developer.nvidia.com/rtxdi)*
 - *SIGMA* - shadow-only denoiser
+
+Performance on RTX 4080 @ 1440p (native resolution, default denoiser settings):
+- `REBLUR_DIFFUSE_SPECULAR` - 2.45 ms
+- `RELAX_DIFFUSE_SPECULAR` - 2.90 ms
+- `SIGMA_DIFFUSE_SPECULAR` - 0.30 ms
 
 Supported signal types:
 - *RELAX*:
@@ -26,7 +31,6 @@ Supported signal types:
 - *SIGMA*:
   - Shadows from an infinite light source (sun, moon)
   - Shadows from a local light source (omni, spot)
-  - Shadows from multiple sources (experimental).
 
 For diffuse and specular signals de-modulated irradiance (i.e. irradiance with "removed" materials) can be used instead of radiance (see "Recommendations and Best Practices" section).
 
@@ -38,7 +42,7 @@ For diffuse and specular signals de-modulated irradiance (i.e. irradiance with "
 
 - Install [*Cmake*](https://cmake.org/download/) 3.15+
 - Install on
-    - Windows: latest *WindowsSDK* (22000+), *VulkanSDK* (1.3.216+)
+    - Windows: latest *WindowsSDK* and *VulkanSDK*
     - Linux (x86-64): latest *VulkanSDK*
     - Linux (aarch64): find a precompiled binary for [*DXC*](https://github.com/microsoft/DirectXShaderCompiler) or disable shader compilation `NRD_EMBEDS_SPIRV_SHADERS=OFF`
 - Build (variant 1) - using *Git* and *CMake* explicitly
@@ -394,7 +398,13 @@ The pseudo code below demonstrates how *NRD integration* and *NRI* can be used t
 #include "NRD.h"
 #include "NRDIntegration.hpp"
 
-NrdIntegration NRD = NrdIntegration(maxNumberOfFramesInFlight);
+// bufferedFramesNum (usually 2-3 frames):
+//      The application must provide number of buffered frames, it's needed to guarantee that
+//      constant data and descriptor sets are not overwritten while being executed on the GPU.
+// enableDescriptorCaching:
+//      true - enables descriptor caching for the whole lifetime of an NrdIntegration instance
+//      false - descriptors are cached only within a single "Denoise" call
+NrdIntegration NRD = NrdIntegration(bufferedFramesNum, enableDescriptorCaching, "Name");
 
 struct NriInterface
     : public nri::CoreInterface
@@ -410,22 +420,21 @@ NriInterface NRI;
 // Wrap the device
 nri::DeviceCreationD3D12Desc deviceDesc = {};
 deviceDesc.d3d12Device = ...;
-deviceDesc.d3d12PhysicalAdapter = ...;
 deviceDesc.d3d12GraphicsQueue = ...;
 deviceDesc.enableNRIValidation = false;
 
 nri::Device* nriDevice = nullptr;
-nri::Result nriResult = nri::CreateDeviceFromD3D12Device(deviceDesc, nriDevice);
+nri::Result nriResult = nri::nriCreateDeviceFromD3D12Device(deviceDesc, nriDevice);
 
 // Get core functionality
-nriResult = nri::GetInterface(*nriDevice,
+nriResult = nri::nriGetInterface(*nriDevice,
   NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI);
 
-nriResult = nri::GetInterface(*nriDevice,
+nriResult = nri::nriGetInterface(*nriDevice,
   NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI);
 
 // Get appropriate "wrapper" extension (XXX - can be D3D11, D3D12 or VULKAN)
-nriResult = nri::GetInterface(*nriDevice,
+nriResult = nri::nriGetInterface(*nriDevice,
   NRI_INTERFACE(nri::WrapperXXXInterface), (nri::WrapperXXXInterface*)&NRI);
 
 //=======================================================================================================
@@ -435,15 +444,17 @@ nriResult = nri::GetInterface(*nriDevice,
 const nrd::DenoiserDesc denoiserDescs[] =
 {
     // Put neeeded denoisers here, like:
-    { identifier1, nrd::Denoiser::XXX, renderResolution.x, renderResolution.y },
-    { identifier2, nrd::Denoiser::YYY, renderResolution.x, renderResolution.y },
+    { identifier1, nrd::Denoiser::XXX },
+    { identifier2, nrd::Denoiser::YYY },
 };
 
 nrd::InstanceCreationDesc instanceCreationDesc = {};
 instanceCreationDesc.denoisers = denoiserDescs;
 instanceCreationDesc.denoisersNum = GetCountOf(denoiserDescs);
 
-bool result = NRD.Initialize(*nriDevice, NRI, NRI, instanceCreationDesc);
+// NRD itself is flexible and supports any kind of DRS, but NRD INTEGRATION pre-allocate resources with
+// statically defines dimensions. DRS works only by adjusting the viewport: "CommonSettings::rectSize"
+bool result = NRD.Initialize(resourceWidth, resourceHeight, instanceCreationDesc, *nriDevice, NRI, NRI);
 
 //=======================================================================================================
 // INITIALIZATION or RENDER - WRAP NATIVE POINTERS
@@ -514,11 +525,8 @@ NrdUserPool userPool = {};
     NrdIntegration_SetResource(userPool, ...);
 };
 
-// Better use "true" if resources are not changing between frames (i.e. are not suballocated from a heap)
-bool enableDescriptorCaching = true;
-
 const nrd::Identifier denoisers[] = {identifier1, identifier2};
-NRD.Denoise(denoisers, helper::GetCountOf(denoisers), *nriCommandBuffer, userPool, enableDescriptorCaching);
+NRD.Denoise(denoisers, helper::GetCountOf(denoisers), *nriCommandBuffer, userPool);
 
 // IMPORTANT: NRD integration binds own descriptor pool, don't forget to re-bind back your pool (heap)
 
@@ -537,7 +545,7 @@ NRI.DestroyCommandBuffer(*nriCommandBuffer);
 //=======================================================================================================
 
 // Release wrapped device
-NRI.DestroyDevice(*nriDevice);
+nri::nriDestroyDevice(*nriDevice);
 
 // Also NRD needs to be recreated on "resize"
 NRD.Destroy();
@@ -634,6 +642,13 @@ IN_NORMAL_ROUGHNESS = GetVirtualSpaceNormalAndRoughnessAt( B );
 IN_MV = GetMotionAt( B );
 ```
 
+## INTERACTION WITH `INFs` AND `NANs`
+
+- NRD doesn't touch pixels outside of viewport: `INFs / NANs` are allowed
+- NRD doesn't touch pixels outside of denoising range: `INFs / NANs` are allowed
+- `INFs / NANs` are not allowed for pixels inside the viewport and denoising range
+  - `INFs` can be used in `IN_VIEWZ`, but not recommended
+
 ## INTERACTION WITH FRAME GENERATION TECHNIQUES
 
 Frame generation (FG) techniques boost FPS by interpolating between 2 last available frames. *NRD* works better when framerate increases, because it gets more data per second. It's not the case for FG, because all rendering pipeline underlying passes (like, denoising) continue to work on the original non-boosted framerate.
@@ -696,7 +711,7 @@ Frame generation (FG) techniques boost FPS by interpolating between 2 last avail
 maxAccumulatedFrameNum = accumulationPeriodInSeconds * FPS
 ```
 
-**[NRD]** The number of accumulated frames in the fast history needs to be carefully tuned to avoid introducing significant bias and dirt. Initial integration should be done by setting `maxFastAccumulatedFrameNum` to `maxAccumulatedFrameNum`. Bare in mind the following recommendation:
+**[NRD]** Fast history is the input signal, accumulated for a few frames. Fast history helps to minimize lags in the main history, which is accumulated for more frames. The number of accumulated frames in the fast history needs to be carefully tuned to avoid introducing significant bias and dirt. Initial integration should be done with default settings. Bear in mind the following recommendation:
 ```
 maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 ```

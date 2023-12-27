@@ -11,6 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRD.hlsli"
 #include "STL.hlsli"
 
+#include "RELAX_Config.hlsli"
 #include "RELAX_ClassifyTiles.resources.hlsli"
 
 groupshared uint s_isSky;

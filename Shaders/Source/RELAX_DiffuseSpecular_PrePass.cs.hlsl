@@ -11,9 +11,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRD.hlsli"
 #include "STL.hlsli"
 
-#include "RELAX/RELAX_Config.hlsli"
-#include "RELAX_DiffuseSpecular_PrePass.resources.hlsli"
+#include "RELAX_Config.hlsli"
+#include "RELAX_PrePass.resources.hlsli"
 
 #include "Common.hlsli"
-#include "RELAX/RELAX_Common.hlsli"
-#include "RELAX/RELAX_DiffuseSpecular_PrePass.hlsli"
+#include "RELAX_Common.hlsli"
+#include "RELAX_PrePass.hlsli"

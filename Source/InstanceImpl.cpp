@@ -16,9 +16,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 constexpr std::array<nrd::Sampler, (size_t)nrd::Sampler::MAX_NUM> g_Samplers =
 {
     nrd::Sampler::NEAREST_CLAMP,
-    nrd::Sampler::NEAREST_MIRRORED_REPEAT,
     nrd::Sampler::LINEAR_CLAMP,
-    nrd::Sampler::LINEAR_MIRRORED_REPEAT,
 };
 
 constexpr std::array<bool, (size_t)nrd::Format::MAX_NUM> g_IsIntegerFormat =
@@ -69,19 +67,22 @@ constexpr std::array<bool, (size_t)nrd::Format::MAX_NUM> g_IsIntegerFormat =
     false,        // R9_G9_B9_E5_UFLOAT
 };
 
+#include "../Shaders/Resources/Clear_Float.resources.hlsli"
+#include "../Shaders/Resources/Clear_Uint.resources.hlsli"
+
 #ifdef NRD_EMBEDS_DXBC_SHADERS
-    #include "Clear_f.cs.dxbc.h"
-    #include "Clear_ui.cs.dxbc.h"
+    #include "Clear_Float.cs.dxbc.h"
+    #include "Clear_Uint.cs.dxbc.h"
 #endif
 
 #ifdef NRD_EMBEDS_DXIL_SHADERS
-    #include "Clear_f.cs.dxil.h"
-    #include "Clear_ui.cs.dxil.h"
+    #include "Clear_Float.cs.dxil.h"
+    #include "Clear_Uint.cs.dxil.h"
 #endif
 
 #ifdef NRD_EMBEDS_SPIRV_SHADERS
-    #include "Clear_f.cs.spirv.h"
-    #include "Clear_ui.cs.spirv.h"
+    #include "Clear_Float.cs.spirv.h"
+    #include "Clear_Uint.cs.spirv.h"
 #endif
 
 inline bool IsInList(nrd::Identifier identifier, const nrd::Identifier* identifiers, uint32_t identifiersNum)
@@ -181,6 +182,13 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
 
         denoiserData.pingPongNum = m_PingPongs.size() - denoiserData.pingPongOffset;
 
+        // Patch identifiers
+        for (size_t dispatchIndex = denoiserData.dispatchOffset; dispatchIndex < m_Dispatches.size(); dispatchIndex++)
+        {
+            InternalDispatchDesc& internalDispatchDesc = m_Dispatches[dispatchIndex];
+            internalDispatchDesc.identifier = denoiserDesc.identifier;
+        }
+
         // Gather resources, which need to be cleared
         for (size_t resourceIndex = resourceOffset; resourceIndex < m_Resources.size(); resourceIndex++)
         {
@@ -190,43 +198,37 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
             if (resource.stateNeeded != DescriptorType::STORAGE_TEXTURE)
                 continue;
 
+            // Skip "OUT_VALIDATION" resource because it can be not provided
+            if (resource.type == ResourceType::OUT_VALIDATION)
+                continue;
+
             // Keep only unique instances
             bool isFound = false;
             for (const ClearResource& temp : m_ClearResources)
             {
                 if (temp.resource.stateNeeded == resource.stateNeeded &&
                     temp.resource.type == resource.type &&
-                    temp.resource.indexInPool == resource.indexInPool &&
-                    temp.resource.mipOffset == resource.mipOffset &&
-                    temp.resource.mipNum == resource.mipNum)
+                    temp.resource.indexInPool == resource.indexInPool)
                 {
                     isFound = true;
                     break;
                 }
             }
 
-            // Skip "OUT_VALIDATION" resource because it can be not provided
-            if (resource.type == ResourceType::OUT_VALIDATION)
-                isFound = true;
-
             if (!isFound)
             {
-                // Texture props
-                uint32_t w = denoiserDesc.renderWidth;
-                uint32_t h = denoiserDesc.renderHeight;
+                // Is integer?
                 bool isInteger = false;
-
+                uint16_t downsampleFactor = 1;
                 if (resource.type == ResourceType::PERMANENT_POOL || resource.type == ResourceType::TRANSIENT_POOL)
                 {
                     TextureDesc& textureDesc = resource.type == ResourceType::PERMANENT_POOL ? m_PermanentPool[resource.indexInPool] : m_TransientPool[resource.indexInPool];
-
-                    w = textureDesc.width >> resource.mipOffset;
-                    h = textureDesc.height >> resource.mipOffset;
                     isInteger = g_IsIntegerFormat[(size_t)textureDesc.format];
+                    downsampleFactor = textureDesc.downsampleFactor;
                 }
 
                 // Add PING resource
-                m_ClearResources.push_back( {denoiserDesc.identifier, resource, w, h, isInteger} );
+                m_ClearResources.push_back( {denoiserDesc.identifier, resource, downsampleFactor, isInteger} );
 
                 // Add PONG resource
                 for (uint32_t p = 0; p < denoiserData.pingPongNum; p++)
@@ -234,8 +236,8 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
                     const PingPong& pingPong = m_PingPongs[denoiserData.pingPongOffset + p];
                     if (pingPong.resourceIndex == (uint32_t)resourceIndex)
                     {
-                        ResourceDesc resourcePong = {resource.stateNeeded, resource.type, pingPong.indexInPoolToSwapWith, resource.mipOffset, resource.mipNum};
-                        m_ClearResources.push_back( {denoiserDesc.identifier, resourcePong, w, h, isInteger} );
+                        ResourceDesc resourcePong = {resource.stateNeeded, resource.type, pingPong.indexInPoolToSwapWith};
+                        m_ClearResources.push_back( {denoiserDesc.identifier, resourcePong, downsampleFactor, isInteger} );
                         break;
                     }
                 }
@@ -249,15 +251,15 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
     m_DispatchClearIndex[0] = m_Dispatches.size();
     _PushPass("Clear (f)");
     {
-        PushOutput(0, 0, 1);
-        AddDispatch( Clear_f, 0, NumThreads(16, 16), 1 );
+        PushOutput(0);
+        AddDispatchNoConstants( Clear_Float, Clear_Float, 1 );
     }
 
     m_DispatchClearIndex[1] = m_Dispatches.size();
     _PushPass("Clear (ui)");
     {
-        PushOutput(0, 0, 1);
-        AddDispatch( Clear_ui, 0, NumThreads(16, 16), 1 );
+        PushOutput(0);
+        AddDispatchNoConstants( Clear_Uint, Clear_Uint, 1 );
     }
 
     PrepareDesc();
@@ -269,65 +271,76 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
 
 nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSettings)
 {
-    // TODO: add a lot of verifications of fields in CommonSettings
+    // TODO: matrix verifications? return INVALID_ARGUMENT?
+    assert("'resourceSize' can't be 0" && commonSettings.resourceSize[0] != 0 && commonSettings.resourceSize[1] != 0);
+    assert("'resourceSizePrev' can't be 0" && commonSettings.resourceSizePrev[0] != 0 && commonSettings.resourceSizePrev[1] != 0);
+    assert("'rectSize' can't be 0" && commonSettings.rectSize[0] != 0 && commonSettings.rectSize[1] != 0);
+    assert("'rectSizePrev' can't be 0" && commonSettings.rectSizePrev[0] != 0 && commonSettings.rectSizePrev[1] != 0);
+    assert("'mvScale.xy' can't be 0" && ((commonSettings.motionVectorScale[0] != 0.0f && commonSettings.motionVectorScale[1] != 0.0f) || commonSettings.isMotionVectorInWorldSpace));
+    assert("'cameraJitter' must be in range [-0.5; 0.5]" && commonSettings.cameraJitter[0] >= -0.5f && commonSettings.cameraJitter[0] <= 0.5f && commonSettings.cameraJitter[1] >= -0.5f && commonSettings.cameraJitter[1] <= 0.5f);
+    assert("'cameraJitterPrev' must be in range [-0.5; 0.5]" && commonSettings.cameraJitterPrev[0] >= -0.5f && commonSettings.cameraJitterPrev[0] <= 0.5f && commonSettings.cameraJitterPrev[1] >= -0.5f && commonSettings.cameraJitterPrev[1] <= 0.5f);
+    assert("'denoisingRange' must be >= 0" && commonSettings.denoisingRange > 0.0f);
+    assert("'disocclusionThreshold' must be > 0" && commonSettings.disocclusionThreshold > 0.0f);
+    assert("'disocclusionThresholdAlternate' must be > 0" && commonSettings.disocclusionThresholdAlternate > 0.0f);
+
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
     // Rotators
-    ml::float4 rndScale = ml::float4(1.0f) + ml::Rand::sf4(&m_FastRandState) * 0.25f;
-    ml::float4 rndAngle = ml::Rand::uf4(&m_FastRandState) * ml::DegToRad(360.0f);
-    rndAngle.w = ml::DegToRad( 120.0f * float(m_CommonSettings.frameIndex % 3) );
+    float4 rndScale = float4(1.0f) + Rand::sf4(&m_FastRandState) * 0.25f;
+    float4 rndAngle = Rand::uf4(&m_FastRandState) * DegToRad(360.0f);
+    rndAngle.w = DegToRad( 120.0f * float(m_CommonSettings.frameIndex % 3) );
 
-    float ca = ml::Cos( rndAngle.x );
-    float sa = ml::Sin( rndAngle.x );
-    m_Rotator_PrePass = ml::float4( ca, sa, -sa, ca ) * rndScale.x;
+    float ca = Cos( rndAngle.x );
+    float sa = Sin( rndAngle.x );
+    m_Rotator_PrePass = float4( ca, sa, -sa, ca ) * rndScale.x;
 
-    ca = ml::Cos( rndAngle.y );
-    sa = ml::Sin( rndAngle.y );
-    m_Rotator_Blur = ml::float4( ca, sa, -sa, ca ) * rndScale.y;
+    ca = Cos( rndAngle.y );
+    sa = Sin( rndAngle.y );
+    m_Rotator_Blur = float4( ca, sa, -sa, ca ) * rndScale.y;
 
-    ca = ml::Cos( rndAngle.z );
-    sa = ml::Sin( rndAngle.z );
-    m_Rotator_PostBlur = ml::float4( ca, sa, -sa, ca ) * rndScale.z;
+    ca = Cos( rndAngle.z );
+    sa = Sin( rndAngle.z );
+    m_Rotator_PostBlur = float4( ca, sa, -sa, ca ) * rndScale.z;
 
     // Main matrices
-    m_ViewToClip = ml::float4x4
+    m_ViewToClip = float4x4
     (
-        ml::float4(m_CommonSettings.viewToClipMatrix),
-        ml::float4(m_CommonSettings.viewToClipMatrix + 4),
-        ml::float4(m_CommonSettings.viewToClipMatrix + 8),
-        ml::float4(m_CommonSettings.viewToClipMatrix + 12)
+        float4(m_CommonSettings.viewToClipMatrix),
+        float4(m_CommonSettings.viewToClipMatrix + 4),
+        float4(m_CommonSettings.viewToClipMatrix + 8),
+        float4(m_CommonSettings.viewToClipMatrix + 12)
     );
 
-    m_ViewToClipPrev = ml::float4x4
+    m_ViewToClipPrev = float4x4
     (
-        ml::float4(m_CommonSettings.viewToClipMatrixPrev),
-        ml::float4(m_CommonSettings.viewToClipMatrixPrev + 4),
-        ml::float4(m_CommonSettings.viewToClipMatrixPrev + 8),
-        ml::float4(m_CommonSettings.viewToClipMatrixPrev + 12)
+        float4(m_CommonSettings.viewToClipMatrixPrev),
+        float4(m_CommonSettings.viewToClipMatrixPrev + 4),
+        float4(m_CommonSettings.viewToClipMatrixPrev + 8),
+        float4(m_CommonSettings.viewToClipMatrixPrev + 12)
     );
 
-    m_WorldToView = ml::float4x4
+    m_WorldToView = float4x4
     (
-        ml::float4(m_CommonSettings.worldToViewMatrix),
-        ml::float4(m_CommonSettings.worldToViewMatrix + 4),
-        ml::float4(m_CommonSettings.worldToViewMatrix + 8),
-        ml::float4(m_CommonSettings.worldToViewMatrix + 12)
+        float4(m_CommonSettings.worldToViewMatrix),
+        float4(m_CommonSettings.worldToViewMatrix + 4),
+        float4(m_CommonSettings.worldToViewMatrix + 8),
+        float4(m_CommonSettings.worldToViewMatrix + 12)
     );
 
-    m_WorldToViewPrev = ml::float4x4
+    m_WorldToViewPrev = float4x4
     (
-        ml::float4(m_CommonSettings.worldToViewMatrixPrev),
-        ml::float4(m_CommonSettings.worldToViewMatrixPrev + 4),
-        ml::float4(m_CommonSettings.worldToViewMatrixPrev + 8),
-        ml::float4(m_CommonSettings.worldToViewMatrixPrev + 12)
+        float4(m_CommonSettings.worldToViewMatrixPrev),
+        float4(m_CommonSettings.worldToViewMatrixPrev + 4),
+        float4(m_CommonSettings.worldToViewMatrixPrev + 8),
+        float4(m_CommonSettings.worldToViewMatrixPrev + 12)
     );
 
-    m_WorldPrevToWorld = ml::float4x4
+    m_WorldPrevToWorld = float4x4
     (
-        ml::float4(m_CommonSettings.worldPrevToWorldMatrix),
-        ml::float4(m_CommonSettings.worldPrevToWorldMatrix + 4),
-        ml::float4(m_CommonSettings.worldPrevToWorldMatrix + 8),
-        ml::float4(m_CommonSettings.worldPrevToWorldMatrix + 12)
+        float4(m_CommonSettings.worldPrevToWorldMatrix),
+        float4(m_CommonSettings.worldPrevToWorldMatrix + 4),
+        float4(m_CommonSettings.worldPrevToWorldMatrix + 8),
+        float4(m_CommonSettings.worldPrevToWorldMatrix + 12)
     );
 
     // There are many cases, where history buffers contain garbage - handle at least one of them internally
@@ -341,9 +354,9 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
 
     // Convert to LH
     uint32_t flags = 0;
-    ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
+    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
 
-    if ( !(flags & ml::PROJ_LEFT_HANDED) )
+    if ( !(flags & PROJ_LEFT_HANDED) )
     {
         m_ViewToClip.col2 = (-m_ViewToClip.GetCol2()).xmm;
         m_ViewToClipPrev.col2 = (-m_ViewToClipPrev.GetCol2()).xmm;
@@ -364,12 +377,12 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     m_ViewToWorldPrev = m_WorldToViewPrev;
     m_ViewToWorldPrev.InvertOrtho();
 
-    const ml::float3& cameraPosition = m_ViewToWorld.GetCol3().To3d();
-    const ml::float3& cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
-    ml::float3 translationDelta = cameraPositionPrev - cameraPosition;
+    const float3& cameraPosition = m_ViewToWorld.GetCol3().To3d();
+    const float3& cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
+    float3 translationDelta = cameraPositionPrev - cameraPosition;
 
     // IMPORTANT: this part is mandatory needed to preserve precision by making matrices camera relative
-    m_ViewToWorld.SetTranslation( ml::float3::Zero() );
+    m_ViewToWorld.SetTranslation( float3::Zero() );
     m_WorldToView = m_ViewToWorld;
     m_WorldToView.InvertOrtho();
 
@@ -393,38 +406,38 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     m_ClipToWorld.Invert();
 
     float project[3];
-    float settings[ml::PROJ_NUM];
-    ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
+    float settings[PROJ_NUM];
+    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
     m_ProjectY = project[1];
-    m_IsOrtho = (flags & ml::PROJ_ORTHO) ? -1.0f : 0.0f;
+    m_OrthoMode = (flags & PROJ_ORTHO) ? -1.0f : 0.0f;
 
-    ml::DecomposeProjection(NDC_D3D, NDC_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
+    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
 
-    m_ViewDirection = -ml::float3(m_ViewToWorld.GetCol2().xmm);
-    m_ViewDirectionPrev = -ml::float3(m_ViewToWorldPrev.GetCol2().xmm);
+    m_ViewDirection = -float3(m_ViewToWorld.GetCol2().xmm);
+    m_ViewDirectionPrev = -float3(m_ViewToWorldPrev.GetCol2().xmm);
 
-    m_CameraDelta = ml::float3(translationDelta.x, translationDelta.y, translationDelta.z);
+    m_CameraDelta = float3(translationDelta.x, translationDelta.y, translationDelta.z);
 
     m_Timer.UpdateElapsedTimeSinceLastSave();
     m_Timer.SaveCurrentTime();
 
     m_TimeDelta = m_CommonSettings.timeDeltaBetweenFrames > 0.0f ? m_CommonSettings.timeDeltaBetweenFrames : m_Timer.GetSmoothedElapsedTime();
-    m_FrameRateScale = ml::Max(33.333f / m_TimeDelta, 1.0f);
+    m_FrameRateScale = Max(33.333f / m_TimeDelta, 1.0f);
 
-    float dx = ml::Abs(m_CommonSettings.cameraJitter[0] - m_CommonSettings.cameraJitterPrev[0]);
-    float dy = ml::Abs(m_CommonSettings.cameraJitter[1] - m_CommonSettings.cameraJitterPrev[1]);
-    m_JitterDelta = ml::Max(dx, dy);
+    float dx = Abs(m_CommonSettings.cameraJitter[0] - m_CommonSettings.cameraJitterPrev[0]);
+    float dy = Abs(m_CommonSettings.cameraJitter[1] - m_CommonSettings.cameraJitterPrev[1]);
+    m_JitterDelta = Max(dx, dy);
 
     float FPS = m_FrameRateScale * 30.0f;
     float nonLinearAccumSpeed = FPS * 0.25f / (1.0f + FPS * 0.25f);
-    m_CheckerboardResolveAccumSpeed = ml::Lerp(nonLinearAccumSpeed, 0.5f, m_JitterDelta);
+    m_CheckerboardResolveAccumSpeed = Lerp(nonLinearAccumSpeed, 0.5f, m_JitterDelta);
 
     return Result::SUCCESS;
 }
 
 nrd::Result nrd::InstanceImpl::SetDenoiserSettings(Identifier identifier, const void* denoiserSettings)
 {
-    for( DenoiserData& denoiserData : m_DenoiserData )
+    for (DenoiserData& denoiserData : m_DenoiserData)
     {
         if (denoiserData.desc.identifier == identifier)
         {
@@ -439,6 +452,7 @@ nrd::Result nrd::InstanceImpl::SetDenoiserSettings(Identifier identifier, const 
 
 nrd::Result nrd::InstanceImpl::GetComputeDispatches(const Identifier* identifiers, uint32_t identifiersNum, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescsNum)
 {
+    m_ConstantDataOffset = 0;
     m_ActiveDispatches.clear();
 
     // Trivial checks
@@ -462,13 +476,17 @@ nrd::Result nrd::InstanceImpl::GetComputeDispatches(const Identifier* identifier
             // Add a clear dispatch
             const InternalDispatchDesc& internalDispatchDesc = m_Dispatches[ m_DispatchClearIndex[clearResource.isInteger ? 1 : 0] ];
 
+            uint16_t w = DivideUp(m_CommonSettings.resourceSize[0], clearResource.downsampleFactor);
+            uint16_t h = DivideUp(m_CommonSettings.resourceSize[1], clearResource.downsampleFactor);
+
             DispatchDesc dispatchDesc = {};
-            dispatchDesc.resourcesNum = 1;
             dispatchDesc.name = internalDispatchDesc.name;
+            dispatchDesc.identifier = clearResource.identifier;
             dispatchDesc.resources = &clearResource.resource;
+            dispatchDesc.resourcesNum = 1;
             dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
-            dispatchDesc.gridWidth = DivideUp(clearResource.w, internalDispatchDesc.numThreads.width);
-            dispatchDesc.gridHeight = DivideUp(clearResource.h, internalDispatchDesc.numThreads.height);
+            dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.numThreads.width);
+            dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.numThreads.height);
 
             m_ActiveDispatches.push_back(dispatchDesc);
         }
@@ -484,29 +502,21 @@ nrd::Result nrd::InstanceImpl::GetComputeDispatches(const Identifier* identifier
         // Update denoiser and gather dispatches
         UpdatePingPong(denoiserData);
 
-        if( denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE || denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_SH ||
+        if (denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE || denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_SH ||
             denoiserData.desc.denoiser == Denoiser::REBLUR_SPECULAR || denoiserData.desc.denoiser == Denoiser::REBLUR_SPECULAR_SH ||
             denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_SPECULAR || denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_SPECULAR_SH ||
-            denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION )
+            denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION)
             Update_Reblur(denoiserData);
         else if (denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_OCCLUSION ||
             denoiserData.desc.denoiser == Denoiser::REBLUR_SPECULAR_OCCLUSION ||
-            denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_SPECULAR_OCCLUSION )
+            denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
             Update_ReblurOcclusion(denoiserData);
         else if (denoiserData.desc.denoiser == Denoiser::SIGMA_SHADOW || denoiserData.desc.denoiser == Denoiser::SIGMA_SHADOW_TRANSLUCENCY)
             Update_SigmaShadow(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE)
-            Update_RelaxDiffuse(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SH)
-            Update_RelaxDiffuseSh(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::RELAX_SPECULAR)
-            Update_RelaxSpecular(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::RELAX_SPECULAR_SH)
-            Update_RelaxSpecularSh(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SPECULAR)
-            Update_RelaxDiffuseSpecular(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SPECULAR_SH)
-            Update_RelaxDiffuseSpecularSh(denoiserData);
+        else if (denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE || denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SH ||
+            denoiserData.desc.denoiser == Denoiser::RELAX_SPECULAR || denoiserData.desc.denoiser == Denoiser::RELAX_SPECULAR_SH ||
+            denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SPECULAR || denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SPECULAR_SH)
+            Update_Relax(denoiserData);
         else if (denoiserData.desc.denoiser == Denoiser::REFERENCE)
             Update_Reference(denoiserData);
         else if (denoiserData.desc.denoiser == Denoiser::SPECULAR_REFLECTION_MV)
@@ -594,7 +604,7 @@ void nrd::InstanceImpl::PrepareDesc()
 {
     m_Desc = {};
 
-    m_Desc.constantBufferRegisterIndex = 0;
+    m_Desc.constantBufferRegisterIndex = NRD_CONSTANT_BUFFER_REGISTER_INDEX;
     m_Desc.constantBufferSpaceIndex = NRD_CONSTANT_BUFFER_SPACE_INDEX;
 
     m_Desc.samplers = g_Samplers.data();
@@ -675,11 +685,11 @@ void nrd::InstanceImpl::UpdatePingPong(const DenoiserData& denoiserData)
         PingPong& pingPong = m_PingPongs[denoiserData.pingPongOffset + i];
         ResourceDesc& resource = m_Resources[pingPong.resourceIndex];
 
-        ml::Swap(resource.indexInPool, pingPong.indexInPoolToSwapWith);
+        Swap(resource.indexInPool, pingPong.indexInPoolToSwapWith);
     }
 }
 
-void nrd::InstanceImpl::PushTexture(DescriptorType descriptorType, uint16_t localIndex, uint16_t mipOffset, uint16_t mipNum, uint16_t indexToSwapWith)
+void nrd::InstanceImpl::PushTexture(DescriptorType descriptorType, uint16_t localIndex, uint16_t indexToSwapWith)
 {
     ResourceType resourceType = (ResourceType)localIndex;
     uint16_t globalIndex = 0;
@@ -711,7 +721,7 @@ void nrd::InstanceImpl::PushTexture(DescriptorType descriptorType, uint16_t loca
         }
     }
 
-    m_Resources.push_back( {descriptorType, resourceType, globalIndex, mipOffset, mipNum} );
+    m_Resources.push_back( {descriptorType, resourceType, globalIndex} );
 }
 
 void nrd::InstanceImpl::AddTextureToTransientPool(const TextureDesc& textureDesc)
@@ -721,7 +731,7 @@ void nrd::InstanceImpl::AddTextureToTransientPool(const TextureDesc& textureDesc
     {
         // Format and dimensions must match
         const TextureDesc& t = m_TransientPool[i];
-        if (t.format == textureDesc.format && t.width == textureDesc.width && t.height == textureDesc.height && t.mipNum == textureDesc.mipNum)
+        if (t.format == textureDesc.format && t.downsampleFactor == textureDesc.downsampleFactor)
         {
             // The candidate must not be already in use in the current denoiser
             size_t j = 0;
@@ -746,7 +756,7 @@ void nrd::InstanceImpl::AddTextureToTransientPool(const TextureDesc& textureDesc
     m_TransientPool.push_back(textureDesc);
 }
 
-nrd::Constant* nrd::InstanceImpl::PushDispatch(const DenoiserData& denoiserData, uint32_t localIndex)
+void* nrd::InstanceImpl::PushDispatch(const DenoiserData& denoiserData, uint32_t localIndex)
 {
     size_t dispatchIndex = denoiserData.dispatchOffset + localIndex;
     const InternalDispatchDesc& internalDispatchDesc = m_Dispatches[dispatchIndex];
@@ -754,31 +764,54 @@ nrd::Constant* nrd::InstanceImpl::PushDispatch(const DenoiserData& denoiserData,
     // Copy data
     DispatchDesc dispatchDesc = {};
     dispatchDesc.name = internalDispatchDesc.name;
+    dispatchDesc.identifier = internalDispatchDesc.identifier;
     dispatchDesc.resources = internalDispatchDesc.resources;
     dispatchDesc.resourcesNum = internalDispatchDesc.resourcesNum;
     dispatchDesc.pipelineIndex = internalDispatchDesc.pipelineIndex;
 
     // Update constant data
     if (m_ConstantDataOffset + internalDispatchDesc.constantBufferDataSize > CONSTANT_DATA_SIZE)
-        m_ConstantDataOffset = 0;
-    dispatchDesc.constantBufferData = m_ConstantData + m_ConstantDataOffset;
+    {
+        assert("Constant data doesn't fit into the prealocated array!" && false);
+        dispatchDesc.constantBufferData = nullptr; // TODO: better crash
+    }
+    else
+        dispatchDesc.constantBufferData = m_ConstantData + m_ConstantDataOffset;
+
     dispatchDesc.constantBufferDataSize = internalDispatchDesc.constantBufferDataSize;
     m_ConstantDataOffset += internalDispatchDesc.constantBufferDataSize;
 
-    // Update grid size
-    float sx = ml::Max(internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? m_CommonSettings.resolutionScalePrev[0] : 0.0f, m_CommonSettings.resolutionScale[0]);
-    float sy = ml::Max(internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? m_CommonSettings.resolutionScalePrev[1] : 0.0f, m_CommonSettings.resolutionScale[1]);
-    uint16_t d = internalDispatchDesc.downsampleFactor == USE_MAX_DIMS ? 1 : internalDispatchDesc.downsampleFactor;
-
-    if (internalDispatchDesc.downsampleFactor == IGNORE_RS)
+    dispatchDesc.constantBufferDataMatchesPreviousDispatch = false;
+    if (!m_ActiveDispatches.empty())
     {
-        sx = 1.0f;
-        sy = 1.0f;
+        const DispatchDesc& dispatchDescPrev = m_ActiveDispatches.back();
+        if (dispatchDescPrev.constantBufferDataSize == dispatchDesc.constantBufferDataSize)
+        {
+            if (!memcmp(dispatchDescPrev.constantBufferData, dispatchDesc.constantBufferData, dispatchDesc.constantBufferDataSize))
+                dispatchDesc.constantBufferDataMatchesPreviousDispatch = true;
+        }
+    }
+
+    // Update grid size
+    uint16_t w = m_CommonSettings.rectSize[0];
+    uint16_t h = m_CommonSettings.rectSize[1];
+    uint16_t d = internalDispatchDesc.downsampleFactor;
+
+    if (d == USE_MAX_DIMS)
+    {
+        w = Max(w, m_CommonSettings.rectSizePrev[0]);
+        h = Max(h, m_CommonSettings.rectSizePrev[1]);
+        d = 1;
+    }
+    else if (d == IGNORE_RS)
+    {
+        w = m_CommonSettings.resourceSize[0];
+        h = m_CommonSettings.resourceSize[1];
         d = 1;
     }
 
-    uint16_t w = uint16_t( float(DivideUp(denoiserData.desc.renderWidth, d)) * sx + 0.5f );
-    uint16_t h = uint16_t( float(DivideUp(denoiserData.desc.renderHeight, d)) * sy + 0.5f );
+    w = DivideUp(w, d);
+    h = DivideUp(h, d);
 
     dispatchDesc.gridWidth = DivideUp(w, internalDispatchDesc.numThreads.width);
     dispatchDesc.gridHeight = DivideUp(h, internalDispatchDesc.numThreads.height);
@@ -786,5 +819,5 @@ nrd::Constant* nrd::InstanceImpl::PushDispatch(const DenoiserData& denoiserData,
     // Store
     m_ActiveDispatches.push_back(dispatchDesc);
 
-    return (Constant*)dispatchDesc.constantBufferData;
+    return (void*)dispatchDesc.constantBufferData;
 }
