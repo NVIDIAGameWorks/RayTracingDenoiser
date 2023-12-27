@@ -265,8 +265,8 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecular(DenoiserData& denoiserData)
                 PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
                 PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
                 PushInput( AsUint(ResourceType::IN_VIEWZ) );
-                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
-                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
+                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : RELAX_DUMMY );
+                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : RELAX_DUMMY );
 
                 // Outputs
                 if (isLast)
@@ -301,12 +301,12 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecular(DenoiserData& denoiserData)
     {
         // Inputs
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
         PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
+        PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
 
         // Outputs
-        PushOutput( AsUint( ResourceType::OUT_SPEC_RADIANCE_HITDIST ) );
         PushOutput( AsUint( ResourceType::OUT_DIFF_RADIANCE_HITDIST ) );
+        PushOutput( AsUint( ResourceType::OUT_SPEC_RADIANCE_HITDIST ) );
 
         // Shaders
         AddDispatch( RELAX_DiffuseSpecular_SplitScreen, RELAX_SplitScreen, 1 );

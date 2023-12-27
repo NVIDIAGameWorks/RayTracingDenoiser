@@ -37,7 +37,7 @@ NRD_SAMPLERS_END
         NRD_INPUT( Texture2D<float>, gPrevMaterialID, t, 14 )
         NRD_INPUT( Texture2D<float>, gSpecConfidence, t, 15 )
         NRD_INPUT( Texture2D<float>, gDiffConfidence, t, 16 )
-        NRD_INPUT( Texture2D<float>, gDisocclusionThresholdMix, t, 17)
+        NRD_INPUT( Texture2D<float>, gDisocclusionThresholdMix, t, 17 )
         #ifdef RELAX_SH
             NRD_INPUT( Texture2D<float4>, gSpecSH1, t, 18 )
             NRD_INPUT( Texture2D<float4>, gDiffSH1, t, 19 )
@@ -113,7 +113,7 @@ NRD_SAMPLERS_END
         NRD_INPUT( Texture2D<float>, gPrevHistoryLength, t, 10 )
         NRD_INPUT( Texture2D<float>, gPrevMaterialID, t, 11 )
         NRD_INPUT( Texture2D<float>, gSpecConfidence, t, 12 )
-        NRD_INPUT( Texture2D<float>, gDisocclusionThresholdMix, t, 13)
+        NRD_INPUT( Texture2D<float>, gDisocclusionThresholdMix, t, 13 )
         #ifdef RELAX_SH
             NRD_INPUT( Texture2D<float4>, gSpecSH1, t, 14 )
             NRD_INPUT( Texture2D<float4>, gPrevSpecularResponsiveSH1, t, 15 )

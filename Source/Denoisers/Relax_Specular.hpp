@@ -226,7 +226,7 @@ void nrd::InstanceImpl::Add_RelaxSpecular(DenoiserData& denoiserData)
                 PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
                 PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
                 PushInput( AsUint(ResourceType::IN_VIEWZ) );
-                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
+                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : RELAX_DUMMY );
 
                 // Outputs
                 if (isLast)

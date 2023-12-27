@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 void nrd::InstanceImpl::Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData)
 {
-    #define DENOISER_NAME RELAX_DiffuseSpecular
+    #define DENOISER_NAME RELAX_DiffuseSpecularSh
 
     denoiserData.settings.relax = RelaxSettings();
     denoiserData.settingsSize = sizeof(denoiserData.settings.relax);
@@ -19,10 +19,10 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData)
     {
         SPEC_ILLUM_PREV = PERMANENT_POOL_START,
         SPEC_ILLUM_PREV_SH1,
-        DIFF_ILLUM_PREV,
-        DIFF_ILLUM_PREV_SH1,
         SPEC_ILLUM_RESPONSIVE_PREV,
         SPEC_ILLUM_RESPONSIVE_PREV_SH1,
+        DIFF_ILLUM_PREV,
+        DIFF_ILLUM_PREV_SH1,
         DIFF_ILLUM_RESPONSIVE_PREV,
         DIFF_ILLUM_RESPONSIVE_PREV_SH1,
         REFLECTION_HIT_T_CURR,
@@ -185,7 +185,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData)
             PushOutput( AsUint(Transient::DIFF_ILLUM_PONG_SH1) );
 
             // Shaders
-            AddDispatch(RELAX_DiffuseSpecularSh_TemporalAccumulation, RELAX_TemporalAccumulation, 1);
+            AddDispatch(RELAX_DiffuseSpecularSh_TemporalAccumulation, RELAX_TemporalAccumulation, 1 );
         }
     }
 
@@ -307,8 +307,8 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData)
                 PushInput( AsUint(Transient::SPEC_REPROJECTION_CONFIDENCE) );
                 PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
                 PushInput( AsUint(ResourceType::IN_VIEWZ) );
-                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
-                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
+                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : RELAX_DUMMY );
+                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : RELAX_DUMMY );
 
                 if (isSmem)
                 {
@@ -325,7 +325,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData)
                 if (isLast)
                 {
                     PushOutput( AsUint(ResourceType::OUT_SPEC_SH0) );
-                    PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );
+                    PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
                 }
                 else
                 {
@@ -365,15 +365,19 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData)
     {
         // Inputs
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
-        PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
+        PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
+        PushInput( AsUint(ResourceType::IN_SPEC_SH0) );
+        PushInput( AsUint(ResourceType::IN_DIFF_SH1) );
+        PushInput( AsUint(ResourceType::IN_SPEC_SH1) );
 
         // Outputs
-        PushOutput( AsUint( ResourceType::OUT_SPEC_RADIANCE_HITDIST ) );
-        PushOutput( AsUint( ResourceType::OUT_DIFF_RADIANCE_HITDIST ) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
+        PushOutput( AsUint(ResourceType::OUT_SPEC_SH0) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );
+        PushOutput( AsUint(ResourceType::OUT_SPEC_SH1) );
 
         // Shaders
-        AddDispatch( RELAX_DiffuseSpecular_SplitScreen, RELAX_SplitScreen, 1 );
+        AddDispatch( RELAX_DiffuseSpecularSh_SplitScreen, RELAX_SplitScreen, 1 );
     }
 
     RELAX_ADD_VALIDATION_DISPATCH;

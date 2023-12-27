@@ -120,7 +120,8 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
     {
-        PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Reblur(settings, consts);
 
         return;
     }
@@ -193,7 +194,10 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
 
     // SPLIT_SCREEN
     if (m_CommonSettings.splitScreen > 0.0f)
-        PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+    {
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::SPLIT_SCREEN));
+        AddSharedConstants_Reblur(settings, consts);
+    }
 
     // VALIDATION
     if (m_CommonSettings.enableValidation)

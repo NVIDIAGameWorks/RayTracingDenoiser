@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 void nrd::InstanceImpl::Add_RelaxDiffuseSh(DenoiserData& denoiserData)
 {
-    #define DENOISER_NAME RELAX_Diffuse
+    #define DENOISER_NAME RELAX_DiffuseSh
 
     denoiserData.settings.relax = RelaxSettings();
     denoiserData.settingsSize = sizeof(denoiserData.settings.relax);
@@ -56,10 +56,10 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSh(DenoiserData& denoiserData)
     PushPass("Classify tiles");
     {
         // Inputs
-        PushInput(AsUint(ResourceType::IN_VIEWZ));
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
 
         // Outputs
-        PushOutput(AsUint(Transient::TILES));
+        PushOutput( AsUint(Transient::TILES) );
 
         // Shaders
         AddDispatch( RELAX_ClassifyTiles, RELAX_ClassifyTiles, 1 );
@@ -241,7 +241,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSh(DenoiserData& denoiserData)
                 PushInput( AsUint(Transient::HISTORY_LENGTH) );
                 PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
                 PushInput( AsUint(ResourceType::IN_VIEWZ) );
-                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
+                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : RELAX_DUMMY );
 
                 if (isSmem)
                     PushInput( AsUint(Permanent::DIFF_ILLUM_PREV_SH1) );
@@ -280,13 +280,15 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSh(DenoiserData& denoiserData)
     {
         // Inputs
         PushInput( AsUint(ResourceType::IN_VIEWZ) );
-        PushInput( AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
+        PushInput( AsUint(ResourceType::IN_DIFF_SH0) );
+        PushInput( AsUint(ResourceType::IN_DIFF_SH1) );
 
         // Outputs
-        PushOutput( AsUint( ResourceType::OUT_DIFF_RADIANCE_HITDIST ) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH0) );
+        PushOutput( AsUint(ResourceType::OUT_DIFF_SH1) );
 
         // Shaders
-        AddDispatch( RELAX_Diffuse_SplitScreen, RELAX_SplitScreen, 1 );
+        AddDispatch( RELAX_DiffuseSh_SplitScreen, RELAX_SplitScreen, 1 );
     }
 
     RELAX_ADD_VALIDATION_DISPATCH;

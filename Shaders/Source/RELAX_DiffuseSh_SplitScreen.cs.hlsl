@@ -12,6 +12,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "STL.hlsli"
 
 #define RELAX_DIFFUSE
+#define RELAX_SH
 
 #include "RELAX_Config.hlsli"
 #include "RELAX_SplitScreen.resources.hlsli"

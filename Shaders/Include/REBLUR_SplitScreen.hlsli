@@ -8,8 +8,8 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-[numthreads( GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN( int2 pixelPos : SV_DispatchThreadId)
+[numthreads( GROUP_X, GROUP_Y, 1 )]
+NRD_EXPORT void NRD_CS_MAIN( int2 pixelPos : SV_DispatchThreadId )
 {
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
     if( pixelUv.x > gSplitScreen || any( pixelPos > gRectSizeMinusOne ) )

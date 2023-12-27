@@ -221,7 +221,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuse(DenoiserData& denoiserData)
                 PushInput( AsUint(Transient::HISTORY_LENGTH) );
                 PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
                 PushInput( AsUint(ResourceType::IN_VIEWZ) );
-                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : AsUint(ResourceType::IN_VIEWZ) );
+                PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_DIFF_CONFIDENCE) : RELAX_DUMMY );
 
                 // Outputs
                 if (isLast)
