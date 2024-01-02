@@ -24,7 +24,7 @@ void Preload(uint2 sharedPos, int2 globalPos)
 
     #ifdef RELAX_SPECULAR
         float4 specularResponsive = gSpecIlluminationResponsive[globalPos];
-        sharedSpecularResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::LinearToYCoCg(specularResponsive.rgb), specularResponsive.a);
+        sharedSpecularResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::RgbToYCoCg(specularResponsive.rgb), specularResponsive.a);
 
         float4 specularNoisy = gNoisySpecularIllumination[globalPos];
         float specularNoisyLuminance = STL::Color::Luminance(specularNoisy.rgb);
@@ -34,7 +34,7 @@ void Preload(uint2 sharedPos, int2 globalPos)
 
     #ifdef RELAX_DIFFUSE
         float4 diffuseResponsive = gDiffIlluminationResponsive[globalPos];
-        sharedDiffuseResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::LinearToYCoCg(diffuseResponsive.rgb), diffuseResponsive.a);
+        sharedDiffuseResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::RgbToYCoCg(diffuseResponsive.rgb), diffuseResponsive.a);
 
         float4 diffuseNoisy = gNoisyDiffuseIllumination[globalPos];
         float diffuseNoisyLuminance = STL::Color::Luminance(diffuseNoisy.rgb);
@@ -120,18 +120,18 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Clamping color with color box expansion
     float4 specularIlluminationAnd2ndMoment = gSpecIllumination[pixelPos];
-    float3 specularYCoCg = STL::Color::LinearToYCoCg(specularIlluminationAnd2ndMoment.rgb);
+    float3 specularYCoCg = STL::Color::RgbToYCoCg(specularIlluminationAnd2ndMoment.rgb);
     float3 clampedSpecularYCoCg = specularYCoCg;
     if (gSpecMaxFastAccumulatedFrameNum < gSpecMaxAccumulatedFrameNum)
         clampedSpecularYCoCg = clamp(specularYCoCg, specularResponsiveColorMinYCoCg, specularResponsiveColorMaxYCoCg);
-    float3 clampedSpecular = STL::Color::YCoCgToLinear(clampedSpecularYCoCg);
+    float3 clampedSpecular = STL::Color::YCoCgToRgb(clampedSpecularYCoCg);
 
     // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
     // so data from responsive history needs to be copied to normal history,
     // and no history clamping is needed.
     float4 outSpecular = float4(clampedSpecular, specularIlluminationAnd2ndMoment.a);
-    float3 specularResponsiveCenter = STL::Color::YCoCgToLinear(specularResponsiveCenterYCoCg.rgb);
+    float3 specularResponsiveCenter = STL::Color::YCoCgToRgb(specularResponsiveCenterYCoCg.rgb);
     float4 outSpecularResponsive = float4(specularResponsiveCenter, specularResponsiveCenterYCoCg.a);
     if (historyLength <= gHistoryFixFrameNum)
         outSpecular = outSpecularResponsive;
@@ -232,18 +232,18 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Clamping color with color box expansion
     float4 diffuseIlluminationAnd2ndMoment = gDiffIllumination[pixelPos];
-    float3 diffuseYCoCg = STL::Color::LinearToYCoCg(diffuseIlluminationAnd2ndMoment.rgb);
+    float3 diffuseYCoCg = STL::Color::RgbToYCoCg(diffuseIlluminationAnd2ndMoment.rgb);
     float3 clampedDiffuseYCoCg = diffuseYCoCg;
     if (gDiffMaxFastAccumulatedFrameNum < gDiffMaxAccumulatedFrameNum)
         clampedDiffuseYCoCg = clamp(diffuseYCoCg, diffuseResponsiveColorMinYCoCg, diffuseResponsiveColorMaxYCoCg);
-    float3 clampedDiffuse = STL::Color::YCoCgToLinear(clampedDiffuseYCoCg);
+    float3 clampedDiffuse = STL::Color::YCoCgToRgb(clampedDiffuseYCoCg);
 
     // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
     // so data from responsive history needs to be copied to normal history,
     // and no history clamping is needed.
     float4 outDiffuse = float4(clampedDiffuse, diffuseIlluminationAnd2ndMoment.a);
-    float3 diffuseResponsiveCenter = STL::Color::YCoCgToLinear(diffuseResponsiveCenterYCoCg.rgb);
+    float3 diffuseResponsiveCenter = STL::Color::YCoCgToRgb(diffuseResponsiveCenterYCoCg.rgb);
     float4 outDiffuseResponsive = float4(diffuseResponsiveCenter, 0);
     if (historyLength <= gHistoryFixFrameNum)
         outDiffuse.rgb = outDiffuseResponsive.rgb;
