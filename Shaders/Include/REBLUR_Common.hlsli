@@ -166,6 +166,20 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
     return STL::Math::LinearStep( a, b, accumSpeed );
 }
 
+float GetNonLinearAccumSpeed( float accumSpeed, float maxAccumSpeed, float confidence, bool hasData )
+{
+    #if( REBLUR_USE_CONFIDENCE_NON_LINEARLY == 1 )
+        float nonLinearAccumSpeed = max( 1.0 - confidence, 1.0 / ( 1.0 + min( accumSpeed, maxAccumSpeed ) ) );
+    #else
+        float nonLinearAccumSpeed = 1.0 / ( 1.0 + min( accumSpeed, maxAccumSpeed * confidence ) );
+    #endif
+
+    if( !hasData )
+        nonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, nonLinearAccumSpeed );
+
+    return nonLinearAccumSpeed;
+}
+
 // Misc ( templates )
 
 // Hit distance is normalized

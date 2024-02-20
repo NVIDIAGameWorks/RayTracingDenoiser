@@ -195,7 +195,7 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
             const ResourceDesc& resource = m_Resources[resourceIndex];
 
             // Loop through all resources and find all used as STORAGE (i.e. ignore read-only user provided inputs)
-            if (resource.stateNeeded != DescriptorType::STORAGE_TEXTURE)
+            if (resource.descriptorType != DescriptorType::STORAGE_TEXTURE)
                 continue;
 
             // Skip "OUT_VALIDATION" resource because it can be not provided
@@ -206,7 +206,7 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
             bool isFound = false;
             for (const ClearResource& temp : m_ClearResources)
             {
-                if (temp.resource.stateNeeded == resource.stateNeeded &&
+                if (temp.resource.descriptorType == resource.descriptorType &&
                     temp.resource.type == resource.type &&
                     temp.resource.indexInPool == resource.indexInPool)
                 {
@@ -236,7 +236,7 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
                     const PingPong& pingPong = m_PingPongs[denoiserData.pingPongOffset + p];
                     if (pingPong.resourceIndex == (uint32_t)resourceIndex)
                     {
-                        ResourceDesc resourcePong = {resource.stateNeeded, resource.type, pingPong.indexInPoolToSwapWith};
+                        ResourceDesc resourcePong = {resource.descriptorType, resource.type, pingPong.indexInPoolToSwapWith};
                         m_ClearResources.push_back( {denoiserDesc.identifier, resourcePong, downsampleFactor, isInteger} );
                         break;
                     }
@@ -572,7 +572,7 @@ void nrd::InstanceImpl::AddComputeDispatchDesc
             for (size_t i = m_ResourceOffset; i < m_Resources.size(); i++ )
             {
                 const ResourceDesc& resource = m_Resources[i];
-                if (descriptorRange.descriptorType == resource.stateNeeded)
+                if (descriptorRange.descriptorType == resource.descriptorType)
                     descriptorRange.descriptorsNum++;
             }
 
@@ -635,9 +635,9 @@ void nrd::InstanceImpl::PrepareDesc()
         for (uint32_t i = 0; i < dispatchDesc.resourcesNum; i++)
         {
             const ResourceDesc& resource = dispatchDesc.resources[i];
-            if (resource.stateNeeded == DescriptorType::TEXTURE)
+            if (resource.descriptorType == DescriptorType::TEXTURE)
                 m_Desc.descriptorPoolDesc.texturesMaxNum += dispatchDesc.maxRepeatsNum;
-            else if (resource.stateNeeded == DescriptorType::STORAGE_TEXTURE)
+            else if (resource.descriptorType == DescriptorType::STORAGE_TEXTURE)
                 m_Desc.descriptorPoolDesc.storageTexturesMaxNum += dispatchDesc.maxRepeatsNum;
         }
 

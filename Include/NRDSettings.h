@@ -125,6 +125,7 @@ namespace nrd
         float splitScreen = 0.0f;
 
         // For internal needs
+        uint16_t printfAt[2] = {9999, 9999}; // thread (pixel) position
         float debug = 0.0f;
 
         // (pixels) - viewport origin

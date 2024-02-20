@@ -37,7 +37,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // "state->texture" represents the resource, the rest represents the state.
 struct NrdIntegrationTexture
 {
-    nri::TextureTransitionBarrierDesc* state;
+    nri::TextureBarrierDesc* state;
     nri::Format format;
 };
 
@@ -112,7 +112,7 @@ private:
     std::vector<NrdIntegrationTexture> m_TexturePool;
     std::map<uint64_t, nri::Descriptor*> m_CachedDescriptors;
     std::vector<std::vector<nri::Descriptor*>> m_DescriptorsInFlight;
-    std::vector<nri::TextureTransitionBarrierDesc> m_ResourceState;
+    std::vector<nri::TextureBarrierDesc> m_ResourceState;
     std::vector<nri::PipelineLayout*> m_PipelineLayouts;
     std::vector<nri::Pipeline*> m_Pipelines;
     std::vector<nri::Memory*> m_MemoryAllocations;

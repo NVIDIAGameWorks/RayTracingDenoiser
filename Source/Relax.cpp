@@ -119,6 +119,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gRectSizeInv                                        = float2(1.0f / rectW, 1.0f / rectH);
     consts->gRectSizePrev                                       = float2(float(rectWprev), float(rectHprev));
     consts->gResourceSizeInvPrev                                = float2(1.0f / resourceWprev, 1.0f / resourceHprev);
+    consts->gPrintfAt                                           = uint2(m_CommonSettings.printfAt[0], m_CommonSettings.printfAt[1]);
     consts->gRectOrigin                                         = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
     consts->gRectSize                                           = uint2(rectW, rectH);
     consts->gSpecMaxAccumulatedFrameNum                         = (float)settings.specularMaxAccumulatedFrameNum;

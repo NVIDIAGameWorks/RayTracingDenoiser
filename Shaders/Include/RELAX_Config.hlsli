@@ -37,6 +37,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float2, gRectSizeInv ) \
     NRD_CONSTANT( float2, gRectSizePrev ) \
     NRD_CONSTANT( float2, gResourceSizeInvPrev ) \
+    NRD_CONSTANT( uint2, gPrintfAt ) \
     NRD_CONSTANT( uint2, gRectOrigin ) \
     NRD_CONSTANT( uint2, gRectSize ) \
     NRD_CONSTANT( float, gSpecMaxAccumulatedFrameNum ) \

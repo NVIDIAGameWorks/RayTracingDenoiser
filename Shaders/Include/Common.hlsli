@@ -114,6 +114,20 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     /* Not an elegant way to solve loop variables declaration duplication problem */ \
     int i, j
 
+// Printf
+/*
+Usage:
+    #ifdef PRINTF_AVAILABLE
+        PrintfAt( "a = %f, b = %f, c = %u", a, b, c );
+    #endif
+*/
+#if( defined( __hlsl_dx_compiler ) && defined( VULKAN ) )
+    #define PRINTF_AVAILABLE
+    #define PrintfAt(...) \
+        if( uint( pixelPos.x ) == gPrintfAt.x && uint( pixelPos.y ) == gPrintfAt.y ) \
+            printf(__VA_ARGS__)
+#endif
+
 //==================================================================================================================
 // SHARED FUNCTIONS
 //==================================================================================================================

@@ -452,7 +452,7 @@ namespace nrd
 
     struct ResourceDesc
     {
-        DescriptorType stateNeeded;
+        DescriptorType descriptorType;
         ResourceType type;
         uint16_t indexInPool;
     };
@@ -477,7 +477,7 @@ namespace nrd
         ComputeShaderDesc computeShaderSPIRV;
         const char* shaderFileName;
         const char* shaderEntryPointName;
-        const ResourceRangeDesc* resourceRanges;
+        const ResourceRangeDesc* resourceRanges; // up to 2 ranges: "TEXTURE" inputs (optional) and "TEXTURE_STORAGE" outputs 
         uint32_t resourceRangesNum;
 
         // Hint that pipeline has a constant buffer with shared parameters from "InstanceDesc"
@@ -528,9 +528,9 @@ namespace nrd
     {
         // ( Optional )
         const char* name;
-        Identifier identifier; // which denoiser this dispatch belongs to
+        Identifier identifier; // denoiser this dispatch belongs to
 
-        // Concatenated resources for all "resourceRanges" descriptions in DenoiserDesc::pipelines[ pipelineIndex ]
+        // Concatenated resources for all "resourceRanges" in "DenoiserDesc::pipelines[ pipelineIndex ]"
         const ResourceDesc* resources;
         uint32_t resourcesNum;
 

@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRDIntegration.h"
 
 static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 4, "Unsupported NRD version!");
-static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 110, "Unsupported NRI version!");
+static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 118, "Unsupported NRI version!");
 
 #ifdef _WIN32
     #define alloca _alloca
@@ -175,14 +175,14 @@ void NrdIntegration::CreatePipelines()
     nri::DescriptorRangeDesc* resourcesRanges = descriptorRanges + 1;
 
     // Constant buffer
-    const nri::DynamicConstantBufferDesc dynamicConstantBufferDesc = {constantBufferOffset + instanceDesc.constantBufferRegisterIndex, nri::ShaderStage::COMPUTE};
+    const nri::DynamicConstantBufferDesc dynamicConstantBufferDesc = {constantBufferOffset + instanceDesc.constantBufferRegisterIndex, nri::StageBits::COMPUTE_SHADER};
     descriptorSetConstantBuffer.dynamicConstantBuffers = &dynamicConstantBufferDesc;
 
     // Samplers
     samplersRange->descriptorType = nri::DescriptorType::SAMPLER;
     samplersRange->baseRegisterIndex = samplerOffset + instanceDesc.samplersBaseRegisterIndex;
     samplersRange->descriptorNum = instanceDesc.samplersNum;
-    samplersRange->visibility =  nri::ShaderStage::COMPUTE;
+    samplersRange->shaderStages =  nri::StageBits::COMPUTE_SHADER;
 
     // Pipelines
     for (uint32_t i = 0; i < instanceDesc.pipelinesNum; i++)
@@ -207,7 +207,7 @@ void NrdIntegration::CreatePipelines()
             }
 
             resourcesRanges[j].descriptorNum = nrdResourceRange.descriptorsNum;
-            resourcesRanges[j].visibility = nri::ShaderStage::COMPUTE;
+            resourcesRanges[j].shaderStages = nri::StageBits::COMPUTE_SHADER;
         }
 
         // Descriptor sets
@@ -232,7 +232,7 @@ void NrdIntegration::CreatePipelines()
         pipelineLayoutDesc.descriptorSetNum = descriptorSetNum;
         pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
         pipelineLayoutDesc.ignoreGlobalSPIRVOffsets = true;
-        pipelineLayoutDesc.stageMask = nri::PipelineLayoutShaderStageBits::COMPUTE;
+        pipelineLayoutDesc.shaderStages = nri::StageBits::COMPUTE_SHADER;
 
         nri::PipelineLayout* pipelineLayout = nullptr;
         NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->CreatePipelineLayout(*m_Device, pipelineLayoutDesc, pipelineLayout));
@@ -247,7 +247,7 @@ void NrdIntegration::CreatePipelines()
             computeShader.bytecode = nrdComputeShader.bytecode;
             computeShader.size = nrdComputeShader.size;
             computeShader.entryPointName = nrdPipelineDesc.shaderEntryPointName;
-            computeShader.stage = nri::ShaderStage::COMPUTE;
+            computeShader.stage = nri::StageBits::COMPUTE_SHADER;
     #ifdef PROJECT_NAME
         }
         else
@@ -256,7 +256,7 @@ void NrdIntegration::CreatePipelines()
 
         nri::ComputePipelineDesc pipelineDesc = {};
         pipelineDesc.pipelineLayout = pipelineLayout;
-        pipelineDesc.computeShader = computeShader;
+        pipelineDesc.shader = computeShader;
 
         nri::Pipeline* pipeline = nullptr;
         NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->CreateComputePipeline(*m_Device, pipelineDesc, pipeline));
@@ -300,7 +300,7 @@ void NrdIntegration::CreateResources(uint16_t resourceWidth, uint16_t resourceHe
         nrdTexture.format = format;
         m_TexturePool[i] = nrdTexture;
 
-        nrdTexture.state[0] = nri::TextureTransitionFromUnknown(texture, {nri::AccessBits::UNKNOWN, nri::TextureLayout::UNKNOWN}, 0, 1);
+        nrdTexture.state[0] = nri::TextureBarrierFromUnknown(texture, {nri::AccessBits::UNKNOWN, nri::Layout::UNKNOWN}, 0, 1);
 
         // Adjust memory usage
         nri::MemoryDesc memoryDesc = {};
@@ -481,10 +481,10 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     nri::DescriptorRangeUpdateDesc* resourceRanges = (nri::DescriptorRangeUpdateDesc*)alloca(sizeof(nri::DescriptorRangeUpdateDesc) * pipelineDesc.resourceRangesNum);
     memset(resourceRanges, 0, sizeof(nri::DescriptorRangeUpdateDesc) * pipelineDesc.resourceRangesNum);
 
-    nri::TextureTransitionBarrierDesc* transitions = (nri::TextureTransitionBarrierDesc*)alloca(sizeof(nri::TextureTransitionBarrierDesc) * dispatchDesc.resourcesNum);
-    memset(transitions, 0, sizeof(nri::TextureTransitionBarrierDesc) * dispatchDesc.resourcesNum);
+    nri::TextureBarrierDesc* transitions = (nri::TextureBarrierDesc*)alloca(sizeof(nri::TextureBarrierDesc) * dispatchDesc.resourcesNum);
+    memset(transitions, 0, sizeof(nri::TextureBarrierDesc) * dispatchDesc.resourcesNum);
 
-    nri::TransitionBarrierDesc transitionBarriers = {};
+    nri::BarrierGroupDesc transitionBarriers = {};
     transitionBarriers.textures = transitions;
 
     uint32_t n = 0;
@@ -513,12 +513,12 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
                 NRD_INTEGRATION_ASSERT(nrdTexture->format != nri::Format::UNKNOWN, "Format must be valid!");
             }
 
-            const nri::AccessBits nextAccess = nrdResource.stateNeeded == nrd::DescriptorType::TEXTURE ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::SHADER_RESOURCE_STORAGE;
-            const nri::TextureLayout nextLayout =  nrdResource.stateNeeded == nrd::DescriptorType::TEXTURE ? nri::TextureLayout::SHADER_RESOURCE : nri::TextureLayout::GENERAL;
-            bool isStateChanged = nextAccess != nrdTexture->state->nextState.acessBits || nextLayout != nrdTexture->state->nextState.layout;
-            bool isStorageBarrier = nextAccess == nri::AccessBits::SHADER_RESOURCE_STORAGE && nrdTexture->state->nextState.acessBits == nri::AccessBits::SHADER_RESOURCE_STORAGE;
+            const nri::AccessBits nextAccess = nrdResource.descriptorType == nrd::DescriptorType::TEXTURE ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::SHADER_RESOURCE_STORAGE;
+            const nri::Layout nextLayout =  nrdResource.descriptorType == nrd::DescriptorType::TEXTURE ? nri::Layout::SHADER_RESOURCE : nri::Layout::SHADER_RESOURCE_STORAGE;
+            bool isStateChanged = nextAccess != nrdTexture->state->after.access || nextLayout != nrdTexture->state->after.layout;
+            bool isStorageBarrier = nextAccess == nri::AccessBits::SHADER_RESOURCE_STORAGE && nrdTexture->state->after.access == nri::AccessBits::SHADER_RESOURCE_STORAGE;
             if (isStateChanged || isStorageBarrier)
-                transitions[transitionBarriers.textureNum++] = nri::TextureTransitionFromState(*nrdTexture->state, {nextAccess, nextLayout}, 0, 1);
+                transitions[transitionBarriers.textureNum++] = nri::TextureBarrierFromState(*nrdTexture->state, {nextAccess, nextLayout}, 0, 1);
 
             uint64_t resource = m_NRI->GetTextureNativeObject(*nrdTexture->state->texture, 0);
             uint64_t key = NRD_CreateDescriptorKey(resource, isStorage);
@@ -595,7 +595,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetResourcesIndex], nri::ALL_NODES, instanceDesc.samplersSpaceIndex == instanceDesc.resourcesSpaceIndex ? 1 : 0, pipelineDesc.resourceRangesNum, resourceRanges);
 
     // Rendering
-    m_NRI->CmdPipelineBarrier(commandBuffer, &transitionBarriers, nullptr, nri::BarrierDependency::ALL_STAGES);
+    m_NRI->CmdBarrier(commandBuffer, transitionBarriers);
     m_NRI->CmdSetPipelineLayout(commandBuffer, *pipelineLayout);
 
     nri::Pipeline* pipeline = m_Pipelines[dispatchDesc.pipelineIndex];

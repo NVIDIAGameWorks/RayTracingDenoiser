@@ -213,16 +213,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         uint4 smbInternalData2 = gIn_Prev_InternalData.GatherRed( gNearestClamp, smbCatromGatherUv, float2( 1, 3 ) ).wzxy;
         uint4 smbInternalData3 = gIn_Prev_InternalData.GatherRed( gNearestClamp, smbCatromGatherUv, float2( 3, 3 ) ).wzxy;
 
-        float3 prevMaterialID0 = float3( UnpackInternalData( smbInternalData0.y ).z, UnpackInternalData( smbInternalData0.z ).z, UnpackInternalData( smbInternalData0.w ).z );
-        float3 prevMaterialID1 = float3( UnpackInternalData( smbInternalData1.x ).z, UnpackInternalData( smbInternalData1.z ).z, UnpackInternalData( smbInternalData1.w ).z );
-        float3 prevMaterialID2 = float3( UnpackInternalData( smbInternalData2.x ).z, UnpackInternalData( smbInternalData2.y ).z, UnpackInternalData( smbInternalData2.w ).z );
-        float3 prevMaterialID3 = float3( UnpackInternalData( smbInternalData3.x ).z, UnpackInternalData( smbInternalData3.y ).z, UnpackInternalData( smbInternalData3.z ).z );
+        float3 smbMaterialID0 = float3( UnpackInternalData( smbInternalData0.y ).z, UnpackInternalData( smbInternalData0.z ).z, UnpackInternalData( smbInternalData0.w ).z );
+        float3 smbMaterialID1 = float3( UnpackInternalData( smbInternalData1.x ).z, UnpackInternalData( smbInternalData1.z ).z, UnpackInternalData( smbInternalData1.w ).z );
+        float3 smbMaterialID2 = float3( UnpackInternalData( smbInternalData2.x ).z, UnpackInternalData( smbInternalData2.y ).z, UnpackInternalData( smbInternalData2.w ).z );
+        float3 smbMaterialID3 = float3( UnpackInternalData( smbInternalData3.x ).z, UnpackInternalData( smbInternalData3.y ).z, UnpackInternalData( smbInternalData3.z ).z );
 
         uint mask = gSpecMaterialMask | gDiffMaterialMask; // TODO: separation is expensive
-        smbOcclusion0 *= CompareMaterials( materialID, prevMaterialID0, mask );
-        smbOcclusion1 *= CompareMaterials( materialID, prevMaterialID1, mask );
-        smbOcclusion2 *= CompareMaterials( materialID, prevMaterialID2, mask );
-        smbOcclusion3 *= CompareMaterials( materialID, prevMaterialID3, mask );
+        smbOcclusion0 *= CompareMaterials( materialID, smbMaterialID0, mask );
+        smbOcclusion1 *= CompareMaterials( materialID, smbMaterialID1, mask );
+        smbOcclusion2 *= CompareMaterials( materialID, smbMaterialID2, mask );
+        smbOcclusion3 *= CompareMaterials( materialID, smbMaterialID3, mask );
 
         uint4 smbInternalData = uint4( smbInternalData0.w, smbInternalData1.z, smbInternalData2.y, smbInternalData3.x );
     #else
@@ -466,8 +466,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float4 vmbOcclusion = step( vmbPlaneDist, vmbOcclusionThreshold );
         vmbOcclusion *= step( 0.5, roughnessWeight );
 
-        bool vmbAllowCatRom = dot( vmbOcclusion, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA;
-        vmbAllowCatRom = vmbAllowCatRom && smbAllowCatRom; // helps to reduce over-sharpening in disoccluded areas
+        // Virtual motion - disocclusion: materialID
+        uint4 vmbInternalData = gIn_Prev_InternalData.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy;
+
+        float3 vmbInternalData00 = UnpackInternalData( vmbInternalData.x );
+        float3 vmbInternalData10 = UnpackInternalData( vmbInternalData.y );
+        float3 vmbInternalData01 = UnpackInternalData( vmbInternalData.z );
+        float3 vmbInternalData11 = UnpackInternalData( vmbInternalData.w );
+
+        #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
+            float4 vmbMaterialID = float4( vmbInternalData00.z, vmbInternalData10.z, vmbInternalData01.z, vmbInternalData11.z  );
+            vmbOcclusion *= CompareMaterials( materialID, vmbMaterialID, gSpecMaterialMask );
+        #endif
 
         // Bits
         fbits += vmbOcclusion.x * 16.0;
@@ -476,19 +486,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         fbits += vmbOcclusion.w * 128.0;
 
         // Virtual motion - accumulation speed
-        uint4 vmbInternalData = gIn_Prev_InternalData.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy;
-
-        float3 vmbInternalData00 = UnpackInternalData( vmbInternalData.x );
-        float3 vmbInternalData10 = UnpackInternalData( vmbInternalData.y );
-        float3 vmbInternalData01 = UnpackInternalData( vmbInternalData.z );
-        float3 vmbInternalData11 = UnpackInternalData( vmbInternalData.w );
-
         float4 vmbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( vmbBilinearFilter, vmbOcclusion );
         float vmbSpecAccumSpeed = STL::Filtering::ApplyBilinearCustomWeights( vmbInternalData00.y, vmbInternalData10.y, vmbInternalData01.y, vmbInternalData11.y, vmbOcclusionWeights );
 
         float vmbFootprintQuality = STL::Filtering::ApplyBilinearFilter( vmbOcclusion.x, vmbOcclusion.y, vmbOcclusion.z, vmbOcclusion.w, vmbBilinearFilter );
         vmbFootprintQuality = STL::Math::Sqrt01( vmbFootprintQuality );
         vmbSpecAccumSpeed *= lerp( vmbFootprintQuality, 1.0, 1.0 / ( 1.0 + vmbSpecAccumSpeed ) );
+
+        bool vmbAllowCatRom = dot( vmbOcclusion, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA;
+        vmbAllowCatRom = vmbAllowCatRom && smbAllowCatRom; // helps to reduce over-sharpening in disoccluded areas
 
         // Virtual motion - normal: lobe overlapping ( test 107 )
         float normalWeight = GetEncodingAwareNormalWeight( N, vmbN, lobeHalfAngle, curvatureAngle );
@@ -549,7 +555,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         }
 
         // Virtual history confidence
-        float virtualHistoryConfidence = virtualHistoryNormalBasedConfidence * virtualHistoryRoughnessBasedConfidence;
+        float virtualHistoryConfidenceForSmbRelaxation = virtualHistoryNormalBasedConfidence * virtualHistoryRoughnessBasedConfidence;
+        float virtualHistoryConfidence = virtualHistoryNormalBasedConfidence * virtualHistoryRoughnessBasedConfidence * virtualHistoryParallaxBasedConfidence;
 
         // Surface motion ( test 9, 9e )
         // IMPORTANT: needs to be responsive, because "vmb" fails on bumpy surfaces for the following reasons:
@@ -560,7 +567,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         {
             // Main part
             float f = lerp( 6.0, 0.0, smc ); // TODO: use Dfactor somehow?
-            f *= lerp( 0.5, 1.0, virtualHistoryConfidence ); // TODO: ( optional ) visually looks good, but adds temporal lag
+            f *= lerp( 0.5, 1.0, virtualHistoryConfidenceForSmbRelaxation ); // TODO: ( optional ) visually looks good, but adds temporal lag
 
             // IMPORTANT: we must not use any "vmb" data for parallax estimation, because curvature can be wrong.
             // Estimation below is visually close to "vmbPixelsTraveled" computed for "vmbPixelUv" produced by 0 curvature
@@ -578,7 +585,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float smbMaxFrameNumNoBoost = gMaxAccumulatedFrameNum * surfaceHistoryConfidence;
 
         // Ensure that HistoryFix pass doesn't pop up without a disocclusion in critical cases
-        float smbMaxFrameNum = max( smbMaxFrameNumNoBoost, gHistoryFixFrameNum * ( 1.0 - virtualHistoryConfidence ) );
+        float smbMaxFrameNum = max( smbMaxFrameNumNoBoost, gHistoryFixFrameNum * ( 1.0 - virtualHistoryConfidenceForSmbRelaxation ) );
 
         // Virtual motion: max allowed frames
         float responsiveAccumulationAmount = GetResponsiveAccumulationAmount( roughness );
@@ -696,17 +703,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Fast history
-        float smbSpecFastAccumSpeed = min( smbSpecAccumSpeed, gMaxFastAccumulatedFrameNum * surfaceHistoryConfidence );
-        float vmbSpecFastAccumSpeed = min( vmbSpecAccumSpeed, gMaxFastAccumulatedFrameNum * virtualHistoryConfidence );
-
-        float smbSpecFastNonLinearAccumSpeed = 1.0 / ( 1.0 + smbSpecFastAccumSpeed );
-        float vmbSpecFastNonLinearAccumSpeed = 1.0 / ( 1.0 + vmbSpecFastAccumSpeed );
-
-        if( !specHasData )
-        {
-            smbSpecFastNonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, smbSpecFastNonLinearAccumSpeed );
-            vmbSpecFastNonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, vmbSpecFastNonLinearAccumSpeed );
-        }
+        float smbSpecFastNonLinearAccumSpeed = GetNonLinearAccumSpeed( smbSpecAccumSpeed, gMaxFastAccumulatedFrameNum, surfaceHistoryConfidence, specHasData );
+        float vmbSpecFastNonLinearAccumSpeed = GetNonLinearAccumSpeed( vmbSpecAccumSpeed, gMaxFastAccumulatedFrameNum, virtualHistoryConfidence, specHasData );
 
         float smbSpecFast = lerp( smbSpecFastHistory, GetLuma( spec ), smbSpecFastNonLinearAccumSpeed );
         float vmbSpecFast = lerp( vmbSpecFastHistory, GetLuma( spec ), vmbSpecFastNonLinearAccumSpeed );

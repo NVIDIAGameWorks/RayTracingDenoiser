@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.4.3 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.5.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -18,7 +18,7 @@ For quick starting see *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSampl
 Performance on RTX 4080 @ 1440p (native resolution, default denoiser settings):
 - `REBLUR_DIFFUSE_SPECULAR` - 2.45 ms
 - `RELAX_DIFFUSE_SPECULAR` - 2.90 ms
-- `SIGMA_DIFFUSE_SPECULAR` - 0.30 ms
+- `SIGMA_SHADOW` - 0.30 ms
 
 Supported signal types:
 - *RELAX*:
@@ -58,10 +58,10 @@ CMake options:
 - `NRD_DXC_CUSTOM_PATH` - custom DXC to use if Vulkan SDK is not installed
 - `NRD_NORMAL_ENCODING` - *normal* encoding for the entire library
 - `NRD_ROUGHNESS_ENCODING` - *roughness* encoding for the entire library
-- `NRD_EMBEDS_DXBC_SHADERS` - NRD compiles and embeds DXBC shaders (ON by default on Windows)
-- `NRD_EMBEDS_DXIL_SHADERS` - NRD compiles and embeds DXIL shaders (ON by default on Windows)
-- `NRD_EMBEDS_SPIRV_SHADERS` - NRD compiles and embeds SPIRV shaders (ON by default)
-- `NRD_DISABLE_SHADER_COMPILATION` - disable shader compilation on the NRD side, NRD assumes that shaders are already compiled externally and have been put into `NRD_SHADERS_PATH` folder
+- `NRD_EMBEDS_DXBC_SHADERS` - *NRD* compiles and embeds DXBC shaders (ON by default on Windows)
+- `NRD_EMBEDS_DXIL_SHADERS` - *NRD* compiles and embeds DXIL shaders (ON by default on Windows)
+- `NRD_EMBEDS_SPIRV_SHADERS` - *NRD* compiles and embeds SPIRV shaders (ON by default)
+- `NRD_DISABLE_SHADER_COMPILATION` - disable shader compilation on the *NRD* side, *NRD* assumes that shaders are already compiled externally and have been put into `NRD_SHADERS_PATH` folder
 
 `NRD_NORMAL_ENCODING` and `NRD_ROUGHNESS_ENCODING` can be defined only *once* during project deployment. These settings are dumped in `NRDEncoding.hlsli` file, which needs to be included on the application side prior `NRD.hlsli` inclusion to deliver encoding settings matching *NRD* settings. `LibraryDesc` includes encoding settings too. It can be used to verify that the library meets the application expectations.
 
@@ -452,8 +452,9 @@ nrd::InstanceCreationDesc instanceCreationDesc = {};
 instanceCreationDesc.denoisers = denoiserDescs;
 instanceCreationDesc.denoisersNum = GetCountOf(denoiserDescs);
 
-// NRD itself is flexible and supports any kind of DRS, but NRD INTEGRATION pre-allocate resources with
-// statically defines dimensions. DRS works only by adjusting the viewport: "CommonSettings::rectSize"
+// NRD itself is flexible and supports any kind of dynamic resolution scaling, but NRD INTEGRATION pre-
+// allocates resources with statically defined dimensions. DRS is only supported by adjusting the viewport
+// via "CommonSettings::rectSize"
 bool result = NRD.Initialize(resourceWidth, resourceHeight, instanceCreationDesc, *nriDevice, NRI, NRI);
 
 //=======================================================================================================
@@ -488,8 +489,8 @@ for (uint32_t i = 0; i < N; i++)
     // Useful information:
     //    SRV = nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE
     //    UAV = nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL
-    entryDesc.nextAccess = ConvertResourceStateToAccessBits( myResource->GetCurrentState() );
-    entryDesc.nextLayout = ConvertResourceStateToLayout( myResource->GetCurrentState() );
+    entryDesc.nextState.accessBits = ConvertResourceStateToAccessBits( myResource->GetCurrentState() );
+    entryDesc.nextState.layout = ConvertResourceStateToLayout( myResource->GetCurrentState() );
 }
 
 //=======================================================================================================
@@ -644,14 +645,30 @@ IN_MV = GetMotionAt( B );
 
 ## INTERACTION WITH `INFs` AND `NANs`
 
-- NRD doesn't touch pixels outside of viewport: `INFs / NANs` are allowed
-- NRD doesn't touch pixels outside of denoising range: `INFs / NANs` are allowed
+- *NRD* doesn't touch pixels outside of viewport: `INFs / NANs` are allowed
+- *NRD* doesn't touch pixels outside of denoising range: `INFs / NANs` are allowed
 - `INFs / NANs` are not allowed for pixels inside the viewport and denoising range
   - `INFs` can be used in `IN_VIEWZ`, but not recommended
 
 ## INTERACTION WITH FRAME GENERATION TECHNIQUES
 
 Frame generation (FG) techniques boost FPS by interpolating between 2 last available frames. *NRD* works better when framerate increases, because it gets more data per second. It's not the case for FG, because all rendering pipeline underlying passes (like, denoising) continue to work on the original non-boosted framerate.
+
+## HAIR DENOISING TIPS
+
+*NRD* tries to preserve jittering at least on geometrical edges, it's essential for upscalers, which are usually applied at the end of the rendering pipeline. It naturally moves the problem of anti-aliasing to the application side. In order, it implies the following obvious suggestions:
+- trace at higher resolution, denoise, apply AA and downscale
+- apply a high-quality upscaler in "AA-only" mode, i.e. without reducing the tracing resolution (for example, *DLSS* in *DLAA mode*)
+
+Sub-pixel thin geometry of strand-based hair transforms "normals guide" into jittering & flickering pixel mess, i.e. the guide itself becomes noisy. It worsens denoising IQ. At least for *NRD* better to replace geometry normals in "normals guide" with a vector `= normalize( cross( T, B ) )`, where:
+- `T` - hair strand tangent vector
+- `B` - is not a classic binormal, it's more an averaged direction to a bunch of closest hair strands (in many cases it's a binormal vector of underlying head / body mesh)
+  - `B` can be simplified to `normalize( cross( V, T ) )`, where `V` is the view vector
+  - in other words, `B` must follow the following rules:
+    - `cross( T, B ) != 0`
+    - `B` must not follow hair strand "tube"
+
+Hair strands tangent vectors *can't* be used as "normals guide" for *NRD* due to BRDF and curvature related calculations, requiring a vector, which can be considered a "normal" vector.
 
 # RECOMMENDATIONS AND BEST PRACTICES: LESSER TIPS
 
@@ -675,7 +692,7 @@ Frame generation (FG) techniques boost FPS by interpolating between 2 last avail
 
 **[NRD]** *NRD* can track camera motion internally. For the first time pass all MVs set to 0 (you can use `CommonSettings::motionVectorScale = {0}` for this) and set `CommonSettings::isMotionVectorInWorldSpace = true`, it will allow you to simplify the initial integration. Enable application-provided MVs after getting denoising working on static objects.
 
-**[NRD]** Using 2D MVs can lead to massive history reset on moving objects, because 2D motion provides information only about pixel screen position but not about real 3D world position. Consider using 2.5D or 3D MVs instead. 2.5D motion, which is 2D motion with additionally provided `viewZ` delta (i.e. `viewZprev = viewZ + MV.z`), is even better, because it has the same benefits as 3D motion, but doesn't suffer from imprecision problems caused by world-space delta rounding to FP16 during MV patching on the NRD side.
+**[NRD]** Using 2D MVs can lead to massive history reset on moving objects, because 2D motion provides information only about pixel screen position but not about real 3D world position. Consider using 2.5D or 3D MVs instead. 2.5D motion, which is 2D motion with additionally provided `viewZ` delta (i.e. `viewZprev = viewZ + MV.z`), is even better, because it has the same benefits as 3D motion, but doesn't suffer from imprecision problems caused by world-space delta rounding to FP16 during MV patching on the *NRD* side.
 
 **[NRD]** Firstly, try to get a working reprojection on a diffuse signal for camera rotations only (without camera motion).
 

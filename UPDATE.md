@@ -213,3 +213,8 @@ A single NRD instance can now include any combination of denoisers, including re
 - *REFERENCE*:
   - `IN_RADIANCE` renamed to `IN_SIGNAL`
   - `OUT_RADIANCE` renamed to `OUT_SIGNAL`
+
+## To v4.5
+
+- *API*:
+  - `ResourceDesc::stateNeeded` renamed to `ResourceDesc::descriptorType` to match `ResourceRangeDesc::descriptorType` because the former is a concatenation of the latter

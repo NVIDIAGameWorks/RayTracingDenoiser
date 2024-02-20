@@ -19,6 +19,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_YCOCG                                        1
 #define REBLUR_USE_MORE_STRICT_PARALLAX_BASED_CHECK             1
 #define REBLUR_USE_ANTIFIREFLY                                  1
+#define REBLUR_USE_CONFIDENCE_NON_LINEARLY                      1
 
 // Switches ( default 0 )
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
@@ -112,6 +113,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float2, gRectOffset ) \
     NRD_CONSTANT( float2, gSpecProbabilityThresholdsForMvModification ) \
     NRD_CONSTANT( float2, gJitter ) \
+    NRD_CONSTANT( uint2, gPrintfAt ) \
     NRD_CONSTANT( uint2, gRectOrigin ) \
     NRD_CONSTANT( int2, gRectSizeMinusOne ) \
     NRD_CONSTANT( float, gDisocclusionThreshold ) \
