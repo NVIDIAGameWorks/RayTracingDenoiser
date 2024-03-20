@@ -672,7 +672,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         REBLUR_TYPE specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
 
         // Anti-firefly suppressor
-        float specAntifireflyFactor = specAccumSpeed * gBlurRadius * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE * smc;
+        float specAntifireflyFactor = specAccumSpeed * ( gMinBlurRadius + gMaxBlurRadius ) * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE * smc;
         specAntifireflyFactor /= 1.0 + specAntifireflyFactor;
 
         float specHitDistResult = ExtractHitDist( specResult );
@@ -806,7 +806,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Anti-firefly suppressor
-        float diffAntifireflyFactor = diffAccumSpeed * gBlurRadius * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE;
+        float diffAntifireflyFactor = diffAccumSpeed * ( gMinBlurRadius + gMaxBlurRadius ) * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE;
         diffAntifireflyFactor /= 1.0 + diffAntifireflyFactor;
 
         float diffHitDistResult = ExtractHitDist( diffResult );

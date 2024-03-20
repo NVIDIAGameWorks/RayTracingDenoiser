@@ -83,16 +83,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float hitDistFactorAdditionallyRelaxedByRoughness = lerp( 1.0, hitDistFactorRelaxedByError, roughness );
 
         // Blur radius - main
-        float blurRadius = smc * gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
+        float blurRadius = smc * gMaxBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
         blurRadius *= lerp( hitDistFactorRelaxedByError, hitDistFactorAdditionallyRelaxedByRoughness, specNonLinearAccumSpeed );
         blurRadius = min( blurRadius, minBlurRadius );
 
         // Blur radius - addition to avoid underblurring
-        blurRadius += smc; // TODO: a source of contact detail loss
+        blurRadius += gMinBlurRadius * smc; // TODO: a source of contact detail loss
 
         // Blur radius - scaling
         blurRadius *= radiusScale;
-        blurRadius *= float( gBlurRadius != 0 );
     #endif
 
         // Weights
@@ -187,13 +186,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             // Decrease weight for samples that most likely are very close to reflection contact which should not be blurred
             float t = hs / ( d + hitDist );
             w *= lerp( saturate( t ), 1.0, STL::Math::LinearStep( 0.5, 1.0, roughness ) );
-
-            // Adjust blur radius "on the fly" if taps have short hit distances
-            #if( REBLUR_USE_ADJUSTED_ON_THE_FLY_BLUR_RADIUS_IN_PRE_BLUR == 1 )
-                float hitDistFactorAtSample = GetHitDistFactor( hs * NoD, frustumSize );
-                float blurRadiusScale = lerp( hitDistFactorAtSample, 1.0, NoD );
-                blurRadius *= lerp( 1.0, blurRadiusScale, n / ( 1.0 + n ) );
-            #endif
         #endif
             w *= lerp( minHitDistWeight, 1.0, ComputeExponentialWeight( ExtractHitDist( s ), hitDistanceWeightParams.x, hitDistanceWeightParams.y ) );
             w *= GetGaussianWeight( offset.z );

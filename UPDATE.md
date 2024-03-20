@@ -218,3 +218,9 @@ A single NRD instance can now include any combination of denoisers, including re
 
 - *API*:
   - `ResourceDesc::stateNeeded` renamed to `ResourceDesc::descriptorType` to match `ResourceRangeDesc::descriptorType` because the former is a concatenation of the latter
+
+## To v4.6
+
+- *REBLUR*:
+  - `blurRadius` renamed to `maxBlurRadius`
+  - exposed `minBlurRadius` with the default value matching older versions

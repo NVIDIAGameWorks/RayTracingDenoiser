@@ -56,18 +56,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     if( viewZ > gDenoisingRange )
         return;
 
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
+    // Copy history
     #ifdef SIGMA_FIRST_PASS
-        // Copy history
         gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
-
-        float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
-        tileValue *= all( pixelPos < gRectSize ); // due to USE_MAX_DIMS
-    #else
-        float tileValue = 1.0;
     #endif
 
-    // Early out
+    // Tile-based early out ( potentially )
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
+    float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
+    #ifdef SIGMA_FIRST_PASS
+        tileValue *= all( pixelPos < gRectSize ); // due to USE_MAX_DIMS
+    #endif
+
     if( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerHitDist == 0.0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
@@ -151,7 +151,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Bv = mWorldToLocal[ 1 ] * worldRadius;
 
     // Random rotation
-    float4 rotator = GetBlurKernelRotation( NRD_PIXEL, pixelPos, gRotator, gFrameIndex );
+    float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     // Denoising
     sum = 1.0;

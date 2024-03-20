@@ -309,7 +309,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     bool isHistoryReset = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE;
     float unproject = 1.0f / (0.5f * rectH * m_ProjectY);
     float worstResolutionScale = Min(float(rectW) / float(resourceW), float(rectH) / float(resourceH));
-    float blurRadius = settings.blurRadius * worstResolutionScale;
+    float maxBlurRadius = settings.maxBlurRadius * worstResolutionScale;
     float diffusePrepassBlurRadius = settings.diffusePrepassBlurRadius * worstResolutionScale;
     float specularPrepassBlurRadius = settings.specularPrepassBlurRadius * worstResolutionScale;
     float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
@@ -368,15 +368,16 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gDenoisingRange                                     = m_CommonSettings.denoisingRange;
     consts->gPlaneDistSensitivity                               = settings.planeDistanceSensitivity;
     consts->gFramerateScale                                     = m_FrameRateScale;
-    consts->gBlurRadius                                         = blurRadius;
+    consts->gMaxBlurRadius                                      = maxBlurRadius;
+    consts->gMinBlurRadius                                      = settings.minBlurRadius;
+    consts->gDiffPrepassBlurRadius                              = diffusePrepassBlurRadius;
+    consts->gSpecPrepassBlurRadius                              = specularPrepassBlurRadius;
     consts->gMaxAccumulatedFrameNum                             = isHistoryReset ? 0 : float(maxAccumulatedFrameNum);
     consts->gMaxFastAccumulatedFrameNum                         = float(settings.maxFastAccumulatedFrameNum);
     consts->gAntiFirefly                                        = settings.enableAntiFirefly ? 1.0f : 0.0f;
     consts->gLobeAngleFraction                                  = settings.lobeAngleFraction;
     consts->gRoughnessFraction                                  = settings.roughnessFraction;
     consts->gResponsiveAccumulationRoughnessThreshold           = settings.responsiveAccumulationRoughnessThreshold;
-    consts->gDiffPrepassBlurRadius                              = diffusePrepassBlurRadius;
-    consts->gSpecPrepassBlurRadius                              = specularPrepassBlurRadius;
     consts->gHistoryFixFrameNum                                 = (float)Min(settings.historyFixFrameNum, 3u);
     consts->gMinRectDimMulUnproject                             = (float)Min(rectW, rectH) * unproject;
     consts->gUsePrepassNotOnlyForSpecularMotionEstimation       = settings.usePrepassOnlyForSpecularMotionEstimation ? 0.0f : 1.0f;

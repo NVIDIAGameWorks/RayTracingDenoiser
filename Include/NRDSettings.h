@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 5
+#define NRD_SETTINGS_VERSION_MINOR 6
 
 static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -203,15 +203,18 @@ namespace nrd
         // [0; 3] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
         uint32_t historyFixFrameNum = 3;
 
-        // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, recommended in case of probabilistic sampling)
+        // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of badly defined signals and probabilistic sampling)
         float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
 
-        // (pixels) - base denoising radius (30 is a baseline for 1440p)
-        float blurRadius = 15.0f;
+        // (pixels) - min denoising radius (for converged state)
+        float minBlurRadius = 1.0f;
+
+        // (pixels) - max denoising radius (gets reduced over time, 30 is a baseline for 1440p)
+        float maxBlurRadius = 15.0f;
 
         // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
-        float lobeAngleFraction = 0.15f;
+        float lobeAngleFraction = 0.2f;
 
         // (normalized %) - base fraction of center roughness used to drive roughness based rejection
         float roughnessFraction = 0.15f;
@@ -249,7 +252,7 @@ namespace nrd
         // worsening the situation. Despite that it's a problem of sampling, the denoiser needs to
         // handle it somehow on its side too. Diffuse pre-pass can be just disabled, but for specular
         // it's still needed to find optimal hit distance for tracking. This boolean allow to use
-        // specular pre-pass for tracking purposes only
+        // specular pre-pass for tracking purposes only (use with care)
         bool usePrepassOnlyForSpecularMotionEstimation = false;
     };
 

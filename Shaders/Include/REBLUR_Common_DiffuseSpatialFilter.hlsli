@@ -66,15 +66,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + REBLUR_SAMPLES_PER_FRAME * ( 1.0 - boost ) * data1.x );
 
         // Blur radius - main
-        float blurRadius = gBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
+        float blurRadius = gMaxBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
         blurRadius *= hitDistFactor;
 
         // Blur radius - addition to avoid underblurring
-        blurRadius += 1.0;
+        blurRadius += gMinBlurRadius;
 
         // Blur radius - scaling
         blurRadius *= radiusScale;
-        blurRadius *= float( gBlurRadius != 0 );
     #endif
 
         // Weights

@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.4
+// NRD v4.6
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -618,6 +618,7 @@ float NRD_FrontEnd_SpecHitDistAveraging_Begin( )
 
 void NRD_FrontEnd_SpecHitDistAveraging_Add( inout float accumulatedSpecHitDist, float hitDist )
 {
+    // TODO: for high roughness it can be blended to average
     accumulatedSpecHitDist = min( accumulatedSpecHitDist, hitDist == 0.0 ? NRD_INF : hitDist );
 }
 

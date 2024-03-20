@@ -36,9 +36,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 //==================================================================================================================
 
 // Switches ( default 1 )
-#define NRD_USE_TILE_CHECK                                      1
+#define NRD_USE_TILE_CHECK                                      1 // significantly improves performance by skipping computations in "empty" regions
 #define NRD_USE_HIGH_PARALLAX_CURVATURE                         1
-#define NRD_USE_DENANIFICATION                                  1 // needed only if inputs have NAN / INF outside of viewport or denoising range range
+#define NRD_USE_DENANIFICATION                                  1 // needed only if inputs have NAN / INF outside of viewport or denoising range
 
 // Switches ( default 0 )
 #define NRD_USE_QUADRATIC_DISTRIBUTION                          0

@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 4
-#define NRD_DESCS_VERSION_MINOR 5
+#define NRD_DESCS_VERSION_MINOR 6
 
 static_assert(NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -168,6 +168,8 @@ namespace nrd
         /*
         IMPORTANT: IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ are used by any denoiser
         These denoisers DON'T use:
+            SIGMA_SHADOW - IN_VIEWZ
+            SIGMA_SHADOW_TRANSLUCENCY - IN_VIEWZ
             REFERENCE - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ
             SPECULAR_DELTA_MV - IN_NORMAL_ROUGHNESS, IN_VIEWZ
         */

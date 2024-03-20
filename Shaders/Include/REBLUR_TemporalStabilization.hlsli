@@ -165,7 +165,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float diffLumaClamped = clamp( diffLuma, diffMin.x, diffMax.x );
 
         [flatten]
-        if( gBlurRadius != 0 )
+        if( gMaxBlurRadius != 0 )
         {
             diff = ChangeLuma( diff, diffLumaClamped );
             diff.w = clamp( diff.w, diffMin.y, diffMax.y );
@@ -189,7 +189,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specLumaClamped = clamp( specLuma, specMin.x, specMax.x );
 
         [flatten]
-        if( gBlurRadius != 0 )
+        if( gMaxBlurRadius != 0 )
         {
             spec = ChangeLuma( spec, specLumaClamped );
             spec.w = clamp( spec.w, specMin.y, specMax.y );

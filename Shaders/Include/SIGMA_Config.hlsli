@@ -15,7 +15,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_5X5_TEMPORAL_KERNEL                       1 // provides variance estimation in a wider radius
 #define SIGMA_5X5_BLUR_RADIUS_ESTIMATION_KERNEL         1 // helps to improve stability, but adds 10% of overhead
 
+// Switches ( default 0 )
+#define SIGMA_REFERENCE                                 0 // works better with 16-bit precision
+#define SIGMA_SHOW_TILES                                0
+
 // Settings
+#define SIGMA_ROTATOR_MODE                              NRD_PIXEL // NRD_FRAME?
 #define SIGMA_POISSON_SAMPLE_NUM                        8
 #define SIGMA_POISSON_SAMPLES                           g_Poisson8
 #define SIGMA_MAX_PIXEL_RADIUS                          32.0

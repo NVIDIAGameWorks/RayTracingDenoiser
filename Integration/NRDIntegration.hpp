@@ -10,8 +10,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRDIntegration.h"
 
-static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 4, "Unsupported NRD version!");
-static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 118, "Unsupported NRI version!");
+static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 5, "Unsupported NRD version!");
+static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 125, "Unsupported NRI version!");
 
 #ifdef _WIN32
     #define alloca _alloca
@@ -520,7 +520,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
             if (isStateChanged || isStorageBarrier)
                 transitions[transitionBarriers.textureNum++] = nri::TextureBarrierFromState(*nrdTexture->state, {nextAccess, nextLayout}, 0, 1);
 
-            uint64_t resource = m_NRI->GetTextureNativeObject(*nrdTexture->state->texture, 0);
+            uint64_t resource = m_NRI->GetTextureNativeObject(*nrdTexture->state->texture);
             uint64_t key = NRD_CreateDescriptorKey(resource, isStorage);
             const auto& entry = m_CachedDescriptors.find(key);
 
@@ -551,7 +551,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     for (uint32_t i = 0; i < descriptorSetNum; i++)
     {
         if (!samplersAreInSeparateSet || i != descriptorSetSamplersIndex)
-            NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->AllocateDescriptorSets(descriptorPool, *pipelineLayout, i, &descriptorSets[i], 1, nri::ALL_NODES, 0));
+            NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->AllocateDescriptorSets(descriptorPool, *pipelineLayout, i, &descriptorSets[i], 1, 0));
     }
 
     // Updating constants
@@ -569,7 +569,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
             m_NRI->UnmapBuffer(*m_ConstantBuffer);
         }
 
-        m_NRI->UpdateDynamicConstantBuffers(*descriptorSets[0], nri::ALL_NODES, 0, 1, &m_ConstantBufferView);
+        m_NRI->UpdateDynamicConstantBuffers(*descriptorSets[0], 0, 1, &m_ConstantBufferView);
 
         dynamicConstantBufferOffset = m_ConstantBufferOffset;
         m_ConstantBufferOffset += m_ConstantBufferViewSize;
@@ -582,17 +582,17 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
         nri::DescriptorSet*& descriptorSetSamplers = m_DescriptorSetSamplers[m_DescriptorPoolIndex];
         if (!descriptorSetSamplers)
         {
-            NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->AllocateDescriptorSets(descriptorPool, *pipelineLayout, descriptorSetSamplersIndex, &descriptorSetSamplers, 1, nri::ALL_NODES, 0));
-            m_NRI->UpdateDescriptorRanges(*descriptorSetSamplers, nri::ALL_NODES, 0, 1, &samplersDescriptorRange);
+            NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->AllocateDescriptorSets(descriptorPool, *pipelineLayout, descriptorSetSamplersIndex, &descriptorSetSamplers, 1, 0));
+            m_NRI->UpdateDescriptorRanges(*descriptorSetSamplers, 0, 1, &samplersDescriptorRange);
         }
 
         descriptorSets[descriptorSetSamplersIndex] = descriptorSetSamplers;
     }
     else
-        m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetSamplersIndex], nri::ALL_NODES, 0, 1, &samplersDescriptorRange);
+        m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetSamplersIndex], 0, 1, &samplersDescriptorRange);
 
     // Updating resources
-    m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetResourcesIndex], nri::ALL_NODES, instanceDesc.samplersSpaceIndex == instanceDesc.resourcesSpaceIndex ? 1 : 0, pipelineDesc.resourceRangesNum, resourceRanges);
+    m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetResourcesIndex], instanceDesc.samplersSpaceIndex == instanceDesc.resourcesSpaceIndex ? 1 : 0, pipelineDesc.resourceRangesNum, resourceRanges);
 
     // Rendering
     m_NRI->CmdBarrier(commandBuffer, transitionBarriers);
@@ -604,7 +604,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
     for (uint32_t i = 0; i < descriptorSetNum; i++)
         m_NRI->CmdSetDescriptorSet(commandBuffer, i, *descriptorSets[i], i == 0 ? &dynamicConstantBufferOffset : nullptr);
 
-    m_NRI->CmdDispatch(commandBuffer, dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1);
+    m_NRI->CmdDispatch(commandBuffer, {dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1});
 
     // Debug logging
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )

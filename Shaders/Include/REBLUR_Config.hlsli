@@ -25,7 +25,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
 #define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             0
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
-#define REBLUR_USE_ADJUSTED_ON_THE_FLY_BLUR_RADIUS_IN_PRE_BLUR  0 // TODO: verify that not needed and delete...
 
 #ifdef REBLUR_OCCLUSION
     #undef REBLUR_USE_ANTIFIREFLY
@@ -70,7 +69,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM    2
 #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       2.0 // using smaller values leads to bias if camera rotates slowly due to reprojection instabilities
-#define REBLUR_HISTORY_FIX_BUMPED_ROUGHNESS                     0.08
 #define REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY        float2( 10.0, 1.1 )
 #define REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE                  0.1
 #define REBLUR_ANTI_FIREFLY_FILTER_RADIUS                       4 // pixels
@@ -125,15 +123,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gDenoisingRange ) \
     NRD_CONSTANT( float, gPlaneDistSensitivity ) \
     NRD_CONSTANT( float, gFramerateScale ) \
-    NRD_CONSTANT( float, gBlurRadius ) \
+    NRD_CONSTANT( float, gMinBlurRadius ) \
+    NRD_CONSTANT( float, gMaxBlurRadius ) \
+    NRD_CONSTANT( float, gDiffPrepassBlurRadius ) \
+    NRD_CONSTANT( float, gSpecPrepassBlurRadius ) \
     NRD_CONSTANT( float, gMaxAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gMaxFastAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gAntiFirefly ) \
     NRD_CONSTANT( float, gLobeAngleFraction ) \
     NRD_CONSTANT( float, gRoughnessFraction ) \
     NRD_CONSTANT( float, gResponsiveAccumulationRoughnessThreshold ) \
-    NRD_CONSTANT( float, gDiffPrepassBlurRadius ) \
-    NRD_CONSTANT( float, gSpecPrepassBlurRadius ) \
     NRD_CONSTANT( float, gHistoryFixFrameNum ) \
     NRD_CONSTANT( float, gMinRectDimMulUnproject ) \
     NRD_CONSTANT( float, gUsePrepassNotOnlyForSpecularMotionEstimation ) \

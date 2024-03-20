@@ -8,11 +8,6 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// Debug
-
-#define SIGMA_REFERENCE                                 0 // works better with 16-bit precision
-#define SIGMA_SHOW_TILES                                0
-
 // Misc
 
 #define PackShadow( s )                                 STL::Math::Sqrt01( s )

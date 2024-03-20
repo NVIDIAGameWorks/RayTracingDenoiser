@@ -364,9 +364,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                         w *= 1.0 + UnpackData1( gIn_Data1[ pos ] ).z;
                     #endif
 
-                    // TODO: ideally "diffuseness at hit" needed...
-                    // TODO: for roughness closer to REBLUR_HISTORY_FIX_BUMPED_ROUGHNESS "saturate( hitDistNormAtCenter - ExtractHitDist( s ) )" could be used.
-                    // It allows bleeding of background to foreground, but not vice versa ( doesn't suit for 0 roughness )
                     REBLUR_TYPE s = gIn_Spec[ pos ];
                     s = Denanify( w, s );
 

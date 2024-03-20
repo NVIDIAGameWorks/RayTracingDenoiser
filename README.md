@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.5.0 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.6.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -190,6 +190,7 @@ NRD sample is a good start to familiarize yourself with input requirements and b
   - `hitDistanceReconstructionMode` must be set to something other than `OFF`, but bear in mind that the search area is limited to 3x3 or 5x5. In other words, it's the application's responsibility to guarantee a valid sample in this area. It can be achieved by clamping probabilities and using Bayer-like dithering (see the sample for more details)
   - Pre-pass must be enabled (i.e. `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` must be set to 20-70 pixels) to compensate entropy increase, since radiance in valid samples is divided by probability to compensate 0 values in some neighbors
 - Probabilistic sampling for 2nd+ bounces is absolutely acceptable
+- in case of many paths per pixel `hitT` for specular must be "averaged" by `NRD_FrontEnd_SpecHitDistAveraging_*` functions from `NRD.hlsli`
 
 See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
 
