@@ -42,15 +42,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #endif
 
-        float lobeAngleFractionScale = saturate( gLobeAngleFraction * fractionScale );
-        float roughnessFractionScale = saturate( gRoughnessFraction * fractionScale );
+        float roughnessFractionScaled = saturate( gRoughnessFraction * fractionScale );
 
         float hitDist = ExtractHitDist( spec ) * _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
 
         // Min blur radius
         float4 Dv = STL::ImportanceSampling::GetSpecularDominantDirection( Nv, Vv, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
         float NoD = abs( dot( Nv, Dv.xyz ) );
-        float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness );
+        float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, REBLUR_MAX_PERCENT_OF_LOBE_VOLUME );
         float lobeRadius = hitDist * NoD * lobeTanHalfAngle;
         float minBlurRadius = lobeRadius / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ + hitDist * Dv.w );
 
@@ -96,8 +95,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Weights
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
-        float normalWeightParams = GetNormalWeightParams( specNonLinearAccumSpeed, lobeAngleFractionScale, roughness );
-        float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScale );
+        float normalWeightParams = GetNormalWeightParams( specNonLinearAccumSpeed, roughness ) / fractionScale;
+        float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScaled );
         float3 px = float3( geometryWeightParams.x, normalWeightParams, roughnessWeightParams.x );
         float3 py = float3( geometryWeightParams.y, 0.0, roughnessWeightParams.y );
 

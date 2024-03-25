@@ -300,7 +300,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float3 V = GetViewVector( X );
         float NoV = abs( dot( N, V ) );
         float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
-        float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
+        float3 Xvirtual = GetXvirtual( hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
         float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
 
         // Modify MVs if requested

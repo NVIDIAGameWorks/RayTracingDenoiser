@@ -69,8 +69,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
 
     float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness );
-    float diffNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, 1.0 );
-    float specNormalWeightParam = GetNormalWeightParams( 1.0, 1.0, roughness );
+    float diffNormalWeightParam = GetNormalWeightParams( 1.0 );
+    float specNormalWeightParam = GetNormalWeightParams( 1.0, roughness );
 
     // Hit distance reconstruction
     float2 sum = 1000.0 * float2( center.xy != 0.0 );

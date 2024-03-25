@@ -375,7 +375,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gMaxAccumulatedFrameNum                             = isHistoryReset ? 0 : float(maxAccumulatedFrameNum);
     consts->gMaxFastAccumulatedFrameNum                         = float(settings.maxFastAccumulatedFrameNum);
     consts->gAntiFirefly                                        = settings.enableAntiFirefly ? 1.0f : 0.0f;
-    consts->gLobeAngleFraction                                  = settings.lobeAngleFraction;
+    consts->gLobeAngleFraction                                  = settings.lobeAngleFraction * settings.lobeAngleFraction; // TODO: GetSpecularLobeTanHalfAngle has been fixed, but we want to use existing settings
     consts->gRoughnessFraction                                  = settings.roughnessFraction;
     consts->gResponsiveAccumulationRoughnessThreshold           = settings.responsiveAccumulationRoughnessThreshold;
     consts->gHistoryFixFrameNum                                 = (float)Min(settings.historyFixFrameNum, 3u);

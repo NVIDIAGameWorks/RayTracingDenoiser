@@ -368,10 +368,10 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
 
 // Weight parameters
 
-float GetNormalWeightParams( float nonLinearAccumSpeed, float fraction, float roughness = 1.0 )
+float GetNormalWeightParams( float nonLinearAccumSpeed, float roughness = 1.0 )
 {
-    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness );
-    angle *= lerp( saturate( fraction ), 1.0, nonLinearAccumSpeed ); // TODO: use as "percentOfVolume" instead?
+    float percentOfVolume = REBLUR_MAX_PERCENT_OF_LOBE_VOLUME * lerp( gLobeAngleFraction, 1.0, nonLinearAccumSpeed );
+    float angle = atan( STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume ) );
 
     return 1.0 / max( angle, NRD_NORMAL_ULP );
 }

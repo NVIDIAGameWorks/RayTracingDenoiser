@@ -13,7 +13,7 @@ groupshared float3 sharedHitdistViewZ[BUFFER_Y][BUFFER_X];
 
 float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float roughness = 1.0)
 {
-    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness);
+    float angle = atan(GetSpecLobeTanHalfAngle(roughness));
     angle *= lerp(saturate(fraction), 1.0, nonLinearAccumSpeed); // TODO: use as "percentOfVolume" instead?
 
     return 1.0 / max(angle, NRD_NORMAL_ULP);

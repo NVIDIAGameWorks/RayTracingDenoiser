@@ -118,7 +118,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             // Parameters
             float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNum.x );
 
-            float diffNormalWeightParam = GetNormalWeightParams( diffNonLinearAccumSpeed, 1.0 );
+            float diffNormalWeightParam = GetNormalWeightParams( diffNonLinearAccumSpeed );
             float2 diffGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity * slopeScale, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
 
             float sumd = 1.0 + frameNum.x;
@@ -305,11 +305,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNum.y );
             float hitDistNormAtCenter = ExtractHitDist( spec );
 
-            float lobeEnergy = lerp( 0.75, 0.85, specNonLinearAccumSpeed );
-            float lobeHalfAngle = STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughness, lobeEnergy ); // up to 85% energy to depend less on normal weight
-            lobeHalfAngle *= specNonLinearAccumSpeed;
-
-            float specNormalWeightParam = 1.0 / max( lobeHalfAngle, NRD_NORMAL_ULP );
+            float specNormalWeightParam = GetNormalWeightParams( specNonLinearAccumSpeed, roughness );
             float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity * slopeScale, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
             float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness, sqrt( gRoughnessFraction ) );
             float2 hitDistanceWeightParams = GetHitDistanceWeightParams( hitDistNormAtCenter, specNonLinearAccumSpeed, roughness );

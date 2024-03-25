@@ -67,6 +67,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_HIT_DIST_MIN_WEIGHT( smc )                       ( 0.1 * smc ) // was 0.1
 
+#define REBLUR_MAX_PERCENT_OF_LOBE_VOLUME                       0.75
 #define REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM    2
 #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       2.0 // using smaller values leads to bias if camera rotates slowly due to reprojection instabilities
 #define REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY        float2( 10.0, 1.1 )

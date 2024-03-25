@@ -118,7 +118,7 @@ float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, f
     float f = 0.9 + 0.1 * relaxation;
 
     // This is the main parameter - cone angle
-    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness, specularLobeAngleFraction);
+    float angle = atan(GetSpecLobeTanHalfAngle(roughness, specularLobeAngleFraction));
 
     // Increasing angle ~10x to relax rejection of the neighbors if specular reprojection confidence is low
     angle *= 10.0 - 9.0 * relaxation;
@@ -143,7 +143,7 @@ float GetSpecularNormalWeight_ATrous(float2 params0, float3 n0, float3 n, float3
 
 float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
 {
-    float angle = STL::ImportanceSampling::GetSpecularLobeHalfAngle(roughness, angleFraction);
+    float angle = atan(GetSpecLobeTanHalfAngle(roughness, angleFraction));
     angle = 1.0 / max(angle, NRD_NORMAL_ULP);
 
     return angle;

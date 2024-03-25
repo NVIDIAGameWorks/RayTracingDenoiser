@@ -29,8 +29,8 @@ CREDITS:
 
 #define NRD_VERSION_MAJOR 4
 #define NRD_VERSION_MINOR 6
-#define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "19 March 2024"
+#define NRD_VERSION_BUILD 1
+#define NRD_VERSION_DATE "25 March 2024"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall

@@ -321,13 +321,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
          - by design: curvature = 0 on static objects if camera is static
          - quantization errors hurt
          - curvature on bumpy surfaces is just wrong, pulling virtual positions into a surface and introducing lags
-         - bad reprojection if curvature changes signs under motion
-         - code below works better on smooth curved surfaces, but not in tests: 174, 175 ( without normal map )
-            BEFORE: hitDistFocused = hitDist / ( 2.0 * curvature * hitDist * NoV + 1.0 );
-            AFTER:  hitDistFocused = hitDist / ( 2.0 * curvature * hitDist / NoV + 1.0 );
+         - suboptimal reprojection if curvature changes signs under motion
         */
         float curvature;
-        float2 vmbDelta;
         {
             // IMPORTANT: this code allows to get non-zero parallax on objects attached to the camera
             float2 uvForZeroParallax = gOrthoMode == 0.0 ? smbPixelUv : pixelUv;
@@ -401,41 +397,29 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
             curvature *= s;
 
-            // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
-            float2 uv1 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X - V * ApplyThinLensEquation( NoV, hitDistForTracking, curvature ) );
+            // Correction #2 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
+            if( length( X ) < -1.0 / curvature ) // TODO: test 78
+                curvature *= NoV;
+
+            // Correction #3 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
+            float2 uv1 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X - V * ApplyThinLensEquation( hitDistForTracking, curvature ) );
             float2 uv2 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X );
             float a = length( ( uv1 - uv2 ) * gRectSize );
-            curvature *= float( a < 3.0 * deltaUvLen + gRectSizeInv.x ); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
-
-            // Smooth virtual motion delta ( omitting huge values if curvature is negative and curvature radius is very small )
-            float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, max( curvature, 0.0 ), X, Xprev, V, Dfactor );
-            float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
-            vmbDelta = vmbPixelUv - smbPixelUv;
+            curvature *= float( a < NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION * deltaUvLen + gRectSizeInv.x );
         }
 
         // Virtual motion - coordinates
-        float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, Dfactor );
+        float3 Xvirtual = GetXvirtual( hitDistForTracking, curvature, X, Xprev, V, Dfactor );
         float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
+        float2 vmbDelta = vmbPixelUv - smbPixelUv;
 
         float vmbPixelsTraveled = length( vmbDelta * gRectSize );
         float XvirtualLength = length( Xvirtual );
 
-        // Estimate how many pixels are traveled by virtual motion - how many radians can it be?
-        // IMPORTANT: if curvature angle is multiplied by path length then we can get an angle exceeding 2 * PI, what is impossible. The max
-        // angle is PI ( most left and most right points on a hemisphere ), it can be achieved by using "tan" instead of angle.
-        float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-        float curvatureAngleTan = pixelSize * abs( curvature ); // tana = pixelSize / curvatureRadius = pixelSize * curvature
-        curvatureAngleTan *= max( vmbPixelsTraveled / max( NoV, 0.01 ), 1.0 ); // path length
-
-        float lobeHalfAngle = max( STL::ImportanceSampling::GetSpecularLobeHalfAngle( roughnessModified ), NRD_NORMAL_ULP );
-        float curvatureAngle = atan( curvatureAngleTan );
-
-        // IMPORTANT: increase roughness sensitivity at high FPS
-        float roughnessSensitivity = NRD_ROUGHNESS_SENSITIVITY * lerp( 1.0, 0.5, STL::Math::SmoothStep( 1.0, 4.0, gFramerateScale ) );
-
         // Virtual motion - roughness
         STL::Filtering::Bilinear vmbBilinearFilter = STL::Filtering::GetBilinearFilter( vmbPixelUv, gRectSizePrev );
         float2 vmbBilinearGatherUv = ( vmbBilinearFilter.origin + 1.0 ) * gResourceSizeInvPrev;
+        float roughnessSensitivity = NRD_ROUGHNESS_SENSITIVITY * lerp( 1.0, 0.5, STL::Math::SmoothStep( 1.0, 4.0, gFramerateScale ) ); // IMPORTANT: increase roughness sensitivity at high FPS
         float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness, gRoughnessFraction, roughnessSensitivity );
         float4 vmbRoughness = gIn_Prev_Normal_Roughness.GatherAlpha( gNearestClamp, vmbBilinearGatherUv ).wzxy;
         float4 roughnessWeight = ComputeNonExponentialWeightWithSigma( vmbRoughness * vmbRoughness, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y, roughnessSigma );
@@ -496,6 +480,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         bool vmbAllowCatRom = dot( vmbOcclusion, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA;
         vmbAllowCatRom = vmbAllowCatRom && smbAllowCatRom; // helps to reduce over-sharpening in disoccluded areas
 
+        // Estimate how many pixels are traveled by virtual motion - how many radians can it be?
+        // IMPORTANT: if curvature angle is multiplied by path length then we can get an angle exceeding 2 * PI, what is impossible. The max
+        // angle is PI ( most left and most right points on a hemisphere ), it can be achieved by using "tan" instead of angle.
+        float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+        float curvatureAngleTan = pixelSize * abs( curvature ); // tana = pixelSize / curvatureRadius = pixelSize * curvature
+        curvatureAngleTan *= max( vmbPixelsTraveled / max( NoV, 0.01 ), 1.0 ); // path length
+
+        float percentOfVolume = REBLUR_MAX_PERCENT_OF_LOBE_VOLUME * lerp( gLobeAngleFraction, 1.0, 1.0 / ( 1.0 + vmbSpecAccumSpeed ) );
+        float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughnessModified, percentOfVolume );
+        float lobeHalfAngle = max( atan( lobeTanHalfAngle ), NRD_NORMAL_ULP );
+        float curvatureAngle = atan( curvatureAngleTan );
+
         // Virtual motion - normal: lobe overlapping ( test 107 )
         float normalWeight = GetEncodingAwareNormalWeight( N, vmbN, lobeHalfAngle, curvatureAngle );
         normalWeight = lerp( STL::Math::SmoothStep( 1.0, 0.0, vmbPixelsTraveled ), 1.0, normalWeight ); // jitter friendly
@@ -508,12 +504,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Virtual motion - virtual parallax difference
         // Tests 3, 6, 8, 11, 14, 100, 103, 104, 106, 109, 110, 114, 120, 127, 130, 131, 132, 138, 139 and 9e
         float hitDistForTrackingPrev = gIn_Prev_Spec_HitDistForTracking.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
-        float3 XvirtualPrev = GetXvirtual( NoV, hitDistForTrackingPrev, curvature, X, Xprev, V, Dfactor );
+        float3 XvirtualPrev = GetXvirtual( hitDistForTrackingPrev, curvature, X, Xprev, V, Dfactor );
         float XvirtualLengthPrev = length( XvirtualPrev );
         float2 vmbPixelUvPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, XvirtualPrev );
-
-        float percentOfVolume = 0.6; // TODO: why 60%? should be smaller for high FPS?
-        float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume );
 
         #if( REBLUR_USE_MORE_STRICT_PARALLAX_BASED_CHECK == 1 )
             float unproj1 = min( hitDistForTracking, hitDistForTrackingPrev ) / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, max( XvirtualLength, XvirtualLengthPrev ) );
@@ -672,18 +665,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         REBLUR_TYPE specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
 
         // Anti-firefly suppressor
+        float2 specMaxRelativeIntensity = REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY;
+        specMaxRelativeIntensity.x *= ( gMaxAccumulatedFrameNum + 1.0 ) / ( specAccumSpeed + 1.0 );
+
         float specAntifireflyFactor = specAccumSpeed * ( gMinBlurRadius + gMaxBlurRadius ) * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE * smc;
         specAntifireflyFactor /= 1.0 + specAntifireflyFactor;
 
         float specHitDistResult = ExtractHitDist( specResult );
-        float specHitDistClamped = min( specHitDistResult, ExtractHitDist( specHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.y );
+        float specHitDistClamped = min( specHitDistResult, ExtractHitDist( specHistory ) * specMaxRelativeIntensity.y );
         specHitDistClamped = lerp( specHitDistResult, specHitDistClamped, specAntifireflyFactor );
 
         #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
             specResult = ChangeLuma( specResult, specHitDistClamped );
         #else
             float specLumaResult = GetLuma( specResult );
-            float specLumaClamped = min( specLumaResult, GetLuma( specHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.x );
+            float specLumaClamped = min( specLumaResult, GetLuma( specHistory ) * specMaxRelativeIntensity.x );
             specLumaClamped = lerp( specLumaResult, specLumaClamped, specAntifireflyFactor );
 
             specResult = ChangeLuma( specResult, specLumaClamped );
@@ -806,18 +802,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Anti-firefly suppressor
+        float2 diffMaxRelativeIntensity = REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY;
+        diffMaxRelativeIntensity.x *= ( gMaxAccumulatedFrameNum + 1.0 ) / ( diffAccumSpeed + 1.0 );
+
         float diffAntifireflyFactor = diffAccumSpeed * ( gMinBlurRadius + gMaxBlurRadius ) * REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE;
         diffAntifireflyFactor /= 1.0 + diffAntifireflyFactor;
 
         float diffHitDistResult = ExtractHitDist( diffResult );
-        float diffHitDistClamped = min( diffHitDistResult, ExtractHitDist( smbDiffHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.y );
+        float diffHitDistClamped = min( diffHitDistResult, ExtractHitDist( smbDiffHistory ) * diffMaxRelativeIntensity.y );
         diffHitDistClamped = lerp( diffHitDistResult, diffHitDistClamped, diffAntifireflyFactor );
 
         #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
             diffResult = ChangeLuma( diffResult, diffHitDistClamped );
         #else
             float diffLumaResult = GetLuma( diffResult );
-            float diffLumaClamped = min( diffLumaResult, GetLuma( smbDiffHistory ) * REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY.x );
+            float diffLumaClamped = min( diffLumaResult, GetLuma( smbDiffHistory ) * diffMaxRelativeIntensity.x );
             diffLumaClamped = lerp( diffLumaResult, diffLumaClamped, diffAntifireflyFactor );
 
             diffResult = ChangeLuma( diffResult, diffLumaClamped );

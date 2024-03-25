@@ -53,6 +53,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_EXP_WEIGHT_DEFAULT_SCALE                            3.0
 #define NRD_ROUGHNESS_SENSITIVITY                               0.01 // smaller => more sensitive
 #define NRD_CURVATURE_Z_THRESHOLD                               0.1 // normalized %
+#define NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION             15.0 // keep relatively high to avoid ruining concave mirrors
 
 // IMPORTANT: if == 1, then for 0-roughness "GetEncodingAwareNormalWeight" can return values < 1 even for same normals due to data re-packing
 // IMPORTANT: suits for REBLUR and RELAX because both use RGBA8 normals internally
@@ -288,9 +289,19 @@ float GetColorCompressionExposureForSpatialPasses( float roughness )
     #endif
 }
 
+float GetSpecLobeTanHalfAngle( float roughness, float percentOfVolume = 0.75 )
+{
+    // TODO: ideally should migrate to fixed "STL::ImportanceSampling::GetSpecularLobeTanHalfAngle", but since
+    // denoisers behavior have been tuned for the old version, let's continue to use it in critical places
+    roughness = saturate( roughness );
+    percentOfVolume = saturate( percentOfVolume );
+
+    return roughness * roughness * percentOfVolume / ( 1.0 - percentOfVolume + NRD_EPS );
+}
+
 // Thin lens
 
-float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
+float ApplyThinLensEquation( float hitDist, float curvature )
 {
     /*
     https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
@@ -305,39 +316,28 @@ float ApplyThinLensEquation( float NoV, float hitDist, float curvature )
         convex  : O(-), I(+), C(+)
         concave : O(-), I(+ or -), C(-)
 
-    Why NoV?
-        hitDist is not O, we need to find projection to the axis:
-            O = hitDist * NoV
-        hitDistFocused is not I, we need to reproject it back to the view direction:
-            hitDistFocused = I / NoV
-
     Combine:
         2C = 1 / O + 1 / I
         1 / I = 2C - 1 / O
         1 / I = ( 2CO - 1 ) / O
         I = O / ( 2CO - 1 )
 
-        I = [ ( O * NoV ) / ( 2CO * NoV - 1 ) ] / NoV
-        I = O / ( 2CO * NoV - 1 )
-
     O is always negative, while hit distance is always positive:
-        I = -O / ( -2CO * NoV - 1 )
-        I = O / ( 2CO * NoV + 1 )
+        I = -O / ( -2CO - 1 )
+        I = O / ( 2CO + 1 )
 
     Interactive graph:
         https://www.desmos.com/calculator/dn9spdgwiz
     */
 
-    // TODO: dropping NoV improves behavior on curved surfaces in general ( see 76, 148, b7, b22, b26 ), but test 133
-    // ( low curvature surface observed at grazing angle ) looks significantly worse, especially if motion is accelerated
-    float hitDistFocused = hitDist / ( 2.0 * curvature * hitDist * NoV + 1.0 );
+    float hitDistFocused = hitDist / ( 2.0 * curvature * hitDist + 1.0 );
 
     return hitDistFocused;
 }
 
-float3 GetXvirtual( float NoV, float hitDist, float curvature, float3 X, float3 Xprev, float3 V, float dominantFactor )
+float3 GetXvirtual( float hitDist, float curvature, float3 X, float3 Xprev, float3 V, float dominantFactor )
 {
-    float hitDistFocused = ApplyThinLensEquation( NoV, hitDist, curvature );
+    float hitDistFocused = ApplyThinLensEquation( hitDist, curvature );
 
     // Only hit distance is provided, not real motion in the virtual world. If the virtual position is close to the
     // surface due to focusing, better to replace current position with previous position because surface motion is known.

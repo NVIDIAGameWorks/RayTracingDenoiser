@@ -175,6 +175,7 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
         --sourceDir "Shaders/Source"
         --allResourcesBound
         --WX
+        --vulkanVersion 1.2
         -c Shaders.cfg
         -o "${NRD_SHADERS_PATH}"
         -I "External/MathLib"

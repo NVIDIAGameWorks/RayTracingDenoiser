@@ -712,14 +712,18 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float s = STL::Math::LinearStep(NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d);
     curvature *= s;
 
-    // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
-    float2 uv1 = STL::Geometry::GetScreenUv(gWorldToClipPrev, currentWorldPos - V * ApplyThinLensEquation(NoV, hitDist, curvature));
+    // Correction #2 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
+    if( length( currentWorldPos ) < -1.0 / curvature )
+        curvature *= NoV;
+
+    // Correction #3 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
+    float2 uv1 = STL::Geometry::GetScreenUv(gWorldToClipPrev, currentWorldPos - V * ApplyThinLensEquation(hitDist, curvature));
     float2 uv2 = STL::Geometry::GetScreenUv(gWorldToClipPrev, currentWorldPos);
     float a = length((uv1 - uv2) * gRectSize);
-    curvature *= float(a < 3.0 * deltaUvLen + gRectSizeInv.x); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
+    curvature *= float(a < NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION * deltaUvLen + gRectSizeInv.x);
 
     // Thin lens equation for adjusting reflection HitT
-    float hitDistFocused = ApplyThinLensEquation(NoV, hitDist, curvature);
+    float hitDistFocused = ApplyThinLensEquation(hitDist, curvature);
 
     [flatten]
     if (abs(hitDistFocused) < 0.001) // TODO: why?
@@ -785,7 +789,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float curvatureAngle = atan(tanCurvature);
 
     // Normal weight for virtual motion based reprojection
-    float lobeHalfAngle = max(STL::ImportanceSampling::GetSpecularLobeHalfAngle(currentRoughnessModified), NRD_NORMAL_ULP);
+    float lobeHalfAngle = max(atan(GetSpecLobeTanHalfAngle(currentRoughnessModified)), NRD_NORMAL_ULP);
     float angle = lobeHalfAngle + curvatureAngle;
     float normalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, lobeHalfAngle, curvatureAngle);
     virtualHistoryAmount *= lerp(1.0 - saturate(uvDiffLengthInPixels), 1.0, normalWeight); // jitter friendly
@@ -819,8 +823,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Virtual history confidence - hit distance
     float SMC = GetSpecMagicCurve(currentRoughnessModified);
     float hitDistC = lerp(specularIllumination.a, prevReflectionHitTSMB, SMC);
-    float hitDist1 = ApplyThinLensEquation(NoV, hitDistC, curvature);
-    float hitDist2 = ApplyThinLensEquation(NoV, prevReflectionHitTVMB, curvature);
+    float hitDist1 = ApplyThinLensEquation(hitDistC, curvature);
+    float hitDist2 = ApplyThinLensEquation(prevReflectionHitTVMB, curvature);
     float maxDist = max(hitDist1, hitDist2);
     float dHitT = abs(hitDist1 - hitDist2);
     float dHitTMultiplier = lerp(20.0, 0.0, SMC);
@@ -828,15 +832,15 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     virtualHistoryHitDistConfidence = lerp(virtualHistoryHitDistConfidence, 1.0, SMC);
 
     // Virtual history confidence - virtual UV discrepancy
-    float3 virtualWorldPos = GetXvirtual(NoV, hitDist, curvature, currentWorldPos, prevWorldPos, V, D.w);
+    float3 virtualWorldPos = GetXvirtual(hitDist, curvature, currentWorldPos, prevWorldPos, V, D.w);
     float virtualWorldPosLength = length(virtualWorldPos);
     float hitDistForTrackingPrev = prevSpecularIlluminationAnd2ndMomentVMBResponsive.a;
-    float3 prevVirtualWorldPos = GetXvirtual(NoV, hitDistForTrackingPrev, curvature, currentWorldPos, prevWorldPos, V, D.w);
+    float3 prevVirtualWorldPos = GetXvirtual(hitDistForTrackingPrev, curvature, currentWorldPos, prevWorldPos, V, D.w);
     float virtualWorldPosLengthPrev = length(prevVirtualWorldPos);
     float2 prevUVVMBTest = STL::Geometry::GetScreenUv(gWorldToClipPrev, prevVirtualWorldPos, false);
 
     float percentOfVolume = 0.6;
-    float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle(currentRoughness, percentOfVolume);
+    float lobeTanHalfAngle = GetSpecLobeTanHalfAngle(currentRoughness, percentOfVolume);
     lobeTanHalfAngle = max(lobeTanHalfAngle, 0.5 * gRectSizeInv.x);
 
     float unproj1 = min(hitDist, hitDistForTrackingPrev) / PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, max(virtualWorldPosLength, virtualWorldPosLengthPrev));

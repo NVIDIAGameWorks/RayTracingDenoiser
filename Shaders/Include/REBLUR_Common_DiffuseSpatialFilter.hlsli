@@ -38,8 +38,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #endif
 
-        float lobeAngleFractionScale = saturate( gLobeAngleFraction * fractionScale );
-
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
         float hitDist = ExtractHitDist( diff ) * hitDistScale;
 
@@ -78,7 +76,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Weights
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
-        float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed, lobeAngleFractionScale );
+        float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed ) / fractionScale;
         float2 px = float2( geometryWeightParams.x, normalWeightParams );
         float2 py = float2( geometryWeightParams.y, 0.0 );
 

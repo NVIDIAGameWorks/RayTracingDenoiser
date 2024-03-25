@@ -178,17 +178,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float s = STL::Math::LinearStep( NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d );
         curvature *= s;
 
-        // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
-        float2 uv1 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X - V * ApplyThinLensEquation( NoV, hitDistForTracking, curvature ) );
+        // Correction #2 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
+        if( length( X ) < -1.0 / curvature )
+            curvature *= NoV;
+
+        // Correction #3 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
+        float2 uv1 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X - V * ApplyThinLensEquation( hitDistForTracking, curvature ) );
         float2 uv2 = STL::Geometry::GetScreenUv( gWorldToClipPrev, X );
         float a = length( ( uv1 - uv2 ) * gRectSize );
-        curvature *= float( a < 3.0 * deltaUvLen + gRectSizeInv.x ); // TODO:it's a hack, incompatible with concave mirrors ( tests 22b, 23b, 25b )
+        curvature *= float( a < NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION * deltaUvLen + gRectSizeInv.x );
     }
 
     // Virtual motion
     float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughnessModified, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
 
-    float3 Xvirtual = GetXvirtual( NoV, hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
+    float3 Xvirtual = GetXvirtual( hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
     float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
 
     gOut_SpecularReflectionMv[ pixelPos ] = vmbPixelUv - pixelUv;
