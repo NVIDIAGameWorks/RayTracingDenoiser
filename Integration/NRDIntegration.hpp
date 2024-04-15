@@ -312,7 +312,7 @@ void NrdIntegration::CreateResources(uint16_t resourceWidth, uint16_t resourceHe
             m_TransientPoolSize += memoryDesc.size;
 
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("%s %ux%u format=%u mips=%u\n", name, nrdTextureDesc.width, nrdTextureDesc.height, nrdTextureDesc.format, nrdTextureDesc.mipNum);
+        printf("%s format=%u downsampleFactor=%u\n", name, nrdTextureDesc.format, nrdTextureDesc.downsampleFactor);
     #endif
     }
 
@@ -403,7 +403,7 @@ void NrdIntegration::NewFrame()
     NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
 
 #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("%s (frame %u) ==============================================================================\n\n", m_Name, frameIndex);
+        printf("%s (frame %u) ==============================================================================\n\n", m_Name, m_FrameIndex);
     #endif
 
     m_DescriptorPoolIndex = m_FrameIndex % m_BufferedFramesNum;
@@ -616,12 +616,7 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
             if( r.type == nrd::ResourceType::PERMANENT_POOL )
                 printf("P(%u) ", r.indexInPool);
             else if( r.type == nrd::ResourceType::TRANSIENT_POOL )
-            {
-                if (r.mipNum != 1 || r.mipOffset != 0)
-                    printf("T(%u)[%u:%u] ", r.indexInPool, r.mipOffset, r.mipNum);
-                else
-                    printf("T(%u) ", r.indexInPool);
-            }
+                printf("T(%u) ", r.indexInPool);
             else
             {
                 const char* s = nrd::GetResourceTypeString(r.type);

@@ -68,17 +68,22 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
         AddDispatch( SIGMA_ShadowTranslucency_Blur, SIGMA_Blur, USE_MAX_DIMS );
     }
 
-    PushPass("Post-blur");
+    for (int i = 0; i < SIGMA_POST_BLUR_PERMUTATION_NUM; i++)
     {
-        PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(Transient::DATA_1) );
-        PushInput( AsUint(Transient::SMOOTHED_TILES) );
-        PushInput( AsUint(Transient::TEMP_1) );
+        bool isStabilizationEnabled = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
-        PushOutput( AsUint(Transient::DATA_2) );
-        PushOutput( AsUint(Transient::TEMP_2) );
+        PushPass("Post-blur");
+        {
+            PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
+            PushInput( AsUint(Transient::DATA_1) );
+            PushInput( AsUint(Transient::SMOOTHED_TILES) );
+            PushInput( AsUint(Transient::TEMP_1) );
 
-        AddDispatch( SIGMA_ShadowTranslucency_PostBlur, SIGMA_Blur, 1 );
+            PushOutput( AsUint(Transient::DATA_2) );
+            PushOutput( isStabilizationEnabled ? AsUint(Transient::TEMP_2) : AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
+
+            AddDispatch( SIGMA_ShadowTranslucency_PostBlur, SIGMA_Blur, 1 );
+        }
     }
 
     PushPass("Temporal stabilization");

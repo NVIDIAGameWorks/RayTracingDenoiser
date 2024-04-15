@@ -22,7 +22,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 pixelPos : SV_DispatchThreadId)
     #ifdef SIGMA_TRANSLUCENT
         s = gIn_Shadow_Translucency[ pixelPos ];
     #else
-        s = float( data.x == NRD_FP16_MAX );
+        s = IsLit( data.x );
+    #endif
+
+    #if( SIGMA_SHOW_PENUMBRA_SIZE == 1 )
+        s.x = PackShadow( data.x );
     #endif
 
     gOut_Shadow_Translucency[ pixelPos ] = s * float( viewZ < gDenoisingRange );

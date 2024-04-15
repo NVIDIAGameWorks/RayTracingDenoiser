@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.6
+// NRD v4.7
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -56,7 +56,7 @@ float distanceToOccluder:
     - distance to occluder, must follow the rules:
         - NoL <= 0         - 0 ( it's very important )
         - NoL > 0 ( hit )  - hit distance
-        - NoL > 0 ( miss ) - NRD_FP16_MAX
+        - NoL > 0 ( miss ) - >= NRD_FP16_MAX
 
 float tanOfLightAngularRadius:
     - tan( lightAngularSize * 0.5 )
@@ -747,12 +747,12 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
     r.x = 0.0;
     r.y = _NRD_PackViewZ( viewZ );
 
-    if( distanceToOccluder == NRD_FP16_MAX )
+    if( distanceToOccluder >= NRD_FP16_MAX )
         r.x = NRD_FP16_MAX;
     else if( distanceToOccluder != 0.0 )
     {
-        float distanceToOccluderProj = distanceToOccluder * tanOfLightAngularRadius;
-        r.x = min( distanceToOccluderProj, 32768.0 );
+        float penumbraRadius = distanceToOccluder * tanOfLightAngularRadius;
+        r.x = min( penumbraRadius, 32768.0 );
     }
 
     return r;
@@ -762,7 +762,7 @@ float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float t
 float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius, float3 translucency, out float4 out2 )
 {
     // IN_SHADOW_TRANSLUCENCY
-    out2.x = float( distanceToOccluder == NRD_FP16_MAX );
+    out2.x = float( distanceToOccluder >= NRD_FP16_MAX );
     out2.yzw = saturate( translucency );
 
     // IN_SHADOWDATA
@@ -879,16 +879,11 @@ NRD_SG RELAX_BackEnd_UnpackSh( float4 sh0, float4 sh1 )
 //=================================================================================================================================
 
 // OUT_SHADOW_TRANSLUCENCY => X
-//   SIGMA_SHADOW:
-//      float shadowData = SIGMA_BackEnd_UnpackShadow( shadowData );
-//      shadow = shadowData;
+//   SIGMA_SHADOW / SIGMA_SHADOW_TRANSLUCENCY:
+//      float shadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY );
 //   SIGMA_SHADOW_TRANSLUCENCY:
-//      float4 shadowData = SIGMA_BackEnd_UnpackShadow( shadowData );
-//      float3 finalShadowCommon = lerp( shadowData.yzw, 1.0, shadowData.x ); // or
-//      float3 finalShadowExotic = shadowData.yzw * shadowData.x; // or
-//      float3 finalShadowMoreExotic = shadowData.yzw;
-// IMPORTANT: use "^ 3" to compensate over-blurring ( it really makes the result closer to the reference )
-#define SIGMA_BackEnd_UnpackShadow( color )  ( color * color * color )
+//      float3 translucentShadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY ).yzw;
+#define SIGMA_BackEnd_UnpackShadow( shadow ) ( shadow * shadow )
 
 //=================================================================================================================================
 // BACK-END - HIGH QUALITY RESOLVE

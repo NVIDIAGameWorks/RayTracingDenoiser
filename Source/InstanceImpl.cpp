@@ -286,21 +286,19 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
     // Rotators
-    float4 rndScale = float4(1.0f) + Rand::sf4(&m_FastRandState) * 0.25f;
     float4 rndAngle = Rand::uf4(&m_FastRandState) * DegToRad(360.0f);
-    rndAngle.w = DegToRad( 120.0f * float(m_CommonSettings.frameIndex % 3) );
 
     float ca = Cos( rndAngle.x );
     float sa = Sin( rndAngle.x );
-    m_Rotator_PrePass = float4( ca, sa, -sa, ca ) * rndScale.x;
+    m_Rotator_PrePass = float4( ca, sa, -sa, ca );
 
     ca = Cos( rndAngle.y );
     sa = Sin( rndAngle.y );
-    m_Rotator_Blur = float4( ca, sa, -sa, ca ) * rndScale.y;
+    m_Rotator_Blur = float4( ca, sa, -sa, ca );
 
     ca = Cos( rndAngle.z );
     sa = Sin( rndAngle.z );
-    m_Rotator_PostBlur = float4( ca, sa, -sa, ca ) * rndScale.z;
+    m_Rotator_PostBlur = float4( ca, sa, -sa, ca );
 
     // Main matrices
     m_ViewToClip = float4x4

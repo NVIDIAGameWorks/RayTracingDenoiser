@@ -24,11 +24,11 @@ void Preload( uint2 sharedPos, int2 globalPos )
     #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
         s = gIn_Shadow_Translucency[ globalPos ];
     #else
-        s = float( data.x == NRD_FP16_MAX );
+        s = IsLit( data.x );
     #endif
 
     #ifndef SIGMA_FIRST_PASS
-        s = UnpackShadowSpecial( s );
+        s = SIGMA_BackEnd_UnpackShadow( s );
     #endif
 
     s_Shadow_Translucency[ sharedPos.y ][ sharedPos.x ] = s;
@@ -58,7 +58,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Copy history
     #ifdef SIGMA_FIRST_PASS
-        gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
+        if( gStabilizationStrength != 0 )
+            gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
     #endif
 
     // Tile-based early out ( potentially )
@@ -70,19 +71,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     if( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerHitDist == 0.0 )
     {
-        gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
         gOut_Hit_ViewZ[ pixelPos ] = float2( 0.0, viewZ * NRD_FP16_VIEWZ_SCALE );
+        gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
 
         return;
     }
-
-    // Reference
-    #if( SIGMA_REFERENCE == 1 )
-        gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
-        gOut_Hit_ViewZ[ pixelPos ] = float2( centerHitDist * centerSignNoL, viewZ * NRD_FP16_VIEWZ_SCALE );
-
-        return;
-    #endif
 
     // Position
     float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
@@ -92,8 +85,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 N = normalAndRoughness.xyz;
     float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
 
+    // Parameters
+    float frustumSize = PixelRadiusToWorld( gUnproject, gOrthoMode, min( gRectSize.x, gRectSize.y ), viewZ ); // TODO: use GetFrustumSize
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
+
     // Estimate average distance to occluder
-    float sum = 0;
+    float2 sum = 0;
     float hitDist = 0;
     SIGMA_TYPE result = 0;
 
@@ -104,9 +101,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         for( i = 0; i <= BORDER * 2; i++ )
         {
             int2 pos = threadPos + int2( i, j );
-            float2 data = s_Data[ pos.y ][ pos.x ];
 
-            SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
+            float2 data = s_Data[ pos.y ][ pos.x ];
             float h = data.x;
             float signNoL = float( data.x != 0.0 );
             float z = data.y;
@@ -114,50 +110,67 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float w = 1.0;
             if( !( i == BORDER && j == BORDER ) )
             {
-                w = GetBilateralWeight( z, viewZ );
-                w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
+                float2 uv = pixelUv + float2( i - BORDER, j - BORDER ) * gRectSizeInv;
+                float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+                float NoX = dot( Nv, Xvs );
+
+                w = ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
+                w *= GetGaussianWeight( length( float2( i - BORDER, j - BORDER ) / BORDER ) );
+                w *= float( z < gDenoisingRange );
+                w *= float( centerSignNoL == signNoL );
             }
 
-            result += s * w;
-            hitDist += h * float( s.x != 1.0 ) * w;
-            sum += w;
+            SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
+            s = Denanify( w, s );
+
+            float2 ww = w;
+            ww.y *= float( s.x != 1.0 ); // TODO: what if s.x == 1.0, but h < NRD_FP16_MAX?
+            ww.y *= 1.0 / ( 1.0 + h * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
+
+            result += s * ww.x;
+            hitDist += h * ww.y;
+            sum += ww;
         }
     }
 
-    float invSum = 1.0 / sum;
-    result *= invSum;
-    hitDist *= invSum;
+    result /= sum.x;
+    hitDist /= max( sum.y, NRD_EPS ); // yes, without patching
+
+    float invHitDist = 1.0 / max( hitDist, NRD_EPS );
 
     // Blur radius
     float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float worldRadius = GetKernelRadiusInPixels( hitDist, unprojectZ ) * unprojectZ;
+    worldRadius *= tileValue; // helps to prevent blurring "inside" umbra
+    worldRadius /= SIGMA_SPATIAL_PASSES_NUM;
 
-    float innerShadowRadiusScale = lerp( 0.5, 1.0, result.x );
-    float outerShadowRadiusScale = 1.0; // TODO: find a way to improve penumbra
-    float pixelRadius = innerShadowRadiusScale * outerShadowRadiusScale;
-    pixelRadius *= tileValue;
-    pixelRadius *= hitDist / unprojectZ;
-    pixelRadius *= gBlurRadiusScale;
-
-    float centerWeight = STL::Math::LinearStep( 0.9, 1.0, result.x );
-    float penumbraFixWeight = lerp( saturate( pixelRadius / 1.5 ), 1.0, centerWeight ) * result.x;
-    pixelRadius += SIGMA_PENUMBRA_FIX_BLUR_RADIUS_ADDON * penumbraFixWeight; // TODO: improve
-
-    pixelRadius = min( pixelRadius, SIGMA_MAX_PIXEL_RADIUS );
-
-    // Tangent basis
-    float worldRadius = pixelRadius * unprojectZ;
+    // Tangent basis with anisotropy
     float3x3 mWorldToLocal = STL::Geometry::GetBasis( Nv );
-    float3 Tv = mWorldToLocal[ 0 ] * worldRadius;
-    float3 Bv = mWorldToLocal[ 1 ] * worldRadius;
+    float3 Tv = mWorldToLocal[ 0 ];
+    float3 Bv = mWorldToLocal[ 1 ];
+
+    float3 t = cross( gLightDirectionView.xyz, Nv ); // TODO: add support for other light types to bring proper anisotropic filtering
+    if( length( t ) > 0.001 )
+    {
+        Tv = normalize( t );
+        Bv = cross( Tv, Nv );
+
+        float cosa = abs( dot( Nv, gLightDirectionView.xyz ) );
+        float skewFactor = lerp( 0.25, 1.0, cosa );
+
+        //Tv *= skewFactor; // TODO: needed?
+        Bv /= skewFactor;
+    }
+
+    Tv *= worldRadius;
+    Bv *= worldRadius;
 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     // Denoising
-    sum = 1.0;
-
-    float frustumSize = PixelRadiusToWorld( gUnproject, gOrthoMode, min( gRectSize.x, gRectSize.y ), viewZ );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
+    sum.x = 1.0;
+    sum.y = float( sum.y != 0.0 );
 
     [unroll]
     for( uint n = 0; n < SIGMA_POISSON_SAMPLE_NUM; n++ )
@@ -184,40 +197,45 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         float w = IsInScreenNearest( uv );
         w *= GetGaussianWeight( offset.z );
-        w *= float( z < gDenoisingRange );
         w *= ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
-        w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
+        w *= float( z < gDenoisingRange );
+        w *= float( centerSignNoL == signNoL );
 
+        // Avoid umbra leaking inside wide penumbra
+        float t = saturate( h * invHitDist );
+        w *= STL::Math::LinearStep( 0.0, 0.1, t );
+
+        // Fetch shadow
         SIGMA_TYPE s;
         #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
             s = gIn_Shadow_Translucency.SampleLevel( gNearestClamp, uvScaled, 0 );
         #else
-            s = float( h == NRD_FP16_MAX );
+            s = IsLit( h );
         #endif
         s = Denanify( w, s );
 
         #ifndef SIGMA_FIRST_PASS
-            s = UnpackShadowSpecial( s );
+            s = SIGMA_BackEnd_UnpackShadow( s );
         #endif
 
-        // Weight for outer shadow ( to avoid blurring of ~umbra )
-        w *= lerp( 1.0, s.x, centerWeight );
-
         // Accumulate
-        sum += w;
+        float2 ww = w;
+        ww.y *= float( s.x != 1.0 ); // TODO: what if s.x == 1.0, but h < NRD_FP16_MAX?
+        ww.y *= 1.0 / ( 1.0 + h * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
 
-        result += s * w;
-        hitDist += h * float( s.x != 1.0 ) * w;
+        result += s * ww.x;
+        hitDist += h * ww.y;
+        sum += ww;
     }
 
-    invSum = 1.0 / sum;
-    result *= invSum;
-    hitDist *= invSum;
-
-    hitDist *= tileValue;
-    hitDist *= centerSignNoL;
+    result /= sum.x;
+    hitDist = sum.y == 0.0 ? centerHitDist : hitDist / sum.y;
 
     // Output
+    #ifndef SIGMA_FIRST_PASS
+        if( gStabilizationStrength != 0 )
+    #endif
+            gOut_Hit_ViewZ[ pixelPos ] = float2( hitDist, viewZ * NRD_FP16_VIEWZ_SCALE );
+
     gOut_Shadow_Translucency[ pixelPos ] = PackShadow( result );
-    gOut_Hit_ViewZ[ pixelPos ] = float2( hitDist, viewZ * NRD_FP16_VIEWZ_SCALE );
 }

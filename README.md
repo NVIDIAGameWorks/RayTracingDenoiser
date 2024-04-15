@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.6.1 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.7.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -18,7 +18,8 @@ For quick starting see *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSampl
 Performance on RTX 4080 @ 1440p (native resolution, default denoiser settings):
 - `REBLUR_DIFFUSE_SPECULAR` - 2.45 ms
 - `RELAX_DIFFUSE_SPECULAR` - 2.90 ms
-- `SIGMA_SHADOW` - 0.30 ms
+- `SIGMA_SHADOW` - 0.30 ms (0.24 mns if temporal stabilization is off)
+- `SIGMA_SHADOW_TRANSLUCENCY` - 0.40 ms (0.30 ms if temporal stabilization is off)
 
 Supported signal types:
 - *RELAX*:
@@ -589,7 +590,7 @@ Denoising is not a panacea or miracle. Denoising works best with ray tracing res
     float3 preintegratedBRDF = PreintegratedBRDF( Rf0, N, V, roughness )
     Denoising( specularRadiance * BRDF ) → NRD( specularRadiance * BRDF / preintegratedBRDF ) * preintegratedBRDF
 
-A good approximation for pre-integrated specular BRDF can be found *[here](https://github.com/NVIDIAGameWorks/Falcor/blob/056f7b7c73b69fa8140d211bbf683ddf297a2ae0/Source/Falcor/Rendering/Materials/Microfacet.slang#L213)*.
+A good approximation for pre-integrated specular BRDF can be found *[here](https://github.com/NVIDIAGameWorks/MathLib/blob/407ecd0d1892d12ee1ec98c3d46cbeed73b79a0d/STL.hlsli#L2147*. Pre-integrated specular BRDF can also be referenced as "specular albedo" or "environment BRDF".
 
 ## COMBINED DENOISING OF DIRECT AND INDIRECT LIGHTING
 
@@ -710,7 +711,7 @@ Hair strands tangent vectors *can't* be used as "normals guide" for *NRD* due to
 
 **[NRD]** Hit distances should come from an importance sampling method. But if denoising of AO/SO is needed, AO/SO can come from cos-weighted (or VNDF) sampling in a tradeoff of IQ.
 
-**[NRD]** Low discrepancy sampling (blue noise) helps to have more stable output in 0.5-1 rpp mode. It's a must for REBLUR-based Ambient and Specular Occlusion denoisers and SIGMA.
+**[NRD]** Low discrepancy sampling (blue noise) helps to get more stable output in 0.5-1 rpp mode. It's a must for REBLUR-based Ambient and Specular Occlusion denoisers and SIGMA.
 
 **[NRD]** It's recommended to set `CommonSettings::accumulationMode` to `RESET` for a single frame, if a history reset is needed. If history buffers are recreated or contain garbage, it's recommended to use `CLEAR_AND_RESET` for a single frame. `CLEAR_AND_RESET` is not free because clearing is done in a compute shader. Render target clears on the application side should be prioritized over this solution.
 
@@ -742,13 +743,11 @@ maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 
 **[REBLUR]** *REBLUR* expects hit distances in a normalized form. To avoid mismatching, `REBLUR_FrontEnd_GetNormHitDist` must be used for normalization. Normalization parameters should be passed into *NRD* as `HitDistanceParameters` for internal hit distance denormalization. Some tweaking can be needed here, but in most cases default `HitDistanceParameters` works well. *REBLUR* outputs denoised normalized hit distance, which can be used by the application as ambient or specular occlusion (AO & SO) (see unpacking functions from `NRD.hlsli`).
 
-**[REBLUR]** Intensity antilag parameters need to be carefully tuned. The defaults are good but `AntilagIntensitySettings::sensitivityToDarkness` needs to be tuned for a given HDR range. Initial integration should work with intensity antilag turned off.
-
-**[REBLUR]** Even if antilag is off, it's recommended to tune `AntilagIntensitySettings::sensitivityToDarkness`, because it is used for error estimation.
+**[REBLUR/RELAX]** Antilag parameters need to be carefully tuned. Initial integration should be done with disabled antilag.
 
 **[RELAX]** *RELAX* works well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 
-**[SIGMA]** Using "blue" noise can help to avoid shadow shimmering, it works best if the pattern is static on the screen. Additionally, `blurRadiusScale` can be set to `2-4` to mitigate such problems in complicated cases.
+**[SIGMA]** Using "blue" noise can help to avoid shadow shimmering. It works best if the pattern is static on the screen.
 
 **[SIGMA]** *SIGMA_TRANSLUCENT_SHADOW* can be used for shadow denoising from multiple light sources:
 
@@ -798,3 +797,7 @@ Is this a biased solution? If spatial filtering is off - no, because we just reo
 - if shadows overlap, a separate pass is needed to analyze noisy input and classify pixels as *umbra* - *penumbra* (and optionally *empty space*). Raster shadow maps can be used for this if available
 - it is not recommended to mix 1 cd and 100000 cd lights, since FP32 texture will be needed for a weighted sum.
 In this case, it's better to process the sun and other bright light sources separately.
+
+**[SIGMA]** *SIGMA* can be used for multi-light shadow denoising if applied "per light". `SigmaSettings::stabilizationStrength` can be set to `0` to disable temporal history. It provides the followinmg benefits:
+ - light count independent memory usage
+ - no need to manage history buffers for lights

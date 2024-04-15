@@ -21,7 +21,7 @@ void Preload( uint2 sharedPos, int2 globalPos )
     s_Data[ sharedPos.y ][ sharedPos.x ] = data;
 
     SIGMA_TYPE s = gIn_Shadow_Translucency[ globalPos ];
-    s = UnpackShadow( s );
+    s = SIGMA_BackEnd_UnpackShadow( s );
 
     s_Shadow_Translucency[ sharedPos.y ][ sharedPos.x ] = s;
 }
@@ -120,7 +120,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     BicubicFilterNoCorners( saturate( pixelUvPrev ) * gRectSizePrev, gResourceSizeInvPrev, SIGMA_USE_CATROM, gIn_History, history );
 
     history = max( history, 0.0 );
-    history = UnpackShadow( history );
+    history = SIGMA_BackEnd_UnpackShadow( history );
 
     // Clamp history
     float2 a = m1.xx;
@@ -148,16 +148,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // History weight
     float isInScreen = IsInScreenNearest( pixelUvPrev );
     float motionLength = length( pixelUvPrev - pixelUv );
-    float2 historyWeight = 0.93 * lerp( 1.0, 0.7, ratioNorm ); // use FPS-dependent value, like 0.25 * FPS
+    float2 historyWeight = 0.93 * lerp( 1.0, 0.7, ratioNorm );
     historyWeight = lerp( historyWeight, 0.1, saturate( motionLength / SIGMA_TS_MOTION_MAX_REUSE ) );
     historyWeight *= isInScreen;
-    historyWeight *= gContinueAccumulation;
+    historyWeight *= gStabilizationStrength;
 
     // Reduce history in regions with hard shadows
-    float worldRadius = centerHitDist * gBlurRadiusScale;
     float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float pixelRadius = worldRadius * STL::Math::PositiveRcp( unprojectZ );
-    historyWeight *= STL::Math::LinearStep( 0.0, 3.0, pixelRadius );
+    float pixelRadius = GetKernelRadiusInPixels( centerHitDist, unprojectZ );
+    historyWeight *= STL::Math::LinearStep( 0.0, 0.5, pixelRadius );
 
     // Combine with current frame
     SIGMA_TYPE result;

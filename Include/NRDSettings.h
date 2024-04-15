@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 6
+#define NRD_SETTINGS_VERSION_MINOR 7
 
 static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -223,6 +223,7 @@ namespace nrd
         float responsiveAccumulationRoughnessThreshold = 0.0f;
 
         // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
+        // 0 - disables the stabilization pass
         float stabilizationStrength = 1.0f;
 
         // (normalized %) - represents maximum allowed deviation from local tangent plane
@@ -260,11 +261,16 @@ namespace nrd
 
     struct SigmaSettings
     {
+        // Direction to the light source
+        // IMPORTANT: it is needed only for directional light sources (sun)
+        float lightDirection[3] = {0.0f, 0.0f, 0.0f};
+
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
 
-        // [1; 3] - adds bias and stability if > 1
-        float blurRadiusScale = 2.0f;
+        // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
+        // 0 - disables the stabilization pass and makes denoising spatial only (no history)
+        float stabilizationStrength = 1.0f;
     };
 
     // RELAX

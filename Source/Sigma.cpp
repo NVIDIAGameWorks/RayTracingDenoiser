@@ -17,16 +17,20 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "../Shaders/Resources/SIGMA_TemporalStabilization.resources.hlsli"
 #include "../Shaders/Resources/SIGMA_SplitScreen.resources.hlsli"
 
+// Permutations
+#define SIGMA_POST_BLUR_PERMUTATION_NUM     2
+#define SIGMA_NO_PERMUTATIONS               1
+
 void nrd::InstanceImpl::Update_SigmaShadow(const DenoiserData& denoiserData)
 {
     enum class Dispatch
     {
         CLASSIFY_TILES,
-        SMOOTH_TILES,
-        BLUR,
-        POST_BLUR,
-        TEMPORAL_STABILIZATION,
-        SPLIT_SCREEN,
+        SMOOTH_TILES            = CLASSIFY_TILES + SIGMA_NO_PERMUTATIONS,
+        BLUR                    = SMOOTH_TILES + SIGMA_NO_PERMUTATIONS,
+        POST_BLUR               = BLUR + SIGMA_NO_PERMUTATIONS,
+        TEMPORAL_STABILIZATION  = POST_BLUR + SIGMA_POST_BLUR_PERMUTATION_NUM,
+        SPLIT_SCREEN            = TEMPORAL_STABILIZATION + SIGMA_NO_PERMUTATIONS,
     };
 
     const SigmaSettings& settings = denoiserData.settings.sigma;
@@ -57,12 +61,15 @@ void nrd::InstanceImpl::Update_SigmaShadow(const DenoiserData& denoiserData)
     }
 
     { // POST_BLUR
-        SIGMA_BlurConstants* consts = (SIGMA_BlurConstants*)PushDispatch(denoiserData, AsUint(Dispatch::POST_BLUR));
+        uint32_t passIndex = AsUint(Dispatch::POST_BLUR) + (settings.stabilizationStrength != 0.0f ? 1 : 0);
+        SIGMA_BlurConstants* consts = (SIGMA_BlurConstants*)PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Sigma(settings, consts);
         consts->gRotator = m_Rotator_PostBlur; // TODO: push constant
     }
 
-    { // TEMPORAL_STABILIZATION
+    // TEMPORAL_STABILIZATION
+    if (settings.stabilizationStrength != 0.0f)
+    {
         void* consts = PushDispatch(denoiserData, AsUint(Dispatch::TEMPORAL_STABILIZATION));
         AddSharedConstants_Sigma(settings, consts);
     }
@@ -88,10 +95,13 @@ void nrd::InstanceImpl::AddSharedConstants_Sigma(const SigmaSettings& settings, 
     uint16_t tilesW = DivideUp(rectW, 16);
     uint16_t tilesH = DivideUp(rectH, 16);
 
+    float3 lightDirectionView = Rotate(m_WorldToView, float3(settings.lightDirection[0], settings.lightDirection[1], settings.lightDirection[2]));
+
     SharedConstants* consts         = (SharedConstants*)data;
     consts->gWorldToView            = m_WorldToView;
     consts->gViewToClip             = m_ViewToClip;
     consts->gWorldToClipPrev        = m_WorldToClipPrev;
+    consts->gLightDirectionView     = float4(lightDirectionView.x, lightDirectionView.y, lightDirectionView.z, 0.0f);
     consts->gFrustum                = m_Frustum;
     consts->gMvScale                = float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.isMotionVectorInWorldSpace ? 1.0f : 0.0f);
     consts->gResourceSizeInv        = float2(1.0f / float(resourceW), 1.0f / float(resourceH));
@@ -109,8 +119,7 @@ void nrd::InstanceImpl::AddSharedConstants_Sigma(const SigmaSettings& settings, 
     consts->gUnproject              = unproject;
     consts->gDenoisingRange         = m_CommonSettings.denoisingRange;
     consts->gPlaneDistSensitivity   = settings.planeDistanceSensitivity;
-    consts->gBlurRadiusScale        = settings.blurRadiusScale;
-    consts->gContinueAccumulation   = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 0.0f : 1.0f;
+    consts->gStabilizationStrength  = m_CommonSettings.accumulationMode == AccumulationMode::CONTINUE ? settings.stabilizationStrength : 0.0f;
     consts->gDebug                  = m_CommonSettings.debug;
     consts->gSplitScreen            = m_CommonSettings.splitScreen;
     consts->gFrameIndex             = m_CommonSettings.frameIndex;

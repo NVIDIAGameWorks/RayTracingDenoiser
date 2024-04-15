@@ -14,31 +14,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_BLUR                                     1
 #define REBLUR_POST_BLUR                                2
 
-// Kernels
-static const float3 g_Special6[ 6 ] =
-{
-    // https://www.desmos.com/calculator/e5mttzlg6v
-    float3( -0.50 * sqrt( 3.0 ) , -0.50             , 1.0 ),
-    float3(  0.00               ,  1.00             , 1.0 ),
-    float3(  0.50 * sqrt( 3.0 ) , -0.50             , 1.0 ),
-    float3(  0.00               , -0.30             , 0.3 ),
-    float3(  0.15 * sqrt( 3.0 ) ,  0.15             , 0.3 ),
-    float3( -0.15 * sqrt( 3.0 ) ,  0.15             , 0.3 ),
-};
-
-static const float3 g_Special8[ 8 ] =
-{
-    // https://www.desmos.com/calculator/abaqyvswem
-    float3( -1.00               ,  0.00               , 1.0 ),
-    float3(  0.00               ,  1.00               , 1.0 ),
-    float3(  1.00               ,  0.00               , 1.0 ),
-    float3(  0.00               , -1.00               , 1.0 ),
-    float3( -0.25 * sqrt( 2.0 ) ,  0.25 * sqrt( 2.0 ) , 0.5 ),
-    float3(  0.25 * sqrt( 2.0 ) ,  0.25 * sqrt( 2.0 ) , 0.5 ),
-    float3(  0.25 * sqrt( 2.0 ) , -0.25 * sqrt( 2.0 ) , 0.5 ),
-    float3( -0.25 * sqrt( 2.0 ) , -0.25 * sqrt( 2.0 ) , 0.5 )
-};
-
 // Storage
 
 #define REBLUR_MAX_ACCUM_FRAME_NUM                      63.0
@@ -360,7 +335,9 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
         B = cross( R, T );
 
         float skewFactor = lerp( 0.5 + 0.5 * roughness, 1.0, NoD );
-        T *= lerp( skewFactor, 1.0, anisoFade );
+        skewFactor = lerp( skewFactor, 1.0, anisoFade );
+
+        T *= skewFactor; // TODO: B /= skewFactor?
     }
 
     return float2x3( T, B );

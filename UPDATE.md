@@ -224,3 +224,13 @@ A single NRD instance can now include any combination of denoisers, including re
 - *REBLUR*:
   - `blurRadius` renamed to `maxBlurRadius`
   - exposed `minBlurRadius` with the default value matching older versions
+
+## To v4.7
+
+- *SIGMA*:
+  - removed `blurRadiusScale`
+  - exposed `lightDirection`, which is needed only for directional light sources
+  - exposed `stabilizationStrength'
+  - clarified usage:
+    - `float shadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY );`
+    - `float3 translucentShadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY ).yzw;`

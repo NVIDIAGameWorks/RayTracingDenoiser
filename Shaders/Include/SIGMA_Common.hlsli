@@ -10,17 +10,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Misc
 
-#define PackShadow( s )                                 STL::Math::Sqrt01( s )
-#define UnpackShadow( s )                               ( s * s )
+#define PackShadow( s )         STL::Math::Sqrt01( s ) // must match "SIGMA_BackEnd_UnpackShadow"
+#define IsLit( h )              ( h >= NRD_FP16_MAX )
 
-// TODO: shadow unpacking is less trivial
-// 2.0 - closer to reference ( dictated by encoding )
-// 2.0 - s.x - looks better
-#if 0
-    #define UnpackShadowSpecial( s )                    STL::Math::Pow01( s, 2.0 - s.x * ( 1 - SIGMA_REFERENCE ) )
-#else
-    #define UnpackShadowSpecial( s )                    UnpackShadow( s )
-#endif
+float GetKernelRadiusInPixels( float hitDist, float unprojectZ )
+{
+    float pixelRadius = hitDist / unprojectZ;
+    pixelRadius = min( pixelRadius, SIGMA_MAX_PIXEL_RADIUS );
+
+    return pixelRadius;
+}
 
 // TODO: move code below to STL.hlsl
 
