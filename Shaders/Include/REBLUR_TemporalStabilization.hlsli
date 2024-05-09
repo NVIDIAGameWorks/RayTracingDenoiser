@@ -49,7 +49,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
+    float viewZ = REBLUR_UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
     if( viewZ > gDenoisingRange )
         return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
 

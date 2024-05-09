@@ -234,3 +234,18 @@ A single NRD instance can now include any combination of denoisers, including re
   - clarified usage:
     - `float shadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY );`
     - `float3 translucentShadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY ).yzw;`
+
+## To v4.8
+
+- *API*:
+  - exposed `CommonSettings::viewZScale` improving FP16 `viewZ` support
+- *SIGMA*:
+  - explicitly uses `IN_VIEWZ` instead of storing `viewZ` in `IN_SHADOWDATA`
+  - `IN_SHADOWDATA` renamed to `IN_PENUMBRA` (describes penumbra properties)
+  - `IN_SHADOW_TRANSLUCENCY` renamed to `IN_TRANSLUCENCY` (describes optional translucency)
+  - `SIGMA_FrontEnd_PackShadow` has been explicitly separated into 2 functions:
+    - `IN_SHADOWDATA`: `SIGMA_FrontEnd_PackPenumbra` (2 variants: for infinite and local light sources)
+    - `IN_SHADOW_TRANSLUCENCY`: `SIGMA_FrontEnd_PackTranslucency`
+- Deprecated and removed with all dependencies:
+  - `SPECULAR_REFLECTION_MV`
+  - `SPECULAR_DELTA_MV`

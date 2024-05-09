@@ -11,14 +11,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // Misc
 
 #define PackShadow( s )         STL::Math::Sqrt01( s ) // must match "SIGMA_BackEnd_UnpackShadow"
-#define IsLit( h )              ( h >= NRD_FP16_MAX )
+#define IsLit( p )              ( p >= NRD_FP16_MAX )
 
-float GetKernelRadiusInPixels( float hitDist, float unprojectZ )
+float GetKernelRadiusInPixels( float hitDist, float unprojectZ, float scale = 1.0 )
 {
-    float pixelRadius = hitDist / unprojectZ;
-    pixelRadius = min( pixelRadius, SIGMA_MAX_PIXEL_RADIUS );
+    float unclampedRadius = hitDist / unprojectZ;
+    float minRadius = min( unclampedRadius, BORDER );
 
-    return pixelRadius;
+    return clamp( unclampedRadius * scale, minRadius, SIGMA_MAX_PIXEL_RADIUS );
 }
 
 // TODO: move code below to STL.hlsl

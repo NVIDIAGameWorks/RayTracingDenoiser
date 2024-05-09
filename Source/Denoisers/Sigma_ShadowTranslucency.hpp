@@ -14,7 +14,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
     denoiserData.settings.sigma = SigmaSettings();
     denoiserData.settingsSize = sizeof(denoiserData.settings.sigma);
-            
+
     enum class Transient
     {
         DATA_1 = TRANSIENT_POOL_START,
@@ -26,8 +26,8 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
         SMOOTHED_TILES,
     };
 
-    AddTextureToTransientPool( {Format::RG16_SFLOAT, 1} );
-    AddTextureToTransientPool( {Format::RG16_SFLOAT, 1} );
+    AddTextureToTransientPool( {Format::R16_SFLOAT, 1} );
+    AddTextureToTransientPool( {Format::R16_SFLOAT, 1} );
     AddTextureToTransientPool( {Format::RGBA8_UNORM, 1} );
     AddTextureToTransientPool( {Format::RGBA8_UNORM, 1} );
     AddTextureToTransientPool( {Format::RGBA8_UNORM, 1} );
@@ -36,8 +36,9 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
     PushPass("Classify tiles");
     {
-        PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
-        PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
+        PushInput( AsUint(ResourceType::IN_PENUMBRA) );
+        PushInput( AsUint(ResourceType::IN_TRANSLUCENCY) );
 
         PushOutput( AsUint(Transient::TILES) );
 
@@ -55,11 +56,12 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
     PushPass("Blur");
     {
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
-        PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
+        PushInput( AsUint(ResourceType::IN_PENUMBRA) );
         PushInput( AsUint(Transient::SMOOTHED_TILES) );
         PushInput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
-        PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
+        PushInput( AsUint(ResourceType::IN_TRANSLUCENCY) );
 
         PushOutput( AsUint(Transient::DATA_1) );
         PushOutput( AsUint(Transient::TEMP_1) );
@@ -74,6 +76,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
         PushPass("Post-blur");
         {
+            PushInput( AsUint(ResourceType::IN_VIEWZ) );
             PushInput( AsUint(ResourceType::IN_NORMAL_ROUGHNESS) );
             PushInput( AsUint(Transient::DATA_1) );
             PushInput( AsUint(Transient::SMOOTHED_TILES) );
@@ -88,6 +91,7 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
     PushPass("Temporal stabilization");
     {
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::IN_MV) );
         PushInput( AsUint(Transient::DATA_2) );
         PushInput( AsUint(Transient::TEMP_2) );
@@ -101,8 +105,9 @@ void nrd::InstanceImpl::Add_SigmaShadowTranslucency(nrd::DenoiserData& denoiserD
 
     PushPass("Split screen");
     {
-        PushInput( AsUint(ResourceType::IN_SHADOWDATA) );
-        PushInput( AsUint(ResourceType::IN_SHADOW_TRANSLUCENCY) );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
+        PushInput( AsUint(ResourceType::IN_PENUMBRA) );
+        PushInput( AsUint(ResourceType::IN_TRANSLUCENCY) );
 
         PushOutput( AsUint(ResourceType::OUT_SHADOW_TRANSLUCENCY) );
 

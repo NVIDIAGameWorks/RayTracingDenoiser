@@ -383,6 +383,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gUsePrepassNotOnlyForSpecularMotionEstimation       = settings.usePrepassOnlyForSpecularMotionEstimation ? 0.0f : 1.0f;
     consts->gSplitScreen                                        = m_CommonSettings.splitScreen;
     consts->gCheckerboardResolveAccumSpeed                      = m_CheckerboardResolveAccumSpeed;
+    consts->gViewZScale                                         = m_CommonSettings.viewZScale;
     consts->gHasHistoryConfidence                               = m_CommonSettings.isHistoryConfidenceAvailable;
     consts->gHasDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable;
     consts->gDiffCheckerboard                                   = diffCheckerboard;

@@ -34,13 +34,12 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
         for( uint j = 0; j < 4; j++ )
         {
             uint2 pos = pixelPos + uint2( i, j );
-            float2 data = gIn_Hit_ViewZ[ pos ];
-
-            float viewZ = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
+            float h = gIn_Penumbra[ pos ];
+            float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
 
             bool isInf = viewZ > gDenoisingRange;
-            bool isShadow = data.x == 0;
-            bool isLit = IsLit( data.x );
+            bool isShadow = h == 0;
+            bool isLit = IsLit( h );
 
             bool isOpaque = true;
             #ifdef SIGMA_TRANSLUCENT
@@ -52,7 +51,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
             mask += ( ( ( !isLit && isOpaque ) || isInf || isShadow ) ? 1 : 0 ) << 9;
             mask += ( isInf ? 1 : 0 ) << 18;
 
-            float hitDist = ( isLit || isInf ) ? 0 : data.x;
+            float hitDist = ( isLit || isInf ) ? 0 : h;
             float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
             float pixelRadius = GetKernelRadiusInPixels( hitDist, unprojectZ );
 

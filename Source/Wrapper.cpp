@@ -30,17 +30,15 @@ constexpr std::array<nrd::Denoiser, (size_t)nrd::Denoiser::MAX_NUM> g_NrdSupport
     nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
     nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR_SH,
     nrd::Denoiser::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
-    nrd::Denoiser::SIGMA_SHADOW,
-    nrd::Denoiser::SIGMA_SHADOW_TRANSLUCENCY,
     nrd::Denoiser::RELAX_DIFFUSE,
     nrd::Denoiser::RELAX_DIFFUSE_SH,
     nrd::Denoiser::RELAX_SPECULAR,
     nrd::Denoiser::RELAX_SPECULAR_SH,
     nrd::Denoiser::RELAX_DIFFUSE_SPECULAR,
     nrd::Denoiser::RELAX_DIFFUSE_SPECULAR_SH,
+    nrd::Denoiser::SIGMA_SHADOW,
+    nrd::Denoiser::SIGMA_SHADOW_TRANSLUCENCY,
     nrd::Denoiser::REFERENCE,
-    nrd::Denoiser::SPECULAR_REFLECTION_MV,
-    nrd::Denoiser::SPECULAR_DELTA_MV
 };
 
 constexpr nrd::LibraryDesc g_NrdLibraryDesc =
@@ -73,8 +71,8 @@ const char* g_NrdResourceTypeNames[] =
     "IN_SPEC_CONFIDENCE",
     "IN_DISOCCLUSION_THRESHOLD_MIX",
     "IN_BASECOLOR_METALNESS",
-    "IN_SHADOWDATA",
-    "IN_SHADOW_TRANSLUCENCY",
+    "IN_PENUMBRA",
+    "IN_TRANSLUCENCY",
     "IN_SIGNAL",
     "IN_DELTA_PRIMARY_POS",
     "IN_DELTA_SECONDARY_POS",
@@ -90,8 +88,6 @@ const char* g_NrdResourceTypeNames[] =
     "OUT_DIFF_DIRECTION_HITDIST",
     "OUT_SHADOW_TRANSLUCENCY",
     "OUT_SIGNAL",
-    "OUT_REFLECTION_MV",
-    "OUT_DELTA_MV",
     "OUT_VALIDATION",
 
     "TRANSIENT_POOL",
@@ -112,9 +108,6 @@ const char* g_NrdDenoiserNames[] =
     "REBLUR_DIFFUSE_SPECULAR_SH",
     "REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION",
 
-    "SIGMA_SHADOW",
-    "SIGMA_SHADOW_TRANSLUCENCY",
-
     "RELAX_DIFFUSE",
     "RELAX_DIFFUSE_SH",
     "RELAX_SPECULAR",
@@ -122,10 +115,10 @@ const char* g_NrdDenoiserNames[] =
     "RELAX_DIFFUSE_SPECULAR",
     "RELAX_DIFFUSE_SPECULAR_SH",
 
-    "REFERENCE",
+    "SIGMA_SHADOW",
+    "SIGMA_SHADOW_TRANSLUCENCY",
 
-    "SPECULAR_REFLECTION_MV",
-    "SPECULAR_DELTA_MV",
+    "REFERENCE",
 };
 static_assert( GetCountOf(g_NrdDenoiserNames) == (uint32_t)nrd::Denoiser::MAX_NUM );
 

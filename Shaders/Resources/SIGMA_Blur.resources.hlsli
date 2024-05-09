@@ -19,21 +19,22 @@ NRD_SAMPLERS_START
 NRD_SAMPLERS_END
 
 NRD_INPUTS_START
-    NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 0 )
-    NRD_INPUT( Texture2D<float2>, gIn_Hit_ViewZ, t, 1 )
-    NRD_INPUT( Texture2D<float2>, gIn_Tiles, t, 2 )
+    NRD_INPUT( Texture2D<float>, gIn_ViewZ, t, 0 )
+    NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
+    NRD_INPUT( Texture2D<float>, gIn_Penumbra, t, 2 )
+    NRD_INPUT( Texture2D<float2>, gIn_Tiles, t, 3 )
     #ifdef SIGMA_FIRST_PASS
-        NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_History, t, 3 )
+        NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_History, t, 4 )
         #ifdef SIGMA_TRANSLUCENT
-            NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 4 )
+            NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 5 )
         #endif
     #else
-        NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 3 )
+        NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 4 )
     #endif
 NRD_INPUTS_END
 
 NRD_OUTPUTS_START
-    NRD_OUTPUT( RWTexture2D<float2>, gOut_Hit_ViewZ, u, 0 )
+    NRD_OUTPUT( RWTexture2D<float>, gOut_Penumbra, u, 0 )
     NRD_OUTPUT( RWTexture2D<SIGMA_TYPE>, gOut_Shadow_Translucency, u, 1 )
     #ifdef SIGMA_FIRST_PASS
         NRD_OUTPUT( RWTexture2D<SIGMA_TYPE>, gOut_History, u, 2 )

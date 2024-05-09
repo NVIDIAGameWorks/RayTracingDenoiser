@@ -140,9 +140,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Fetch data
         #if( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
-            float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled, 0 ) );
+            float zs = REBLUR_UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled, 0 ) );
         #else
-            float zs = abs( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
+            float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
         #endif
 
             float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );

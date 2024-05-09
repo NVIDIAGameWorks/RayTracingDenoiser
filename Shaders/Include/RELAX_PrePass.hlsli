@@ -143,7 +143,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             // Fetch data
             float sampleMaterialID;
             float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestClamp, WithRectOffset(uvScaled), 0), sampleMaterialID).rgb;
-            float sampleViewZ = abs(gViewZ.SampleLevel(gNearestClamp, WithRectOffset(uvScaled), 0));
+            float sampleViewZ = UnpackViewZ(gViewZ.SampleLevel(gNearestClamp, WithRectOffset(uvScaled), 0));
             float3 sampleWorldPos = GetCurrentWorldPosFromClipSpaceXY(uv * 2.0 - 1.0, sampleViewZ);
 
             // Sample weight
@@ -286,7 +286,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             float4 sampleNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gNearestClamp, WithRectOffset(uvScaled), 0), sampleMaterialID);
             float3 sampleNormal = sampleNormalRoughness.rgb;
             float sampleRoughness = sampleNormalRoughness.a;
-            float sampleViewZ = abs(gViewZ.SampleLevel(gNearestClamp, WithRectOffset(uvScaled), 0));
+            float sampleViewZ = UnpackViewZ(gViewZ.SampleLevel(gNearestClamp, WithRectOffset(uvScaled), 0));
 
             // Sample weight
             float sampleWeight = IsInScreenNearest(uv);

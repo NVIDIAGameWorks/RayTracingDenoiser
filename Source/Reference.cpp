@@ -27,35 +27,3 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 #include "Denoisers/Reference.hpp"
-
-
-// SPECULAR_REFLECTION_MV
-#ifdef NRD_EMBEDS_DXBC_SHADERS
-    #include "SpecularReflectionMv_Compute.cs.dxbc.h"
-#endif
-
-#ifdef NRD_EMBEDS_DXIL_SHADERS
-    #include "SpecularReflectionMv_Compute.cs.dxil.h"
-#endif
-
-#ifdef NRD_EMBEDS_SPIRV_SHADERS
-    #include "SpecularReflectionMv_Compute.cs.spirv.h"
-#endif
-
-#include "Denoisers/SpecularReflectionMv.hpp"
-
-
-// SPECULAR_DELTA_MV
-#ifdef NRD_EMBEDS_DXBC_SHADERS
-    #include "SpecularDeltaMv_Compute.cs.dxbc.h"
-#endif
-
-#ifdef NRD_EMBEDS_DXIL_SHADERS
-    #include "SpecularDeltaMv_Compute.cs.dxil.h"
-#endif
-
-#ifdef NRD_EMBEDS_SPIRV_SHADERS
-    #include "SpecularDeltaMv_Compute.cs.spirv.h"
-#endif
-
-#include "Denoisers/SpecularDeltaMv.hpp"

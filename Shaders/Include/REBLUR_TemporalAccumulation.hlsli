@@ -49,7 +49,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    float viewZ = abs( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
     if( viewZ > gDenoisingRange )
         return;
 
@@ -166,10 +166,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float4 smbViewZ2 = gIn_Prev_ViewZ.GatherRed( gNearestClamp, smbCatromGatherUv, float2( 1, 3 ) ).wzxy;
     float4 smbViewZ3 = gIn_Prev_ViewZ.GatherRed( gNearestClamp, smbCatromGatherUv, float2( 3, 3 ) ).wzxy;
 
-    float3 prevViewZ0 = UnpackViewZ( smbViewZ0.yzw );
-    float3 prevViewZ1 = UnpackViewZ( smbViewZ1.xzw );
-    float3 prevViewZ2 = UnpackViewZ( smbViewZ2.xyw );
-    float3 prevViewZ3 = UnpackViewZ( smbViewZ3.xyz );
+    float3 prevViewZ0 = REBLUR_UnpackViewZ( smbViewZ0.yzw );
+    float3 prevViewZ1 = REBLUR_UnpackViewZ( smbViewZ1.xzw );
+    float3 prevViewZ2 = REBLUR_UnpackViewZ( smbViewZ2.xyw );
+    float3 prevViewZ3 = REBLUR_UnpackViewZ( smbViewZ3.xyz );
 
     // Previous normal averaged for all pixels in 2x2 footprint
     // IMPORTANT: bilinear filter can touch sky pixels, due to this reason "Post Blur" writes special values into sky-pixels
@@ -271,8 +271,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         int3 checkerboardPos = pixelPos.xxy + int3( -1, 1, 0 );
         checkerboardPos.x = max( checkerboardPos.x, 0 );
         checkerboardPos.y = min( checkerboardPos.y, gRectSizeMinusOne.x );
-        float viewZ0 = abs( gIn_ViewZ[ WithRectOrigin( checkerboardPos.xz ) ] );
-        float viewZ1 = abs( gIn_ViewZ[ WithRectOrigin( checkerboardPos.yz ) ] );
+        float viewZ0 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.xz ) ] );
+        float viewZ1 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.yz ) ] );
         float2 wc = GetBilateralWeight( float2( viewZ0, viewZ1 ), viewZ );
         wc.x = ( viewZ0 > gDenoisingRange || pixelPos.x < 1 ) ? 0.0 : wc.x;
         wc.y = ( viewZ1 > gDenoisingRange || pixelPos.x >= gRectSizeMinusOne.x ) ? 0.0 : wc.y;
@@ -334,7 +334,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float2 motionUv = pixelUv + 0.99 * deltaUv * gRectSizeInv; // stay in SMEM
 
             // Construct the other edge point "x"
-            float z = abs( gIn_ViewZ.SampleLevel( gLinearClamp, WithRectOffset( motionUv * gResolutionScale ), 0 ) );
+            float z = UnpackViewZ( gIn_ViewZ.SampleLevel( gLinearClamp, WithRectOffset( motionUv * gResolutionScale ), 0 ) );
             float3 x = STL::Geometry::ReconstructViewPosition( motionUv, gFrustum, z, gOrthoMode );
             x = STL::Geometry::RotateVector( gViewToWorld, x );
 
@@ -358,7 +358,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             if( NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLenFixed > 1.0 && IsInScreenNearest( motionUvHigh ) )
             {
                 // Construct the other edge point "xHigh"
-                float zHigh = abs( gIn_ViewZ.SampleLevel( gLinearClamp, WithRectOffset( motionUvHigh * gResolutionScale ), 0 ) );
+                float zHigh = UnpackViewZ( gIn_ViewZ.SampleLevel( gLinearClamp, WithRectOffset( motionUvHigh * gResolutionScale ), 0 ) );
                 float3 xHigh = STL::Geometry::ReconstructViewPosition( motionUvHigh, gFrustum, zHigh, gOrthoMode );
                 xHigh = STL::Geometry::RotateVector( gViewToWorld, xHigh );
 
@@ -435,20 +435,24 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float virtualHistoryNormalBasedConfidence = 1.0 / ( 1.0 + 0.5 * Dfactor * saturate( length( N - vmbN ) - NRD_NORMAL_ULP ) * max( parallaxEstimation, vmbPixelsTraveled ) );
 
         // Virtual motion - disocclusion: plane distance and roughness
-        float4 vmbOcclusionThreshold = disocclusionThresholdMulFrustumSize;
-        vmbOcclusionThreshold *= lerp( 0.05, 1.0, NoV ); // yes, "*" not "/"
-        vmbOcclusionThreshold *= float( dot( vmbN, N ) > 0.0 ); // TODO: Navg?
-        vmbOcclusionThreshold *= IsInScreenBilinear( vmbBilinearFilter.origin, gRectSizePrev );
-        vmbOcclusionThreshold -= NRD_EPS;
+        float4 vmbOcclusion;
+        {
+            float4 vmbOcclusionThreshold = disocclusionThresholdMulFrustumSize;
+            vmbOcclusionThreshold *= lerp( 0.25, 1.0, NoV ); // yes, "*" not "/" // TODO: it's from commit "fixed suboptimal "vmb" reprojection behavior in disocclusions", but is it really needed?
+            vmbOcclusionThreshold *= float( dot( vmbN, N ) > 0.0 ); // TODO: Navg?
+            vmbOcclusionThreshold *= IsInScreenBilinear( vmbBilinearFilter.origin, gRectSizePrev );
+            vmbOcclusionThreshold -= NRD_EPS;
 
-        float4 vmbViewZ = UnpackViewZ( gIn_Prev_ViewZ.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy );
-        float3 vmbVv = STL::Geometry::ReconstructViewPosition( vmbPixelUv, gFrustumPrev, 1.0 ); // unnormalized, orthoMode = 0
-        float3 vmbV = STL::Geometry::RotateVectorInverse( gWorldToViewPrev, vmbVv );
-        float NoXcurr = dot( N, X - gCameraDelta.xyz );
-        float4 NoXprev = ( N.x * vmbV.x + N.y * vmbV.y ) * ( gOrthoMode == 0 ? vmbViewZ : gOrthoMode ) + N.z * vmbV.z * vmbViewZ;
-        float4 vmbPlaneDist = abs( NoXprev - NoXcurr );
-        float4 vmbOcclusion = step( vmbPlaneDist, vmbOcclusionThreshold );
-        vmbOcclusion *= step( 0.5, roughnessWeight );
+            float4 vmbViewZ = REBLUR_UnpackViewZ( gIn_Prev_ViewZ.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy );
+            float3 vmbVv = STL::Geometry::ReconstructViewPosition( vmbPixelUv, gFrustumPrev, 1.0 ); // unnormalized, orthoMode = 0
+            float3 vmbV = STL::Geometry::RotateVectorInverse( gWorldToViewPrev, vmbVv );
+            float NoXcurr = dot( N, X - gCameraDelta.xyz );
+            float4 NoXprev = ( N.x * vmbV.x + N.y * vmbV.y ) * ( gOrthoMode == 0 ? vmbViewZ : gOrthoMode ) + N.z * vmbV.z * vmbViewZ;
+            float4 vmbPlaneDist = abs( NoXprev - NoXcurr );
+
+            vmbOcclusion = step( vmbPlaneDist, vmbOcclusionThreshold );
+            vmbOcclusion *= step( 0.5, roughnessWeight );
+        }
 
         // Virtual motion - disocclusion: materialID
         uint4 vmbInternalData = gIn_Prev_InternalData.GatherRed( gNearestClamp, vmbBilinearGatherUv ).wzxy;
@@ -503,23 +507,26 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Virtual motion - virtual parallax difference
         // Tests 3, 6, 8, 11, 14, 100, 103, 104, 106, 109, 110, 114, 120, 127, 130, 131, 132, 138, 139 and 9e
-        float hitDistForTrackingPrev = gIn_Prev_Spec_HitDistForTracking.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
-        float3 XvirtualPrev = GetXvirtual( hitDistForTrackingPrev, curvature, X, Xprev, V, Dfactor );
-        float XvirtualLengthPrev = length( XvirtualPrev );
-        float2 vmbPixelUvPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, XvirtualPrev );
+        float virtualHistoryParallaxBasedConfidence;
+        {
+            float hitDistForTrackingPrev = gIn_Prev_Spec_HitDistForTracking.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
+            float3 XvirtualPrev = GetXvirtual( hitDistForTrackingPrev, curvature, X, Xprev, V, Dfactor );
+            float XvirtualLengthPrev = length( XvirtualPrev );
+            float2 vmbPixelUvPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, XvirtualPrev );
 
-        #if( REBLUR_USE_MORE_STRICT_PARALLAX_BASED_CHECK == 1 )
-            float unproj1 = min( hitDistForTracking, hitDistForTrackingPrev ) / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, max( XvirtualLength, XvirtualLengthPrev ) );
-            float lobeRadiusInPixels = lobeTanHalfAngle * unproj1;
-        #else
-            // Works better if "percentOfVolume" is 0.3-0.6
-            float unproj1 = hitDistForTracking / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, XvirtualLength );
-            float unproj2 = hitDistForTrackingPrev / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, XvirtualLengthPrev );
-            float lobeRadiusInPixels = lobeTanHalfAngle * min( unproj1, unproj2 );
-        #endif
+            #if( REBLUR_USE_MORE_STRICT_PARALLAX_BASED_CHECK == 1 )
+                float unproj1 = min( hitDistForTracking, hitDistForTrackingPrev ) / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, max( XvirtualLength, XvirtualLengthPrev ) );
+                float lobeRadiusInPixels = lobeTanHalfAngle * unproj1;
+            #else
+                // Works better if "percentOfVolume" is 0.3-0.6
+                float unproj1 = hitDistForTracking / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, XvirtualLength );
+                float unproj2 = hitDistForTrackingPrev / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, XvirtualLengthPrev );
+                float lobeRadiusInPixels = lobeTanHalfAngle * min( unproj1, unproj2 );
+            #endif
 
-        float deltaParallaxInPixels = length( ( vmbPixelUvPrev - vmbPixelUv ) * gRectSize );
-        float virtualHistoryParallaxBasedConfidence = STL::Math::SmoothStep( lobeRadiusInPixels + 0.25, 0.0, deltaParallaxInPixels );
+            float deltaParallaxInPixels = length( ( vmbPixelUvPrev - vmbPixelUv ) * gRectSize );
+            virtualHistoryParallaxBasedConfidence = STL::Math::SmoothStep( lobeRadiusInPixels + 0.25, 0.0, deltaParallaxInPixels );
+        }
 
         // Virtual motion - normal & roughness prev-prev tests
         // IMPORTANT: 2 is needed because:
@@ -596,7 +603,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Virtual history amount - other ( tests 65, 66, 103, 111, 132, e9, e11 )
         virtualHistoryAmount *= STL::Math::SmoothStep( 0.05, 0.95, Dfactor );
         virtualHistoryAmount *= virtualHistoryRoughnessBasedConfidence;
-        virtualHistoryAmount *= saturate( vmbSpecAccumSpeed / ( smbSpecAccumSpeed + NRD_EPS ) ); // ***
+
+        // Fallback to "smb" if "vmb" history is short // ***
+        // Interactive comparison of two methods: https://www.desmos.com/calculator/syocjyk9wc
+        // TODO: the amount gets shifted heavily towards "smb" if "smb" > "vmb" even by 5 frames
+        float vmbToSmbRatio = saturate( vmbSpecAccumSpeed / ( smbSpecAccumSpeed + NRD_EPS ) );
+        float smbBonusFrames = max( smbSpecAccumSpeed - vmbSpecAccumSpeed, 0.0 );
+        virtualHistoryAmount *= vmbToSmbRatio;
+        virtualHistoryAmount /= 1.0 + smbBonusFrames * ( 1.0 - vmbToSmbRatio );
 
         #if( REBLUR_VIRTUAL_HISTORY_AMOUNT != 2 )
             virtualHistoryAmount = REBLUR_VIRTUAL_HISTORY_AMOUNT;

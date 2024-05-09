@@ -17,7 +17,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    float viewZ = abs( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
     if( viewZ > gDenoisingRange )
         return;
 
@@ -27,8 +27,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     int3 checkerboardPos = pixelPos.xxy + int3( -1, 1, 0 );
     checkerboardPos.x = max( checkerboardPos.x, 0 );
     checkerboardPos.y = min( checkerboardPos.y, gRectSizeMinusOne.x );
-    float viewZ0 = abs( gIn_ViewZ[ WithRectOrigin( checkerboardPos.xz ) ] );
-    float viewZ1 = abs( gIn_ViewZ[ WithRectOrigin( checkerboardPos.yz ) ] );
+    float viewZ0 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.xz ) ] );
+    float viewZ1 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.yz ) ] );
     float2 wc = GetBilateralWeight( float2( viewZ0, viewZ1 ), viewZ );
     wc.x = ( viewZ0 > gDenoisingRange || pixelPos.x < 1 ) ? 0.0 : wc.x;
     wc.y = ( viewZ1 > gDenoisingRange || pixelPos.x >= gRectSizeMinusOne.x ) ? 0.0 : wc.y;

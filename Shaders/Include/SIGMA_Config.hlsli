@@ -23,10 +23,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_ROTATOR_MODE                              NRD_FRAME
 #define SIGMA_POISSON_SAMPLE_NUM                        8
 #define SIGMA_POISSON_SAMPLES                           g_Special8
-#define SIGMA_MAX_PIXEL_RADIUS                          32.0
+#define SIGMA_MAX_PIXEL_RADIUS                          16.0 // TODO: at least 32 needed for test 200
 #define SIGMA_PENUMBRA_WEIGHT_SCALE                     10.0
 #define SIGMA_MAX_SIGMA_SCALE                           3.0
-#define SIGMA_SPATIAL_PASSES_NUM                        2
 #define SIGMA_TS_MOTION_MAX_REUSE                       0.11
 
 // Data type
@@ -62,4 +61,5 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gStabilizationStrength ) \
     NRD_CONSTANT( float, gDebug ) \
     NRD_CONSTANT( float, gSplitScreen ) \
+    NRD_CONSTANT( float, gViewZScale ) \
     NRD_CONSTANT( uint, gFrameIndex )

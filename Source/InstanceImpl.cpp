@@ -155,10 +155,6 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
             Add_ReblurDiffuseSpecularSh(denoiserData);
         else if (denoiserDesc.denoiser == Denoiser::REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION)
             Add_ReblurDiffuseDirectionalOcclusion(denoiserData);
-        else if (denoiserDesc.denoiser == Denoiser::SIGMA_SHADOW)
-            Add_SigmaShadow(denoiserData);
-        else if (denoiserDesc.denoiser == Denoiser::SIGMA_SHADOW_TRANSLUCENCY)
-            Add_SigmaShadowTranslucency(denoiserData);
         else if (denoiserDesc.denoiser == Denoiser::RELAX_DIFFUSE)
             Add_RelaxDiffuse(denoiserData);
         else if (denoiserDesc.denoiser == Denoiser::RELAX_DIFFUSE_SH)
@@ -171,12 +167,12 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
             Add_RelaxDiffuseSpecular(denoiserData);
         else if (denoiserDesc.denoiser == Denoiser::RELAX_DIFFUSE_SPECULAR_SH)
             Add_RelaxDiffuseSpecularSh(denoiserData);
+        else if (denoiserDesc.denoiser == Denoiser::SIGMA_SHADOW)
+            Add_SigmaShadow(denoiserData);
+        else if (denoiserDesc.denoiser == Denoiser::SIGMA_SHADOW_TRANSLUCENCY)
+            Add_SigmaShadowTranslucency(denoiserData);
         else if (denoiserDesc.denoiser == Denoiser::REFERENCE)
             Add_Reference(denoiserData);
-        else if (denoiserDesc.denoiser == Denoiser::SPECULAR_REFLECTION_MV)
-            Add_SpecularReflectionMv(denoiserData);
-        else if (denoiserDesc.denoiser == Denoiser::SPECULAR_DELTA_MV)
-            Add_SpecularDeltaMv(denoiserData);
         else // Should not be here
             return Result::INVALID_ARGUMENT;
 
@@ -272,6 +268,7 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
 nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSettings)
 {
     // TODO: matrix verifications? return INVALID_ARGUMENT?
+    assert("'viewZScale' can't be <= 0" && commonSettings.viewZScale > 0.0f);
     assert("'resourceSize' can't be 0" && commonSettings.resourceSize[0] != 0 && commonSettings.resourceSize[1] != 0);
     assert("'resourceSizePrev' can't be 0" && commonSettings.resourceSizePrev[0] != 0 && commonSettings.resourceSizePrev[1] != 0);
     assert("'rectSize' can't be 0" && commonSettings.rectSize[0] != 0 && commonSettings.rectSize[1] != 0);
@@ -509,18 +506,14 @@ nrd::Result nrd::InstanceImpl::GetComputeDispatches(const Identifier* identifier
             denoiserData.desc.denoiser == Denoiser::REBLUR_SPECULAR_OCCLUSION ||
             denoiserData.desc.denoiser == Denoiser::REBLUR_DIFFUSE_SPECULAR_OCCLUSION)
             Update_ReblurOcclusion(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::SIGMA_SHADOW || denoiserData.desc.denoiser == Denoiser::SIGMA_SHADOW_TRANSLUCENCY)
-            Update_SigmaShadow(denoiserData);
         else if (denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE || denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SH ||
             denoiserData.desc.denoiser == Denoiser::RELAX_SPECULAR || denoiserData.desc.denoiser == Denoiser::RELAX_SPECULAR_SH ||
             denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SPECULAR || denoiserData.desc.denoiser == Denoiser::RELAX_DIFFUSE_SPECULAR_SH)
             Update_Relax(denoiserData);
+        else if (denoiserData.desc.denoiser == Denoiser::SIGMA_SHADOW || denoiserData.desc.denoiser == Denoiser::SIGMA_SHADOW_TRANSLUCENCY)
+            Update_SigmaShadow(denoiserData);
         else if (denoiserData.desc.denoiser == Denoiser::REFERENCE)
             Update_Reference(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::SPECULAR_REFLECTION_MV)
-            Update_SpecularReflectionMv(denoiserData);
-        else if (denoiserData.desc.denoiser == Denoiser::SPECULAR_DELTA_MV)
-            Update_SpecularDeltaMv(denoiserData);
     }
 
     dispatchDescs = m_ActiveDispatches.data();

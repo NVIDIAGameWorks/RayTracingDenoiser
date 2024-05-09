@@ -162,6 +162,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gJitterDelta                                        = m_JitterDelta;
     consts->gHistoryFixFrameNum                                 = Min(settings.historyFixFrameNum, 3u) + 1.0f;
     consts->gHistoryThreshold                                   = (float)settings.spatialVarianceEstimationHistoryThreshold;
+    consts->gViewZScale                                         = m_CommonSettings.viewZScale;
     consts->gRoughnessEdgeStoppingEnabled                       = settings.enableRoughnessEdgeStopping ? 1 : 0;
     consts->gFrameIndex                                         = m_CommonSettings.frameIndex;
     consts->gDiffCheckerboard                                   = diffCheckerboard;

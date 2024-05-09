@@ -14,6 +14,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "REBLUR_Config.hlsli"
 #include "REBLUR_ClassifyTiles.resources.hlsli"
 
+#include "Common.hlsli"
+
 groupshared uint s_isSky;
 
 [numthreads( 8, 4, 1 )]
@@ -34,7 +36,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
         for( uint j = 0; j < 4; j++ )
         {
             uint2 pos = pixelPos + uint2( i, j );
-            float viewZ = abs( gIn_ViewZ[ pos ] );
+            float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
 
             isSky += viewZ > gDenoisingRange ? 1 : 0;
         }

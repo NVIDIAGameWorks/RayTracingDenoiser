@@ -8,17 +8,18 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-groupshared float2 s_Data[ BUFFER_Y ][ BUFFER_X ];
+groupshared float2 s_Penumbra_ViewZ[ BUFFER_Y ][ BUFFER_X ];
 groupshared SIGMA_TYPE s_Shadow_Translucency[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
 
-    float2 data = gIn_Hit_ViewZ[ globalPos ];
-    data.y = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
+    float2 data;
+    data.x = gIn_Penumbra[ globalPos ];
+    data.y = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( globalPos ) ] );
 
-    s_Data[ sharedPos.y ][ sharedPos.x ] = data;
+    s_Penumbra_ViewZ[ sharedPos.y ][ sharedPos.x ] = data;
 
     SIGMA_TYPE s = gIn_Shadow_Translucency[ globalPos ];
     s = SIGMA_BackEnd_UnpackShadow( s );
@@ -39,8 +40,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Center data
     int2 smemPos = threadPos + BORDER;
-    float2 centerData = s_Data[ smemPos.y ][ smemPos.x ];
-    float centerHitDist = centerData.x;
+    float2 centerData = s_Penumbra_ViewZ[ smemPos.y ][ smemPos.x ];
+    float centerPenumbra = centerData.x;
     float centerSignNoL = float( centerData.x != 0.0 );
     float viewZ = centerData.y;
 
@@ -49,7 +50,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    if( centerHitDist == 0.0 && SIGMA_SHOW_TILES == 0 )
+    if( centerPenumbra == 0.0 && SIGMA_SHOW_TILES == 0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
 
@@ -72,7 +73,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         for( i = 0; i <= BORDER * 2; i++ )
         {
             int2 pos = threadPos + int2( i, j );
-            float2 data = s_Data[ pos.y ][ pos.x ];
+            float2 data = s_Penumbra_ViewZ[ pos.y ][ pos.x ];
 
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
             float signNoL = float( data.x != 0.0 );
@@ -155,7 +156,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Reduce history in regions with hard shadows
     float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float pixelRadius = GetKernelRadiusInPixels( centerHitDist, unprojectZ );
+    float pixelRadius = GetKernelRadiusInPixels( centerPenumbra, unprojectZ );
     historyWeight *= STL::Math::LinearStep( 0.0, 0.5, pixelRadius );
 
     // Combine with current frame

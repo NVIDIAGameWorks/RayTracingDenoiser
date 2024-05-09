@@ -8,7 +8,9 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.7
+// NRD v4.8
+
+// IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
 
 //=================================================================================================================================
 // INPUT PARAMETERS
@@ -63,8 +65,6 @@ float tanOfLightAngularRadius:
     - angular size is computed from the shadow receiving point
     - in other words, tanOfLightAngularRadius = lightRadius / distanceToLight
 */
-
-// IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
 
 #ifndef NRD_INCLUDED
 #define NRD_INCLUDED
@@ -283,11 +283,6 @@ float tanOfLightAngularRadius:
 #define NRD_INF                                                                         1e6
 
 // Misc
-float _NRD_PackViewZ( float z )
-{
-    return clamp( z * NRD_FP16_VIEWZ_SCALE, -NRD_FP16_MAX, NRD_FP16_MAX );
-}
-
 float3 _NRD_SafeNormalize( float3 v )
 {
     return v * rsqrt( dot( v, v ) + 1e-9 );
@@ -738,75 +733,37 @@ float4 RELAX_FrontEnd_PackSh( float3 radiance, float hitDist, float3 direction, 
 // FRONT-END - SIGMA
 //=================================================================================================================================
 
-// SIGMA ( single light )
+// SIGMA single light
 
-// X => IN_SHADOWDATA
-float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius )
+// Infinite ( directional ) light source
+// X => IN_PENUMBRA
+float SIGMA_FrontEnd_PackPenumbra( float distanceToOccluder, float tanOfLightAngularRadius )
 {
-    float2 r;
-    r.x = 0.0;
-    r.y = _NRD_PackViewZ( viewZ );
+    float penumbraSize = distanceToOccluder * tanOfLightAngularRadius;
+    float penumbraRadius = penumbraSize * 0.5;
 
-    if( distanceToOccluder >= NRD_FP16_MAX )
-        r.x = NRD_FP16_MAX;
-    else if( distanceToOccluder != 0.0 )
-    {
-        float penumbraRadius = distanceToOccluder * tanOfLightAngularRadius;
-        r.x = min( penumbraRadius, 32768.0 );
-    }
+    return distanceToOccluder >= NRD_FP16_MAX ? NRD_FP16_MAX : min( penumbraRadius, 32768.0 );
+}
+
+// Local light source
+// X => IN_PENUMBRA
+// "lightSize" must be an acceptable projection to the plane perpendicular to the light direction
+float SIGMA_FrontEnd_PackPenumbra( float distanceToOccluder, float distanceToLight, float lightSize )
+{
+    float penumbraSize = lightSize * distanceToOccluder / max( distanceToLight - distanceToOccluder, NRD_EPS );
+    float penumbraRadius = penumbraSize * 0.5;
+
+    return distanceToOccluder >= NRD_FP16_MAX ? NRD_FP16_MAX : min( penumbraRadius, 32768.0 );
+}
+
+// X => IN_TRANSLUCENCY
+float4 SIGMA_FrontEnd_PackTranslucency( float distanceToOccluder, float3 translucency )
+{
+    float4 r;
+    r.x = float( distanceToOccluder >= NRD_FP16_MAX );
+    r.yzw = saturate( translucency );
 
     return r;
-}
-
-// X => IN_SHADOWDATA and IN_SHADOW_TRANSLUCENCY
-float2 SIGMA_FrontEnd_PackShadow( float viewZ, float distanceToOccluder, float tanOfLightAngularRadius, float3 translucency, out float4 out2 )
-{
-    // IN_SHADOW_TRANSLUCENCY
-    out2.x = float( distanceToOccluder >= NRD_FP16_MAX );
-    out2.yzw = saturate( translucency );
-
-    // IN_SHADOWDATA
-    float2 out1 = SIGMA_FrontEnd_PackShadow( viewZ, distanceToOccluder, tanOfLightAngularRadius );
-
-    return out1;
-}
-
-// SIGMA multi-light ( experimental )
-
-#define SIGMA_MULTILIGHT_DATATYPE float2x3
-
-SIGMA_MULTILIGHT_DATATYPE SIGMA_FrontEnd_MultiLightStart( )
-{
-    return float2x3( float3( 0, 0, 0 ), float3( 0, 0, 0 ) );
-}
-
-void SIGMA_FrontEnd_MultiLightUpdate( float3 L, float distanceToOccluder, float tanOfLightAngularRadius, float weight, inout SIGMA_MULTILIGHT_DATATYPE multiLightShadowData )
-{
-    float shadow = float( distanceToOccluder == NRD_FP16_MAX );
-    float distanceToOccluderProj = SIGMA_FrontEnd_PackShadow( 0, distanceToOccluder, tanOfLightAngularRadius ).x;
-
-    // Weighted sum for "pseudo" translucency
-    multiLightShadowData[ 0 ] += L * shadow;
-
-    // Weighted sum for distance to occluder (denoising will be driven by most important light)
-    weight *= _NRD_Luminance( L );
-
-    multiLightShadowData[ 1 ] += float3( distanceToOccluderProj * weight, weight, 0 );
-}
-
-// X => IN_SHADOWDATA and IN_SHADOW_TRANSLUCENCY
-float2 SIGMA_FrontEnd_MultiLightEnd( float viewZ, SIGMA_MULTILIGHT_DATATYPE multiLightShadowData, float3 Lsum, out float4 out2 )
-{
-    // IN_SHADOW_TRANSLUCENCY
-    out2.yzw = multiLightShadowData[ 0 ] / max( Lsum, NRD_EPS );
-    out2.x = _NRD_Luminance( out2.yzw );
-
-    // IN_SHADOWDATA
-    float2 out1;
-    out1.x = multiLightShadowData[ 1 ].x / max( multiLightShadowData[ 1 ].y, NRD_EPS );
-    out1.y = _NRD_PackViewZ( viewZ );
-
-    return out1;
 }
 
 //=================================================================================================================================

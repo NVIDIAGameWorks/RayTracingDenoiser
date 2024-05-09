@@ -111,13 +111,10 @@ namespace nrd
 
     union Settings
     {
-        // Add settings here
         ReblurSettings reblur;
-        SigmaSettings sigma;
         RelaxSettings relax;
+        SigmaSettings sigma;
         ReferenceSettings reference;
-        SpecularReflectionMvSettings specularReflectionMv;
-        SpecularDeltaMvSettings specularDeltaMv;
     };
 
     struct DenoiserData

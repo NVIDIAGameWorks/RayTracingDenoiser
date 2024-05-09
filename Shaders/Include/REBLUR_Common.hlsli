@@ -22,8 +22,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Internal data ( from the previous frame )
 
-#define PackViewZ( p )      min( p * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX )
-#define UnpackViewZ( p )    ( p / NRD_FP16_VIEWZ_SCALE )
+#define REBLUR_PackViewZ( p )                           min( p * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX )
+#define REBLUR_UnpackViewZ( p )                         ( p / NRD_FP16_VIEWZ_SCALE )
 
 float4 PackNormalRoughness( float4 p )
 {
@@ -337,7 +337,8 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
         float skewFactor = lerp( 0.5 + 0.5 * roughness, 1.0, NoD );
         skewFactor = lerp( skewFactor, 1.0, anisoFade );
 
-        T *= skewFactor; // TODO: B /= skewFactor?
+        //T *= skewFactor; // TODO: let's not srink filtering in the other direction
+        B /= skewFactor;
     }
 
     return float2x3( T, B );

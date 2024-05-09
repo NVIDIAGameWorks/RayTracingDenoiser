@@ -22,7 +22,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     }
 
     // Early out
-    float viewZ = UnpackViewZ( gIn_ViewZ[ pixelPos ] );
+    float viewZ = REBLUR_UnpackViewZ( gIn_ViewZ[ pixelPos ] );
     if( viewZ > gDenoisingRange )
     {
         // ~0 normal is needed to allow bilinear filter in TA ( 0 can't be used due to "division by zero" in "UnpackNormalRoughness" )

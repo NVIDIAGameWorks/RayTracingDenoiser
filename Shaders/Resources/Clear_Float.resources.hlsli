@@ -10,6 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRD_CONSTANTS_START( Clear_FloatConstants )
     NRD_CONSTANT( float, gDebug ) // only for availability in Common.hlsl
+    NRD_CONSTANT( float, gViewZScale ) // only for availability in Common.hlsl
 NRD_CONSTANTS_END
 
 NRD_OUTPUTS_START

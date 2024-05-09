@@ -42,7 +42,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    float viewZ = abs( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
     if( viewZ > gDenoisingRange )
         return;
 
@@ -148,7 +148,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     pos = clamp( pos, 0, gRectSizeMinusOne );
 
                     // Fetch data
-                    float z = abs( gIn_ViewZ[ WithRectOrigin( pos ) ] );
+                    float z = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
 
                     float materialIDs;
                     float4 Ns = gIn_Normal_Roughness[ WithRectOrigin( pos ) ];
@@ -337,7 +337,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     pos = clamp( pos, 0, gRectSizeMinusOne );
 
                     // Fetch data
-                    float z = abs( gIn_ViewZ[ WithRectOrigin( pos ) ] );
+                    float z = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
 
                     float materialIDs;
                     float4 Ns = gIn_Normal_Roughness[ WithRectOrigin( pos ) ];

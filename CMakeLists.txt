@@ -195,7 +195,6 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
 
     if (NRD_EMBEDS_SPIRV_SHADERS)
         set (SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p SPIRV --compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS}
-            -D VULKAN
             --sRegShift 100
             --tRegShift 200
             --bRegShift 300

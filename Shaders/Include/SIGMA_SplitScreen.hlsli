@@ -15,8 +15,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 pixelPos : SV_DispatchThreadId)
     if( pixelUv.x > gSplitScreen || any( pixelPos > gRectSizeMinusOne ) )
         return;
 
-    float2 data = gIn_Hit_ViewZ[ pixelPos ];
-    float viewZ = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
+    float2 data = gIn_Penumbra[ pixelPos ];
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
 
     SIGMA_TYPE s;
     #ifdef SIGMA_TRANSLUCENT

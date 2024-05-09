@@ -13,7 +13,8 @@ NRD_CONSTANTS_START( REFERENCE_TemporalAccumulationConstants )
     NRD_CONSTANT( float2, gRectSizeInv )
     NRD_CONSTANT( float, gSplitScreen )
     NRD_CONSTANT( float, gAccumSpeed )
-    NRD_CONSTANT( float, gDebug )
+    NRD_CONSTANT( float, gDebug ) // only for availability in Common.hlsl
+    NRD_CONSTANT( float, gViewZScale ) // only for availability in Common.hlsl
 NRD_CONSTANTS_END
 
 NRD_INPUTS_START

@@ -122,7 +122,7 @@ Usage:
         PrintfAt( "a = %f, b = %f, c = %u", a, b, c );
     #endif
 */
-#if( defined( __hlsl_dx_compiler ) && defined( VULKAN ) )
+#if( defined( __hlsl_dx_compiler ) && defined( __spirv__ ) )
     #define PRINTF_AVAILABLE
     #define PrintfAt(...) \
         if( uint( pixelPos.x ) == gPrintfAt.x && uint( pixelPos.y ) == gPrintfAt.y ) \
@@ -197,6 +197,11 @@ static const float3 g_Special8[ 8 ] =
 #else
     #define CompareMaterials( m0, m, mask )     1.0
 #endif
+
+float UnpackViewZ( float z )
+{
+    return abs( z * gViewZScale );
+}
 
 float PixelRadiusToWorld( float unproject, float orthoMode, float pixelRadius, float viewZ )
 {

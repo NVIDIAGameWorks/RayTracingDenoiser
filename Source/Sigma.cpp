@@ -122,6 +122,7 @@ void nrd::InstanceImpl::AddSharedConstants_Sigma(const SigmaSettings& settings, 
     consts->gStabilizationStrength  = m_CommonSettings.accumulationMode == AccumulationMode::CONTINUE ? settings.stabilizationStrength : 0.0f;
     consts->gDebug                  = m_CommonSettings.debug;
     consts->gSplitScreen            = m_CommonSettings.splitScreen;
+    consts->gViewZScale             = m_CommonSettings.viewZScale;
     consts->gFrameIndex             = m_CommonSettings.frameIndex;
 }
 

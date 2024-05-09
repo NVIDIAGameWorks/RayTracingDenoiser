@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 4
-#define NRD_DESCS_VERSION_MINOR 7
+#define NRD_DESCS_VERSION_MINOR 8
 
 static_assert(NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -92,10 +92,11 @@ namespace nrd
         IN_SPEC_SH0,
         IN_SPEC_SH1,
 
-        // Shadow data and optional translucency (RG16f+ and RGBA8+ for translucency)
-        //      SIGMA: use "SIGMA_FrontEnd_PackShadow" for encoding
-        IN_SHADOWDATA,
-        IN_SHADOW_TRANSLUCENCY,
+        // Penumbra and optional translucency (R16f+ and RGBA8+ for translucency)
+        //      SIGMA: use "SIGMA_FrontEnd_PackPenumbra" for penumbra properties encoding
+        //      SIGMA: use "SIGMA_FrontEnd_PackTranslucency" for translucency encoding
+        IN_PENUMBRA,
+        IN_TRANSLUCENCY,
 
         // Some signal (R8+)
         IN_SIGNAL,
@@ -108,22 +109,21 @@ namespace nrd
         // OUTPUTS
         //=============================================================================================================================
 
-        // IMPORTANT: These textures can be potentially used as history buffers!
         // IMPORTANT: Most of denoisers do not write into output pixels outside of "CommonSettings::denoisingRange"!
 
         // Radiance and hit distance
         //      REBLUR: use "REBLUR_BackEnd_UnpackRadianceAndNormHitDist" for decoding (RGBA16f+)
         //      RELAX: use "RELAX_BackEnd_UnpackRadiance" for decoding (R11G11B10f+)
-        OUT_DIFF_RADIANCE_HITDIST,
-        OUT_SPEC_RADIANCE_HITDIST,
+        OUT_DIFF_RADIANCE_HITDIST, // IMPORTANT: used as history if "stabilizationStrength != 0"
+        OUT_SPEC_RADIANCE_HITDIST, // IMPORTANT: used as history if "stabilizationStrength != 0"
 
         // SH data
         //      REBLUR: use "REBLUR_BackEnd_UnpackSh" for decoding (2x RGBA16f+)
         //      RELAX: use "RELAX_BackEnd_UnpackSh" for decoding (2x RGBA16f+)
-        OUT_DIFF_SH0,
-        OUT_DIFF_SH1,
-        OUT_SPEC_SH0,
-        OUT_SPEC_SH1,
+        OUT_DIFF_SH0, // IMPORTANT: used as history if "stabilizationStrength != 0"
+        OUT_DIFF_SH1, // IMPORTANT: used as history if "stabilizationStrength != 0"
+        OUT_SPEC_SH0, // IMPORTANT: used as history if "stabilizationStrength != 0"
+        OUT_SPEC_SH1, // IMPORTANT: used as history if "stabilizationStrength != 0"
 
         // Normalized hit distance (R8+)
         OUT_DIFF_HITDIST,
@@ -131,20 +131,14 @@ namespace nrd
 
         // Bent normal and normalized hit distance (RGBA8+)
         //      REBLUR: use "REBLUR_BackEnd_UnpackDirectionalOcclusion" for decoding
-        OUT_DIFF_DIRECTION_HITDIST,
+        OUT_DIFF_DIRECTION_HITDIST, // IMPORTANT: used as history if "stabilizationStrength != 0"
 
         // Shadow and optional transcluceny (R8+ or RGBA8+)
         //      SIGMA: use "SIGMA_BackEnd_UnpackShadow" for decoding
-        OUT_SHADOW_TRANSLUCENCY,
+        OUT_SHADOW_TRANSLUCENCY, // IMPORTANT: used as history if "stabilizationStrength != 0"
 
         // Denoised signal (R8+)
         OUT_SIGNAL,
-
-        // 2D screen-space specular motion (RG16f+), MV = previous - current
-        OUT_REFLECTION_MV,
-
-        // 2D screen-space refraction motion (RG16f+), MV = previous - current
-        OUT_DELTA_MV,
 
         // (Optional) Debug output (RGBA8+), .w = transparency
         // Used if "CommonSettings::enableValidation = true"
@@ -168,10 +162,8 @@ namespace nrd
         /*
         IMPORTANT: IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ are used by any denoiser
         These denoisers DON'T use:
-            SIGMA_SHADOW - IN_VIEWZ
-            SIGMA_SHADOW_TRANSLUCENCY - IN_VIEWZ
+            SIGMA_SHADOW & SIGMA_SHADOW_TRANSLUCENCY - IN_MV, if "stabilizationStrength = 0"
             REFERENCE - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ
-            SPECULAR_DELTA_MV - IN_NORMAL_ROUGHNESS, IN_VIEWZ
         */
 
         // =============================================================================================================================
@@ -226,18 +218,6 @@ namespace nrd
         REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
 
         // =============================================================================================================================
-        // SIGMA
-        // =============================================================================================================================
-
-        // INPUTS - IN_SHADOWDATA, OUT_SHADOW_TRANSLUCENCY (used as history)
-        // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
-        SIGMA_SHADOW,
-
-        // INPUTS - IN_SHADOWDATA, IN_SHADOW_TRANSLUCENCY, OUT_SHADOW_TRANSLUCENCY (used as history)
-        // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
-        SIGMA_SHADOW_TRANSLUCENCY,
-
-        // =============================================================================================================================
         // RELAX
         // =============================================================================================================================
 
@@ -272,24 +252,24 @@ namespace nrd
         RELAX_DIFFUSE_SPECULAR_SH,
 
         // =============================================================================================================================
+        // SIGMA
+        // =============================================================================================================================
+
+        // INPUTS - IN_PENUMBRA, OUT_SHADOW_TRANSLUCENCY
+        // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
+        SIGMA_SHADOW,
+
+        // INPUTS - IN_PENUMBRA, IN_TRANSLUCENCY, OUT_SHADOW_TRANSLUCENCY
+        // OUTPUTS - OUT_SHADOW_TRANSLUCENCY
+        SIGMA_SHADOW_TRANSLUCENCY,
+
+        // =============================================================================================================================
         // REFERENCE
         // =============================================================================================================================
 
         // INPUTS - IN_SIGNAL
         // OUTPUTS - OUT_SIGNAL
         REFERENCE,
-
-        // =============================================================================================================================
-        // MOTION VECTORS
-        // =============================================================================================================================
-
-        // INPUTS - IN_SPEC_HITDIST
-        // OUTPUTS - OUT_REFLECTION_MV
-        SPECULAR_REFLECTION_MV,
-
-        // INPUTS - IN_DELTA_PRIMARY_POS, IN_DELTA_SECONDARY_POS
-        // OUTPUT - OUT_DELTA_MV
-        SPECULAR_DELTA_MV,
 
         MAX_NUM
     };
@@ -479,7 +459,7 @@ namespace nrd
         ComputeShaderDesc computeShaderSPIRV;
         const char* shaderFileName;
         const char* shaderEntryPointName;
-        const ResourceRangeDesc* resourceRanges; // up to 2 ranges: "TEXTURE" inputs (optional) and "TEXTURE_STORAGE" outputs 
+        const ResourceRangeDesc* resourceRanges; // up to 2 ranges: "TEXTURE" inputs (optional) and "TEXTURE_STORAGE" outputs
         uint32_t resourceRangesNum;
 
         // Hint that pipeline has a constant buffer with shared parameters from "InstanceDesc"

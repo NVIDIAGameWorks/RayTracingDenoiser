@@ -8,17 +8,18 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-groupshared float2 s_Data[ BUFFER_Y ][ BUFFER_X ];
+groupshared float2 s_Penumbra_ViewZ[ BUFFER_Y ][ BUFFER_X ];
 groupshared SIGMA_TYPE s_Shadow_Translucency[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
 
-    float2 data = gIn_Hit_ViewZ[ globalPos ];
-    data.y = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
+    float2 data;
+    data.x = gIn_Penumbra[ globalPos ];
+    data.y = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( globalPos ) ] );
 
-    s_Data[ sharedPos.y ][ sharedPos.x ] = data;
+    s_Penumbra_ViewZ[ sharedPos.y ][ sharedPos.x ] = data;
 
     SIGMA_TYPE s;
     #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
@@ -47,8 +48,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Center data
     int2 smemPos = threadPos + BORDER;
-    float2 centerData = s_Data[ smemPos.y ][ smemPos.x ];
-    float centerHitDist = centerData.x;
+    float2 centerData = s_Penumbra_ViewZ[ smemPos.y ][ smemPos.x ];
+    float centerPenumbra = centerData.x;
     float centerSignNoL = float( centerData.x != 0.0 );
     float viewZ = centerData.y;
 
@@ -69,9 +70,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         tileValue *= all( pixelPos < gRectSize ); // due to USE_MAX_DIMS
     #endif
 
-    if( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerHitDist == 0.0 )
+    if( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerPenumbra == 0.0 )
     {
-        gOut_Hit_ViewZ[ pixelPos ] = float2( 0.0, viewZ * NRD_FP16_VIEWZ_SCALE );
+        gOut_Penumbra[ pixelPos ] = 0;
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
 
         return;
@@ -91,7 +92,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Estimate average distance to occluder
     float2 sum = 0;
-    float hitDist = 0;
+    float penumbra = 0;
     SIGMA_TYPE result = 0;
 
     [unroll]
@@ -102,9 +103,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         {
             int2 pos = threadPos + int2( i, j );
 
-            float2 data = s_Data[ pos.y ][ pos.x ];
-            float h = data.x;
-            float signNoL = float( data.x != 0.0 );
+            float2 data = s_Penumbra_ViewZ[ pos.y ][ pos.x ];
+            float p = data.x;
+            float signNoL = float( p != 0.0 );
             float z = data.y;
 
             float w = 1.0;
@@ -124,25 +125,19 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             s = Denanify( w, s );
 
             float2 ww = w;
-            ww.y *= float( s.x != 1.0 ); // TODO: what if s.x == 1.0, but h < NRD_FP16_MAX?
-            ww.y *= 1.0 / ( 1.0 + h * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
+            ww.y *= !IsLit( p );
+            ww.y *= 1.0 / ( 1.0 + p * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
 
             result += s * ww.x;
-            hitDist += h * ww.y;
+            penumbra += p * ww.y;
             sum += ww;
         }
     }
 
-    result /= sum.x;
-    hitDist /= max( sum.y, NRD_EPS ); // yes, without patching
+    result /= sum.x; // TODO: lerp to center if blur radius < BORDER
+    penumbra /= max( sum.y, NRD_EPS ); // yes, without patching
 
-    float invHitDist = 1.0 / max( hitDist, NRD_EPS );
-
-    // Blur radius
-    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float worldRadius = GetKernelRadiusInPixels( hitDist, unprojectZ ) * unprojectZ;
-    worldRadius *= tileValue; // helps to prevent blurring "inside" umbra
-    worldRadius /= SIGMA_SPATIAL_PASSES_NUM;
+    float invHitDist = 1.0 / max( penumbra, NRD_EPS );
 
     // Tangent basis with anisotropy
     float3x3 mWorldToLocal = STL::Geometry::GetBasis( Nv );
@@ -158,9 +153,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float cosa = abs( dot( Nv, gLightDirectionView.xyz ) );
         float skewFactor = lerp( 0.25, 1.0, cosa );
 
-        //Tv *= skewFactor; // TODO: needed?
+        //Tv *= skewFactor; // TODO: let's not srink filtering in the other direction
         Bv /= skewFactor;
     }
+
+    // Blur radius
+    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float worldRadius = GetKernelRadiusInPixels( penumbra, unprojectZ, tileValue ) * unprojectZ;
 
     Tv *= worldRadius;
     Bv *= worldRadius;
@@ -186,10 +185,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float2 uvScaled = ClampUvToViewport( uv );
 
         // Fetch data
-        float2 data = gIn_Hit_ViewZ.SampleLevel( gNearestClamp, uvScaled, 0 );
-        float h = data.x;
-        float signNoL = float( data.x != 0.0 );
-        float z = abs( data.y ) / NRD_FP16_VIEWZ_SCALE;
+        float p = gIn_Penumbra.SampleLevel( gNearestClamp, uvScaled, 0 );
+        float signNoL = float( p != 0.0 );
+        float z = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
 
         // Sample weight
         float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
@@ -202,7 +200,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         w *= float( centerSignNoL == signNoL );
 
         // Avoid umbra leaking inside wide penumbra
-        float t = saturate( h * invHitDist );
+        float t = saturate( p * invHitDist );
         w *= STL::Math::LinearStep( 0.0, 0.1, t );
 
         // Fetch shadow
@@ -210,7 +208,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
             s = gIn_Shadow_Translucency.SampleLevel( gNearestClamp, uvScaled, 0 );
         #else
-            s = IsLit( h );
+            s = IsLit( p );
         #endif
         s = Denanify( w, s );
 
@@ -220,22 +218,22 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Accumulate
         float2 ww = w;
-        ww.y *= float( s.x != 1.0 ); // TODO: what if s.x == 1.0, but h < NRD_FP16_MAX?
-        ww.y *= 1.0 / ( 1.0 + h * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
+        ww.y *= !IsLit( p );
+        ww.y *= 1.0 / ( 1.0 + p * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
 
         result += s * ww.x;
-        hitDist += h * ww.y;
+        penumbra += p * ww.y;
         sum += ww;
     }
 
     result /= sum.x;
-    hitDist = sum.y == 0.0 ? centerHitDist : hitDist / sum.y;
+    penumbra = sum.y == 0.0 ? centerPenumbra : penumbra / sum.y;
 
     // Output
     #ifndef SIGMA_FIRST_PASS
         if( gStabilizationStrength != 0 )
     #endif
-            gOut_Hit_ViewZ[ pixelPos ] = float2( hitDist, viewZ * NRD_FP16_VIEWZ_SCALE );
+            gOut_Penumbra[ pixelPos ] = penumbra;
 
     gOut_Shadow_Translucency[ pixelPos ] = PackShadow( result );
 }

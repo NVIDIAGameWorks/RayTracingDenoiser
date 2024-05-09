@@ -15,7 +15,7 @@ void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
 
-    float viewZ = abs( gIn_ViewZ[ WithRectOrigin( globalPos ) ] );
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( globalPos ) ] );
 
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( globalPos ) ] );
     s_Normal_Roughness[ sharedPos.y ][ sharedPos.x ] = normalAndRoughness;

@@ -654,7 +654,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float2 motionUv = pixelUv + 0.99 * deltaUv * gRectSizeInv; // stay in SMEM
 
     // Construct the other edge point "x"
-    float z = abs(gViewZ.SampleLevel(gLinearClamp, WithRectOffset(motionUv * gResolutionScale), 0));
+    float z = UnpackViewZ(gViewZ.SampleLevel(gLinearClamp, WithRectOffset(motionUv * gResolutionScale), 0));
     float3 x = GetCurrentWorldPosFromClipSpaceXY(motionUv * 2.0 - 1.0, z);
 
     // Interpolate normal at "x"
@@ -676,7 +676,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float2 motionUvHigh = pixelUv + deltaUvLenFixed * deltaUv * gRectSizeInv;
     if (NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLenFixed > 1.0 && IsInScreenNearest(motionUvHigh))
     {
-        float zHigh = abs(gViewZ.SampleLevel(gLinearClamp, WithRectOffset(motionUvHigh * gResolutionScale), 0));
+        float zHigh = UnpackViewZ(gViewZ.SampleLevel(gLinearClamp, WithRectOffset(motionUvHigh * gResolutionScale), 0));
         float3 xHigh = GetCurrentWorldPosFromClipSpaceXY(motionUvHigh * 2.0 - 1.0, zHigh);
 
         #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )

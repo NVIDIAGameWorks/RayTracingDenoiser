@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.7.0 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.8.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -18,7 +18,7 @@ For quick starting see *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSampl
 Performance on RTX 4080 @ 1440p (native resolution, default denoiser settings):
 - `REBLUR_DIFFUSE_SPECULAR` - 2.45 ms
 - `RELAX_DIFFUSE_SPECULAR` - 2.90 ms
-- `SIGMA_SHADOW` - 0.30 ms (0.24 mns if temporal stabilization is off)
+- `SIGMA_SHADOW` - 0.30 ms (0.24 ms if temporal stabilization is off)
 - `SIGMA_SHADOW_TRANSLUCENCY` - 0.40 ms (0.30 ms if temporal stabilization is off)
 
 Supported signal types:
@@ -309,8 +309,8 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            72.12 |            38.12 |            34.00 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |           270.31 |           105.62 |           164.69 |
 |            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            86.69 |            42.25 |            44.44 |
-|            |                         SIGMA_SHADOW |            23.38 |             0.00 |            23.38 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |            42.31 |             0.00 |            42.31 |
+|            |                         SIGMA_SHADOW |            15.00 |             0.00 |            15.00 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |            33.94 |             0.00 |            33.94 |
 |            |                        RELAX_DIFFUSE |            99.25 |            63.31 |            35.94 |
 |            |                     RELAX_DIFFUSE_SH |           158.31 |            88.62 |            69.69 |
 |            |                       RELAX_SPECULAR |           101.44 |            63.38 |            38.06 |
@@ -329,8 +329,8 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           127.56 |            67.50 |            60.06 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |           480.06 |           187.50 |           292.56 |
 |            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           153.81 |            75.00 |            78.81 |
-|            |                         SIGMA_SHADOW |            41.38 |             0.00 |            41.38 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |            75.12 |             0.00 |            75.12 |
+|            |                         SIGMA_SHADOW |            26.38 |             0.00 |            26.38 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |            60.12 |             0.00 |            60.12 |
 |            |                        RELAX_DIFFUSE |           176.31 |           112.50 |            63.81 |
 |            |                     RELAX_DIFFUSE_SH |           281.31 |           157.50 |           123.81 |
 |            |                       RELAX_SPECULAR |           180.06 |           112.50 |            67.56 |
@@ -349,8 +349,8 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           271.00 |           143.44 |           127.56 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |          1020.06 |           398.44 |           621.62 |
 |            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           326.81 |           159.38 |           167.44 |
-|            |                         SIGMA_SHADOW |            88.06 |             0.00 |            88.06 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |           159.69 |             0.00 |           159.69 |
+|            |                         SIGMA_SHADOW |            56.19 |             0.00 |            56.19 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |           127.81 |             0.00 |           127.81 |
 |            |                        RELAX_DIFFUSE |           374.69 |           239.12 |           135.56 |
 |            |                     RELAX_DIFFUSE_SH |           597.81 |           334.75 |           263.06 |
 |            |                       RELAX_SPECULAR |           382.69 |           239.12 |           143.56 |
@@ -749,7 +749,11 @@ maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 
 **[SIGMA]** Using "blue" noise can help to avoid shadow shimmering. It works best if the pattern is static on the screen.
 
-**[SIGMA]** *SIGMA_TRANSLUCENT_SHADOW* can be used for shadow denoising from multiple light sources:
+**[SIGMA]** *SIGMA* can be used for multi-light shadow denoising if applied "per light". `SigmaSettings::stabilizationStrength` can be set to `0` to disable temporal history. It provides the followinmg benefits:
+ - light count independent memory usage
+ - no need to manage history buffers for lights
+
+**[SIGMA]** In theory *SIGMA_TRANSLUCENT_SHADOW* can be used as a "single-pass" shadow denoiser for shadows from multiple light sources:
 
 *L[i]* - unshadowed analytical lighting from a single light source (**not noisy**)<br/>
 *S[i]* - stochastically sampled light visibility for *L[i]* (**noisy**)<br/>
@@ -766,7 +770,9 @@ Or:<br/>
 Input data preparation example:
 ```cpp
 float3 Lsum = 0;
-float2x3 multiLightShadowData = SIGMA_FrontEnd_MultiLightStart( );
+float3 LSsum = 0.0;
+float Wsum = 0.0;
+float Psum = 0.0;
 
 for( uint i = 0; i < N; i++ )
 {
@@ -775,15 +781,20 @@ for( uint i = 0; i < N; i++ )
 
     // "distanceToOccluder" should respect rules described in NRD.hlsli in "INPUT PARAMETERS" section
     float distanceToOccluder = SampleShadow( i );
+    float shadow = !IsOccluded( distanceToOccluder );
+    LSsum += L * shadow;
 
     // The weight should be zero if a pixel is not in the penumbra, but it is not trivial to compute...
     float weight = ...;
+    weight *= Luminance( L );
+    Wsum += weight;
 
-    SIGMA_FrontEnd_MultiLightUpdate( L, distanceToOccluder, tanOfLightAngularRadius, weight, multiLightShadowData );
+    float penumbraRadius = SIGMA_FrontEnd_PackPenumbra( ... ).x;
+    Psum += penumbraRadius * weight;
 }
 
-float4 shadowTranslucency;
-float2 shadowData = SIGMA_FrontEnd_MultiLightEnd( viewZ, multiLightShadowData, Lsum, shadowTranslucency );
+float3 translucency = LSsum / max( Lsum, NRD_EPS );
+float penumbraRadius = Psum / max( Wsum, NRD_EPS );
 ```
 
 After denoising the final result can be computed as:
@@ -797,7 +808,3 @@ Is this a biased solution? If spatial filtering is off - no, because we just reo
 - if shadows overlap, a separate pass is needed to analyze noisy input and classify pixels as *umbra* - *penumbra* (and optionally *empty space*). Raster shadow maps can be used for this if available
 - it is not recommended to mix 1 cd and 100000 cd lights, since FP32 texture will be needed for a weighted sum.
 In this case, it's better to process the sun and other bright light sources separately.
-
-**[SIGMA]** *SIGMA* can be used for multi-light shadow denoising if applied "per light". `SigmaSettings::stabilizationStrength` can be set to `0` to disable temporal history. It provides the followinmg benefits:
- - light count independent memory usage
- - no need to manage history buffers for lights

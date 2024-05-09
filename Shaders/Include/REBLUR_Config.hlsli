@@ -139,6 +139,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gUsePrepassNotOnlyForSpecularMotionEstimation ) \
     NRD_CONSTANT( float, gSplitScreen ) \
     NRD_CONSTANT( float, gCheckerboardResolveAccumSpeed ) \
+    NRD_CONSTANT( float, gViewZScale ) \
     NRD_CONSTANT( uint, gHasHistoryConfidence ) \
     NRD_CONSTANT( uint, gHasDisocclusionThresholdMix ) \
     NRD_CONSTANT( uint, gDiffCheckerboard ) \

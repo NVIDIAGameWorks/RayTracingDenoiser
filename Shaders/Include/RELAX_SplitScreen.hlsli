@@ -15,7 +15,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     if( pixelUv.x > gSplitScreen || any( pixelPos >= gRectSize ) )
         return;
 
-    float viewZ = gIn_ViewZ[ WithRectOrigin( pixelPos ) ];
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
     uint2 checkerboardPos = pixelPos;
 
     #ifdef RELAX_DIFFUSE

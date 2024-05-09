@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 7
+#define NRD_SETTINGS_VERSION_MINOR 8
 
 static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -108,6 +108,9 @@ namespace nrd
         uint16_t resourceSizePrev[2] = {};
         uint16_t rectSize[2] = {};
         uint16_t rectSizePrev[2] = {};
+
+        // (>0) - viewZ = IN_VIEWZ * viewZScale (mostly for FP16 viewZ)
+        float viewZScale = 1.0f;
 
         // (ms) - user provided if > 0, otherwise - tracked internally
         float timeDeltaBetweenFrames = 0.0f;
@@ -257,22 +260,6 @@ namespace nrd
         bool usePrepassOnlyForSpecularMotionEstimation = false;
     };
 
-    // SIGMA
-
-    struct SigmaSettings
-    {
-        // Direction to the light source
-        // IMPORTANT: it is needed only for directional light sources (sun)
-        float lightDirection[3] = {0.0f, 0.0f, 0.0f};
-
-        // (normalized %) - represents maximum allowed deviation from local tangent plane
-        float planeDistanceSensitivity = 0.005f;
-
-        // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
-        // 0 - disables the stabilization pass and makes denoising spatial only (no history)
-        float stabilizationStrength = 1.0f;
-    };
-
     // RELAX
 
     const uint32_t RELAX_MAX_HISTORY_FRAME_NUM = 255;
@@ -379,25 +366,27 @@ namespace nrd
         bool enableMaterialTestForSpecular = false;
     };
 
+    // SIGMA
+
+    struct SigmaSettings
+    {
+        // Direction to the light source
+        // IMPORTANT: it is needed only for directional light sources (sun)
+        float lightDirection[3] = {0.0f, 0.0f, 0.0f};
+
+        // (normalized %) - represents maximum allowed deviation from local tangent plane
+        float planeDistanceSensitivity = 0.005f;
+
+        // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
+        // 0 - disables the stabilization pass and makes denoising spatial only (no history)
+        float stabilizationStrength = 1.0f;
+    };
+
     // REFERENCE
 
     struct ReferenceSettings
     {
         // (>= 0) - maximum number of linearly accumulated frames ( = FPS * "time of accumulation")
         uint32_t maxAccumulatedFrameNum = 1024;
-    };
-
-    // SPECULAR_REFLECTION_MV
-
-    struct SpecularReflectionMvSettings
-    {
-        float unused;
-    };
-
-    // SPECULAR_DELTA_MV
-
-    struct SpecularDeltaMvSettings
-    {
-        float unused;
     };
 }
