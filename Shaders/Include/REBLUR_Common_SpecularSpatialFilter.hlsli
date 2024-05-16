@@ -196,7 +196,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             #ifdef REBLUR_SH
                 float4 sh = gIn_SpecSh.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
                 sh = Denanify( w, sh );
-                specSh.xyz += sh.xyz * w; // see TA
+                specSh.xyz += sh.xyz * w;
             #endif
         }
 

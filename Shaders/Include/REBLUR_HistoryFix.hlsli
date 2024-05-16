@@ -125,7 +125,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             #ifdef REBLUR_PERFORMANCE_MODE
                 sumd = 1.0 + 1.0 / ( 1.0 + gMaxAccumulatedFrameNum ) - diffNonLinearAccumSpeed;
             #endif
+
             diff *= sumd;
+            #ifdef REBLUR_SH
+                diffSh *= sumd;
+            #endif
 
             [unroll]
             for( j = -2; j <= 2; j++ )
@@ -314,7 +318,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             #ifdef REBLUR_PERFORMANCE_MODE
                 sums = 1.0 + 1.0 / ( 1.0 + gMaxAccumulatedFrameNum ) - specNonLinearAccumSpeed;
             #endif
+
             spec *= sums;
+            #ifdef REBLUR_SH
+                specSh.xyz *= sums;
+            #endif
 
             [unroll]
             for( j = -2; j <= 2; j++ )
@@ -372,7 +380,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     #ifdef REBLUR_SH
                         float4 sh = gIn_SpecSh[ pos ];
                         sh = Denanify( w, sh );
-                        specSh.xyz += sh.xyz * w; // see TA
+                        specSh.xyz += sh.xyz * w;
                     #endif
                 }
             }
@@ -380,7 +388,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             sums = STL::Math::PositiveRcp( sums );
             spec *= sums;
             #ifdef REBLUR_SH
-                specSh *= sums;
+                specSh.xyz *= sums;
             #endif
         }
 

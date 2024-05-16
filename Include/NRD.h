@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 /*
 CREDITS:
     Developed by:
-        Dmitry Zhdan (dzhdan@nvidia.com)
+        Dmitrii Zhdan (dzhdan@nvidia.com)
         Tim Cheblokov (ttcheblokov@nvidia.com)
 
     Special thanks:
@@ -29,8 +29,8 @@ CREDITS:
 
 #define NRD_VERSION_MAJOR 4
 #define NRD_VERSION_MINOR 8
-#define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "9 May 2024"
+#define NRD_VERSION_BUILD 1
+#define NRD_VERSION_DATE "16 May 2024"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall

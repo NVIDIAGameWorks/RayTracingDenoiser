@@ -89,8 +89,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         #ifdef REBLUR_SH
             float4 specSh = s_SpecSh[ smemPos.y ][ smemPos.x ];
-            float4 specShM1 = specSh;
-            float4 specShM2 = specSh * specSh;
+            float3 specShM1 = specSh.xyz;
+            float3 specShM2 = specSh.xyz * specSh.xyz;
         #endif
 
         float2 specMin = NRD_INF;
@@ -133,7 +133,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 specM2 += s * s;
 
                 #ifdef REBLUR_SH
-                    float4 sh = s_SpecSh[ pos.y ][ pos.x ];
+                    float3 sh = s_SpecSh[ pos.y ][ pos.x ].xyz;
                     specShM1 += sh;
                     specShM2 += sh * sh;
                 #endif
@@ -181,7 +181,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SH
             specShM1 *= invSum;
             specShM2 *= invSum;
-            float4 specShSigma = GetStdDev( specShM1, specShM2 );
+            float3 specShSigma = GetStdDev( specShM1, specShM2 );
         #endif
 
         // RCRS
@@ -407,7 +407,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
         float4 specResult = lerp( spec, specHistory, specHistoryWeight );
         #ifdef REBLUR_SH
-            specShHistory = STL::Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory );
+            specShHistory.xyz = STL::Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory.xyz );
             float4 specShResult = lerp( specSh, specShHistory, specHistoryWeight );
 
             // ( Optional ) Output modified roughness to assist AA during SG resolve

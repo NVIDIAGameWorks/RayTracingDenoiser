@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.8.0 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.8.1 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 

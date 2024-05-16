@@ -672,7 +672,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float4 specShResult = lerp( smbShSpec, vmbShSpec, virtualHistoryAmount );
 
             // ( Optional ) Output modified roughness to assist AA during SG resolve
-            specShResult.w = roughnessModified; // IMPORTANT: should not be blurred
+            specShResult.w = roughnessModified; // IMPORTANT: must not be blurred! this is why "specSh.xyz" is used ~everywhere
         #endif
 
         float specAccumSpeed = lerp( smbSpecAccumSpeed, vmbSpecAccumSpeed, virtualHistoryAmount );
