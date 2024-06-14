@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.8.1 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.8.2 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -168,15 +168,18 @@ IN_NORMAL_ROUGHNESS = GetNormalAndRoughnessAt( A );
 IN_MV = GetMotionAt( A );
 ```
 
-See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
+See `NRDDescs.h` and `NRD.hlsli` for more details and descriptions of other inputs and outputs.
 
 # NOISY INPUTS
 
 NRD sample is a good start to familiarize yourself with input requirements and best practices, but main requirements can be summarized to:
 
+Radiance:
 - Since *NRD* denoisers accumulate signals for a limited number of frames, the input signal must converge *reasonably* well for this number of frames. `REFERENCE` denoiser can be used to estimate temporal signal quality
 - Since *NRD* denoisers process signals spatially, high-energy fireflies in the input signal should be avoided. Most of them can be removed by enabling anti-firefly filter in *NRD*, but it will only work if the "background" signal is confident. The worst case is having a single pixel with high energy divided by a very small PDF to represent the lack of energy in neighboring non-representative (black) pixels
 - Radiance must be separated into diffuse and specular at primary hit (or secondary hit in case of *PSR*)
+
+Hit distance:
 - `hitT` can't be negative
 - `hitT` must not include primary hit distance
 - `hitT` for the first bounce after the primary hit or *PSR* must be provided "as is"
@@ -191,9 +194,15 @@ NRD sample is a good start to familiarize yourself with input requirements and b
   - `hitDistanceReconstructionMode` must be set to something other than `OFF`, but bear in mind that the search area is limited to 3x3 or 5x5. In other words, it's the application's responsibility to guarantee a valid sample in this area. It can be achieved by clamping probabilities and using Bayer-like dithering (see the sample for more details)
   - Pre-pass must be enabled (i.e. `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` must be set to 20-70 pixels) to compensate entropy increase, since radiance in valid samples is divided by probability to compensate 0 values in some neighbors
 - Probabilistic sampling for 2nd+ bounces is absolutely acceptable
-- in case of many paths per pixel `hitT` for specular must be "averaged" by `NRD_FrontEnd_SpecHitDistAveraging_*` functions from `NRD.hlsli`
+- In case of many paths per pixel `hitT` for specular must be "averaged" by `NRD_FrontEnd_SpecHitDistAveraging_*` functions from `NRD.hlsli`
+- For *REBLUR* hits distance must be normalized using `REBLUR_FrontEnd_GetNormHitDist`
 
-See `NRDDescs.h` for more details and descriptions of other inputs and outputs.
+Distance to occluder:
+- `NoL <= 0` - 0 (it's very important!)
+- `NoL > 0, hit` - hit distance
+- `NoL > 0, miss` - >= NRD_FP16_MAX
+
+See `NRDDescs.h` and `NRD.hlsli` for more details and descriptions of other inputs and outputs.
 
 # IMPROVING OUTPUT QUALITY
 

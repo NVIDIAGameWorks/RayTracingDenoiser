@@ -50,7 +50,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    if( centerPenumbra == 0.0 && SIGMA_SHOW_TILES == 0 )
+    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float penumbraInPixels = centerPenumbra / unprojectZ;
+
+    if( penumbraInPixels <= SIGMA_TS_EARLY_OUT_THRESHOLD && SIGMA_SHOW == 0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
 
@@ -76,16 +79,18 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float2 data = s_Penumbra_ViewZ[ pos.y ][ pos.x ];
 
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
-            float signNoL = float( data.x != 0.0 );
+            float penum = data.x;
             float z = data.y;
+            float signNoL = float( penum != 0.0 );
 
             float w = 1.0;
             if( i == BORDER && j == BORDER )
                 input = s;
             else
             {
-                w = GetBilateralWeight( z, viewZ );
-                w *= saturate( 1.0 - abs( centerSignNoL - signNoL ) );
+                w = exp2( -SIGMA_TS_Z_FALLOFF * abs( z - viewZ ) );
+                w *= float( z < gDenoisingRange );
+                w *= float( centerSignNoL == signNoL );
 
                 if( z < viewZnearest )
                 {
@@ -123,49 +128,31 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     history = max( history, 0.0 );
     history = SIGMA_BackEnd_UnpackShadow( history );
 
+    // Antilag
+    float fast = m1.x;
+    float slow = history.x;
+
+    float a = abs( slow - fast ) - SIGMA_ANTILAG_SIGMA_SCALE * sigma.x - SIGMA_ANTILAG_EPS;
+    float b = max( slow, fast ) + SIGMA_ANTILAG_SIGMA_SCALE * sigma.x + SIGMA_ANTILAG_EPS;
+    float antilag = a / b;
+
+    antilag = STL::Math::SmoothStep01( 1.0 - antilag );
+    antilag = STL::Math::Pow01( antilag, SIGMA_ANTILAG_POWER );
+
     // Clamp history
-    float2 a = m1.xx;
-    float2 b = history.xx;
-
-    #ifdef SIGMA_TRANSLUCENT
-        a.y = STL::Color::Luminance( m1.yzw );
-        b.y = STL::Color::Luminance( history.yzw );
-    #endif
-
-    float2 ratio = abs( a - b ) / ( min( a, b ) + 0.05 );
-    float2 ratioNorm = ratio / ( 1.0 + ratio );
-    float2 scale = lerp( SIGMA_MAX_SIGMA_SCALE, 1.0, STL::Math::Sqrt01( ratioNorm ) );
-
-    #ifdef SIGMA_TRANSLUCENT
-        sigma *= scale.xyyy;
-    #else
-        sigma *= scale.x;
-    #endif
-
-    SIGMA_TYPE inputMin = m1 - sigma;
-    SIGMA_TYPE inputMax = m1 + sigma;
+    SIGMA_TYPE inputMin = m1 - sigma * SIGMA_TS_SIGMA_SCALE;
+    SIGMA_TYPE inputMax = m1 + sigma * SIGMA_TS_SIGMA_SCALE;
     SIGMA_TYPE historyClamped = clamp( history, inputMin, inputMax );
 
     // History weight
-    float isInScreen = IsInScreenNearest( pixelUvPrev );
-    float motionLength = length( pixelUvPrev - pixelUv );
-    float2 historyWeight = 0.93 * lerp( 1.0, 0.7, ratioNorm );
-    historyWeight = lerp( historyWeight, 0.1, saturate( motionLength / SIGMA_TS_MOTION_MAX_REUSE ) );
-    historyWeight *= isInScreen;
+    float historyWeight = SIGMA_TS_MAX_HISTORY_WEIGHT;
+    historyWeight *= IsInScreenNearest( pixelUvPrev );
+    historyWeight *= antilag;
+    historyWeight *= STL::Math::SmoothStep( SIGMA_TS_EARLY_OUT_THRESHOLD, 1.0, penumbraInPixels );
     historyWeight *= gStabilizationStrength;
 
-    // Reduce history in regions with hard shadows
-    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float pixelRadius = GetKernelRadiusInPixels( centerPenumbra, unprojectZ );
-    historyWeight *= STL::Math::LinearStep( 0.0, 0.5, pixelRadius );
-
     // Combine with current frame
-    SIGMA_TYPE result;
-    result.x = lerp( input.x, historyClamped.x, historyWeight.x );
-
-    #ifdef SIGMA_TRANSLUCENT
-        result.yzw = lerp( input.yzw, historyClamped.yzw, historyWeight.y );
-    #endif
+    SIGMA_TYPE result = lerp( input, historyClamped, historyWeight );
 
     // Reference
     #if( SIGMA_REFERENCE == 1 )
@@ -173,18 +160,25 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     // Debug
-    #if( SIGMA_SHOW_TILES == 1 )
-        float tileValue = gIn_Tiles[ pixelPos >> 4 ].x;
-        tileValue = float( tileValue != 0.0 ); // optional, just to show fully discarded tiles
+    #if( SIGMA_SHOW != 0 )
+        #if( SIGMA_SHOW == 1 )
+            float tileValue = gIn_Tiles[ pixelPos >> 4 ].x;
+            tileValue = float( tileValue != 0.0 ); // optional, just to show fully discarded tiles
 
-        #ifdef SIGMA_TRANSLUCENT
-            result = lerp( float4( 0, 0, 1, 0 ), result, tileValue );
-        #else
-            result = tileValue;
+            #ifdef SIGMA_TRANSLUCENT
+                result = lerp( float4( 0, 0, 1, 0 ), result, tileValue );
+            #else
+                result = tileValue;
+            #endif
+
+            // Show grid ( works badly with TAA )
+            result *= all( ( pixelPos & 15 ) != 0 );
+        #elif( SIGMA_SHOW == 2 )
+            // .x - is used in antilag computations!
+            #ifdef SIGMA_TRANSLUCENT
+                result.yzw = SIGMA_BackEnd_UnpackShadow( historyWeight );
+            #endif
         #endif
-
-        // Show grid (works badly with TAA)
-        result *= all( ( pixelPos & 15 ) != 0 );
     #endif
 
     // Output

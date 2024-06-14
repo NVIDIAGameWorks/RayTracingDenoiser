@@ -50,7 +50,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     int2 smemPos = threadPos + BORDER;
     float2 centerData = s_Penumbra_ViewZ[ smemPos.y ][ smemPos.x ];
     float centerPenumbra = centerData.x;
-    float centerSignNoL = float( centerData.x != 0.0 );
+    float centerSignNoL = float( centerPenumbra != 0.0 );
     float viewZ = centerData.y;
 
     // Early out
@@ -72,7 +72,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     if( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerPenumbra == 0.0 )
     {
-        gOut_Penumbra[ pixelPos ] = 0;
+        gOut_Penumbra[ pixelPos ] = centerPenumbra;
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
 
         return;
@@ -87,13 +87,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
 
     // Parameters
-    float frustumSize = PixelRadiusToWorld( gUnproject, gOrthoMode, min( gRectSize.x, gRectSize.y ), viewZ ); // TODO: use GetFrustumSize
+    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
 
-    // Estimate average distance to occluder
+    // Estimate penumbra size and filter shadow ( pass 1: dense 3x3 or 5x5 )
     float2 sum = 0;
     float penumbra = 0;
     SIGMA_TYPE result = 0;
+    SIGMA_TYPE centerTap;
 
     [unroll]
     for( j = 0; j <= BORDER * 2; j++ )
@@ -104,12 +106,19 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             int2 pos = threadPos + int2( i, j );
 
             float2 data = s_Penumbra_ViewZ[ pos.y ][ pos.x ];
-            float p = data.x;
-            float signNoL = float( p != 0.0 );
+            float penum = data.x;
             float z = data.y;
+            float signNoL = float( penum != 0.0 );
 
-            float w = 1.0;
-            if( !( i == BORDER && j == BORDER ) )
+            SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
+
+            float w;
+            if( i == BORDER && j == BORDER )
+            {
+                centerTap = s;
+                w = 1.0;
+            }
+            else
             {
                 float2 uv = pixelUv + float2( i - BORDER, j - BORDER ) * gRectSizeInv;
                 float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
@@ -119,25 +128,32 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 w *= GetGaussianWeight( length( float2( i - BORDER, j - BORDER ) / BORDER ) );
                 w *= float( z < gDenoisingRange );
                 w *= float( centerSignNoL == signNoL );
+
+                s = Denanify( w, s );
             }
 
-            SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
-            s = Denanify( w, s );
-
             float2 ww = w;
-            ww.y *= !IsLit( p );
-            ww.y *= 1.0 / ( 1.0 + p * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
+            ww.y *= !IsLit( penum );
+
+            float penumInPixels = penum / unprojectZ;
+            ww.y /= 1.0 + penumInPixels; // prefer smaller penumbra
 
             result += s * ww.x;
-            penumbra += p * ww.y;
+            penumbra += penum * ww.y;
             sum += ww;
         }
     }
 
-    result /= sum.x; // TODO: lerp to center if blur radius < BORDER
-    penumbra /= max( sum.y, NRD_EPS ); // yes, without patching
+    result /= sum.x;
+    sum.x = 1.0;
 
-    float invHitDist = 1.0 / max( penumbra, NRD_EPS );
+    penumbra /= max( sum.y, NRD_EPS ); // yes, without patching
+    sum.y = float( sum.y != 0.0 );
+
+    // Avoid 1-pixel wide blur if penumbra size < 1 pixel
+    float penumbraInPixels = penumbra / unprojectZ;
+    float f = STL::Math::LinearStep( 0.75, 1.25, penumbraInPixels );
+    result = lerp( centerTap, result, f );
 
     // Tangent basis with anisotropy
     float3x3 mWorldToLocal = STL::Geometry::GetBasis( Nv );
@@ -158,7 +174,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     }
 
     // Blur radius
-    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
     float worldRadius = GetKernelRadiusInPixels( penumbra, unprojectZ, tileValue ) * unprojectZ;
 
     Tv *= worldRadius;
@@ -167,9 +182,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
-    // Denoising
-    sum.x = 1.0;
-    sum.y = float( sum.y != 0.0 );
+    // Estimate penumbra size and filter shadow ( pass 2: sparse 8-taps )
+    float invEstimatedPenumbra = 1.0 / max( penumbra, NRD_EPS );
 
     [unroll]
     for( uint n = 0; n < SIGMA_POISSON_SAMPLE_NUM; n++ )
@@ -185,9 +199,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float2 uvScaled = ClampUvToViewport( uv );
 
         // Fetch data
-        float p = gIn_Penumbra.SampleLevel( gNearestClamp, uvScaled, 0 );
-        float signNoL = float( p != 0.0 );
+        float penum = gIn_Penumbra.SampleLevel( gNearestClamp, uvScaled, 0 );
         float z = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
+        float signNoL = float( penum != 0.0 );
 
         // Sample weight
         float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
@@ -200,15 +214,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         w *= float( centerSignNoL == signNoL );
 
         // Avoid umbra leaking inside wide penumbra
-        float t = saturate( p * invHitDist );
-        w *= STL::Math::LinearStep( 0.0, 0.1, t );
+        float t = saturate( penum * invEstimatedPenumbra );
+        w *= STL::Math::SmoothStep( 0.0, 1.0, t ); // TODO: it works surprisingly well, keep an eye on it!
 
         // Fetch shadow
         SIGMA_TYPE s;
         #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
             s = gIn_Shadow_Translucency.SampleLevel( gNearestClamp, uvScaled, 0 );
         #else
-            s = IsLit( p );
+            s = IsLit( penum );
         #endif
         s = Denanify( w, s );
 
@@ -218,11 +232,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Accumulate
         float2 ww = w;
-        ww.y *= !IsLit( p );
-        ww.y *= 1.0 / ( 1.0 + p * SIGMA_PENUMBRA_WEIGHT_SCALE ); // prefer smaller penumbra
+        ww.y *= !IsLit( penum );
+
+        float penumInPixels = penum / unprojectZ;
+        ww.y /= 1.0 + penumInPixels; // prefer smaller penumbra
 
         result += s * ww.x;
-        penumbra += p * ww.y;
+        penumbra += penum * ww.y;
         sum += ww;
     }
 

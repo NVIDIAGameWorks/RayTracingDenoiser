@@ -12,9 +12,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Constants
 
-#define NRD_NONE                                                0
-#define NRD_FRAME                                               1
-#define NRD_PIXEL                                               2
+#define NRD_NONE                                                0 // bad
+#define NRD_FRAME                                               1 // good
+#define NRD_PIXEL                                               2 // better, but leads to divergence
 #define NRD_RANDOM                                              3 // for experiments only
 
 // FP16

@@ -45,10 +45,11 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 
     float2 viewportUvScaled = viewportUv * gResolutionScale;
 
+    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, WithRectOffset( viewportUvScaled ), 0 ) );
+    float viewZ = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( viewportUvScaled ), 0 ) );
+    float3 mv = gIn_Mv.SampleLevel( gNearestClamp, WithRectOffset( viewportUvScaled ), 0 ) * gMvScale.xyz;
+
     float historyLength = 255.0 * gIn_HistoryLength.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) - 1.0;
-    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) );
-    float viewZ = gIn_ViewZ.SampleLevel( gNearestClamp, viewportUvScaled, 0 );
-    float3 mv = gIn_Mv.SampleLevel( gNearestClamp, viewportUvScaled, 0 ) * gMvScale.xyz;
 
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;

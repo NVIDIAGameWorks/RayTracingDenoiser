@@ -8,8 +8,6 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// TODO: add REBLUR_OCCLUSION support to TemporalStabilization?
-
 groupshared float4 s_Diff[ BUFFER_Y ][ BUFFER_X ];
 groupshared float4 s_Spec[ BUFFER_Y ][ BUFFER_X ];
 
@@ -321,7 +319,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float f = STL::Math::SmoothStep( gSpecProbabilityThresholdsForMvModification.x, gSpecProbabilityThresholdsForMvModification.y, specProb );
             if( STL::Rng::Hash::GetFloat( ) < f )
             {
-                float3 specMv = Xvirtual - X; // TODO: world-space delta fits badly into FP16
+                float3 specMv = Xvirtual - X; // world-space delta fits badly into FP16! Prefer 2.5D motion!
                 if( gMvScale.w == 0.0 )
                 {
                     specMv.xy = vmbPixelUv - pixelUv;

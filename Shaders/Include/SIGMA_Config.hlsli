@@ -16,17 +16,22 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_5X5_BLUR_RADIUS_ESTIMATION_KERNEL         1 // helps to improve stability, but adds 10% of overhead
 
 // Switches ( default 0 )
-#define SIGMA_SHOW_TILES                                0
+#define SIGMA_SHOW                                      0 // 1 - tiles, 2 - history weight
 #define SIGMA_SHOW_PENUMBRA_SIZE                        0
 
 // Settings
 #define SIGMA_ROTATOR_MODE                              NRD_FRAME
 #define SIGMA_POISSON_SAMPLE_NUM                        8
 #define SIGMA_POISSON_SAMPLES                           g_Special8
-#define SIGMA_MAX_PIXEL_RADIUS                          16.0 // TODO: at least 32 needed for test 200
-#define SIGMA_PENUMBRA_WEIGHT_SCALE                     10.0
-#define SIGMA_MAX_SIGMA_SCALE                           3.0
+#define SIGMA_MAX_PIXEL_RADIUS                          32.0
+#define SIGMA_TS_SIGMA_SCALE                            3.0
+#define SIGMA_TS_MAX_HISTORY_WEIGHT                     0.95
+#define SIGMA_TS_Z_FALLOFF                              1.0 // exp2( -SIGMA_TS_Z_FALLOFF * dz )
 #define SIGMA_TS_MOTION_MAX_REUSE                       0.11
+#define SIGMA_TS_EARLY_OUT_THRESHOLD                    0.25
+#define SIGMA_ANTILAG_SIGMA_SCALE                       0.25
+#define SIGMA_ANTILAG_POWER                             1.0
+#define SIGMA_ANTILAG_EPS                               0.05
 
 // Data type
 #ifdef SIGMA_TRANSLUCENT
@@ -62,4 +67,5 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gDebug ) \
     NRD_CONSTANT( float, gSplitScreen ) \
     NRD_CONSTANT( float, gViewZScale ) \
+    NRD_CONSTANT( float, gMinRectDimMulUnproject ) \
     NRD_CONSTANT( uint, gFrameIndex )

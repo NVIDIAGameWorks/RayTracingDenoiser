@@ -16,54 +16,56 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // INPUT PARAMETERS
 //=================================================================================================================================
 /*
-float3 radiance:
-    - radiance should not include material information ( use material de-modulation to decouple materials )
-    - radiance should not be premultiplied by "exposure"
-    - for Primary Surface Replacements ( PSR ) throughput should be de-modulated as much as possible ( see test 184 from the sample and TraceOpaque.hlsl )
-    - for diffuse rays
-        - use COS-distribution ( or custom importance sampling )
-        - if radiance is the result of path tracing, pass normalized hit distance as the sum of 1-all hits (always ignore primary hit!)
-    - for specular
-        - use VNDF sampling ( or custom importance sampling )
-            - most advanced v3 version: https://gpuopen.com/download/publications/Bounded_VNDF_Sampling_for_Smith-GGX_Reflections.pdf
-        - if radiance is the result of path tracing, pass hit distance for the 1st bounce for the first time (always ignore primary hit!)
+NON-NOISY INPUTS:
+    float viewZ:
+        - linear view space Z for primary rays ( linearized camera depth )
 
-float hitDist:
-    - can't be negative
-    - must not include primary hit distance
-    - for the first bounce after the primary hit or PSR must be provided "as is"
-    - for susequent bounces must be adjusted by curvature and lobe energy dissipation on the application side
-    - must be explicitly set to 0 for rays pointing inside the surface ( better to nopt cast such rays )
+    float normal:
+        - world-space normal
 
-float normHitDist:
-    - normalized hit distance, gotten by using "REBLUR_FrontEnd_GetNormHitDist"
-    - REBLUR must be aware of the normalization function via "nrd::HitDistanceParameters"
-    - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse and SO ( specular occlusion ) for specular
-    - AO can be used to emulate 2nd+ diffuse bounces
-    - SO can be used to adjust IBL lighting
-    - ".w" channel of diffuse / specular output is AO / SO
-    - if you don't know which normalization function to choose use default values of "nrd::HitDistanceParameters"
+    float roughness:
+        - "linear roughness" = sqrt( "m" ), where "m" = "alpha" - GGX roughness
+        - usage: "isDiffuse ? 1.0 : roughness"
 
-float roughness:
-    - "linear roughness" = sqrt( "m" ), where "m" = "alpha" - GGX roughness
-    - usage: "isDiffuse ? 1.0 : roughness"
+    float tanOfLightAngularRadius:
+        - tan( lightAngularSize * 0.5 )
+        - angular size is computed from the shadow receiving point
+        - in other words, tanOfLightAngularRadius = lightRadius / distanceToLight
 
-float normal:
-    - world-space normal
+NOISY INPUTS:
+    float3 radiance:
+        - radiance should not include material information ( use material de-modulation to decouple materials )
+        - radiance should not be premultiplied by "exposure"
+        - for Primary Surface Replacements ( PSR ) throughput should be de-modulated as much as possible ( see test 184 from the sample and TraceOpaque.hlsl )
+        - for diffuse rays
+            - use COS-distribution ( or custom importance sampling )
+            - if radiance is the result of path tracing, pass normalized hit distance as the sum of 1-all hits (always ignore primary hit!)
+        - for specular
+            - use VNDF sampling ( or custom importance sampling )
+                - most advanced v3 version: https://gpuopen.com/download/publications/Bounded_VNDF_Sampling_for_Smith-GGX_Reflections.pdf
+            - if radiance is the result of path tracing, pass hit distance for the 1st bounce for the first time (always ignore primary hit!)
 
-float viewZ:
-    - linear view space Z for primary rays ( linearized camera depth )
+    float hitDist:
+        - can't be negative
+        - must not include primary hit distance
+        - for the first bounce after the primary hit or PSR must be provided "as is"
+        - for susequent bounces must be adjusted by curvature and lobe energy dissipation on the application side
+        - must be explicitly set to 0 for rays pointing inside the surface ( better to nopt cast such rays )
 
-float distanceToOccluder:
-    - distance to occluder, must follow the rules:
-        - NoL <= 0         - 0 ( it's very important )
-        - NoL > 0 ( hit )  - hit distance
-        - NoL > 0 ( miss ) - >= NRD_FP16_MAX
+    float normHitDist:
+        - logically same as "hitDist", but normalized to [0; 1] range using "REBLUR_FrontEnd_GetNormHitDist"
+        - REBLUR must be aware of the normalization function via "nrd::HitDistanceParameters"
+        - by definition, normalized hit distance is AO ( ambient occlusion ) for diffuse and SO ( specular occlusion ) for specular
+        - AO can be used to emulate 2nd+ diffuse bounces
+        - SO can be used to adjust IBL lighting
+        - ".w" channel of diffuse / specular output is AO / SO
+        - if you don't know which normalization function to choose use default values of "nrd::HitDistanceParameters"
 
-float tanOfLightAngularRadius:
-    - tan( lightAngularSize * 0.5 )
-    - angular size is computed from the shadow receiving point
-    - in other words, tanOfLightAngularRadius = lightRadius / distanceToLight
+    float distanceToOccluder:
+        - distance to occluder, must follow the rules:
+            - NoL <= 0         - 0 ( it's very important )
+            - NoL > 0 ( hit )  - hit distance
+            - NoL > 0 ( miss ) - >= NRD_FP16_MAX
 */
 
 #ifndef NRD_INCLUDED
@@ -275,7 +277,6 @@ float tanOfLightAngularRadius:
 #define NRD_ROUGHNESS_ENCODING_SQRT_LINEAR                                              2 // sqrt( linearRoughness )
 
 #define NRD_FP16_MAX                                                                    65504.0
-#define NRD_FP16_VIEWZ_SCALE                                                            0.125 // TODO: tuned for meters, needs to be scaled down for cm and mm
 #define NRD_PI                                                                          3.14159265358979323846
 #define NRD_EPS                                                                         1e-6
 #define NRD_REJITTER_VIEWZ_THRESHOLD                                                    0.01 // normalized %
@@ -627,11 +628,12 @@ void NRD_FrontEnd_SpecHitDistAveraging_End( inout float accumulatedSpecHitDist )
 //=================================================================================================================================
 
 // This function returns AO / SO which REBLUR can decode back to "hit distance" internally
-float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness )
+float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness, float trimmingThreshold = 0.0 )
 {
-    // TODO: Sampling can produce rays pointing inside surface, i.e. "hitDist = 0". But due to ray offsetting
-    // actual "hitDist" can be a very small value in this case. Since NRD handles "hitDist = 0" case, should be
-    // small "hitDist" values trimmed to 0?
+    // Sampling can produce rays pointing inside surface, i.e. "hitDist = 0". But due to ray offsetting actual "hitDist" can be a
+    // very small value in this case. Since NRD has been designed to handle "hitDist = 0" case, accidentally small "hitDist" values
+    // better trim to 0
+    hitDist = hitDist < trimmingThreshold ? 0.0 : hitDist;
 
     float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, roughness );
 

@@ -22,8 +22,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Internal data ( from the previous frame )
 
-#define REBLUR_PackViewZ( p )                           min( p * NRD_FP16_VIEWZ_SCALE, NRD_FP16_MAX )
-#define REBLUR_UnpackViewZ( p )                         ( p / NRD_FP16_VIEWZ_SCALE )
+#define REBLUR_PackViewZ( p )                           min( p * REBLUR_FP16_VIEWZ_SCALE, NRD_FP16_MAX )
+#define REBLUR_UnpackViewZ( p )                         ( p / REBLUR_FP16_VIEWZ_SCALE )
 
 float4 PackNormalRoughness( float4 p )
 {

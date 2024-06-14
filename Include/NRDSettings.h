@@ -115,7 +115,7 @@ namespace nrd
         // (ms) - user provided if > 0, otherwise - tracked internally
         float timeDeltaBetweenFrames = 0.0f;
 
-        // (units) > 0 - use TLAS or tracing range (max value = NRD_FP16_MAX / NRD_FP16_VIEWZ_SCALE - 1 = 524031)
+        // (units) > 0 - use TLAS or tracing range
         float denoisingRange = 500000.0f;
 
         // (normalized %) - if relative distance difference is greater than threshold, history gets reset (0.5-2.5% works well)

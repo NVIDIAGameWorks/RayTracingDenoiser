@@ -725,10 +725,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Thin lens equation for adjusting reflection HitT
     float hitDistFocused = ApplyThinLensEquation(hitDist, curvature);
 
-    [flatten]
-    if (abs(hitDistFocused) < 0.001) // TODO: why?
-        hitDistFocused = 0.001;
-
     // Loading specular data based on virtual motion
     float4 prevSpecularIlluminationAnd2ndMomentVMB;
     float4 prevSpecularIlluminationAnd2ndMomentVMBResponsive;
@@ -770,7 +766,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     );
 
     // Amount of virtual motion - dominant factor
-    float4 D = STL::ImportanceSampling::GetSpecularDominantDirection(currentNormal, V, currentRoughnessModified, RELAX_SPEC_DOMINANT_DIRECTION);
+    float4 D = STL::ImportanceSampling::GetSpecularDominantDirection(currentNormal, V, currentRoughnessModified, STL_SPECULAR_DOMINANT_DIRECTION_G2);
     float virtualHistoryAmount = VMBReprojectionFound * D.w;
 
     // Decreasing virtual history amount for ortho case

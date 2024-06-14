@@ -76,7 +76,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
 
             // Average normal
-            if( i < 2 && j < 2 ) // TODO: is backward 2x2 OK?
+            if( i < 2 && j < 2 )
                 Navg += normalAndRoughness.xyz;
 
             #ifdef REBLUR_SPECULAR

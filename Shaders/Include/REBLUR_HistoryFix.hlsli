@@ -293,16 +293,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Stride between taps
         float smc = GetSpecMagicCurve( roughness );
         float specStride = stride.y * float( frameNum.y < gHistoryFixFrameNum );
-        specStride *= lerp( 0.5, 1.0, smc ); // TODO: seems to work better than "minBlurRadius"
+        specStride *= lerp( 0.5, 1.0, smc ); // hand tuned
         specStride = floor( specStride );
 
         // History reconstruction
         if( specStride != 0 )
         {
-            // TODO: introduce IN_SECONDARY_ROUGHNESS:
-            //  - to allow blur on diffuse-like surfaces in reflection
-            //  - use "hitDistanceWeight" only for very low primary roughness to avoid color bleeding from one surface to another
-
             int specStridei = int( specStride + 0.5 );
 
             // Parameters

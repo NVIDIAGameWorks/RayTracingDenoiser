@@ -54,7 +54,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_POISSON_SAMPLE_NUM                               8
 #define REBLUR_POISSON_SAMPLES( i )                             g_Special8[ i ]
 
-#define REBLUR_PRE_BLUR_ROTATOR_MODE                            NRD_FRAME // TODO: others are expensive, but work better
+#define REBLUR_PRE_BLUR_ROTATOR_MODE                            NRD_FRAME
 #define REBLUR_PRE_BLUR_FRACTION_SCALE                          2.0
 #define REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED                  ( 1.0 / ( 1.0 + 10.0 ) )
 
@@ -67,6 +67,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_HIT_DIST_MIN_WEIGHT( smc )                       ( 0.1 * smc ) // was 0.1
 
+#define REBLUR_FP16_VIEWZ_SCALE                                 ( gViewZScale * 0.125) // TODO: tuned for meters, i.e. gViewZScale = 1.0
 #define REBLUR_MAX_PERCENT_OF_LOBE_VOLUME                       0.75
 #define REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM    1
 #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       2.0 // using smaller values leads to bias if camera rotates slowly due to reprojection instabilities
