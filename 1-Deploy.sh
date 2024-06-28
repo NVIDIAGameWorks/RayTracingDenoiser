@@ -1,8 +1,4 @@
-#!/bin/sh
-
-chmod +x "2-Build.sh"
-chmod +x "3-Prepare NRD SDK.sh"
-chmod +x "4-Clean.sh"
+#!/bin/bash
 
 git submodule update --init --recursive
 
