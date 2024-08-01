@@ -210,7 +210,7 @@ NRD_API nrd::Result NRD_CALL nrd::CreateInstance(const InstanceCreationDesc& ins
                                     "*/\n"
                                     "\n"
                                     "#include \"NRD.hlsli\"\n"
-                                    "#include \"STL.hlsli\"\n"
+                                    "#include \"ml.hlsli\"\n"
                                     "\n"
                                     "%s"
                                     "%s"

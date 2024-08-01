@@ -283,18 +283,18 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
     // Rotators
-    float4 rndAngle = Rand::uf4(&m_FastRandState) * DegToRad(360.0f);
+    float4 rndAngle = Rng::Hash::GetFloat4(m_RngState) * radians(360.0f);
 
-    float ca = Cos( rndAngle.x );
-    float sa = Sin( rndAngle.x );
+    float ca = cos( rndAngle.x );
+    float sa = sin( rndAngle.x );
     m_Rotator_PrePass = float4( ca, sa, -sa, ca );
 
-    ca = Cos( rndAngle.y );
-    sa = Sin( rndAngle.y );
+    ca = cos( rndAngle.y );
+    sa = sin( rndAngle.y );
     m_Rotator_Blur = float4( ca, sa, -sa, ca );
 
-    ca = Cos( rndAngle.z );
-    sa = Sin( rndAngle.z );
+    ca = cos( rndAngle.z );
+    sa = sin( rndAngle.z );
     m_Rotator_PostBlur = float4( ca, sa, -sa, ca );
 
     // Main matrices
@@ -349,19 +349,19 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
 
     // Convert to LH
     uint32_t flags = 0;
-    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.pv, nullptr, nullptr);
+    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.a, nullptr, nullptr);
 
     if ( !(flags & PROJ_LEFT_HANDED) )
     {
-        m_ViewToClip.col2 = (-m_ViewToClip.GetCol2()).xmm;
-        m_ViewToClipPrev.col2 = (-m_ViewToClipPrev.GetCol2()).xmm;
+        m_ViewToClip.col2 = -m_ViewToClip[2];
+        m_ViewToClipPrev.col2 = -m_ViewToClipPrev[2];
 
         m_WorldToView.Transpose();
-        m_WorldToView.col2 = (-m_WorldToView.GetCol2()).xmm;
+        m_WorldToView.col2 = -m_WorldToView[2];
         m_WorldToView.Transpose();
 
         m_WorldToViewPrev.Transpose();
-        m_WorldToViewPrev.col2 = (-m_WorldToViewPrev.GetCol2()).xmm;
+        m_WorldToViewPrev.col2 = -m_WorldToViewPrev[2];
         m_WorldToViewPrev.Transpose();
     }
 
@@ -372,8 +372,8 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     m_ViewToWorldPrev = m_WorldToViewPrev;
     m_ViewToWorldPrev.InvertOrtho();
 
-    const float3& cameraPosition = m_ViewToWorld.GetCol3().To3d();
-    const float3& cameraPositionPrev = m_ViewToWorldPrev.GetCol3().To3d();
+    const float3& cameraPosition = m_ViewToWorld[3].xyz;
+    const float3& cameraPositionPrev = m_ViewToWorldPrev[3].xyz;
     float3 translationDelta = cameraPositionPrev - cameraPosition;
 
     // IMPORTANT: this part is mandatory needed to preserve precision by making matrices camera relative
@@ -402,14 +402,14 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
 
     float project[3];
     float settings[PROJ_NUM];
-    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.pv, project, nullptr);
+    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.a, project, nullptr);
     m_ProjectY = project[1];
     m_OrthoMode = (flags & PROJ_ORTHO) ? -1.0f : 0.0f;
 
-    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.pv, nullptr, nullptr);
+    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClipPrev, &flags, nullptr, nullptr, m_FrustumPrev.a, nullptr, nullptr);
 
-    m_ViewDirection = -float3(m_ViewToWorld.GetCol2().xmm);
-    m_ViewDirectionPrev = -float3(m_ViewToWorldPrev.GetCol2().xmm);
+    m_ViewDirection = -float3(m_ViewToWorld[2]);
+    m_ViewDirectionPrev = -float3(m_ViewToWorldPrev[2]);
 
     m_CameraDelta = float3(translationDelta.x, translationDelta.y, translationDelta.z);
 
@@ -417,15 +417,15 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     m_Timer.SaveCurrentTime();
 
     m_TimeDelta = m_CommonSettings.timeDeltaBetweenFrames > 0.0f ? m_CommonSettings.timeDeltaBetweenFrames : m_Timer.GetSmoothedElapsedTime();
-    m_FrameRateScale = Max(33.333f / m_TimeDelta, 1.0f);
+    m_FrameRateScale = max(33.333f / m_TimeDelta, 1.0f);
 
-    float dx = Abs(m_CommonSettings.cameraJitter[0] - m_CommonSettings.cameraJitterPrev[0]);
-    float dy = Abs(m_CommonSettings.cameraJitter[1] - m_CommonSettings.cameraJitterPrev[1]);
-    m_JitterDelta = Max(dx, dy);
+    float dx = abs(m_CommonSettings.cameraJitter[0] - m_CommonSettings.cameraJitterPrev[0]);
+    float dy = abs(m_CommonSettings.cameraJitter[1] - m_CommonSettings.cameraJitterPrev[1]);
+    m_JitterDelta = max(dx, dy);
 
     float FPS = m_FrameRateScale * 30.0f;
     float nonLinearAccumSpeed = FPS * 0.25f / (1.0f + FPS * 0.25f);
-    m_CheckerboardResolveAccumSpeed = Lerp(nonLinearAccumSpeed, 0.5f, m_JitterDelta);
+    m_CheckerboardResolveAccumSpeed = lerp(nonLinearAccumSpeed, 0.5f, m_JitterDelta);
 
     return Result::SUCCESS;
 }
@@ -640,7 +640,7 @@ void nrd::InstanceImpl::PrepareDesc()
         if (dispatchDesc.constantBufferDataSize != 0)
         {
             m_Desc.descriptorPoolDesc.constantBuffersMaxNum += dispatchDesc.maxRepeatsNum;
-            m_Desc.constantBufferMaxDataSize = std::max(dispatchDesc.constantBufferDataSize, m_Desc.constantBufferMaxDataSize);
+            m_Desc.constantBufferMaxDataSize = max(dispatchDesc.constantBufferDataSize, m_Desc.constantBufferMaxDataSize);
         }
     }
 
@@ -790,8 +790,8 @@ void* nrd::InstanceImpl::PushDispatch(const DenoiserData& denoiserData, uint32_t
 
     if (d == USE_MAX_DIMS)
     {
-        w = Max(w, m_CommonSettings.rectSizePrev[0]);
-        h = Max(h, m_CommonSettings.rectSizePrev[1]);
+        w = max(w, m_CommonSettings.rectSizePrev[0]);
+        h = max(h, m_CommonSettings.rectSizePrev[1]);
         d = 1;
     }
     else if (d == IGNORE_RS)

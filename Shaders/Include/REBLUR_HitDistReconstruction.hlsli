@@ -64,8 +64,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, center.z );
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, center.z, gOrthoMode );
-    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, center.z, gOrthoMode );
+    float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
 
     float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness );
@@ -95,7 +95,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             w *= GetGaussianWeight( length( o ) * 0.5 );
 
             // This weight is strict ( non exponential ) because we need to avoid accessing data from other surfaces
-            float3 Xvs = STL::Geometry::ReconstructViewPosition( pixelUv + o * gRectSizeInv, gFrustum, temp.z, gOrthoMode );
+            float3 Xvs = Geometry::ReconstructViewPosition( pixelUv + o * gRectSizeInv, gFrustum, temp.z, gOrthoMode );
             float NoX = dot( Nv, Xvs );
             w *= ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
 
@@ -104,7 +104,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 float4 normalAndRoughness = s_Normal_Roughness[ pos.y ][ pos.x ];
 
                 float cosa = dot( N, normalAndRoughness.xyz );
-                float angle = STL::Math::AcosApprox( cosa );
+                float angle = Math::AcosApprox( cosa );
 
                 // These weights have infinite exponential tails, because with strict weights we are reducing a chance to find a valid sample in 3x3 or 5x5 area
                 ww.x *= ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );

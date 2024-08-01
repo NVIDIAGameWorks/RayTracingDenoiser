@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "NRD.hlsli"
-#include "STL.hlsli"
+#include "ml.hlsli"
 
 #include "REBLUR_Config.hlsli"
 #include "REBLUR_ClassifyTiles.resources.hlsli"

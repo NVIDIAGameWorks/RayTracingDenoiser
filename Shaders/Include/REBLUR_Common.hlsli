@@ -45,14 +45,14 @@ uint PackInternalData( float diffAccumSpeed, float specAccumSpeed, float materia
     float3 t = float3( diffAccumSpeed, specAccumSpeed, materialID );
     t.xy /= REBLUR_MAX_ACCUM_FRAME_NUM;
 
-    uint p = STL::Packing::RgbaToUint( t.xyzz, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 );
+    uint p = Packing::RgbaToUint( t.xyzz, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 );
 
     return p;
 }
 
 float3 UnpackInternalData( uint p )
 {
-    float3 t = STL::Packing::UintToRgba( p, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 ).xyz;
+    float3 t = Packing::UintToRgba( p, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 ).xyz;
     t.xy *= REBLUR_MAX_ACCUM_FRAME_NUM;
 
     return t;
@@ -60,32 +60,28 @@ float3 UnpackInternalData( uint p )
 
 // Intermediate data ( in the current frame )
 
-float4 PackData1( float diffAccumSpeed, float diffError, float specAccumSpeed, float specError )
+float2 PackData1( float diffAccumSpeed, float specAccumSpeed )
 {
-    float4 r;
+    float2 r;
     r.x = saturate( diffAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.y = diffError;
-    r.z = saturate( specAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
-    r.w = specError;
+    r.y = saturate( specAccumSpeed / REBLUR_MAX_ACCUM_FRAME_NUM );
 
-    // Allow RG8_UNORM for specular only denoiser
+    // Allow R8_UNORM for specular only denoiser
     #ifndef REBLUR_DIFFUSE
-        r.xy = r.zw;
+        r.x = r.y;
     #endif
 
     return r;
 }
 
-float4 UnpackData1( float4 p )
+float2 UnpackData1( float2 p )
 {
     // Allow R8_UNORM for specular only denoiser
     #ifndef REBLUR_DIFFUSE
-        p.zw = p.xy;
+        p.y = p.x;
     #endif
 
-    p.xz *= REBLUR_MAX_ACCUM_FRAME_NUM;
-
-    return p;
+    return p * REBLUR_MAX_ACCUM_FRAME_NUM;
 }
 
 uint PackData2( float fbits, float curvature, float virtualHistoryAmount )
@@ -138,7 +134,7 @@ float GetFadeBasedOnAccumulatedFrames( float accumSpeed )
     float a = gHistoryFixFrameNum * 2.0 / 3.0 + 1e-6;
     float b = gHistoryFixFrameNum * 4.0 / 3.0 + 2e-6;
 
-    return STL::Math::LinearStep( a, b, accumSpeed );
+    return Math::LinearStep( a, b, accumSpeed );
 }
 
 float GetNonLinearAccumSpeed( float accumSpeed, float maxAccumSpeed, float confidence, bool hasData )
@@ -188,13 +184,10 @@ float GetLumaScale( float currLuma, float newLuma )
     { return input; }
 
     float ChangeLuma( float input, float newLuma )
-    { return input * GetLumaScale( input, newLuma ); }
+    { return newLuma; }
 
     float ClampNegativeToZero( float input )
     { return ClampNegativeHitDistToZero( input ); }
-
-    float Xxxy( float2 w )
-    { return w.y; }
 
 #elif( defined REBLUR_DIRECTIONAL_OCCLUSION )
 
@@ -216,15 +209,10 @@ float GetLumaScale( float currLuma, float newLuma )
     { return input.w; }
 
     float4 ChangeLuma( float4 input, float newLuma )
-    {
-        return input * GetLumaScale( GetLuma( input ), newLuma );
-    }
+    { return float4( input.xyz * GetLumaScale( input.w, newLuma ), newLuma ); }
 
     float4 ClampNegativeToZero( float4 input )
     { return ChangeLuma( input, ClampNegativeHitDistToZero( input.w ) ); }
-
-    float4 Xxxy( float2 w )
-    { return w.xxxy; }
 
 #else
 
@@ -272,26 +260,7 @@ float GetLumaScale( float currLuma, float newLuma )
         return input;
     }
 
-    float4 Xxxy( float2 w )
-    { return w.xxxy; }
-
 #endif
-
-float GetColorErrorForAdaptiveRadiusScale( REBLUR_TYPE curr, REBLUR_TYPE prev, float accumSpeed, float roughness = 1.0 )
-{
-    // TODO: track temporal variance instead
-    float2 p = float2( GetLuma( prev ), ExtractHitDist( prev ) );
-    float2 c = float2( GetLuma( curr ), ExtractHitDist( curr ) );
-
-    float2 a = abs( c - p ) - NRD_EPS;
-    float2 b = max( c, p ) + NRD_EPS;
-    float2 d = a / b;
-
-    float error = STL::Math::SmoothStep01( max( d.x, d.y ) );
-    error *= GetFadeBasedOnAccumulatedFrames( accumSpeed );
-
-    return error;
-}
 
 float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma, float4 antilagParams, float accumSpeed )
 {
@@ -303,8 +272,8 @@ float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma
     float2 b = max( slow, fast ) + antilagParams.xy * s + NRD_EPS;
     float2 d = a / b;
 
-    d = STL::Math::SmoothStep01( 1.0 - d );
-    d = STL::Math::Pow01( d, antilagParams.zw );
+    d = Math::SmoothStep01( 1.0 - d );
+    d = Math::Pow01( d, antilagParams.zw );
 
     // Needed at least for test 156, especially when motion is accelerated
     d = lerp( 1.0, d, GetFadeBasedOnAccumulatedFrames( accumSpeed ) );
@@ -318,12 +287,12 @@ float GetResponsiveAccumulationAmount( float roughness )
 {
     float amount = 1.0 - ( roughness + NRD_EPS ) / ( gResponsiveAccumulationRoughnessThreshold + NRD_EPS );
 
-    return STL::Math::SmoothStep01( amount );
+    return Math::SmoothStep01( amount );
 }
 
 float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, float anisoFade = 1.0 )
 {
-    float3x3 basis = STL::Geometry::GetBasis( N );
+    float3x3 basis = Geometry::GetBasis( N );
 
     float3 T = basis[ 0 ];
     float3 B = basis[ 1 ];
@@ -349,7 +318,7 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
 float GetNormalWeightParams( float nonLinearAccumSpeed, float roughness = 1.0 )
 {
     float percentOfVolume = REBLUR_MAX_PERCENT_OF_LOBE_VOLUME * lerp( gLobeAngleFraction, 1.0, nonLinearAccumSpeed );
-    float angle = atan( STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume ) );
+    float angle = atan( ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume ) );
 
     return 1.0 / max( angle, NRD_NORMAL_ULP );
 }

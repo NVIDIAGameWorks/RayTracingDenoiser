@@ -27,14 +27,14 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float materialID;
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( pixelPos ) ], materialID );
     float3 N = normalAndRoughness.xyz;
-    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
+    float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
     float roughness = normalAndRoughness.w;
 
     // Shared data
-    float4 data1 = UnpackData1( gIn_Data1[ pixelPos ] );
+    REBLUR_DATA1_TYPE data1 = UnpackData1( gIn_Data1[ pixelPos ] );
 
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float4 rotator = GetBlurKernelRotation( REBLUR_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     float3 Vv = GetViewVector( Xv, true );

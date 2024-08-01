@@ -125,7 +125,7 @@ float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, f
 
     angle += specularLobeAngleSlack;
 
-    angle = min(STL::Math::Pi(0.5), angle);
+    angle = min(Math::Pi(0.5), angle);
 
     return float2(angle, f);
 }
@@ -135,8 +135,8 @@ float GetSpecularNormalWeight_ATrous(float2 params0, float3 n0, float3 n, float3
     float cosaN = dot(n0, n);
     float cosaV = dot(v0, v);
     float cosa = min(cosaN, cosaV);
-    float a = STL::Math::AcosApprox(cosa);
-    a = STL::Math::SmoothStep(0.0, params0.x, a);
+    float a = Math::AcosApprox(cosa);
+    a = Math::SmoothStep(0.0, params0.x, a);
 
     return saturate(1.0 - a * params0.y);
 }
@@ -154,9 +154,9 @@ float GetNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
     float cosa = dot(Ncurr, Nprev);
 
     float a = 1.0 / maxAngle;
-    float d = STL::Math::AcosApprox(cosa);
+    float d = Math::AcosApprox(cosa);
 
-    float w = STL::Math::SmoothStep01(1.0 - (d * a));
+    float w = Math::SmoothStep01(1.0 - (d * a));
 
     return w;
 }

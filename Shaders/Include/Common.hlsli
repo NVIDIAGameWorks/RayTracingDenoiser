@@ -37,8 +37,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Switches ( default 1 )
 #define NRD_USE_TILE_CHECK                                      1 // significantly improves performance by skipping computations in "empty" regions
-#define NRD_USE_HIGH_PARALLAX_CURVATURE                         1
+#define NRD_USE_HIGH_PARALLAX_CURVATURE                         1 // flattens surface on high motion
 #define NRD_USE_DENANIFICATION                                  1 // needed only if inputs have NAN / INF outside of viewport or denoising range
+#define NRD_USE_HISTORY_CONFIDENCE                              1 // almost no one uses this, but constant folding and dead code elimination work well on modern drivers
+#define NRD_USE_DISOCCLUSION_THRESHOLD_MIX                      1 // almost no one uses this, but constant folding and dead code elimination work well on modern drivers
+#define NRD_USE_BASECOLOR_METALNESS                             1 // almost no one uses this, but constant folding and dead code elimination work well on modern drivers
 
 // Switches ( default 0 )
 #define NRD_USE_QUADRATIC_DISTRIBUTION                          0
@@ -224,23 +227,23 @@ float GetHitDistFactor( float hitDist, float frustumSize )
 float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float4 baseRotator, uint frameIndex )
 {
     if( mode == NRD_NONE )
-        return STL::Geometry::GetRotator( 0.0 );
+        return Geometry::GetRotator( 0.0 );
     else if( mode == NRD_PIXEL )
     {
-        float angle = STL::Sequence::Bayer4x4( pixelPos, frameIndex );
-        float4 rotator = STL::Geometry::GetRotator( angle * STL::Math::Pi( 2.0 ) );
+        float angle = Sequence::Bayer4x4( pixelPos, frameIndex );
+        float4 rotator = Geometry::GetRotator( angle * Math::Pi( 2.0 ) );
 
-        baseRotator = STL::Geometry::CombineRotators( baseRotator, rotator );
+        baseRotator = Geometry::CombineRotators( baseRotator, rotator );
     }
     else if( mode == NRD_RANDOM )
     {
-        STL::Rng::Hash::Initialize( pixelPos, frameIndex );
+        Rng::Hash::Initialize( pixelPos, frameIndex );
 
-        float2 rnd = STL::Rng::Hash::GetFloat2( );
-        float4 rotator = STL::Geometry::GetRotator( rnd.x * STL::Math::Pi( 2.0 ) );
+        float2 rnd = Rng::Hash::GetFloat2( );
+        float4 rotator = Geometry::GetRotator( rnd.x * Math::Pi( 2.0 ) );
         rotator *= 1.0 + ( rnd.y * 2.0 - 1.0 ) * 0.5;
 
-        baseRotator = STL::Geometry::CombineRotators( baseRotator, rotator );
+        baseRotator = Geometry::CombineRotators( baseRotator, rotator );
     }
 
     return baseRotator;
@@ -266,7 +269,7 @@ float4 IsInScreenBilinear( float2 footprintOrigin, float2 rectSize )
 float2 ApplyCheckerboardShift( float2 pos, uint mode, uint counter, uint frameIndex )
 {
     // IMPORTANT: "pos" must be snapped to the pixel center
-    uint checkerboard = STL::Sequence::CheckerBoard( uint2( pos ), frameIndex );
+    uint checkerboard = Sequence::CheckerBoard( uint2( pos ), frameIndex );
     float shift = ( ( counter & 0x1 ) == 0 ) ? -1.0 : 1.0;
 
     pos.x += shift * float( checkerboard != mode && mode != 2 );
@@ -279,7 +282,7 @@ float2 ApplyCheckerboardShift( float2 pos, uint mode, uint counter, uint frameIn
 float GetSpecMagicCurve( float roughness, float power = 0.25 )
 {
     float f = 1.0 - exp2( -200.0 * roughness * roughness );
-    f *= STL::Math::Pow01( roughness, power );
+    f *= Math::Pow01( roughness, power );
 
     return f;
 }
@@ -290,7 +293,7 @@ float ComputeParallaxInPixels( float3 X, float2 uvForZeroParallax, float4x4 mWor
     // - ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
     // - ComputeParallaxInPixels( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize );
 
-    float2 uv = STL::Geometry::GetScreenUv( mWorldToClip, X );
+    float2 uv = Geometry::GetScreenUv( mWorldToClip, X );
     float2 parallaxInUv = uv - uvForZeroParallax;
     float parallaxInPixels = length( parallaxInUv * rectSize );
 
@@ -324,7 +327,7 @@ float GetColorCompressionExposureForSpatialPasses( float roughness )
 
 float GetSpecLobeTanHalfAngle( float roughness, float percentOfVolume = 0.75 )
 {
-    // TODO: ideally should migrate to fixed "STL::ImportanceSampling::GetSpecularLobeTanHalfAngle", but since
+    // TODO: ideally should migrate to fixed "ImportanceSampling::GetSpecularLobeTanHalfAngle", but since
     // denoisers behavior have been tuned for the old version, let's continue to use it in critical places
     roughness = saturate( roughness );
     percentOfVolume = saturate( percentOfVolume );
@@ -388,10 +391,10 @@ float2 GetKernelSampleCoordinates( float4x4 mToClip, float3 offset, float3 X, fl
     #endif
 
     // We can't rotate T and B instead, because T is skewed
-    offset.xy = STL::Geometry::RotateVector( rotator, offset.xy );
+    offset.xy = Geometry::RotateVector( rotator, offset.xy );
 
     float3 p = X + T * offset.x + B * offset.y;
-    float3 clip = STL::Geometry::ProjectiveTransform( mToClip, p ).xyw;
+    float3 clip = Geometry::ProjectiveTransform( mToClip, p ).xyw;
     clip.xy /= clip.z;
     clip.y = -clip.y;
 
@@ -460,10 +463,10 @@ float2 GetRelaxedRoughnessWeightParams( float m, float fraction = 1.0, float sen
 // A good choice for non noisy data
 // IMPORTANT: cutoffs are needed to minimize floating point precision drifting
 #define ComputeNonExponentialWeight( x, px, py ) \
-    STL::Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) )
+    Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) )
 
 #define ComputeNonExponentialWeightWithSigma( x, px, py, sigma ) \
-    STL::Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) - sigma * px )
+    Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) - sigma * px )
 
 #if( NRD_USE_EXPONENTIAL_WEIGHTS == 1 )
     #define ComputeWeight( x, px, py )     ComputeExponentialWeight( x, px, py )
@@ -486,12 +489,12 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, 
     float cosa = dot( Ncurr, Nprev );
 
     float a = 1.0 / maxAngle;
-    float d = STL::Math::AcosApprox( cosa );
+    float d = Math::AcosApprox( cosa );
 
-    float w = STL::Math::SmoothStep01( 1.0 - ( d - angleThreshold ) * a );
+    float w = Math::SmoothStep01( 1.0 - ( d - angleThreshold ) * a );
 
     // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
-    w = STL::Math::SmoothStep( 0.05, 0.95, w );
+    w = Math::SmoothStep( 0.05, 0.95, w );
 
     return w;
 }
@@ -499,7 +502,7 @@ float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, 
 // Only for checkerboard resolve and some "lazy" comparisons
 
 #define GetBilateralWeight( z, zc ) \
-    STL::Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( z, zc ) ) )
+    Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( z, zc ) ) )
 
 // Upsampling
 
@@ -546,7 +549,7 @@ IMPORTANT:
     color += tex.SampleLevel( gLinearClamp, uv23.xy, 0 ) * w.z; \
     color += tex.SampleLevel( gLinearClamp, uv23.zw, 0 ) * w.w; \
     color += tex.SampleLevel( gLinearClamp, uv4, 0 ) * w4; \
-    /* Normalize similarly to "STL::Filtering::ApplyBilinearCustomWeights()" */ \
+    /* Normalize similarly to "Filtering::ApplyBilinearCustomWeights()" */ \
     color = sum < 0.0001 ? 0 : color / sum;
 
 #define _BilinearFilterWithCustomWeights_Color( color, tex ) \
@@ -555,6 +558,6 @@ IMPORTANT:
     color += tex.Load( bilinearOrigin, int2( 1, 0 ) ) * bilinearCustomWeights.y; \
     color += tex.Load( bilinearOrigin, int2( 0, 1 ) ) * bilinearCustomWeights.z; \
     color += tex.Load( bilinearOrigin, int2( 1, 1 ) ) * bilinearCustomWeights.w; \
-    /* Normalize similarly to "STL::Filtering::ApplyBilinearCustomWeights()" */ \
+    /* Normalize similarly to "Filtering::ApplyBilinearCustomWeights()" */ \
     sum = dot( bilinearCustomWeights, 1.0 ); \
     color = sum < 0.0001 ? 0 : color / sum;

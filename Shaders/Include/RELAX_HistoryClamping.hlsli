@@ -24,20 +24,20 @@ void Preload(uint2 sharedPos, int2 globalPos)
 
     #ifdef RELAX_SPECULAR
         float4 specularResponsive = gSpecIlluminationResponsive[globalPos];
-        sharedSpecularResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::RgbToYCoCg(specularResponsive.rgb), specularResponsive.a);
+        sharedSpecularResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(Color::RgbToYCoCg(specularResponsive.rgb), specularResponsive.a);
 
         float4 specularNoisy = gNoisySpecularIllumination[globalPos];
-        float specularNoisyLuminance = STL::Color::Luminance(specularNoisy.rgb);
+        float specularNoisyLuminance = Color::Luminance(specularNoisy.rgb);
         sharedSpecularNoisyAnd2ndMoment[sharedPos.y][sharedPos.x] = float4(specularNoisy.rgb, specularNoisyLuminance * specularNoisyLuminance);
 
     #endif
 
     #ifdef RELAX_DIFFUSE
         float4 diffuseResponsive = gDiffIlluminationResponsive[globalPos];
-        sharedDiffuseResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(STL::Color::RgbToYCoCg(diffuseResponsive.rgb), diffuseResponsive.a);
+        sharedDiffuseResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(Color::RgbToYCoCg(diffuseResponsive.rgb), diffuseResponsive.a);
 
         float4 diffuseNoisy = gNoisyDiffuseIllumination[globalPos];
-        float diffuseNoisyLuminance = STL::Color::Luminance(diffuseNoisy.rgb);
+        float diffuseNoisyLuminance = Color::Luminance(diffuseNoisy.rgb);
         sharedDiffuseNoisyAnd2ndMoment[sharedPos.y][sharedPos.x] = float4(diffuseNoisy.rgb, diffuseNoisyLuminance * diffuseNoisyLuminance);
     #endif
 }
@@ -120,18 +120,18 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Clamping color with color box expansion
     float4 specularIlluminationAnd2ndMoment = gSpecIllumination[pixelPos];
-    float3 specularYCoCg = STL::Color::RgbToYCoCg(specularIlluminationAnd2ndMoment.rgb);
+    float3 specularYCoCg = Color::RgbToYCoCg(specularIlluminationAnd2ndMoment.rgb);
     float3 clampedSpecularYCoCg = specularYCoCg;
     if (gSpecMaxFastAccumulatedFrameNum < gSpecMaxAccumulatedFrameNum)
         clampedSpecularYCoCg = clamp(specularYCoCg, specularResponsiveColorMinYCoCg, specularResponsiveColorMaxYCoCg);
-    float3 clampedSpecular = STL::Color::YCoCgToRgb(clampedSpecularYCoCg);
+    float3 clampedSpecular = Color::YCoCgToRgb(clampedSpecularYCoCg);
 
     // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
     // so data from responsive history needs to be copied to normal history,
     // and no history clamping is needed.
     float4 outSpecular = float4(clampedSpecular, specularIlluminationAnd2ndMoment.a);
-    float3 specularResponsiveCenter = STL::Color::YCoCgToRgb(specularResponsiveCenterYCoCg.rgb);
+    float3 specularResponsiveCenter = Color::YCoCgToRgb(specularResponsiveCenterYCoCg.rgb);
     float4 outSpecularResponsive = float4(specularResponsiveCenter, specularResponsiveCenterYCoCg.a);
     if (historyLength <= gHistoryFixFrameNum)
         outSpecular = outSpecularResponsive;
@@ -146,7 +146,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // History acceleration based on (responsive - normal)
     // Decreased 3x for specular since specular reprojection logic already has a set of various history rejection heuristics that diffuse does not have
-    float specularHistoryDifferenceL = 0.33 * RELAX_ANTILAG_ACCELERATION_AMOUNT_SCALE * gHistoryAccelerationAmount * STL::Color::Luminance(abs(specularResponsiveCenter.rgb - specularIlluminationAnd2ndMoment.rgb));
+    float specularHistoryDifferenceL = 0.33 * RELAX_ANTILAG_ACCELERATION_AMOUNT_SCALE * gHistoryAccelerationAmount * Color::Luminance(abs(specularResponsiveCenter.rgb - specularIlluminationAnd2ndMoment.rgb));
 
     // History acceleration amount should be proportional to history clamping amount
     specularHistoryDifferenceL *= specClampingFactor;
@@ -158,7 +158,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Using color space distance from responsive history to averaged noisy input to accelerate history
     float3 specularColorDistanceToNoisyInput = specularNoisyFirstMoment.rgb - specularResponsiveCenter;
 
-    float specularColorDistanceToNoisyInputL = STL::Color::Luminance(abs(specularColorDistanceToNoisyInput));
+    float specularColorDistanceToNoisyInputL = Color::Luminance(abs(specularColorDistanceToNoisyInput));
 
     float3 specularColorAcceleration = (specularColorDistanceToNoisyInputL == 0) ?
         0.0 : specularColorDistanceToNoisyInput * specularHistoryDifferenceL / specularColorDistanceToNoisyInputL;
@@ -166,7 +166,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Preventing overshooting and noise amplification by making sure luminance of accelerated responsive history
     // does not move beyond luminance of noisy input,
     // or does not move back from noisy input
-    float specularColorAccelerationL = STL::Color::Luminance(abs(specularColorAcceleration.rgb));
+    float specularColorAccelerationL = Color::Luminance(abs(specularColorAcceleration.rgb));
 
     float specularColorAccelerationRatio = (specularColorAccelerationL == 0) ?
         0 : specularColorDistanceToNoisyInputL / specularColorAccelerationL;
@@ -182,8 +182,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     outSpecularResponsive.rgb += specularColorAcceleration;
 
     // Calculating possibility for history reset
-    float specularL = STL::Color::Luminance(specularIlluminationAnd2ndMoment.rgb);
-    float specularNoisyInputL = STL::Color::Luminance(specularNoisyFirstMoment.rgb);
+    float specularL = Color::Luminance(specularIlluminationAnd2ndMoment.rgb);
+    float specularNoisyInputL = Color::Luminance(specularNoisyFirstMoment.rgb);
     float noisyspecularTemporalSigma = gHistoryResetTemporalSigmaScale * sqrt(max(0.0f, specularNoisySecondMoment - specularNoisyInputL * specularNoisyInputL));
     float noisyspecularSpatialSigma = gHistoryResetSpatialSigmaScale * specularResponsiveSigmaYCoCg.x;
     float specularHistoryResetAmount = 0.5 * gHistoryResetAmount * max(0, abs(specularL - specularNoisyInputL) - noisyspecularSpatialSigma - noisyspecularTemporalSigma) / (1.0e-6 + max(specularL, specularNoisyInputL) + noisyspecularSpatialSigma + noisyspecularTemporalSigma);
@@ -194,7 +194,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     outSpecularResponsive.rgb = lerp(outSpecularResponsive.rgb, sharedSpecularNoisyAnd2ndMoment[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, specularHistoryResetAmount);
 
     // 2nd moment correction
-    float outSpecularL = STL::Color::Luminance(outSpecular.rgb);
+    float outSpecularL = Color::Luminance(outSpecular.rgb);
     float specularMomentCorrection = (outSpecularL * outSpecularL - specularL * specularL);
 
     outSpecular.a += specularMomentCorrection;
@@ -232,18 +232,18 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Clamping color with color box expansion
     float4 diffuseIlluminationAnd2ndMoment = gDiffIllumination[pixelPos];
-    float3 diffuseYCoCg = STL::Color::RgbToYCoCg(diffuseIlluminationAnd2ndMoment.rgb);
+    float3 diffuseYCoCg = Color::RgbToYCoCg(diffuseIlluminationAnd2ndMoment.rgb);
     float3 clampedDiffuseYCoCg = diffuseYCoCg;
     if (gDiffMaxFastAccumulatedFrameNum < gDiffMaxAccumulatedFrameNum)
         clampedDiffuseYCoCg = clamp(diffuseYCoCg, diffuseResponsiveColorMinYCoCg, diffuseResponsiveColorMaxYCoCg);
-    float3 clampedDiffuse = STL::Color::YCoCgToRgb(clampedDiffuseYCoCg);
+    float3 clampedDiffuse = Color::YCoCgToRgb(clampedDiffuseYCoCg);
 
     // If history length is less than gHistoryFixFrameNum,
     // then it is the pixel with history fix applied in the previous (history fix) shader,
     // so data from responsive history needs to be copied to normal history,
     // and no history clamping is needed.
     float4 outDiffuse = float4(clampedDiffuse, diffuseIlluminationAnd2ndMoment.a);
-    float3 diffuseResponsiveCenter = STL::Color::YCoCgToRgb(diffuseResponsiveCenterYCoCg.rgb);
+    float3 diffuseResponsiveCenter = Color::YCoCgToRgb(diffuseResponsiveCenterYCoCg.rgb);
     float4 outDiffuseResponsive = float4(diffuseResponsiveCenter, 0);
     if (historyLength <= gHistoryFixFrameNum)
         outDiffuse.rgb = outDiffuseResponsive.rgb;
@@ -257,7 +257,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         diffClampingFactor = 1.0;
 
     // History acceleration based on (responsive - normal)
-    float diffuseHistoryDifferenceL = RELAX_ANTILAG_ACCELERATION_AMOUNT_SCALE * gHistoryAccelerationAmount * STL::Color::Luminance(abs(diffuseResponsiveCenter - diffuseIlluminationAnd2ndMoment.rgb));
+    float diffuseHistoryDifferenceL = RELAX_ANTILAG_ACCELERATION_AMOUNT_SCALE * gHistoryAccelerationAmount * Color::Luminance(abs(diffuseResponsiveCenter - diffuseIlluminationAnd2ndMoment.rgb));
 
     // History acceleration amount should be proportional to history clamping amount
     diffuseHistoryDifferenceL *= diffClampingFactor;
@@ -269,7 +269,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Using color space distance from responsive history to averaged noisy input to accelerate history
     float3 diffuseColorDistanceToNoisyInput = diffuseNoisyFirstMoment.rgb - diffuseResponsiveCenter;
 
-    float diffuseColorDistanceToNoisyInputL = STL::Color::Luminance(abs(diffuseColorDistanceToNoisyInput));
+    float diffuseColorDistanceToNoisyInputL = Color::Luminance(abs(diffuseColorDistanceToNoisyInput));
 
     float3 diffuseColorAcceleration = (diffuseColorDistanceToNoisyInputL == 0) ?
         0.0 : diffuseColorDistanceToNoisyInput * diffuseHistoryDifferenceL / diffuseColorDistanceToNoisyInputL;
@@ -277,7 +277,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     // Preventing overshooting and noise amplification by making sure luminance of accelerated responsive history
     // does not move beyond luminance of noisy input,
     // or does not move back from noisy input
-    float diffuseColorAccelerationL = STL::Color::Luminance(abs(diffuseColorAcceleration.rgb));
+    float diffuseColorAccelerationL = Color::Luminance(abs(diffuseColorAcceleration.rgb));
 
     float diffuseColorAccelerationRatio = (diffuseColorAccelerationL == 0) ?
         0 : diffuseColorDistanceToNoisyInputL / diffuseColorAccelerationL;
@@ -293,8 +293,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     outDiffuseResponsive.rgb += diffuseColorAcceleration;
 
     // Calculating possibility for history reset
-    float diffuseL = STL::Color::Luminance(diffuseIlluminationAnd2ndMoment.rgb);
-    float diffuseNoisyInputL = STL::Color::Luminance(diffuseNoisyFirstMoment.rgb);
+    float diffuseL = Color::Luminance(diffuseIlluminationAnd2ndMoment.rgb);
+    float diffuseNoisyInputL = Color::Luminance(diffuseNoisyFirstMoment.rgb);
     float noisydiffuseTemporalSigma = gHistoryResetTemporalSigmaScale * sqrt(max(0.0f, diffuseNoisySecondMoment - diffuseNoisyInputL * diffuseNoisyInputL));
     float noisydiffuseSpatialSigma = gHistoryResetSpatialSigmaScale * diffuseResponsiveSigmaYCoCg.x;
     float diffuseHistoryResetAmount = gHistoryResetAmount * max(0, abs(diffuseL - diffuseNoisyInputL) - noisydiffuseSpatialSigma - noisydiffuseTemporalSigma) / (1.0e-6 + max(diffuseL, diffuseNoisyInputL) + noisydiffuseSpatialSigma + noisydiffuseTemporalSigma);
@@ -304,7 +304,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     outDiffuseResponsive.rgb = lerp(outDiffuseResponsive.rgb, sharedDiffuseNoisyAnd2ndMoment[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, diffuseHistoryResetAmount);
 
     // 2nd moment correction
-    float outDiffuseL = STL::Color::Luminance(outDiffuse.rgb);
+    float outDiffuseL = Color::Luminance(outDiffuse.rgb);
     float diffuseMomentCorrection = (outDiffuseL * outDiffuseL - diffuseL * diffuseL);
 
     outDiffuse.a += diffuseMomentCorrection;

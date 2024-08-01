@@ -54,7 +54,7 @@ NRD_SAMPLERS_END
         NRD_OUTPUT( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 2 )
         NRD_OUTPUT( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 3 )
         NRD_OUTPUT( RWTexture2D<float>, gOut_Spec_HitDistForTracking, u, 4 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOut_Data1, u, 5 )
+        NRD_OUTPUT( RWTexture2D<REBLUR_DATA1_TYPE>, gOut_Data1, u, 5 )
         #ifndef REBLUR_OCCLUSION
             NRD_OUTPUT( RWTexture2D<uint>, gOut_Data2, u, 6 )
         #endif
@@ -88,7 +88,7 @@ NRD_SAMPLERS_END
     NRD_OUTPUTS_START
         NRD_OUTPUT( RWTexture2D<REBLUR_TYPE>, gOut_Diff, u, 0 )
         NRD_OUTPUT( RWTexture2D<REBLUR_FAST_TYPE>, gOut_DiffFast, u, 1 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOut_Data1, u, 2 )
+        NRD_OUTPUT( RWTexture2D<REBLUR_DATA1_TYPE>, gOut_Data1, u, 2 )
         #ifndef REBLUR_OCCLUSION
             NRD_OUTPUT( RWTexture2D<uint>, gOut_Data2, u, 3 )
         #endif
@@ -126,7 +126,7 @@ NRD_SAMPLERS_END
         NRD_OUTPUT( RWTexture2D<REBLUR_TYPE>, gOut_Spec, u, 0 )
         NRD_OUTPUT( RWTexture2D<REBLUR_FAST_TYPE>, gOut_SpecFast, u, 1 )
         NRD_OUTPUT( RWTexture2D<float>, gOut_Spec_HitDistForTracking, u, 2 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOut_Data1, u, 3 )
+        NRD_OUTPUT( RWTexture2D<REBLUR_DATA1_TYPE>, gOut_Data1, u, 3 )
         #ifndef REBLUR_OCCLUSION
             NRD_OUTPUT( RWTexture2D<uint>, gOut_Data2, u, 4 )
         #endif

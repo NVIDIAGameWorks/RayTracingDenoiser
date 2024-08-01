@@ -16,7 +16,7 @@ void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
 
-    s_FrameNum[ sharedPos.y ][ sharedPos.x ] = UnpackData1( gIn_Data1[ globalPos ] ).xz;
+    s_FrameNum[ sharedPos.y ][ sharedPos.x ] = UnpackData1( gIn_Data1[ globalPos ] );
 
     #ifdef REBLUR_DIFFUSE
         s_DiffLuma[ sharedPos.y ][ sharedPos.x ] = gIn_DiffFast[ globalPos ];
@@ -54,15 +54,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
-    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
+    float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
     float3 Vv = GetViewVector( Xv, true );
     float NoV = abs( dot( Nv, Vv ) );
     float slopeScale = 1.0 / max( NoV, 0.2 ); // TODO: bigger scale introduces ghosting
 
     // Smooth number of accumulated frames
     int2 smemPos = threadPos + BORDER;
-    float invHistoryFixFrameNum = STL::Math::PositiveRcp( gHistoryFixFrameNum );
+    float invHistoryFixFrameNum = Math::PositiveRcp( gHistoryFixFrameNum );
     float2 frameNum = s_FrameNum[ smemPos.y ][ smemPos.x ]; // unsmoothed
     float2 frameNumNorm = saturate( frameNum * invHistoryFixFrameNum ); // smoothed
     float2 c = frameNumNorm;
@@ -158,10 +158,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float4 Ns = gIn_Normal_Roughness[ WithRectOrigin( pos ) ];
                     Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
-                    float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+                    float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
                     float NoX = dot( Nv, Xvs );
 
-                    float angle = STL::Math::AcosApprox( dot( Ns.xyz, N ) );
+                    float angle = Math::AcosApprox( dot( Ns.xyz, N ) );
 
                     // Weight
                     float w = IsInScreenNearest( uv );
@@ -188,7 +188,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 }
             }
 
-            sumd = STL::Math::PositiveRcp( sumd );
+            sumd = Math::PositiveRcp( sumd );
             diff *= sumd;
             #ifdef REBLUR_SH
                 diffSh *= sumd;
@@ -347,10 +347,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float4 Ns = gIn_Normal_Roughness[ WithRectOrigin( pos ) ];
                     Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
-                    float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+                    float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
                     float NoX = dot( Nv, Xvs );
 
-                    float angle = STL::Math::AcosApprox( dot( Ns.xyz, N ) );
+                    float angle = Math::AcosApprox( dot( Ns.xyz, N ) );
 
                     // Weight
                     float w = IsInScreenNearest( uv );
@@ -361,7 +361,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     w *= ComputeExponentialWeight( Ns.w * Ns.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
 
                     #ifndef REBLUR_PERFORMANCE_MODE
-                        w *= 1.0 + UnpackData1( gIn_Data1[ pos ] ).z;
+                        w *= 1.0 + UnpackData1( gIn_Data1[ pos ] ).y;
                     #endif
 
                     REBLUR_TYPE s = gIn_Spec[ pos ];
@@ -381,7 +381,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 }
             }
 
-            sums = STL::Math::PositiveRcp( sums );
+            sums = Math::PositiveRcp( sums );
             spec *= sums;
             #ifdef REBLUR_SH
                 specSh.xyz *= sums;

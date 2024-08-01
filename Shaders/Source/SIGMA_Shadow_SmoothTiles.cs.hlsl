@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "NRD.hlsli"
-#include "STL.hlsli"
+#include "ml.hlsli"
 
 #include "SIGMA_Config.hlsli"
 #include "SIGMA_SmoothTiles.resources.hlsli"

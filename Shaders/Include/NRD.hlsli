@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.8
+// NRD v4.9
 
 // IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
 
@@ -315,7 +315,7 @@ float3 _NRD_DecodeUnitVector( float2 p, const bool bSigned, const bool bNormaliz
 // Color space
 float _NRD_Luminance( float3 linearColor )
 {
-    // IMPORTANT: must be in sync with STL_LUMINANCE_DEFAULT
+    // IMPORTANT: must be in sync with ML_LUMINANCE_DEFAULT
     return dot( linearColor, float3( 0.2126, 0.7152, 0.0722 ) );
 }
 
@@ -401,7 +401,7 @@ float _NRD_GeometryTerm( float roughness, float NoL, float NoV )
     float a = NoL + sqrt( saturate( ( NoL - m2 * NoL ) * NoL + m2 ) );
     float b = NoV + sqrt( saturate( ( NoV - m2 * NoV ) * NoV + m2 ) );
 
-    return 1.0 / ( a * b );
+    return 1.0 / max( a * b, NRD_EPS );
 }
 
 float _NRD_DiffuseTerm( float roughness, float NoL, float NoV, float VoH )
@@ -522,7 +522,7 @@ float _NRD_SG_InnerProduct( NRD_SG a, NRD_SG b )
     float d = length( a.sharpness * _NRD_SG_ExtractDirection( a ) + b.sharpness * _NRD_SG_ExtractDirection( b ) );
     float c = exp( d - a.sharpness - b.sharpness );
     c *= 1.0 - exp( -2.0 * d );
-    c /= d;
+    c /= max( d, NRD_EPS );
 
     // Original version is without "saturate" ( needed to avoid rare fireflies in our case, energy is already preserved )
     return NRD_PI * saturate( 2.0 * c * a.c0 ) * b.c0;
@@ -612,6 +612,14 @@ float NRD_FrontEnd_SpecHitDistAveraging_Begin( )
     return NRD_INF;
 }
 
+float NRD_FrontEnd_TrimHitDistance( float hitDist, float threshold ) // optional
+{
+    // Sampling can produce rays pointing inside the surface, leading to "hitDist = 0". But due to ray offsetting actual "hitDist" can be a very
+    // small value in this case. Since NRD has been designed to handle "hitDist = 0" case, accidentally small "hitDist" values better trim to 0
+
+    return hitDist < threshold ? 0.0 : hitDist;
+}
+
 void NRD_FrontEnd_SpecHitDistAveraging_Add( inout float accumulatedSpecHitDist, float hitDist )
 {
     // TODO: for high roughness it can be blended to average
@@ -628,13 +636,8 @@ void NRD_FrontEnd_SpecHitDistAveraging_End( inout float accumulatedSpecHitDist )
 //=================================================================================================================================
 
 // This function returns AO / SO which REBLUR can decode back to "hit distance" internally
-float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness, float trimmingThreshold = 0.0 )
+float REBLUR_FrontEnd_GetNormHitDist( float hitDist, float viewZ, float4 hitDistParams, float roughness )
 {
-    // Sampling can produce rays pointing inside surface, i.e. "hitDist = 0". But due to ray offsetting actual "hitDist" can be a
-    // very small value in this case. Since NRD has been designed to handle "hitDist = 0" case, accidentally small "hitDist" values
-    // better trim to 0
-    hitDist = hitDist < trimmingThreshold ? 0.0 : hitDist;
-
     float f = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, roughness );
 
     return saturate( hitDist / f );
@@ -839,7 +842,7 @@ NRD_SG RELAX_BackEnd_UnpackSh( float4 sh0, float4 sh1 )
 
 // OUT_SHADOW_TRANSLUCENCY => X
 //   SIGMA_SHADOW / SIGMA_SHADOW_TRANSLUCENCY:
-//      float shadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY );
+//      float shadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY ).x;
 //   SIGMA_SHADOW_TRANSLUCENCY:
 //      float3 translucentShadow = SIGMA_BackEnd_UnpackShadow( OUT_SHADOW_TRANSLUCENCY ).yzw;
 #define SIGMA_BackEnd_UnpackShadow( shadow ) ( shadow * shadow )
@@ -940,7 +943,7 @@ float3 NRD_SG_ResolveSpecular( NRD_SG sg, float3 N, float3 V, float roughness )
     NRD_SG ndf;
     ndf.c0 = 1.0 / ( NRD_PI * m2 );
     ndf.c1 = H;
-    ndf.sharpness = 2.0 / m2;
+    ndf.sharpness = 2.0 / max( m2, NRD_EPS );
     ndf.chroma = float2( 0, 0 );
     ndf.normHitDist = 0;
 
@@ -951,7 +954,7 @@ float3 NRD_SG_ResolveSpecular( NRD_SG sg, float3 N, float3 V, float roughness )
     NRD_SG ndfWarped;
     ndfWarped.c0 = ndf.c0;
     ndfWarped.c1 = reflect( -V, ndf.c1 );
-    ndfWarped.sharpness = ndf.sharpness / ( 4.0 * abs( dot( ndf.c1, V ) ) + NRD_EPS );
+    ndfWarped.sharpness = ndf.sharpness / max( 4.0 * abs( dot( ndf.c1, V ) ), NRD_EPS );
     ndfWarped.chroma = float2( 0, 0 );
     ndfWarped.normHitDist = 0;
 
@@ -1062,6 +1065,16 @@ float REBLUR_GetHitDist( float normHitDist, float viewZ, float4 hitDistParams, f
     float scale = _REBLUR_GetHitDistanceNormalization( viewZ, hitDistParams, roughness );
 
     return normHitDist * scale;
+}
+
+// Normalized strand thickness factor in range [0; 1]
+// 0 - thickness in pixels is good enough to guarantee stable multi-pixel projection
+// 1 - thickness in pixels is very thick, transforming the geomtery into a "pixel soup"
+// pixelSize = size of a pixel in world units for provided "viewZ"
+// pixelSize = gUnproject * ( isOrtho ? 1.0 : abs( viewZ ) )
+float NRD_GetNormalizedStrandThickness( float strandThickness, float pixelSize )
+{
+    return pixelSize / ( pixelSize + strandThickness );
 }
 
 #endif // __cplusplus

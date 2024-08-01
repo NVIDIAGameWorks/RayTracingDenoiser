@@ -304,7 +304,7 @@ void NrdIntegration::CreateResources(uint16_t resourceWidth, uint16_t resourceHe
 
         // Adjust memory usage
         nri::MemoryDesc memoryDesc = {};
-        m_NRI->GetTextureMemoryInfo(*texture, nri::MemoryLocation::DEVICE, memoryDesc);
+        m_NRI->GetTextureMemoryDesc(*m_Device, textureDesc, nri::MemoryLocation::DEVICE, memoryDesc);
 
         if (i < instanceDesc.permanentPoolSize)
             m_PermanentPoolSize += memoryDesc.size;

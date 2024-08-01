@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 8
+#define NRD_SETTINGS_VERSION_MINOR 9
 
 static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -68,6 +68,8 @@ namespace nrd
         MAX_NUM
     };
 
+    // IMPORTANT: if "unit" is not "meter", all default values must be converted from "meters" to "units"!
+
     struct CommonSettings
     {
         // Matrix requirements:
@@ -96,7 +98,7 @@ namespace nrd
             0.0f, 0.0f, 0.0f, 1.0f
         };
 
-        // used as "IN_MV * motionVectorScale" (use .z = 0 for 2D screen-space motion)
+        // Used as "IN_MV * motionVectorScale" (use .z = 0 for 2D screen-space motion)
         float motionVectorScale[3] = {1.0f, 1.0f, 0.0f};
 
         // [-0.5; 0.5] - sampleUv = pixelUv + cameraJitter
@@ -115,14 +117,23 @@ namespace nrd
         // (ms) - user provided if > 0, otherwise - tracked internally
         float timeDeltaBetweenFrames = 0.0f;
 
-        // (units) > 0 - use TLAS or tracing range
+        // (units > 0) - use TLAS or tracing range
         float denoisingRange = 500000.0f;
 
-        // (normalized %) - if relative distance difference is greater than threshold, history gets reset (0.5-2.5% works well)
+        // [0.01; 0.02] - if relative distance difference is greater than the threshold (slope scaled), the accumulation process gets restarted
         float disocclusionThreshold = 0.01f;
 
-        // (normalized %) - alternative disocclusion threshold, which is mixed to based on IN_DISOCCLUSION_THRESHOLD_MIX
+        // [0.02; 0.2] - an alternative disocclusion threshold, which is mixed to based on:
+        // - "strandThickness", if there is "strandMaterialID" match
+        // - IN_DISOCCLUSION_THRESHOLD_MIX texture, if "isDisocclusionThresholdMixAvailable = true" (has higher priority and ignores "strandMaterialID")
         float disocclusionThresholdAlternate = 0.05f;
+
+        // [0; 1] - Enables "under-the-hood" tweaks for hair (and grass) denoising (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
+        // Must respect material ID encoding
+        float strandMaterialID = 999.0f;
+
+        // (units > 0) Defines how "disocclusionThreshold" blends into "disocclusionThresholdAlternate" = pixelSize / (pixelSize + strandThickness)
+        float strandThickness = 80e-6f;
 
         // [0; 1] - enables "noisy input / denoised output" comparison
         float splitScreen = 0.0f;
@@ -142,7 +153,7 @@ namespace nrd
         // To reset history set to RESTART / CLEAR_AND_RESTART for one frame
         AccumulationMode accumulationMode = AccumulationMode::CONTINUE;
 
-        // If "true" IN_MV is 3D motion in world-space (0 should be everywhere if the scene is static),
+        // If "true" IN_MV is 3D motion in world-space (0 should be everywhere if the scene is static, camera motion must not be included),
         // otherwise it's 2D (+ optional Z delta) screen-space motion (0 should be everywhere if the camera doesn't move) (recommended value = true)
         bool isMotionVectorInWorldSpace = false;
 
@@ -167,8 +178,7 @@ namespace nrd
     // f = ( A + viewZ * B ) * lerp( 1.0, C, exp2( D * roughness ^ 2 ) ), see "NRD.hlsl/REBLUR_FrontEnd_GetNormHitDist"
     struct HitDistanceParameters
     {
-        // (units) - constant value
-        // IMPORTANT: if your unit is not "meter", you must convert it from "meters" to "units" manually!
+        // (units > 0) - constant value
         float A = 3.0f;
 
         // (> 0) - viewZ based linear scale (1 m - 10 cm, 10 m - 1 m, 100 m - 10 m)
@@ -213,8 +223,8 @@ namespace nrd
         // (pixels) - min denoising radius (for converged state)
         float minBlurRadius = 1.0f;
 
-        // (pixels) - max denoising radius (gets reduced over time, 30 is a baseline for 1440p)
-        float maxBlurRadius = 15.0f;
+        // (pixels) - base (max) denoising radius (gets reduced over time)
+        float maxBlurRadius = 30.0f;
 
         // (normalized %) - base fraction of diffuse or specular lobe angle used to drive normal based rejection
         float lobeAngleFraction = 0.2f;
@@ -225,15 +235,23 @@ namespace nrd
         // [0; 1] - if roughness < this, temporal accumulation becomes responsive and driven by roughness (useful for animated water)
         float responsiveAccumulationRoughnessThreshold = 0.0f;
 
-        // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
+        // (normalized %) - stabilizes output, but adds temporal lag, at the same time more stabilization improves antilag (clean signals can use lower values)
+        // = N / (1 + N), where N is the number of accumulated frames 
         // 0 - disables the stabilization pass
-        float stabilizationStrength = 1.0f;
+        float stabilizationStrength = 1.0f; // TODO: replace with number of accumulated frames
+
+        // (normalized %) - same as "stabilizationStrength", but for hit distance (can't be > "stabilizationStrength", 0 - allows to reach parity with REBLUR_OCCLUSION)
+        // = N / (1 + N), where N is the number of accumulated frames 
+        float hitDistanceStabilizationStrength = 1.0f; // TODO: replace with number of accumulated frames
 
         // (normalized %) - represents maximum allowed deviation from local tangent plane
         float planeDistanceSensitivity = 0.005f;
 
         // IN_MV = lerp(IN_MV, specularMotion, smoothstep(this[0], this[1], specularProbability))
         float specularProbabilityThresholdsForMvModification[2] = {0.5f, 0.9f};
+
+        // [1; 3] - undesired sporadic outliers suppression to keep output stable (smaller values maximize suppression in exchange of bias)
+        float fireflySuppressorMinRelativeScale = 2.0f;
 
         // If not OFF and used for DIFFUSE_SPECULAR, defines diffuse orientation, specular orientation is the opposite
         CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
@@ -247,7 +265,7 @@ namespace nrd
         // Boosts performance by sacrificing IQ
         bool enablePerformanceMode = false;
 
-        // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
+        // Optional material index comparison: enableMaterialTest ? materialID[x] == materialID[y] : 1 (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
 
@@ -361,7 +379,7 @@ namespace nrd
         // Roughness based rejection
         bool enableRoughnessEdgeStopping = true;
 
-        // Spatial passes do optional material index comparison as: ( materialEnabled ? material[ center ] == material[ sample ] : 1 )
+        // Optional material index comparison: enableMaterialTest ? materialID[x] == materialID[y] : 1 (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
         bool enableMaterialTestForDiffuse = false;
         bool enableMaterialTestForSpecular = false;
     };
@@ -379,7 +397,8 @@ namespace nrd
 
         // (normalized %) - stabilizes output, more stabilization improves antilag (clean signals can use lower values)
         // 0 - disables the stabilization pass and makes denoising spatial only (no history)
-        float stabilizationStrength = 1.0f;
+        // = N / (1 + N), where N is the number of accumulated frames
+        float stabilizationStrength = 1.0f; // TODO: replace with number of accumulated frames
     };
 
     // REFERENCE

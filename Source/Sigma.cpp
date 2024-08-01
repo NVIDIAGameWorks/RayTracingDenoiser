@@ -123,7 +123,7 @@ void nrd::InstanceImpl::AddSharedConstants_Sigma(const SigmaSettings& settings, 
     consts->gDebug                  = m_CommonSettings.debug;
     consts->gSplitScreen            = m_CommonSettings.splitScreen;
     consts->gViewZScale             = m_CommonSettings.viewZScale;
-    consts->gMinRectDimMulUnproject = (float)Min(rectW, rectH) * unproject;
+    consts->gMinRectDimMulUnproject = (float)min(rectW, rectH) * unproject;
     consts->gFrameIndex             = m_CommonSettings.frameIndex;
 }
 

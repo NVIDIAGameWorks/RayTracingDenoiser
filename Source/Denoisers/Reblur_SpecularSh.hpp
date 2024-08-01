@@ -53,7 +53,7 @@ void nrd::InstanceImpl::Add_ReblurSpecularSh(DenoiserData& denoiserData)
         TILES,
     };
 
-    AddTextureToTransientPool( {Format::RG8_UNORM, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, 1} );
     AddTextureToTransientPool( {Format::R32_UINT, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, 1} );

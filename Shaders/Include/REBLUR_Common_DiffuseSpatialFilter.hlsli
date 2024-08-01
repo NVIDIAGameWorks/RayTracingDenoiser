@@ -28,51 +28,43 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
         float fractionScale = 1.0;
+        float radiusScale = 1.0;
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         fractionScale = REBLUR_PRE_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        float radiusScale = 1.0;
         fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
-        float radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
+        radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
         fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #endif
 
+        // Hit distance factor ( tests 53, 76, 95, 120 )
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
         float hitDist = ExtractHitDist( diff ) * hitDistScale;
-
-        // Hit distance factor ( tests 76, 95, 120 )
-        // TODO: if luminance stoppers are used, blur radius should depend less on "hitDistFactor"
         float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
         float hitDistFactor = GetHitDistFactor( hitDist, frustumSize );
 
         // Blur radius
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        // Blur radius - main
         float blurRadius = gDiffPrepassBlurRadius;
-        blurRadius *= hitDistFactor;
+        float areaFactor = hitDistFactor;
     #else
-        // Test 53
-        hitDistFactor = lerp( hitDistFactor, 1.0, data1.y );
-
-        // IMPORTANT: keep an eye on tests:
-        // - 51 and 128: outlines without TAA
-        // - 81 and 117: cleanness in disoccluded regions
         float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.x );
-        boost *= 1.0 - STL::BRDF::Pow5( NoV );
+        boost *= 1.0 - BRDF::Pow5( NoV );
 
         float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + REBLUR_SAMPLES_PER_FRAME * ( 1.0 - boost ) * data1.x );
 
-        // Blur radius - main
-        float blurRadius = gMaxBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
-        blurRadius *= hitDistFactor;
+        float blurRadius = gMaxBlurRadius;
+        float areaFactor = hitDistFactor * diffNonLinearAccumSpeed;
+    #endif
+
+        blurRadius *= Math::Sqrt01( areaFactor ); // "areaFactor" affects area, not radius
+
+        // Blur radius - scale
+        blurRadius *= radiusScale;
 
         // Blur radius - addition to avoid underblurring
-        blurRadius += gMinBlurRadius;
-
-        // Blur radius - scaling
-        blurRadius *= radiusScale;
-    #endif
+        blurRadius = max( blurRadius, gMinBlurRadius );
 
         // Weights
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
@@ -97,7 +89,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Sample coordinates
         #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 uv = pixelUv + STL::Geometry::RotateVector( rotator, offset.xy ) * gRectSizeInv * blurRadius;
+            float2 uv = pixelUv + Geometry::RotateVector( rotator, offset.xy ) * gRectSizeInv * blurRadius;
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
         #endif
@@ -125,7 +117,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
         #endif
 
-            float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
+            float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
             float materialIDs;
             float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 );
@@ -138,7 +130,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             float2 x;
             x.x = dot( Nv, Xvs );
-            x.y = STL::Math::AcosApprox( dot( N, Ns.xyz ) );
+            x.y = Math::AcosApprox( dot( N, Ns.xyz ) );
             x = ComputeWeight( x, px, py );
             w *= x.x * x.y;
 
@@ -159,7 +151,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             #endif
         }
 
-        float invSum = STL::Math::PositiveRcp( sum );
+        float invSum = Math::PositiveRcp( sum );
         diff *= invSum;
     #ifdef REBLUR_SH
         diffSh *= invSum;

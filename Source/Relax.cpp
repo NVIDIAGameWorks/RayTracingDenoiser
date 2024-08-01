@@ -51,7 +51,7 @@ constexpr uint32_t RELAX_MAX_ATROUS_PASS_NUM = 8;
 inline float3 RELAX_GetFrustumForward(const float4x4& viewToWorld, const float4& frustum)
 {
     float4 frustumForwardView = float4(0.5f, 0.5f, 1.0f, 0.0f) * float4(frustum.z, frustum.w, 1.0f, 0.0f) + float4(frustum.x, frustum.y, 0.0f, 0.0f);
-    float3 frustumForwardWorld = (viewToWorld * frustumForwardView).To3d();
+    float3 frustumForwardWorld = (viewToWorld * frustumForwardView).xyz;
 
     // Vector is not normalized for non-symmetric projections, it has to have .z = 1.0 to correctly reconstruct world position in shaders
     return frustumForwardWorld;
@@ -68,21 +68,19 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
 
     float tanHalfFov = 1.0f / m_ViewToClip.a00;
     float aspect = m_ViewToClip.a00 / m_ViewToClip.a11;
-    float3 frustumRight = m_WorldToView.GetRow0().To3d() * tanHalfFov;
-    float3 frustumUp = m_WorldToView.GetRow1().To3d() * tanHalfFov * aspect;
+    float3 frustumRight = float3(m_WorldToView.GetRow0().xyz) * tanHalfFov;
+    float3 frustumUp = float3(m_WorldToView.GetRow1().xyz) * tanHalfFov * aspect;
     float3 frustumForward = RELAX_GetFrustumForward(m_ViewToWorld, m_Frustum);
 
     float prevTanHalfFov = 1.0f / m_ViewToClipPrev.a00;
     float prevAspect = m_ViewToClipPrev.a00 / m_ViewToClipPrev.a11;
-    float3 prevFrustumRight = m_WorldToViewPrev.GetRow0().To3d() * prevTanHalfFov;
-    float3 prevFrustumUp = m_WorldToViewPrev.GetRow1().To3d() * prevTanHalfFov * prevAspect;
+    float3 prevFrustumRight = float3(m_WorldToViewPrev.GetRow0().xyz) * prevTanHalfFov;
+    float3 prevFrustumUp = float3(m_WorldToViewPrev.GetRow1().xyz) * prevTanHalfFov * prevAspect;
     float3 prevFrustumForward = RELAX_GetFrustumForward(m_ViewToWorldPrev, m_FrustumPrev);
 
-    float maxDiffuseLuminanceRelativeDifference = -Log( Saturate(settings.diffuseMinLuminanceWeight) );
-    float maxSpecularLuminanceRelativeDifference = -Log( Saturate(settings.specularMinLuminanceWeight) );
+    float maxDiffuseLuminanceRelativeDifference = -log( saturate(settings.diffuseMinLuminanceWeight) );
+    float maxSpecularLuminanceRelativeDifference = -log( saturate(settings.specularMinLuminanceWeight) );
     float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
-    float disocclusionThreshold = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
-    float disocclusionThresholdAlternate = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
 
     // Checkerboard logic
     uint32_t specCheckerboard = 2;
@@ -126,8 +124,9 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gSpecMaxFastAccumulatedFrameNum                     = (float)settings.specularMaxFastAccumulatedFrameNum;
     consts->gDiffMaxAccumulatedFrameNum                         = (float)settings.diffuseMaxAccumulatedFrameNum;
     consts->gDiffMaxFastAccumulatedFrameNum                     = (float)settings.diffuseMaxFastAccumulatedFrameNum;
-    consts->gDisocclusionDepthThreshold                         = disocclusionThreshold;
-    consts->gDisocclusionDepthThresholdAlternate                = disocclusionThresholdAlternate;
+    consts->gDisocclusionThreshold                              = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
+    consts->gDisocclusionThresholdAlternate                     = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
+    consts->gStrandMaterialID                                   = m_CommonSettings.strandMaterialID;
     consts->gRoughnessFraction                                  = settings.roughnessFraction;
     consts->gSpecVarianceBoost                                  = settings.specularVarianceBoost;
     consts->gSplitScreen                                        = m_CommonSettings.splitScreen;
@@ -136,7 +135,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gDepthThreshold                                     = settings.depthThreshold;
     consts->gDiffLobeAngleFraction                              = settings.diffuseLobeAngleFraction;
     consts->gSpecLobeAngleFraction                              = settings.specularLobeAngleFraction;
-    consts->gSpecLobeAngleSlack                                 = DegToRad(settings.specularLobeAngleSlack);
+    consts->gSpecLobeAngleSlack                                 = radians(settings.specularLobeAngleSlack);
     consts->gHistoryFixEdgeStoppingNormalPower                  = settings.historyFixEdgeStoppingNormalPower;
     consts->gRoughnessEdgeStoppingRelaxation                    = settings.roughnessEdgeStoppingRelaxation;
     consts->gNormalEdgeStoppingRelaxation                       = settings.normalEdgeStoppingRelaxation;
@@ -157,18 +156,18 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gDebug                                              = m_CommonSettings.debug;
     consts->gOrthoMode                                          = m_OrthoMode;
     consts->gUnproject                                          = 1.0f / (0.5f * rectH * m_ProjectY);
-    consts->gFramerateScale                                     = Clamp(16.66f / m_TimeDelta, 0.25f, 4.0f); // TODO: use m_FrameRateScale?
+    consts->gFramerateScale                                     = clamp(16.66f / m_TimeDelta, 0.25f, 4.0f); // TODO: use m_FrameRateScale?
     consts->gCheckerboardResolveAccumSpeed                      = m_CheckerboardResolveAccumSpeed;
     consts->gJitterDelta                                        = m_JitterDelta;
-    consts->gHistoryFixFrameNum                                 = Min(settings.historyFixFrameNum, 3u) + 1.0f;
+    consts->gHistoryFixFrameNum                                 = min(settings.historyFixFrameNum, 3u) + 1.0f;
     consts->gHistoryThreshold                                   = (float)settings.spatialVarianceEstimationHistoryThreshold;
     consts->gViewZScale                                         = m_CommonSettings.viewZScale;
     consts->gRoughnessEdgeStoppingEnabled                       = settings.enableRoughnessEdgeStopping ? 1 : 0;
     consts->gFrameIndex                                         = m_CommonSettings.frameIndex;
     consts->gDiffCheckerboard                                   = diffCheckerboard;
     consts->gSpecCheckerboard                                   = specCheckerboard;
-    consts->gUseConfidenceInputs                                = m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0;
-    consts->gUseDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0;
+    consts->gHasHistoryConfidence                               = m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0;
+    consts->gHasDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0;
     consts->gDiffMaterialMask                                   = settings.enableMaterialTestForDiffuse ? 1 : 0;
     consts->gSpecMaterialMask                                   = settings.enableMaterialTestForSpecular ? 1 : 0;
     consts->gResetHistory                                       = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0;
@@ -195,7 +194,7 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 
     const RelaxSettings& settings = denoiserData.settings.relax;
     bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
-    uint32_t iterationNum = Clamp(settings.atrousIterationNum, 2u, RELAX_MAX_ATROUS_PASS_NUM);
+    uint32_t iterationNum = clamp(settings.atrousIterationNum, 2u, RELAX_MAX_ATROUS_PASS_NUM);
 
     // SPLIT_SCREEN (passthrough)
     if (m_CommonSettings.splitScreen >= 1.0f)
@@ -226,7 +225,7 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
         AddSharedConstants_Relax(settings, consts);
         consts->gRotator = m_Rotator_PrePass; // TODO: push constant
     }
-    
+
     { // TEMPORAL_ACCUMULATION
         uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 2 : 0) + (m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0);
         void* consts = PushDispatch(denoiserData, passIndex);

@@ -26,36 +26,27 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
     if( gSpecPrepassBlurRadius != 0.0 )
     {
-        STL::Rng::Hash::Initialize( pixelPos, gFrameIndex );
+        Rng::Hash::Initialize( pixelPos, gFrameIndex );
 
         float specNonLinearAccumSpeed = REBLUR_PRE_BLUR_NON_LINEAR_ACCUM_SPEED;
 #endif
 
         float fractionScale = 1.0;
+        float radiusScale = 1.0;
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         fractionScale = REBLUR_PRE_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_BLUR )
-        float radiusScale = 1.0;
         fractionScale = REBLUR_BLUR_FRACTION_SCALE;
     #elif( REBLUR_SPATIAL_MODE == REBLUR_POST_BLUR )
-        float radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
+        radiusScale = REBLUR_POST_BLUR_RADIUS_SCALE;
         fractionScale = REBLUR_POST_BLUR_FRACTION_SCALE;
     #endif
 
-        float roughnessFractionScaled = saturate( gRoughnessFraction * fractionScale );
-
-        float hitDist = ExtractHitDist( spec ) * _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
-
-        // Min blur radius
-        float4 Dv = STL::ImportanceSampling::GetSpecularDominantDirection( Nv, Vv, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
-        float NoD = abs( dot( Nv, Dv.xyz ) );
-        float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, REBLUR_MAX_PERCENT_OF_LOBE_VOLUME );
-        float lobeRadius = hitDist * NoD * lobeTanHalfAngle;
-        float minBlurRadius = lobeRadius / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ + hitDist * Dv.w );
-
         // Hit distance factor ( tests 76, 95, 120 )
-        // TODO: reduce "hitDistFactor" influence if reprojection confidence is low?
-        // TODO: if luminance stoppers are used, blur radius should depend less on "hitDistFactor"
+        float4 Dv = ImportanceSampling::GetSpecularDominantDirection( Nv, Vv, roughness, ML_SPECULAR_DOMINANT_DIRECTION_G2 );
+        float NoD = abs( dot( Nv, Dv.xyz ) );
+        float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
+        float hitDist = ExtractHitDist( spec ) * hitDistScale;
         float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
         float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumSize );
 
@@ -63,37 +54,29 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         float minHitDist = hitDist == 0.0 ? NRD_INF : hitDist;
 
-        // Blur radius - main
-        float blurRadius = smc * gSpecPrepassBlurRadius;
-        blurRadius *= hitDistFactor;
-        blurRadius = min( blurRadius, minBlurRadius );
+        float blurRadius = gSpecPrepassBlurRadius;
+        float areaFactor = roughness * hitDistFactor;
     #else
-        // IMPORTANT: keep an eye on tests:
-        // - 51 and 128: outlines without TAA
-        // - 81 and 117: cleanness in disoccluded regions
-        float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.z );
-        boost *= 1.0 - STL::BRDF::Pow5( NoV );
+        float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.y );
+        boost *= 1.0 - BRDF::Pow5( NoV );
         boost *= smc;
 
-        float specNonLinearAccumSpeed = 1.0 / ( 1.0 + REBLUR_SAMPLES_PER_FRAME * ( 1.0 - boost ) * data1.z );
+        float specNonLinearAccumSpeed = 1.0 / ( 1.0 + REBLUR_SAMPLES_PER_FRAME * ( 1.0 - boost ) * data1.y );
 
-        // Tests 144, 145, 150, 153, 23e
-        float hitDistFactorRelaxedByError = lerp( hitDistFactor, 1.0, data1.w );
-        float hitDistFactorAdditionallyRelaxedByRoughness = lerp( 1.0, hitDistFactorRelaxedByError, roughness );
-
-        // Blur radius - main
-        float blurRadius = smc * gMaxBlurRadius * ( 1.0 + 2.0 * boost ) / 3.0;
-        blurRadius *= lerp( hitDistFactorRelaxedByError, hitDistFactorAdditionallyRelaxedByRoughness, specNonLinearAccumSpeed );
-        blurRadius = min( blurRadius, minBlurRadius );
-
-        // Blur radius - addition to avoid underblurring
-        blurRadius += gMinBlurRadius * smc; // TODO: a source of contact detail loss
-
-        // Blur radius - scaling
-        blurRadius *= radiusScale;
+        float blurRadius = gMaxBlurRadius;
+        float areaFactor = roughness * hitDistFactor * specNonLinearAccumSpeed;
     #endif
 
+        blurRadius *= Math::Sqrt01( areaFactor ); // "areaFactor" affects area, not radius
+
+        // Blur radius - scale
+        blurRadius *= radiusScale;
+
+        // Blur radius - addition to avoid underblurring
+        blurRadius = max( blurRadius, gMinBlurRadius * smc );
+
         // Weights
+        float roughnessFractionScaled = saturate( gRoughnessFraction * fractionScale );
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
         float normalWeightParams = GetNormalWeightParams( specNonLinearAccumSpeed, roughness ) / fractionScale;
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScaled );
@@ -117,7 +100,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Sample coordinates
         #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 uv = pixelUv + STL::Geometry::RotateVector( rotator, offset.xy ) * gRectSizeInv * blurRadius;
+            float2 uv = pixelUv + Geometry::RotateVector( rotator, offset.xy ) * gRectSizeInv * blurRadius;
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
         #endif
@@ -145,7 +128,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
         #endif
 
-            float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
+            float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
             float materialIDs;
             float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 );
@@ -158,7 +141,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             float3 x;
             x.x = dot( Nv, Xvs );
-            x.y = STL::Math::AcosApprox( dot( N, Ns.xyz ) );
+            x.y = Math::AcosApprox( dot( N, Ns.xyz ) );
             x.z = Ns.w;
             x = ComputeWeight( x, px, py );
             w *= x.x * x.y * x.z;
@@ -172,7 +155,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float hs = ExtractHitDist( s ) * _REBLUR_GetHitDistanceNormalization( zs, gHitDistParams, Ns.w );
             float d = length( Xvs - Xv ) + NRD_EPS;
             float geometryWeight = w * saturate( hs / d );
-            if( STL::Rng::Hash::GetFloat( ) < geometryWeight )
+            if( Rng::Hash::GetFloat( ) < geometryWeight )
                 minHitDist = min( minHitDist, hs );
 
             // In rare cases, when bright samples are so sparse that any bright neighbors can't be reached,
@@ -184,7 +167,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Decrease weight for samples that most likely are very close to reflection contact which should not be blurred
             float t = hs / ( d + hitDist );
-            w *= lerp( saturate( t ), 1.0, STL::Math::LinearStep( 0.5, 1.0, roughness ) );
+            w *= lerp( saturate( t ), 1.0, Math::LinearStep( 0.5, 1.0, roughness ) );
         #endif
             w *= lerp( minHitDistWeight, 1.0, ComputeExponentialWeight( ExtractHitDist( s ), hitDistanceWeightParams.x, hitDistanceWeightParams.y ) );
             w *= GetGaussianWeight( offset.z );
@@ -200,7 +183,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             #endif
         }
 
-        float invSum = STL::Math::PositiveRcp( sum );
+        float invSum = Math::PositiveRcp( sum );
         spec *= invSum;
         #ifdef REBLUR_SH
             specSh.xyz *= invSum;

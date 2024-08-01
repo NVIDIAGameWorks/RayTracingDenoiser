@@ -10,14 +10,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
+#include <assert.h>
+
 #include "NRD.h"
-#include "MathLib/MathLib.h"
 
 typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
 #include "StdAllocator.h"
 
 #include "Timer.h"
-#include <assert.h>
+#include "MathLib/ml.h"
+#include "MathLib/ml.hlsli"
 
 #define _NRD_STRINGIFY(s) #s
 #define NRD_STRINGIFY(s) _NRD_STRINGIFY(s)
@@ -228,6 +230,8 @@ namespace nrd
             , m_ActiveDispatches(GetStdAllocator())
             , m_IndexRemap(GetStdAllocator())
         {
+            Rng::Hash::Initialize(m_RngState, 106937, 69);
+
             m_ConstantDataUnaligned = m_StdAllocator.allocate(CONSTANT_DATA_SIZE + sizeof(float4));
 
             // IMPORTANT: underlying memory for constants must be aligned, as well as any individual SSE-type containing member,
@@ -312,7 +316,7 @@ namespace nrd
         Vector<DispatchDesc> m_ActiveDispatches;
         Vector<uint16_t> m_IndexRemap;
         Timer m_Timer;
-        sFastRand m_FastRandState = {};
+        uint32_t m_RngState = {};
         InstanceDesc m_Desc = {};
         CommonSettings m_CommonSettings = {};
         float4x4 m_ViewToClip = float4x4::Identity();

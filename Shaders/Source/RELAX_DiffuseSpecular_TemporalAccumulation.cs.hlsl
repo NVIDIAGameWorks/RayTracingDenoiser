@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "NRD.hlsli"
-#include "STL.hlsli"
+#include "ml.hlsli"
 
 #include "RELAX_Config.hlsli"
 #include "RELAX_TemporalAccumulation.resources.hlsli"

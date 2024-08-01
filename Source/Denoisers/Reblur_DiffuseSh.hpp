@@ -48,7 +48,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSh(DenoiserData& denoiserData)
         TILES,
     };
 
-    AddTextureToTransientPool( {Format::RG8_UNORM, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, 1} );
     AddTextureToTransientPool( {Format::R8_UINT, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, 1} );

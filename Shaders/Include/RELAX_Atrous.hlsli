@@ -37,7 +37,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
 #ifdef RELAX_SPECULAR
     float4 centerSpecularIlluminationAndVariance = gSpecIlluminationAndVariance[pixelPos];
-    float centerSpecularLuminance = STL::Color::Luminance(centerSpecularIlluminationAndVariance.rgb);
+    float centerSpecularLuminance = Color::Luminance(centerSpecularIlluminationAndVariance.rgb);
     float centerSpecularVar = centerSpecularIlluminationAndVariance.a;
 
     float specularReprojectionConfidence = gSpecReprojectionConfidence[pixelPos];
@@ -52,10 +52,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float diffuseLobeAngleFractionForSimplifiedSpecularNormalWeight = diffuseLobeAngleFraction;
     float specularLobeAngleFraction = gSpecLobeAngleFraction;
 
-    if (gUseConfidenceInputs != 0)
+    if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
     {
-        float specConfidenceDrivenRelaxation =
-            saturate(gConfidenceDrivenRelaxationMultiplier * (1.0 - gSpecConfidence[pixelPos]));
+        float specConfidenceDrivenRelaxation = saturate(gConfidenceDrivenRelaxationMultiplier * (1.0 - gSpecConfidence[WithRectOrigin(pixelPos)]));
 
         // Relaxing normal weights for specular
         float r = saturate(specConfidenceDrivenRelaxation * gConfidenceDrivenNormalEdgeStoppingRelaxation);
@@ -88,15 +87,14 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
 #ifdef RELAX_DIFFUSE
     float4 centerDiffuseIlluminationAndVariance = gDiffIlluminationAndVariance[pixelPos];
-    float centerDiffuseLuminance = STL::Color::Luminance(centerDiffuseIlluminationAndVariance.rgb);
+    float centerDiffuseLuminance = Color::Luminance(centerDiffuseIlluminationAndVariance.rgb);
     float centerDiffuseVar = centerDiffuseIlluminationAndVariance.a;
     float diffusePhiLIlluminationInv = 1.0 / max(1.0e-4, gDiffPhiLuminance * sqrt(centerDiffuseVar));
 
     float diffuseLuminanceWeightRelaxation = 1.0;
-    if (gUseConfidenceInputs != 0)
+    if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
     {
-        float diffConfidenceDrivenRelaxation =
-            saturate(gConfidenceDrivenRelaxationMultiplier * (1.0 - gDiffConfidence[pixelPos]));
+        float diffConfidenceDrivenRelaxation = saturate(gConfidenceDrivenRelaxationMultiplier * (1.0 - gDiffConfidence[WithRectOrigin(pixelPos)]));
 
         // Relaxing normal weights for diffuse
         float r = saturate(diffConfidenceDrivenRelaxation * gConfidenceDrivenNormalEdgeStoppingRelaxation);
@@ -125,8 +123,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     int2 offset = 0;
     if (gStepSize > 4)
     {
-        STL::Rng::Hash::Initialize(pixelPos, gFrameIndex);
-        offset = int2(gStepSize.xx * 0.5 * (STL::Rng::Hash::GetFloat2() - 0.5));
+        Rng::Hash::Initialize(pixelPos, gFrameIndex);
+        offset = int2(gStepSize.xx * 0.5 * (Rng::Hash::GetFloat2() - 0.5));
     }
 
     [unroll]
@@ -165,7 +163,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             float3 sampleV = -normalize(sampleWorldPos + gRoughnessEdgeStoppingRelaxation * centerWorldPos);
 
             // Calculating weights for specular
-            float angles = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            float angles = Math::AcosApprox(dot(centerNormal, sampleNormal));
             float normalWSpecularSimplified = ComputeWeight(angles, specularNormalWeightParamsSimplified, 0.0);
             float normalWSpecular = GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
             float roughnessWSpecular = ComputeWeight(sampleRoughness, roughnessWeightParams.x, roughnessWeightParams.y);
@@ -176,7 +174,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             if (wSpecular > 1e-4)
             {
                 float4 sampleSpecularIlluminationAndVariance = gSpecIlluminationAndVariance[p];
-                float sampleSpecularLuminance = STL::Color::Luminance(sampleSpecularIlluminationAndVariance.rgb);
+                float sampleSpecularLuminance = Color::Luminance(sampleSpecularIlluminationAndVariance.rgb);
 
                 float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) * specularPhiLIlluminationInv;
                 specularLuminanceW = min(gSpecMaxLuminanceRelativeDifference, specularLuminanceW);
@@ -193,7 +191,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
 #ifdef RELAX_DIFFUSE
             // Calculating weights for diffuse
-            float angled = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            float angled = Math::AcosApprox(dot(centerNormal, sampleNormal));
             float normalWDiffuse = ComputeWeight(angled, diffuseNormalWeightParams, 0.0);
 
             // Summing up diffuse
@@ -202,11 +200,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             if (wDiffuse > 1e-4)
             {
                 float4 sampleDiffuseIlluminationAndVariance = gDiffIlluminationAndVariance[p];
-                float sampleDiffuseLuminance = STL::Color::Luminance(sampleDiffuseIlluminationAndVariance.rgb);
+                float sampleDiffuseLuminance = Color::Luminance(sampleDiffuseIlluminationAndVariance.rgb);
 
                 float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) * diffusePhiLIlluminationInv;
                 diffuseLuminanceW = min(gDiffMaxLuminanceRelativeDifference, diffuseLuminanceW);
-                if (gUseConfidenceInputs != 0)
+                if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
                     diffuseLuminanceW *= diffuseLuminanceWeightRelaxation;
                 wDiffuse *= exp(-diffuseLuminanceW);
 

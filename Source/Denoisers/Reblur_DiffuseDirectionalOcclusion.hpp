@@ -44,7 +44,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuseDirectionalOcclusion(DenoiserData& deno
         TILES,
     };
 
-    AddTextureToTransientPool( {Format::RG8_UNORM, 1} );
+    AddTextureToTransientPool( {Format::R8_UNORM, 1} );
     AddTextureToTransientPool( {Format::R8_UINT, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_DIRECTIONAL_OCCLUSION, 1} );

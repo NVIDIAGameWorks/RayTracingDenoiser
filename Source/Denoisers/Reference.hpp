@@ -59,7 +59,7 @@ void nrd::InstanceImpl::Update_Reference(const DenoiserData& denoiserData)
     if (m_WorldToClip != m_WorldToClipPrev || m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE)
         m_AccumulatedFrameNum = 0;
     else
-        m_AccumulatedFrameNum = Min(m_AccumulatedFrameNum + 1, settings.maxAccumulatedFrameNum);
+        m_AccumulatedFrameNum = min(m_AccumulatedFrameNum + 1, settings.maxAccumulatedFrameNum);
 
     NRD_DECLARE_DIMS;
 

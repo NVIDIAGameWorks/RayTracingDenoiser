@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.8.2 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.9.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -18,8 +18,8 @@ For quick starting see *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSampl
 Performance on RTX 4080 @ 1440p (native resolution, default denoiser settings):
 - `REBLUR_DIFFUSE_SPECULAR` - 2.45 ms
 - `RELAX_DIFFUSE_SPECULAR` - 2.90 ms
-- `SIGMA_SHADOW` - 0.30 ms (0.24 ms if temporal stabilization is off)
-- `SIGMA_SHADOW_TRANSLUCENCY` - 0.40 ms (0.30 ms if temporal stabilization is off)
+- `SIGMA_SHADOW` - 0.35 ms (0.25 ms if temporal stabilization is off)
+- `SIGMA_SHADOW_TRANSLUCENCY` - 0.45 ms (0.32 ms if temporal stabilization is off)
 
 Supported signal types:
 - *RELAX*:
@@ -179,7 +179,7 @@ Radiance:
 - Since *NRD* denoisers process signals spatially, high-energy fireflies in the input signal should be avoided. Most of them can be removed by enabling anti-firefly filter in *NRD*, but it will only work if the "background" signal is confident. The worst case is having a single pixel with high energy divided by a very small PDF to represent the lack of energy in neighboring non-representative (black) pixels
 - Radiance must be separated into diffuse and specular at primary hit (or secondary hit in case of *PSR*)
 
-Hit distance:
+Hit distance (*REBLUR* and *RELAX*):
 - `hitT` can't be negative
 - `hitT` must not include primary hit distance
 - `hitT` for the first bounce after the primary hit or *PSR* must be provided "as is"
@@ -197,7 +197,11 @@ Hit distance:
 - In case of many paths per pixel `hitT` for specular must be "averaged" by `NRD_FrontEnd_SpecHitDistAveraging_*` functions from `NRD.hlsli`
 - For *REBLUR* hits distance must be normalized using `REBLUR_FrontEnd_GetNormHitDist`
 
-Distance to occluder:
+Distance to occluder (*SIGMA*):
+- visibility ray must be cast from the point of interest to a light source ( i.e. *not* from a light source )
+- `ACCEPT_FIRST_HIT_AND_END_SEARCH` ray flag can't be used to optimize tracing, because it can lead to wrong potentially very long hit distances from random distant occluders
+- `hit` means "occluder is hit"
+- `miss` means "light is hit"
 - `NoL <= 0` - 0 (it's very important!)
 - `NoL > 0, hit` - hit distance
 - `NoL > 0, miss` - >= NRD_FP16_MAX
@@ -308,64 +312,64 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 
 | Resolution |                             Denoiser | Working set (Mb) |  Persistent (Mb) |   Aliasable (Mb) |
 |------------|--------------------------------------|------------------|------------------|------------------|
-|      1080p |                       REBLUR_DIFFUSE |            86.69 |            42.25 |            44.44 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |            42.44 |            25.38 |            17.06 |
-|            |                    REBLUR_DIFFUSE_SH |           137.31 |            59.12 |            78.19 |
-|            |                      REBLUR_SPECULAR |           105.75 |            50.75 |            55.00 |
-|            |            REBLUR_SPECULAR_OCCLUSION |            50.94 |            33.88 |            17.06 |
-|            |                   REBLUR_SPECULAR_SH |           156.38 |            67.62 |            88.75 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           169.06 |            71.88 |            97.19 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            72.12 |            38.12 |            34.00 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |           270.31 |           105.62 |           164.69 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            86.69 |            42.25 |            44.44 |
-|            |                         SIGMA_SHADOW |            15.00 |             0.00 |            15.00 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |            33.94 |             0.00 |            33.94 |
+|      1080p |                       REBLUR_DIFFUSE |            84.56 |            42.25 |            42.31 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |            40.31 |            25.38 |            14.94 |
+|            |                    REBLUR_DIFFUSE_SH |           135.19 |            59.12 |            76.06 |
+|            |                      REBLUR_SPECULAR |           103.62 |            50.75 |            52.88 |
+|            |            REBLUR_SPECULAR_OCCLUSION |            48.81 |            33.88 |            14.94 |
+|            |                   REBLUR_SPECULAR_SH |           154.25 |            67.62 |            86.62 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           164.88 |            71.88 |            93.00 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            67.94 |            38.12 |            29.81 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |           266.12 |           105.62 |           160.50 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            84.56 |            42.25 |            42.31 |
 |            |                        RELAX_DIFFUSE |            99.25 |            63.31 |            35.94 |
 |            |                     RELAX_DIFFUSE_SH |           158.31 |            88.62 |            69.69 |
 |            |                       RELAX_SPECULAR |           101.44 |            63.38 |            38.06 |
 |            |                    RELAX_SPECULAR_SH |           168.94 |            97.12 |            71.81 |
 |            |               RELAX_DIFFUSE_SPECULAR |           168.94 |            97.12 |            71.81 |
 |            |            RELAX_DIFFUSE_SPECULAR_SH |           303.94 |           164.62 |           139.31 |
+|            |                         SIGMA_SHADOW |            15.00 |             0.00 |            15.00 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |            33.94 |             0.00 |            33.94 |
 |            |                            REFERENCE |            33.75 |            33.75 |             0.00 |
 |            |                                      |                  |                  |                  |
-|      1440p |                       REBLUR_DIFFUSE |           153.81 |            75.00 |            78.81 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |            75.06 |            45.00 |            30.06 |
-|            |                    REBLUR_DIFFUSE_SH |           243.81 |           105.00 |           138.81 |
-|            |                      REBLUR_SPECULAR |           187.56 |            90.00 |            97.56 |
-|            |            REBLUR_SPECULAR_OCCLUSION |            90.06 |            60.00 |            30.06 |
-|            |                   REBLUR_SPECULAR_SH |           277.56 |           120.00 |           157.56 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           300.06 |           127.50 |           172.56 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           127.56 |            67.50 |            60.06 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |           480.06 |           187.50 |           292.56 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           153.81 |            75.00 |            78.81 |
-|            |                         SIGMA_SHADOW |            26.38 |             0.00 |            26.38 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |            60.12 |             0.00 |            60.12 |
+|      1440p |                       REBLUR_DIFFUSE |           150.06 |            75.00 |            75.06 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |            71.31 |            45.00 |            26.31 |
+|            |                    REBLUR_DIFFUSE_SH |           240.06 |           105.00 |           135.06 |
+|            |                      REBLUR_SPECULAR |           183.81 |            90.00 |            93.81 |
+|            |            REBLUR_SPECULAR_OCCLUSION |            86.31 |            60.00 |            26.31 |
+|            |                   REBLUR_SPECULAR_SH |           273.81 |           120.00 |           153.81 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           292.56 |           127.50 |           165.06 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           120.06 |            67.50 |            52.56 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |           472.56 |           187.50 |           285.06 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           150.06 |            75.00 |            75.06 |
 |            |                        RELAX_DIFFUSE |           176.31 |           112.50 |            63.81 |
 |            |                     RELAX_DIFFUSE_SH |           281.31 |           157.50 |           123.81 |
 |            |                       RELAX_SPECULAR |           180.06 |           112.50 |            67.56 |
 |            |                    RELAX_SPECULAR_SH |           300.06 |           172.50 |           127.56 |
 |            |               RELAX_DIFFUSE_SPECULAR |           300.06 |           172.50 |           127.56 |
 |            |            RELAX_DIFFUSE_SPECULAR_SH |           540.06 |           292.50 |           247.56 |
+|            |                         SIGMA_SHADOW |            26.38 |             0.00 |            26.38 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |            60.12 |             0.00 |            60.12 |
 |            |                            REFERENCE |            60.00 |            60.00 |             0.00 |
 |            |                                      |                  |                  |                  |
-|      2160p |                       REBLUR_DIFFUSE |           326.81 |           159.38 |           167.44 |
-|            |             REBLUR_DIFFUSE_OCCLUSION |           159.44 |            95.62 |            63.81 |
-|            |                    REBLUR_DIFFUSE_SH |           518.06 |           223.12 |           294.94 |
-|            |                      REBLUR_SPECULAR |           398.50 |           191.25 |           207.25 |
-|            |            REBLUR_SPECULAR_OCCLUSION |           191.31 |           127.50 |            63.81 |
-|            |                   REBLUR_SPECULAR_SH |           589.75 |           255.00 |           334.75 |
-|            |              REBLUR_DIFFUSE_SPECULAR |           637.56 |           270.94 |           366.62 |
-|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           271.00 |           143.44 |           127.56 |
-|            |           REBLUR_DIFFUSE_SPECULAR_SH |          1020.06 |           398.44 |           621.62 |
-|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           326.81 |           159.38 |           167.44 |
-|            |                         SIGMA_SHADOW |            56.19 |             0.00 |            56.19 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |           127.81 |             0.00 |           127.81 |
+|      2160p |                       REBLUR_DIFFUSE |           318.88 |           159.38 |           159.50 |
+|            |             REBLUR_DIFFUSE_OCCLUSION |           151.50 |            95.62 |            55.88 |
+|            |                    REBLUR_DIFFUSE_SH |           510.12 |           223.12 |           287.00 |
+|            |                      REBLUR_SPECULAR |           390.56 |           191.25 |           199.31 |
+|            |            REBLUR_SPECULAR_OCCLUSION |           183.38 |           127.50 |            55.88 |
+|            |                   REBLUR_SPECULAR_SH |           581.81 |           255.00 |           326.81 |
+|            |              REBLUR_DIFFUSE_SPECULAR |           621.62 |           270.94 |           350.69 |
+|            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           255.06 |           143.44 |           111.62 |
+|            |           REBLUR_DIFFUSE_SPECULAR_SH |          1004.12 |           398.44 |           605.69 |
+|            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           318.88 |           159.38 |           159.50 |
 |            |                        RELAX_DIFFUSE |           374.69 |           239.12 |           135.56 |
 |            |                     RELAX_DIFFUSE_SH |           597.81 |           334.75 |           263.06 |
 |            |                       RELAX_SPECULAR |           382.69 |           239.12 |           143.56 |
 |            |                    RELAX_SPECULAR_SH |           637.69 |           366.62 |           271.06 |
 |            |               RELAX_DIFFUSE_SPECULAR |           637.69 |           366.62 |           271.06 |
 |            |            RELAX_DIFFUSE_SPECULAR_SH |          1147.69 |           621.62 |           526.06 |
+|            |                         SIGMA_SHADOW |            56.19 |             0.00 |            56.19 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |           127.81 |             0.00 |           127.81 |
 |            |                            REFERENCE |           127.50 |           127.50 |             0.00 |
 
 # INTEGRATION VARIANTS
@@ -716,6 +720,8 @@ Hair strands tangent vectors *can't* be used as "normals guide" for *NRD* due to
    - VNDF sampling for specular
    - Custom importance sampling for local light sources (*RTXDI*).
 
+**[NRD]** Any form of a radiance cache (*[SHARC](https://github.com/NVIDIAGameWorks/SHARC)* or *[NRC](https://github.com/NVIDIAGameWorks/NRC)*) is highly recommended to achieve better signal quality and improve behavior in disocclusions.
+
 **[NRD]** Additionally the quality of the input signal can be increased by re-using already denoised information from the current or the previous frame.
 
 **[NRD]** Hit distances should come from an importance sampling method. But if denoising of AO/SO is needed, AO/SO can come from cos-weighted (or VNDF) sampling in a tradeoff of IQ.
@@ -756,7 +762,7 @@ maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 
 **[RELAX]** *RELAX* works well with signals produced by *RTXDI* or very clean high RPP signals. The Sweet Home of *RELAX* is *RTXDI* sample. Please, consider getting familiar with this application.
 
-**[SIGMA]** Using "blue" noise can help to avoid shadow shimmering. It works best if the pattern is static on the screen.
+**[SIGMA]** Using "blue" noise helps to minimize shadow shimmering and flickering. It works best if the pattern has limited number of animated frames (4-8) or it is static on the screen.
 
 **[SIGMA]** *SIGMA* can be used for multi-light shadow denoising if applied "per light". `SigmaSettings::stabilizationStrength` can be set to `0` to disable temporal history. It provides the followinmg benefits:
  - light count independent memory usage

@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 4
-#define NRD_DESCS_VERSION_MINOR 8
+#define NRD_DESCS_VERSION_MINOR 9
 
 static_assert(NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -50,19 +50,19 @@ namespace nrd
         IN_VIEWZ,
 
         // (Optional) User-provided history confidence in range 0-1, i.e. antilag (R8+)
-        // Used only if "CommonSettings::isHistoryConfidenceAvailable = true"
+        // Used only if "CommonSettings::isHistoryConfidenceAvailable = true" and "NRD_USE_HISTORY_CONFIDENCE = 1"
         IN_DIFF_CONFIDENCE,
         IN_SPEC_CONFIDENCE,
 
         // (Optional) User-provided disocclusion threshold selector in range 0-1 (R8+)
         // Disocclusion threshold is mixed between "disocclusionThreshold" and "disocclusionThresholdAlternate"
-        // Used only if "CommonSettings::isDisocclusionThresholdMixAvailable = true"
+        // Used only if "CommonSettings::isDisocclusionThresholdMixAvailable = true" and "NRD_USE_DISOCCLUSION_THRESHOLD_MIX = 1"
         IN_DISOCCLUSION_THRESHOLD_MIX,
 
         // (Optional) Base color (can be decoupled to diffuse and specular albedo based on metalness) and metalness (RGBA8+)
-        // Used only if "CommonSettings::isBaseColorMetalnessAvailable = true". Currently used only by REBLUR (if temporal
-        // stabilization pass is available and "stabilizationStrength != 0") to patch MV if specular (virtual) motion prevails
-        // on diffuse (surface) motion
+        // Used only if "CommonSettings::isBaseColorMetalnessAvailable = true" and "NRD_USE_BASECOLOR_METALNESS = 1".
+        // Currently used only by REBLUR (if Temporal Stabilization pass is available and "stabilizationStrength != 0")
+        // to patch MV if specular (virtual) motion prevails on diffuse (surface) motion
         IN_BASECOLOR_METALNESS,
 
         //=============================================================================================================================
@@ -160,60 +160,54 @@ namespace nrd
     enum class Denoiser : uint32_t
     {
         /*
-        IMPORTANT: IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ are used by any denoiser
-        These denoisers DON'T use:
-            SIGMA_SHADOW & SIGMA_SHADOW_TRANSLUCENCY - IN_MV, if "stabilizationStrength = 0"
-            REFERENCE - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ
+        IMPORTANT:
+          - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ are used by any denoiser, but these denoisers DON'T use:
+              - SIGMA_SHADOW & SIGMA_SHADOW_TRANSLUCENCY - IN_MV, if "stabilizationStrength = 0"
+              - REFERENCE - IN_MV, IN_NORMAL_ROUGHNESS, IN_VIEWZ
+          - Optional inputs are in ()
         */
 
         // =============================================================================================================================
         // REBLUR
         // =============================================================================================================================
 
-        // INPUTS - IN_DIFF_RADIANCE_HITDIST,
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
+        // INPUTS - IN_DIFF_RADIANCE_HITDIST (IN_DIFF_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
         REBLUR_DIFFUSE,
 
-        // INPUTS - IN_DIFF_HITDIST,
+        // INPUTS - IN_DIFF_HITDIST (IN_DIFF_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_HITDIST
         REBLUR_DIFFUSE_OCCLUSION,
 
-        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
+        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1 (IN_DIFF_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_SH0, OUT_DIFF_SH1
         REBLUR_DIFFUSE_SH,
 
-        // INPUTS - IN_SPEC_RADIANCE_HITDIST,
-        // OPTIONAL INPUTS - IN_SPEC_DIRECTION_PDF, IN_SPEC_CONFIDENCE
+        // INPUTS - IN_SPEC_RADIANCE_HITDIST (IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX, IN_BASECOLOR_METALNESS)
         // OUTPUTS - OUT_SPEC_RADIANCE_HITDIST
         REBLUR_SPECULAR,
 
-        // INPUTS - IN_SPEC_HITDIST,
+        // INPUTS - IN_SPEC_HITDIST (IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_SPEC_HITDIST
         REBLUR_SPECULAR_OCCLUSION,
 
-        // INPUTS - IN_SPEC_SH0, IN_SPEC_SH1
-        // OPTIONAL INPUTS - IN_SPEC_CONFIDENCE
+        // INPUTS - IN_SPEC_SH0, IN_SPEC_SH1 (IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX, IN_BASECOLOR_METALNESS)
         // OUTPUTS - OUT_SPEC_SH0, OUT_SPEC_SH1
         REBLUR_SPECULAR_SH,
 
-        // INPUTS - IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST,
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
+        // INPUTS - IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST (IN_DIFF_CONFIDENCE, IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX, IN_BASECOLOR_METALNESS)
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, OUT_SPEC_RADIANCE_HITDIST
         REBLUR_DIFFUSE_SPECULAR,
 
-        // INPUTS - IN_DIFF_HITDIST, IN_SPEC_HITDIST,
+        // INPUTS - IN_DIFF_HITDIST, IN_SPEC_HITDIST (IN_DIFF_CONFIDENCE, IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_HITDIST, OUT_SPEC_HITDIST
         REBLUR_DIFFUSE_SPECULAR_OCCLUSION,
 
-        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1, IN_SPEC_SH0, IN_SPEC_SH1
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
+        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1, IN_SPEC_SH0, IN_SPEC_SH1 (IN_DIFF_CONFIDENCE, IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX, IN_BASECOLOR_METALNESS)
         // OUTPUTS - OUT_DIFF_SH0, OUT_DIFF_SH1, OUT_SPEC_SH0, OUT_SPEC_SH1
         REBLUR_DIFFUSE_SPECULAR_SH,
 
-        // INPUTS - IN_DIFF_DIRECTION_HITDIST,
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
+        // INPUTS - IN_DIFF_DIRECTION_HITDIST (IN_DIFF_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_DIRECTION_HITDIST
         REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION,
 
@@ -221,33 +215,27 @@ namespace nrd
         // RELAX
         // =============================================================================================================================
 
-        // INPUTS - IN_DIFF_RADIANCE_HITDIST
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
+        // INPUTS - IN_DIFF_RADIANCE_HITDIST (IN_DIFF_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST
         RELAX_DIFFUSE,
 
-        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE
+        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1 (IN_DIFF_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_SH0, OUT_DIFF_SH1
         RELAX_DIFFUSE_SH,
 
-        // INPUTS - IN_SPEC_RADIANCE_HITDIST
-        // OPTIONAL INPUTS - IN_SPEC_CONFIDENCE
+        // INPUTS - IN_SPEC_RADIANCE_HITDIST (IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_SPEC_RADIANCE_HITDIST
         RELAX_SPECULAR,
 
-        // INPUTS - IN_SPEC_SH0, IN_SPEC_SH1
-        // OPTIONAL INPUTS - IN_SPEC_CONFIDENCE
+        // INPUTS - IN_SPEC_SH0, IN_SPEC_SH1 (IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_SPEC_SH0, OUT_SPEC_SH1
         RELAX_SPECULAR_SH,
 
-        // INPUTS - IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
+        // INPUTS - IN_DIFF_RADIANCE_HITDIST, IN_SPEC_RADIANCE_HITDIST (IN_DIFF_CONFIDENCE, IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_RADIANCE_HITDIST, OUT_SPEC_RADIANCE_HITDIST
         RELAX_DIFFUSE_SPECULAR,
 
-        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1, IN_SPEC_SH0, IN_SPEC_SH1
-        // OPTIONAL INPUTS - IN_DIFF_CONFIDENCE,  IN_SPEC_CONFIDENCE
+        // INPUTS - IN_DIFF_SH0, IN_DIFF_SH1, IN_SPEC_SH0, IN_SPEC_SH1 (IN_DIFF_CONFIDENCE, IN_SPEC_CONFIDENCE, IN_DISOCCLUSION_THRESHOLD_MIX)
         // OUTPUTS - OUT_DIFF_SH0, OUT_DIFF_SH1, OUT_SPEC_SH0, OUT_SPEC_SH1
         RELAX_DIFFUSE_SPECULAR_SH,
 
@@ -360,7 +348,7 @@ namespace nrd
         RGBA8_UNORM,
         RGBA8_SNORM,
 
-        // Moderate IQ on curved (not bumpy) surfaces, but offers optional materialID support (normals are oct-packed)
+        // Moderate IQ on curved (not bumpy) surfaces, but offers optional materialID support (normals are oct-packed, 2 bits for material ID)
         R10_G10_B10_A2_UNORM,
 
         // Best IQ on curved (not bumpy) surfaces

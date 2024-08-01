@@ -17,7 +17,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS              1
 #define REBLUR_USE_HISTORY_FIX                                  1
 #define REBLUR_USE_YCOCG                                        1
-#define REBLUR_USE_MORE_STRICT_PARALLAX_BASED_CHECK             1
 #define REBLUR_USE_ANTIFIREFLY                                  1
 #define REBLUR_USE_CONFIDENCE_NON_LINEARLY                      1
 
@@ -26,7 +25,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             0
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
 
-#ifdef REBLUR_OCCLUSION
+#if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
     #undef REBLUR_USE_ANTIFIREFLY
     #define REBLUR_USE_ANTIFIREFLY                              0 // not needed in occlusion mode
 #endif
@@ -67,15 +66,21 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_HIT_DIST_MIN_WEIGHT( smc )                       ( 0.1 * smc ) // was 0.1
 
-#define REBLUR_FP16_VIEWZ_SCALE                                 ( gViewZScale * 0.125) // TODO: tuned for meters, i.e. gViewZScale = 1.0
+#define REBLUR_FP16_VIEWZ_SCALE                                 ( gViewZScale * 0.125 ) // TODO: tuned for meters, i.e. gViewZScale = 1.0
 #define REBLUR_MAX_PERCENT_OF_LOBE_VOLUME                       0.75
 #define REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM    1
-#define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                       2.0 // using smaller values leads to bias if camera rotates slowly due to reprojection instabilities
-#define REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY        float2( 10.0, 1.1 )
+#define REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY        38.0
 #define REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE                  0.1
 #define REBLUR_ANTI_FIREFLY_FILTER_RADIUS                       4 // pixels
 #define REBLUR_ANTI_FIREFLY_SIGMA_SCALE                         2.0
+#define REBLUR_ROUGHNESS_SENSITIVITY_IN_TA                      ( NRD_ROUGHNESS_SENSITIVITY * 0.3 )
 #define REBLUR_SAMPLES_PER_FRAME                                1.0 // TODO: expose in settings, it will become useful with very clean signals, when max number of accumulated frames is low
+
+#if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
+    #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                   1.0 // much more predictable signal quality
+#else
+    #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                   2.0 // using smaller values leads to bias under motion
+#endif
 
 // Data types
 #ifdef REBLUR_OCCLUSION
@@ -86,6 +91,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_SH_TYPE                                          float4
 #define REBLUR_FAST_TYPE                                        float
+#define REBLUR_DATA1_TYPE                                       float2
 
 // Shared constants
 #define REBLUR_SHARED_CONSTANTS \
@@ -118,7 +124,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( int2, gRectSizeMinusOne ) \
     NRD_CONSTANT( float, gDisocclusionThreshold ) \
     NRD_CONSTANT( float, gDisocclusionThresholdAlternate ) \
+    NRD_CONSTANT( float, gStrandMaterialID ) \
+    NRD_CONSTANT( float, gStrandThickness ) \
     NRD_CONSTANT( float, gStabilizationStrength ) \
+    NRD_CONSTANT( float, gHitDistStabilizationStrength ) \
     NRD_CONSTANT( float, gDebug ) \
     NRD_CONSTANT( float, gOrthoMode ) \
     NRD_CONSTANT( float, gUnproject ) \
@@ -141,6 +150,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gSplitScreen ) \
     NRD_CONSTANT( float, gCheckerboardResolveAccumSpeed ) \
     NRD_CONSTANT( float, gViewZScale ) \
+    NRD_CONSTANT( float, gFireflySuppressorMinRelativeScale ) \
     NRD_CONSTANT( uint, gHasHistoryConfidence ) \
     NRD_CONSTANT( uint, gHasDisocclusionThresholdMix ) \
     NRD_CONSTANT( uint, gDiffCheckerboard ) \

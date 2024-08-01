@@ -43,8 +43,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gSpecMaxFastAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gDiffMaxAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gDiffMaxFastAccumulatedFrameNum ) \
-    NRD_CONSTANT( float, gDisocclusionDepthThreshold ) \
-    NRD_CONSTANT( float, gDisocclusionDepthThresholdAlternate ) \
+    NRD_CONSTANT( float, gDisocclusionThreshold ) \
+    NRD_CONSTANT( float, gDisocclusionThresholdAlternate ) \
+    NRD_CONSTANT( float, gStrandMaterialID ) \
+    NRD_CONSTANT( float, gStrandThickness ) \
     NRD_CONSTANT( float, gRoughnessFraction ) \
     NRD_CONSTANT( float, gSpecVarianceBoost ) \
     NRD_CONSTANT( float, gSplitScreen ) \
@@ -84,8 +86,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gDiffCheckerboard ) \
     NRD_CONSTANT( uint, gSpecCheckerboard ) \
-    NRD_CONSTANT( uint, gUseConfidenceInputs ) \
-    NRD_CONSTANT( uint, gUseDisocclusionThresholdMix ) \
+    NRD_CONSTANT( uint, gHasHistoryConfidence ) \
+    NRD_CONSTANT( uint, gHasDisocclusionThresholdMix ) \
     NRD_CONSTANT( uint, gDiffMaterialMask ) \
     NRD_CONSTANT( uint, gSpecMaterialMask ) \
     NRD_CONSTANT( uint, gResetHistory )

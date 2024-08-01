@@ -104,7 +104,7 @@ if (WIN32)
 endif ()
 
 # External/MathLib
-file (READ "External/MathLib/MathLib.h" ver_h)
+file (READ "External/MathLib/ml.h" ver_h)
 string (REGEX MATCH "ML_VERSION_MAJOR ([0-9]*)" _ ${ver_h})
 set (ML_VERSION_MAJOR ${CMAKE_MATCH_1})
 string (REGEX MATCH "ML_VERSION_MINOR ([0-9]*)" _ ${ver_h})

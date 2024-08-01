@@ -88,9 +88,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 input = s;
             else
             {
-                w = exp2( -SIGMA_TS_Z_FALLOFF * abs( z - viewZ ) );
-                w *= float( z < gDenoisingRange );
-                w *= float( centerSignNoL == signNoL );
+                w = exp2( -SIGMA_TS_Z_FALLOFF * abs( z - viewZ ) ); // soft Z test // TODO: use relative difference?
+                w *= IsLit( penum ) == IsLit( centerPenumbra ); // no-harm on a flat surface due to wide spatials, needed to prevent bleeding from one surface to another
+                w *= float( z < gDenoisingRange ); // ignore sky
+                w *= float( centerSignNoL == signNoL ); // ignore samples with different NoL signs
 
                 if( z < viewZnearest )
                 {
@@ -105,7 +106,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         }
     }
 
-    float invSum = STL::Math::PositiveRcp( sum );
+    float invSum = Math::PositiveRcp( sum );
     m1 *= invSum;
     m2 *= invSum;
 
@@ -113,19 +114,19 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Compute previous pixel position
     float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gRectSizeInv;
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZnearest, gOrthoMode );
-    float3 X = STL::Geometry::RotateVectorInverse( gWorldToView, Xv );
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZnearest, gOrthoMode );
+    float3 X = Geometry::RotateVectorInverse( gWorldToView, Xv );
     float3 mv = gIn_Mv[ WithRectOrigin( pixelPos ) + offseti - BORDER ] * gMvScale.xyz;
     float2 pixelUvPrev = pixelUv + mv.xy;
 
     if( gMvScale.w != 0.0 )
-        pixelUvPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, X + mv );
+        pixelUvPrev = Geometry::GetScreenUv( gWorldToClipPrev, X + mv );
 
     // Sample history
     SIGMA_TYPE history;
     BicubicFilterNoCorners( saturate( pixelUvPrev ) * gRectSizePrev, gResourceSizeInvPrev, SIGMA_USE_CATROM, gIn_History, history );
 
-    history = max( history, 0.0 );
+    history = saturate( history );
     history = SIGMA_BackEnd_UnpackShadow( history );
 
     // Antilag
@@ -136,8 +137,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float b = max( slow, fast ) + SIGMA_ANTILAG_SIGMA_SCALE * sigma.x + SIGMA_ANTILAG_EPS;
     float antilag = a / b;
 
-    antilag = STL::Math::SmoothStep01( 1.0 - antilag );
-    antilag = STL::Math::Pow01( antilag, SIGMA_ANTILAG_POWER );
+    antilag = Math::SmoothStep01( 1.0 - antilag );
+    antilag = Math::Pow01( antilag, SIGMA_ANTILAG_POWER );
 
     // Clamp history
     SIGMA_TYPE inputMin = m1 - sigma * SIGMA_TS_SIGMA_SCALE;
@@ -148,16 +149,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float historyWeight = SIGMA_TS_MAX_HISTORY_WEIGHT;
     historyWeight *= IsInScreenNearest( pixelUvPrev );
     historyWeight *= antilag;
-    historyWeight *= STL::Math::SmoothStep( SIGMA_TS_EARLY_OUT_THRESHOLD, 1.0, penumbraInPixels );
+    historyWeight *= Math::SmoothStep( SIGMA_TS_EARLY_OUT_THRESHOLD, 1.0, penumbraInPixels );
     historyWeight *= gStabilizationStrength;
 
     // Combine with current frame
     SIGMA_TYPE result = lerp( input, historyClamped, historyWeight );
-
-    // Reference
-    #if( SIGMA_REFERENCE == 1 )
-        result = lerp( input, history, 0.95 * isInScreen );
-    #endif
 
     // Debug
     #if( SIGMA_SHOW != 0 )

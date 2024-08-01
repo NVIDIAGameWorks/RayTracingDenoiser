@@ -25,7 +25,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         return;
 
     // Checkerboard resolve weights
-    uint checkerboard = STL::Sequence::CheckerBoard(pixelPos, gFrameIndex);
+    uint checkerboard = Sequence::CheckerBoard(pixelPos, gFrameIndex);
 
     int3 checkerboardPos = pixelPos.xxy + int3( -1, 1, 0 );
     checkerboardPos.x = max( checkerboardPos.x, 0 );
@@ -89,7 +89,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             wc.x *= CompareMaterials(centerMaterialID, materialID0, gDiffMaterialMask);
             wc.y *= CompareMaterials(centerMaterialID, materialID1, gDiffMaterialMask);
         #endif
-        wc *= STL::Math::PositiveRcp( wc.x + wc.y );
+        wc *= Math::PositiveRcp( wc.x + wc.y );
 
         float4 d0 = gDiffIllumination[checkerboardPos.xz];
         float4 d1 = gDiffIllumination[checkerboardPos.yz];
@@ -133,7 +133,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             float3 offset = POISSON_SAMPLES[i];
 
             // Sample coordinates
-            float2 uv = pixelUv * gRectSize + STL::Geometry::RotateVector(rotator, offset.xy) * blurRadius;
+            float2 uv = pixelUv * gRectSize + Geometry::RotateVector(rotator, offset.xy) * blurRadius;
             uv = floor(uv) + 0.5;
             uv = ApplyCheckerboardShift(uv, gDiffCheckerboard, i, gFrameIndex) * gRectSizeInv;
 
@@ -158,7 +158,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
                 sampleWorldPos,
                 gDepthThreshold);
 
-            float angle = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            float angle = Math::AcosApprox(dot(centerNormal, sampleNormal));
             sampleWeight *= ComputeWeight(angle, normalWeightParams, 0.0);
 
             float4 sampleDiffuseIllumination = gDiffIllumination.SampleLevel(gNearestClamp, checkerboardUvScaled, 0);
@@ -212,7 +212,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         wc.x *= CompareMaterials(centerMaterialID, materialID0, gSpecMaterialMask);
         wc.y *= CompareMaterials(centerMaterialID, materialID1, gSpecMaterialMask);
 #endif
-        wc *= STL::Math::PositiveRcp( wc.x + wc.y );
+        wc *= Math::PositiveRcp( wc.x + wc.y );
 
         float4 s0 = gSpecIllumination[checkerboardPos.xz];
         float4 s1 = gSpecIllumination[checkerboardPos.yz];
@@ -236,7 +236,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     {
         // Specular blur radius
         float3 viewVector = (gOrthoMode == 0) ? normalize(-centerWorldPos) : gFrustumForward.xyz;
-        float4 D = STL::ImportanceSampling::GetSpecularDominantDirection(centerNormal, viewVector, centerRoughness, STL_SPECULAR_DOMINANT_DIRECTION_G2);
+        float4 D = ImportanceSampling::GetSpecularDominantDirection(centerNormal, viewVector, centerRoughness, ML_SPECULAR_DOMINANT_DIRECTION_G2);
         float NoD = abs(dot(centerNormal, D.xyz));
 
         float frustumSize = PixelRadiusToWorld(gUnproject, gOrthoMode, min(gRectSize.x, gRectSize.y), centerViewZ);
@@ -245,7 +245,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         float hitDistFactor = GetHitDistFactor(hitDist * NoD, frustumSize);
 
         float blurRadius = gSpecBlurRadius * hitDistFactor * GetSpecMagicCurve(centerRoughness);
-        float lobeTanHalfAngle = STL::ImportanceSampling::GetSpecularLobeTanHalfAngle(centerRoughness);
+        float lobeTanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle(centerRoughness);
         float lobeRadius = hitDist * NoD * lobeTanHalfAngle;
         float minBlurRadius = lobeRadius / PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, centerViewZ + hitDist * D.w);
 
@@ -273,7 +273,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             float3 offset = POISSON_SAMPLES[i];
 
             // Sample coordinates
-            float2 uv = pixelUv * gRectSize + STL::Geometry::RotateVector(rotator, offset.xy) * blurRadius;
+            float2 uv = pixelUv * gRectSize + Geometry::RotateVector(rotator, offset.xy) * blurRadius;
             uv = floor(uv) + 0.5;
             uv = ApplyCheckerboardShift(uv, gSpecCheckerboard, i, gFrameIndex) * gRectSizeInv;
 
@@ -294,7 +294,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             sampleWeight *= CompareMaterials(centerMaterialID, sampleMaterialID, gSpecMaterialMask);
             sampleWeight *= ComputeWeight(sampleRoughness, roughnessWeightParams.x, roughnessWeightParams.y);
 
-            float angle = STL::Math::AcosApprox(dot(centerNormal, sampleNormal));
+            float angle = Math::AcosApprox(dot(centerNormal, sampleNormal));
             sampleWeight *= ComputeWeight(angle, normalWeightParams, 0.0);
 
             float3 sampleWorldPos = GetCurrentWorldPosFromClipSpaceXY(uv * 2.0 - 1.0, sampleViewZ);
@@ -315,7 +315,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             float d = length(sampleWorldPos - centerWorldPos);
             float h = sampleSpecularIllumination.a;
             float t = h / (specularIllumination.a + d);
-            sampleWeight *= lerp(saturate(t), 1.0, STL::Math::LinearStep(0.5, 1.0, centerRoughness));
+            sampleWeight *= lerp(saturate(t), 1.0, Math::LinearStep(0.5, 1.0, centerRoughness));
 
             // Accumulate
             weightSum += sampleWeight;

@@ -12,8 +12,8 @@ groupshared float4 s_Diff[ BUFFER_Y ][ BUFFER_X ];
 groupshared float4 s_Spec[ BUFFER_Y ][ BUFFER_X ];
 
 #ifdef REBLUR_SH
-    groupshared float4 s_DiffSh[ BUFFER_Y ][ BUFFER_X ];
-    groupshared float4 s_SpecSh[ BUFFER_Y ][ BUFFER_X ];
+    groupshared REBLUR_SH_TYPE s_DiffSh[ BUFFER_Y ][ BUFFER_X ];
+    groupshared REBLUR_SH_TYPE s_SpecSh[ BUFFER_Y ][ BUFFER_X ];
 #endif
 
 void Preload( uint2 sharedPos, int2 globalPos )
@@ -59,8 +59,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Position
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
-    float3 X = STL::Geometry::RotateVector( gViewToWorld, Xv );
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
+    float3 X = Geometry::RotateVector( gViewToWorld, Xv );
 
     // Local variance
     int2 smemPos = threadPos + BORDER;
@@ -71,9 +71,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float4 diffM2 = diff * diff;
 
         #ifdef REBLUR_SH
-            float4 diffSh = s_DiffSh[ smemPos.y ][ smemPos.x ];
-            float4 diffShM1 = diffSh;
-            float4 diffShM2 = diffSh * diffSh;
+            REBLUR_SH_TYPE diffSh = s_DiffSh[ smemPos.y ][ smemPos.x ];
+            float3 diffShM1 = diffSh.xyz;
+            float3 diffShM2 = diffSh.xyz * diffSh.xyz;
         #endif
 
         float2 diffMin = NRD_INF;
@@ -86,7 +86,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float4 specM2 = spec * spec;
 
         #ifdef REBLUR_SH
-            float4 specSh = s_SpecSh[ smemPos.y ][ smemPos.x ];
+            REBLUR_SH_TYPE specSh = s_SpecSh[ smemPos.y ][ smemPos.x ];
             float3 specShM1 = specSh.xyz;
             float3 specShM2 = specSh.xyz * specSh.xyz;
         #endif
@@ -113,7 +113,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 diffM2 += d * d;
 
                 #ifdef REBLUR_SH
-                    float4 dh = s_DiffSh[ pos.y ][ pos.x ];
+                    float3 dh = s_DiffSh[ pos.y ][ pos.x ].xyz;
                     diffShM1 += dh;
                     diffShM2 += dh * dh;
                 #endif
@@ -155,7 +155,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SH
             diffShM1 *= invSum;
             diffShM2 *= invSum;
-            float4 diffShSigma = GetStdDev( diffShM1, diffShM2 );
+            float3 diffShSigma = GetStdDev( diffShM1, diffShM2 );
         #endif
 
         // RCRS
@@ -203,33 +203,31 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     if( gMvScale.w != 0.0 )
     {
         Xprev += mv;
-        smbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
+        smbPixelUv = Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
     }
     else
     {
         if( gMvScale.z == 0.0 )
-            mv.z = STL::Geometry::AffineTransform( gWorldToViewPrev, X ).z - viewZ;
+            mv.z = Geometry::AffineTransform( gWorldToViewPrev, X ).z - viewZ;
 
         float viewZprev = viewZ + mv.z;
-        float3 Xvprevlocal = STL::Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
+        float3 Xvprevlocal = Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
 
-        Xprev = STL::Geometry::RotateVectorInverse( gWorldToViewPrev, Xvprevlocal ) + gCameraDelta.xyz;
+        Xprev = Geometry::RotateVectorInverse( gWorldToViewPrev, Xvprevlocal ) + gCameraDelta.xyz;
     }
 
     // Shared data
     uint bits;
-    float4 data1 = UnpackData1( gIn_Data1[ pixelPos ] );
+    REBLUR_DATA1_TYPE data1 = UnpackData1( gIn_Data1[ pixelPos ] );
     float2 data2 = UnpackData2( gIn_Data2[ pixelPos ], bits );
 
-    float stabilizationStrength = gStabilizationStrength * float( pixelUv.x >= gSplitScreen );
-
     // Surface motion footprint
-    STL::Filtering::Bilinear smbBilinearFilter = STL::Filtering::GetBilinearFilter( smbPixelUv, gRectSizePrev );
+    Filtering::Bilinear smbBilinearFilter = Filtering::GetBilinearFilter( smbPixelUv, gRectSizePrev );
     float4 smbOcclusion = float4( ( bits & uint4( 1, 2, 4, 8 ) ) != 0 );
-    float4 smbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( smbBilinearFilter, smbOcclusion );
+    float4 smbOcclusionWeights = Filtering::GetBilinearCustomWeights( smbBilinearFilter, smbOcclusion );
     bool smbAllowCatRom = dot( smbOcclusion, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TS;
-    float smbFootprintQuality = STL::Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
-    smbFootprintQuality = STL::Math::Sqrt01( smbFootprintQuality );
+    float smbFootprintQuality = Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
+    smbFootprintQuality = Math::Sqrt01( smbFootprintQuality );
 
     // Diffuse
     #ifdef REBLUR_DIFFUSE
@@ -250,7 +248,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         smbDiffHistory = ClampNegativeToZero( smbDiffHistory );
 
         // Compute antilag
-        float diffStabilizationStrength = stabilizationStrength * float( smbPixelUv.x >= gSplitScreen );
+        float diffStabilizationStrength = float( pixelUv.x >= gSplitScreen ) * float( smbPixelUv.x >= gSplitScreen );
         float diffAntilag = ComputeAntilag( smbDiffHistory, diff, diffSigma, gAntilagParams, smbFootprintQuality * data1.x );
 
         // Clamp history and combine with the current frame
@@ -260,11 +258,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         diffHistoryWeight *= diffAntilag; // this is important
         diffHistoryWeight *= diffStabilizationStrength;
 
-        smbDiffHistory = STL::Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
-        float4 diffResult = lerp( diff, smbDiffHistory, diffHistoryWeight );
+        smbDiffHistory = Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
+
+        REBLUR_TYPE diffResult;
+        diffResult.xyz = lerp( diff.xyz, smbDiffHistory.xyz, diffHistoryWeight * gStabilizationStrength );
+        diffResult.w = lerp( diff.w, smbDiffHistory.w, diffHistoryWeight * gHitDistStabilizationStrength );
+
         #ifdef REBLUR_SH
-            smbDiffShHistory = STL::Color::Clamp( diffShM1, diffShSigma * diffTemporalAccumulationParams.y, smbDiffShHistory );
-            float4 diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
+            smbDiffShHistory.xyz = Color::Clamp( diffShM1, diffShSigma * diffTemporalAccumulationParams.y, smbDiffShHistory.xyz );
+
+            REBLUR_SH_TYPE diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
+            diffShResult.w = 0; // TODO: unused
         #endif
 
         // Output
@@ -297,33 +301,33 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Virtual motion
         float3 V = GetViewVector( X );
         float NoV = abs( dot( N, V ) );
-        float dominantFactor = STL::ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, STL_SPECULAR_DOMINANT_DIRECTION_G2 );
+        float dominantFactor = ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, ML_SPECULAR_DOMINANT_DIRECTION_G2 );
         float3 Xvirtual = GetXvirtual( hitDistForTracking, curvature, X, Xprev, V, dominantFactor );
-        float2 vmbPixelUv = STL::Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
+        float2 vmbPixelUv = Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
 
         // Modify MVs if requested
-        if( gSpecProbabilityThresholdsForMvModification.x < 1.0 )
+        if( gSpecProbabilityThresholdsForMvModification.x < 1.0 && NRD_USE_BASECOLOR_METALNESS )
         {
             float4 baseColorMetalness = gIn_BaseColor_Metalness[ WithRectOrigin( pixelPos ) ];
 
             float3 albedo, Rf0;
-            STL::BRDF::ConvertBaseColorMetalnessToAlbedoRf0( baseColorMetalness.xyz, baseColorMetalness.w, albedo, Rf0 );
+            BRDF::ConvertBaseColorMetalnessToAlbedoRf0( baseColorMetalness.xyz, baseColorMetalness.w, albedo, Rf0 );
 
-            float3 Fenv = STL::BRDF::EnvironmentTerm_Rtg( Rf0, NoV, roughness );
+            float3 Fenv = BRDF::EnvironmentTerm_Rtg( Rf0, NoV, roughness );
 
-            float lumSpec = STL::Color::Luminance( Fenv ) * virtualHistoryAmount;
-            float lumDiff = STL::Color::Luminance( albedo * ( 1.0 - Fenv ) );
+            float lumSpec = Color::Luminance( Fenv ) * virtualHistoryAmount; // TODO: review
+            float lumDiff = Color::Luminance( albedo * ( 1.0 - Fenv ) );
             float specProb = lumSpec / ( lumDiff + lumSpec + NRD_EPS );
 
-            STL::Rng::Hash::Initialize( pixelPos, gFrameIndex );
-            float f = STL::Math::SmoothStep( gSpecProbabilityThresholdsForMvModification.x, gSpecProbabilityThresholdsForMvModification.y, specProb );
-            if( STL::Rng::Hash::GetFloat( ) < f )
+            Rng::Hash::Initialize( pixelPos, gFrameIndex );
+            float f = Math::SmoothStep( gSpecProbabilityThresholdsForMvModification.x, gSpecProbabilityThresholdsForMvModification.y, specProb );
+            if( Rng::Hash::GetFloat( ) < f )
             {
                 float3 specMv = Xvirtual - X; // world-space delta fits badly into FP16! Prefer 2.5D motion!
                 if( gMvScale.w == 0.0 )
                 {
                     specMv.xy = vmbPixelUv - pixelUv;
-                    specMv.z = STL::Geometry::AffineTransform( gWorldToViewPrev, Xvirtual ).z - viewZ; // TODO: is it useful?
+                    specMv.z = Geometry::AffineTransform( gWorldToViewPrev, Xvirtual ).z - viewZ; // TODO: is it useful?
                 }
 
                 mv = specMv;
@@ -350,12 +354,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         );
 
         // Virtual motion footprint
-        STL::Filtering::Bilinear vmbBilinearFilter = STL::Filtering::GetBilinearFilter( vmbPixelUv, gRectSizePrev );
+        Filtering::Bilinear vmbBilinearFilter = Filtering::GetBilinearFilter( vmbPixelUv, gRectSizePrev );
         float4 vmbOcclusion = float4( ( bits & uint4( 16, 32, 64, 128 ) ) != 0 );
-        float4 vmbOcclusionWeights = STL::Filtering::GetBilinearCustomWeights( vmbBilinearFilter, vmbOcclusion );
+        float4 vmbOcclusionWeights = Filtering::GetBilinearCustomWeights( vmbBilinearFilter, vmbOcclusion );
         bool vmbAllowCatRom = dot( vmbOcclusion, 1.0 ) > 3.5 && REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS;
-        float vmbFootprintQuality = STL::Filtering::ApplyBilinearFilter( vmbOcclusion.x, vmbOcclusion.y, vmbOcclusion.z, vmbOcclusion.w, vmbBilinearFilter );
-        vmbFootprintQuality = STL::Math::Sqrt01( vmbFootprintQuality );
+        float vmbFootprintQuality = Filtering::ApplyBilinearFilter( vmbOcclusion.x, vmbOcclusion.y, vmbOcclusion.z, vmbOcclusion.w, vmbBilinearFilter );
+        vmbFootprintQuality = Math::Sqrt01( vmbFootprintQuality );
 
         // Sample history - virtual motion
         REBLUR_TYPE vmbSpecHistory;
@@ -375,25 +379,21 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         vmbSpecHistory = ClampNegativeToZero( vmbSpecHistory );
 
         // Combine surface and virtual motion
-        float4 specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
+        REBLUR_TYPE specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
         #ifdef REBLUR_SH
-            float4 specShHistory = lerp( smbSpecShHistory, vmbSpecShHistory, virtualHistoryAmount );
+            REBLUR_SH_TYPE specShHistory = lerp( smbSpecShHistory, vmbSpecShHistory, virtualHistoryAmount );
         #endif
 
         // Compute antilag
-        float specStabilizationStrength = stabilizationStrength;
-        [flatten]
-        if( virtualHistoryAmount != 1.0 )
-            specStabilizationStrength *= float( smbPixelUv.x >= gSplitScreen );
-        [flatten]
-        if( virtualHistoryAmount != 0.0 )
-            specStabilizationStrength *= float( vmbPixelUv.x >= gSplitScreen );
+        float specStabilizationStrength = float( pixelUv.x >= gSplitScreen );
+        specStabilizationStrength *= virtualHistoryAmount != 1.0 ? float( smbPixelUv.x >= gSplitScreen ) : 1.0;
+        specStabilizationStrength *= virtualHistoryAmount != 0.0 ? float( vmbPixelUv.x >= gSplitScreen ) : 0.0;
 
         float footprintQuality = lerp( smbFootprintQuality, vmbFootprintQuality, virtualHistoryAmount );
-        float specAntilag = ComputeAntilag( specHistory, spec, specSigma, gAntilagParams, footprintQuality * data1.z );
+        float specAntilag = ComputeAntilag( specHistory, spec, specSigma, gAntilagParams, footprintQuality * data1.y );
 
         // Clamp history and combine with the current frame
-        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( footprintQuality, data1.z );
+        float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( footprintQuality, data1.y );
 
         // TODO: roughness should affect stabilization:
         // - use "virtualHistoryRoughnessBasedConfidence" from TA
@@ -401,15 +401,19 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specHistoryWeight = specTemporalAccumulationParams.x;
         specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= specStabilizationStrength;
+        specHistoryWeight *= materialID == gStrandMaterialID ? 0.5 : 1.0;
 
-        specHistory = STL::Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
-        float4 specResult = lerp( spec, specHistory, specHistoryWeight );
+        specHistory = Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
+
+        REBLUR_TYPE specResult;
+        specResult.xyz = lerp( spec.xyz, specHistory.xyz, specHistoryWeight * gStabilizationStrength );
+        specResult.w = lerp( spec.w, specHistory.w, specHistoryWeight * gHitDistStabilizationStrength );
+
         #ifdef REBLUR_SH
-            specShHistory.xyz = STL::Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory.xyz );
-            float4 specShResult = lerp( specSh, specShHistory, specHistoryWeight );
+            specShHistory.xyz = Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory.xyz );
 
-            // ( Optional ) Output modified roughness to assist AA during SG resolve
-            specShResult.w = specSh.w;
+            REBLUR_SH_TYPE specShResult = lerp( specSh, specShHistory, specHistoryWeight );
+            specShResult.w = specSh.w; // ( Optional ) Output modified roughness to assist AA during SG resolve
         #endif
 
         // Output
@@ -419,12 +423,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #endif
 
         // Increment history length
-        data1.z += 1.0;
+        data1.y += 1.0;
 
         // Apply anti-lag
-        float specMinAccumSpeed = min( data1.z, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
-        data1.z = lerp( specMinAccumSpeed, data1.z, specAntilag );
+        float specMinAccumSpeed = min( data1.y, gHistoryFixFrameNum ) * REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX;
+        data1.y = lerp( specMinAccumSpeed, data1.y, specAntilag );
     #endif
 
-    gOut_InternalData[ pixelPos ] = PackInternalData( data1.x, data1.z, materialID );
+    gOut_InternalData[ pixelPos ] = PackInternalData( data1.x, data1.y, materialID );
 }

@@ -22,7 +22,7 @@ NRD_SAMPLERS_END
     NRD_INPUTS_START
         NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
         NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gIn_Data1, t, 2 )
+        NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 2 )
         NRD_INPUT( Texture2D<float>, gIn_ViewZ, t, 3 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 4 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 5 )
@@ -50,7 +50,7 @@ NRD_SAMPLERS_END
     NRD_INPUTS_START
         NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
         NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gIn_Data1, t, 2 )
+        NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 2 )
         NRD_INPUT( Texture2D<float>, gIn_ViewZ, t, 3 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 4 )
         NRD_INPUT( Texture2D<REBLUR_FAST_TYPE>, gIn_DiffFast, t, 5 )
@@ -72,7 +72,7 @@ NRD_SAMPLERS_END
     NRD_INPUTS_START
         NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
         NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gIn_Data1, t, 2 )
+        NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 2 )
         NRD_INPUT( Texture2D<float>, gIn_ViewZ, t, 3 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 4 )
         NRD_INPUT( Texture2D<REBLUR_FAST_TYPE>, gIn_SpecFast, t, 5 )

@@ -79,12 +79,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     }
 
     // Position
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
 
     // Normal
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( pixelPos ) ] );
     float3 N = normalAndRoughness.xyz;
-    float3 Nv = STL::Geometry::RotateVector( gWorldToView, N );
+    float3 Nv = Geometry::RotateVector( gWorldToView, N );
 
     // Parameters
     float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
@@ -121,7 +121,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             else
             {
                 float2 uv = pixelUv + float2( i - BORDER, j - BORDER ) * gRectSizeInv;
-                float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+                float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
                 float NoX = dot( Nv, Xvs );
 
                 w = ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
@@ -152,11 +152,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Avoid 1-pixel wide blur if penumbra size < 1 pixel
     float penumbraInPixels = penumbra / unprojectZ;
-    float f = STL::Math::LinearStep( 0.75, 1.25, penumbraInPixels );
+    float f = Math::LinearStep( 0.75, 1.25, penumbraInPixels );
     result = lerp( centerTap, result, f );
 
     // Tangent basis with anisotropy
-    float3x3 mWorldToLocal = STL::Geometry::GetBasis( Nv );
+    float3x3 mWorldToLocal = Geometry::GetBasis( Nv );
     float3 Tv = mWorldToLocal[ 0 ];
     float3 Bv = mWorldToLocal[ 1 ];
 
@@ -204,7 +204,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float signNoL = float( penum != 0.0 );
 
         // Sample weight
-        float3 Xvs = STL::Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
+        float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
         float NoX = dot( Nv, Xvs );
 
         float w = IsInScreenNearest( uv );
@@ -215,7 +215,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Avoid umbra leaking inside wide penumbra
         float t = saturate( penum * invEstimatedPenumbra );
-        w *= STL::Math::SmoothStep( 0.0, 1.0, t ); // TODO: it works surprisingly well, keep an eye on it!
+        w *= Math::SmoothStep( 0.0, 1.0, t ); // TODO: it works surprisingly well, keep an eye on it!
 
         // Fetch shadow
         SIGMA_TYPE s;

@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Misc
 
-#define PackShadow( s )         STL::Math::Sqrt01( s ) // must match "SIGMA_BackEnd_UnpackShadow"
+#define PackShadow( s )         Math::Sqrt01( s ) // must match "SIGMA_BackEnd_UnpackShadow"
 #define IsLit( p )              ( p >= NRD_FP16_MAX )
 
 float GetKernelRadiusInPixels( float hitDist, float unprojectZ, float scale = 1.0 )

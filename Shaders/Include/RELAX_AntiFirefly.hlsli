@@ -56,7 +56,7 @@ void runRCRS(
     float4 s = sharedSpecular[sharedMemoryIndex.y][sharedMemoryIndex.x];
     float3 specularIlluminationCenter = s.rgb;
     float specular2ndMomentCenter = s.a;
-    float specularLuminanceCenter = STL::Color::Luminance(specularIlluminationCenter);
+    float specularLuminanceCenter = Color::Luminance(specularIlluminationCenter);
 
     float maxSpecularLuminance = -1.0;
     float minSpecularLuminance = 1.0e6;
@@ -68,7 +68,7 @@ void runRCRS(
     float4 d = sharedDiffuse[sharedMemoryIndex.y][sharedMemoryIndex.x];
     float3 diffuseIlluminationCenter = d.rgb;
     float diffuse2ndMomentCenter = d.a;
-    float diffuseLuminanceCenter = STL::Color::Luminance(diffuseIlluminationCenter);
+    float diffuseLuminanceCenter = Color::Luminance(diffuseIlluminationCenter);
 
     float maxDiffuseLuminance = -1.0;
     float minDiffuseLuminance = 1.0e6;
@@ -94,12 +94,12 @@ void runRCRS(
             // Fetching sample data
 #ifdef RELAX_SPECULAR
             float3 specularIlluminationSample = sharedSpecular[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x].rgb;
-            float specularLuminanceSample = STL::Color::Luminance(specularIlluminationSample);
+            float specularLuminanceSample = Color::Luminance(specularIlluminationSample);
 #endif
 
 #ifdef RELAX_DIFFUSE
             float3 diffuseIlluminationSample = sharedDiffuse[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x].rgb;
-            float diffuseLuminanceSample = STL::Color::Luminance(diffuseIlluminationSample);
+            float diffuseLuminanceSample = Color::Luminance(diffuseIlluminationSample);
 #endif
 
             float sampleMaterialID = sharedMaterialID[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];

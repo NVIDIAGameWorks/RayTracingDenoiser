@@ -44,7 +44,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
             bool isOpaque = true;
             #ifdef SIGMA_TRANSLUCENT
                 float3 translucency = gIn_Shadow_Translucency[ pos ].yzw;
-                isOpaque = STL::Color::Luminance( translucency ) < 0.003; // TODO: replace with a uniformity test?
+                isOpaque = Color::Luminance( translucency ) < 0.003; // TODO: replace with a uniformity test?
             #endif
 
             mask += ( ( isLit || isInf || isShadow ) ? 1 : 0 ) << 0;

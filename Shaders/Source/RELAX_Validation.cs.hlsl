@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "NRD.hlsli"
-#include "STL.hlsli"
+#include "ml.hlsli"
 
 #include "RELAX_Config.hlsli"
 #include "RELAX_Validation.resources.hlsli"
@@ -57,22 +57,22 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     float3 X = GetCurrentWorldPosFromClipSpaceXY( viewportUv * 2.0 - 1.0, abs( viewZ ) );
 
     bool isInf = abs( viewZ ) > gDenoisingRange;
-    bool checkerboard = STL::Sequence::CheckerBoard( pixelPos >> 2, 0 );
+    bool checkerboard = Sequence::CheckerBoard( pixelPos >> 2, 0 );
 
-    uint4 textState = STL::Text::Init( pixelPos, viewportId * gResourceSize * VIEWPORT_SIZE + OFFSET, 1 );
+    uint4 textState = Text::Init( pixelPos, viewportId * gResourceSize * VIEWPORT_SIZE + OFFSET, 1 );
 
     float4 result = gOut_Validation[ pixelPos ];
 
     // World-space normal
     if( viewportIndex == 0 )
     {
-        STL::Text::Print_ch( 'N', textState );
-        STL::Text::Print_ch( 'O', textState );
-        STL::Text::Print_ch( 'R', textState );
-        STL::Text::Print_ch( 'M', textState );
-        STL::Text::Print_ch( 'A', textState );
-        STL::Text::Print_ch( 'L', textState );
-        STL::Text::Print_ch( 'S', textState );
+        Text::Print_ch( 'N', textState );
+        Text::Print_ch( 'O', textState );
+        Text::Print_ch( 'R', textState );
+        Text::Print_ch( 'M', textState );
+        Text::Print_ch( 'A', textState );
+        Text::Print_ch( 'L', textState );
+        Text::Print_ch( 'S', textState );
 
         result.xyz = N * 0.5 + 0.5;
         result.w = 1.0;
@@ -80,15 +80,15 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     // Linear roughness
     else if( viewportIndex == 1 )
     {
-        STL::Text::Print_ch( 'R', textState );
-        STL::Text::Print_ch( 'O', textState );
-        STL::Text::Print_ch( 'U', textState );
-        STL::Text::Print_ch( 'G', textState );
-        STL::Text::Print_ch( 'H', textState );
-        STL::Text::Print_ch( 'N', textState );
-        STL::Text::Print_ch( 'E', textState );
-        STL::Text::Print_ch( 'S', textState );
-        STL::Text::Print_ch( 'S', textState );
+        Text::Print_ch( 'R', textState );
+        Text::Print_ch( 'O', textState );
+        Text::Print_ch( 'U', textState );
+        Text::Print_ch( 'G', textState );
+        Text::Print_ch( 'H', textState );
+        Text::Print_ch( 'N', textState );
+        Text::Print_ch( 'E', textState );
+        Text::Print_ch( 'S', textState );
+        Text::Print_ch( 'S', textState );
 
         result.xyz = normalAndRoughness.w;
         result.w = 1.0;
@@ -96,9 +96,9 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     // View Z
     else if( viewportIndex == 2 )
     {
-        STL::Text::Print_ch( 'Z', textState );
+        Text::Print_ch( 'Z', textState );
         if( viewZ < 0 )
-            STL::Text::Print_ch( STL::Text::Char_Minus, textState );
+            Text::Print_ch( Text::Char_Minus, textState );
 
         float f = 0.1 * abs( viewZ ) / ( 1.0 + 0.1 * abs( viewZ ) ); // TODO: tuned for meters
         float3 color = viewZ < 0.0 ? float3( 0, 0, 1 ) : float3( 0, 1, 0 );
@@ -109,14 +109,14 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     // MV
     else if( viewportIndex == 3 )
     {
-        STL::Text::Print_ch( 'M', textState );
-        STL::Text::Print_ch( 'V', textState );
+        Text::Print_ch( 'M', textState );
+        Text::Print_ch( 'V', textState );
 
-        float2 viewportUvPrevExpected = STL::Geometry::GetScreenUv( gWorldToClipPrev, X );
+        float2 viewportUvPrevExpected = Geometry::GetScreenUv( gWorldToClipPrev, X );
 
         float2 viewportUvPrev = viewportUv + mv.xy;
         if( gMvScale.w != 0.0 )
-            viewportUvPrev = STL::Geometry::GetScreenUv( gWorldToClipPrev, X + mv );
+            viewportUvPrev = Geometry::GetScreenUv( gWorldToClipPrev, X + mv );
 
         float2 uvDelta = ( viewportUvPrev - viewportUvPrevExpected ) * gRectSize;
 
@@ -126,20 +126,20 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     // World units
     else if( viewportIndex == 4 )
     {
-        STL::Text::Print_ch( 'U', textState );
-        STL::Text::Print_ch( 'N', textState );
-        STL::Text::Print_ch( 'I', textState );
-        STL::Text::Print_ch( 'T', textState );
-        STL::Text::Print_ch( 'S', textState );
-        STL::Text::Print_ch( ' ', textState );
-        STL::Text::Print_ch( '&', textState );
-        STL::Text::Print_ch( ' ', textState );
-        STL::Text::Print_ch( 'J', textState );
-        STL::Text::Print_ch( 'I', textState );
-        STL::Text::Print_ch( 'T', textState );
-        STL::Text::Print_ch( 'T', textState );
-        STL::Text::Print_ch( 'E', textState );
-        STL::Text::Print_ch( 'R', textState );
+        Text::Print_ch( 'U', textState );
+        Text::Print_ch( 'N', textState );
+        Text::Print_ch( 'I', textState );
+        Text::Print_ch( 'T', textState );
+        Text::Print_ch( 'S', textState );
+        Text::Print_ch( ' ', textState );
+        Text::Print_ch( '&', textState );
+        Text::Print_ch( ' ', textState );
+        Text::Print_ch( 'J', textState );
+        Text::Print_ch( 'I', textState );
+        Text::Print_ch( 'T', textState );
+        Text::Print_ch( 'T', textState );
+        Text::Print_ch( 'E', textState );
+        Text::Print_ch( 'R', textState );
 
         float2 dim = float2( 0.5 * gResourceSize.y / gResourceSize.x, 0.5 );
         float2 remappedUv = ( viewportUv - ( 1.0 - dim ) ) / dim;
@@ -170,34 +170,34 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     // Diff-spec frames
     else if( viewportIndex == 8 )
     {
-        STL::Text::Print_ch( 'D', textState );
-        STL::Text::Print_ch( 'I', textState );
-        STL::Text::Print_ch( 'F', textState );
-        STL::Text::Print_ch( 'F', textState );
-        STL::Text::Print_ch( '-', textState );
-        STL::Text::Print_ch( 'S', textState );
-        STL::Text::Print_ch( 'P', textState );
-        STL::Text::Print_ch( 'E', textState );
-        STL::Text::Print_ch( 'C', textState );
-        STL::Text::Print_ch( ' ', textState );
-        STL::Text::Print_ch( 'F', textState );
-        STL::Text::Print_ch( 'R', textState );
-        STL::Text::Print_ch( 'A', textState );
-        STL::Text::Print_ch( 'M', textState );
-        STL::Text::Print_ch( 'E', textState );
-        STL::Text::Print_ch( 'S', textState );
+        Text::Print_ch( 'D', textState );
+        Text::Print_ch( 'I', textState );
+        Text::Print_ch( 'F', textState );
+        Text::Print_ch( 'F', textState );
+        Text::Print_ch( '-', textState );
+        Text::Print_ch( 'S', textState );
+        Text::Print_ch( 'P', textState );
+        Text::Print_ch( 'E', textState );
+        Text::Print_ch( 'C', textState );
+        Text::Print_ch( ' ', textState );
+        Text::Print_ch( 'F', textState );
+        Text::Print_ch( 'R', textState );
+        Text::Print_ch( 'A', textState );
+        Text::Print_ch( 'M', textState );
+        Text::Print_ch( 'E', textState );
+        Text::Print_ch( 'S', textState );
 
         float f = 1.0 - saturate( historyLength / max( max( gDiffMaxAccumulatedFrameNum, gSpecMaxAccumulatedFrameNum ), 1.0 ) );
         f = checkerboard && historyLength < 2.0 ? 0.75 : f;
 
-        result.xyz = STL::Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
+        result.xyz = Color::ColorizeZucconi( viewportUv.y > 0.95 ? 1.0 - viewportUv.x : f * float( !isInf ) );
         result.w = 1.0;
     }
 
     // Text
-    if( STL::Text::IsForeground( textState ) )
+    if( Text::IsForeground( textState ) )
     {
-        float lum = STL::Color::Luminance( result.xyz );
+        float lum = Color::Luminance( result.xyz );
         result.xyz = lerp( 0.0, 1.0 - result.xyz, saturate( abs( lum - 0.5 ) / 0.25 ) ) ;
     }
 

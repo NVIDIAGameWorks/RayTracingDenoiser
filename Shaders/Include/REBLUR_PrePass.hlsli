@@ -22,7 +22,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Checkerboard resolve
-    uint checkerboard = STL::Sequence::CheckerBoard( pixelPos, gFrameIndex );
+    uint checkerboard = Sequence::CheckerBoard( pixelPos, gFrameIndex );
 
     int3 checkerboardPos = pixelPos.xxy + int3( -1, 1, 0 );
     checkerboardPos.x = max( checkerboardPos.x, 0 );
@@ -32,19 +32,19 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float2 wc = GetBilateralWeight( float2( viewZ0, viewZ1 ), viewZ );
     wc.x = ( viewZ0 > gDenoisingRange || pixelPos.x < 1 ) ? 0.0 : wc.x;
     wc.y = ( viewZ1 > gDenoisingRange || pixelPos.x >= gRectSizeMinusOne.x ) ? 0.0 : wc.y;
-    wc *= STL::Math::PositiveRcp( wc.x + wc.y );
+    wc *= Math::PositiveRcp( wc.x + wc.y );
     checkerboardPos.xy >>= 1;
 
     // Normal and roughness
     float materialID;
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( pixelPos ) ], materialID );
     float3 N = normalAndRoughness.xyz;
-    float3 Nv = STL::Geometry::RotateVectorInverse( gViewToWorld, N );
+    float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
     float roughness = normalAndRoughness.w;
 
     // Shared data
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
-    float3 Xv = STL::Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     float3 Vv = GetViewVector( Xv, true );
