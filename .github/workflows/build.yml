@@ -1,4 +1,4 @@
-name: Build NRD SDK
+name: NRD SDK
 on:
   pull_request:
     branches:
@@ -10,18 +10,17 @@ jobs:
   Build-Windows:
     runs-on: windows-latest
     steps:
-      -
-        name : Checkout
-        uses: actions/checkout@v3
+      - name : Checkout
+        uses: actions/checkout@v4
         with:
           submodules: true
-      -
-        name: Install dependencies
-        uses: crazy-max/ghaction-chocolatey@v1
+
+      - name: Install dependencies
+        uses: crazy-max/ghaction-chocolatey@v3
         with:
           args: install windows-sdk-10.0 cmake -y
-      -
-        name: Install Vulkan
+
+      - name: Install Vulkan
         run: |
           $ver = (Invoke-WebRequest -Uri "https://vulkan.lunarg.com/sdk/latest.json" | ConvertFrom-Json).windows
           echo Vulkan SDK version $ver
@@ -29,62 +28,61 @@ jobs:
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Installer.exe" -OutFile VulkanSDK.exe
           echo Downloaded
           .\VulkanSDK.exe --root C:\VulkanSDK --accept-licenses --default-answer --confirm-command install
-      -
-        name: Deploy NRD SDK
+
+      - name: Deploy
         run: |
           $Env:VULKAN_SDK = "C:/VulkanSDK/"
           $Env:Path += ";C:/VulkanSDK/Bin"
           .\1-Deploy.bat
-      -
-        name: Build NRD SDK
+
+      - name: Build
         run: |
           $Env:VULKAN_SDK = "C:/VulkanSDK/"
           $Env:Path += ";C:/VulkanSDK/Bin"
           .\2-Build.bat
-      -
-        name: Prepare NRD SDK
+
+      - name: Prepare
         run: |
           &'.\3-Prepare NRD SDK.bat' --shaders
-      -
-        name: Upload NRD SDK as artefact
-        uses: actions/upload-artifact@v3
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
         with:
           name: NRD SDK
           path: _NRD_SDK
           
   Build-Ubuntu:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
-      -
-        name : Checkout
-        uses: actions/checkout@v3
+      - name : Checkout
+        uses: actions/checkout@v4
         with:
           submodules: true
         
       - name: Setup CMake
-        uses: jwlawson/actions-setup-cmake@v1.13
+        uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '3.16.x'
           
       - name: Setup Ninja
         uses: seanmiddleditch/gha-setup-ninja@master
       
-      - name: Install Vulkan SDK
+      - name: Install Vulkan
         run: |
           sudo apt install -y wget
-          wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-focal.list http://packages.lunarg.com/vulkan/lunarg-vulkan-focal.list
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt update
           sudo apt install -y vulkan-sdk
-      -
-        name: CMake Generate
+
+      - name: Deploy
         run: |
           mkdir "build"
           cd "build"
           cmake -G Ninja .. 
           cd ..
-      -
-        name: Compile
+
+      - name: Build
         run: |
           cd "build"
           cmake --build .
