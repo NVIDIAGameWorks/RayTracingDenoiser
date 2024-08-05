@@ -111,7 +111,7 @@ string (REGEX MATCH "ML_VERSION_MINOR ([0-9]*)" _ ${ver_h})
 set (ML_VERSION_MINOR ${CMAKE_MATCH_1})
 message ("MathLib v${ML_VERSION_MAJOR}.${ML_VERSION_MINOR}")
 
-file (GLOB ML_FILES "External/MathLib/*.h" "External/MathLib/*.hpp")
+file (GLOB ML_FILES "External/MathLib/*.h" "External/MathLib/Guts/*.h")
 source_group ("MathLib" FILES ${ML_FILES})
 
 # NRD
