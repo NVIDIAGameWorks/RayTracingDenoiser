@@ -10,7 +10,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #pragma once
 
-#include <assert.h>
+#include <cstring> // memset
 
 #include "NRD.h"
 
