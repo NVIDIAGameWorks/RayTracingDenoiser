@@ -11,6 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #include <vector>
+#include <array>
 
 template<typename T> void StdAllocator_MaybeUnused([[maybe_unused]] const T& arg)
 {}
