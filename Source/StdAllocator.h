@@ -11,8 +11,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #include <vector>
-#include <unordered_map>
-#include <string>
 
 template<typename T> void StdAllocator_MaybeUnused([[maybe_unused]] const T& arg)
 {}
@@ -254,8 +252,3 @@ inline void DeallocateArray(StdAllocator<uint8_t>& allocator, T* array, size_t a
 
 template<typename T>
 using Vector = std::vector<T, StdAllocator<T>>;
-
-template<typename U, typename T>
-using UnorderedMap = std::unordered_map<U, T, std::hash<U>, std::equal_to<U>, StdAllocator<std::pair<U, T>>>;
-
-using String = std::basic_string<char, std::char_traits<char>, StdAllocator<char>>;
