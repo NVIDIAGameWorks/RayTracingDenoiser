@@ -11,12 +11,15 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRD.hlsli"
 #include "ml.hlsli"
 
-#include "REFERENCE_SplitScreen.resources.hlsli"
+#include "REFERENCE_Copy.resources.hlsli"
 
 #include "Common.hlsli"
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 {
-    gOut_Output[ pixelPos ] = gIn_Input[ pixelPos ];
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
+
+    if( pixelUv.x > gSplitScreen )
+        gOut_Output[ pixelPos ] = gIn_Input[ pixelPos ];
 }

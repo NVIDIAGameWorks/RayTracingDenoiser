@@ -9,7 +9,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #include "../Shaders/Resources/REFERENCE_TemporalAccumulation.resources.hlsli"
-#include "../Shaders/Resources/REFERENCE_SplitScreen.resources.hlsli"
+#include "../Shaders/Resources/REFERENCE_Copy.resources.hlsli"
 
 void nrd::InstanceImpl::Add_Reference(DenoiserData& denoiserData)
 {
@@ -40,7 +40,7 @@ void nrd::InstanceImpl::Add_Reference(DenoiserData& denoiserData)
 
         PushOutput( AsUint(ResourceType::OUT_SIGNAL) );
 
-        AddDispatch( REFERENCE_SplitScreen, REFERENCE_SplitScreen, 1 ); // TODO: rename to Copy
+        AddDispatch( REFERENCE_Copy, REFERENCE_Copy, 1 );
     }
 
     #undef DENOISER_NAME
@@ -56,7 +56,9 @@ void nrd::InstanceImpl::Update_Reference(const DenoiserData& denoiserData)
 
     const ReferenceSettings& settings = denoiserData.settings.reference;
 
-    if (m_WorldToClip != m_WorldToClipPrev || m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE)
+    if (m_WorldToClip != m_WorldToClipPrev || m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ||
+        m_CommonSettings.rectSize[0] != m_CommonSettings.rectSizePrev[0] ||
+        m_CommonSettings.rectSize[1] != m_CommonSettings.rectSizePrev[1])
         m_AccumulatedFrameNum = 0;
     else
         m_AccumulatedFrameNum = min(m_AccumulatedFrameNum + 1, settings.maxAccumulatedFrameNum);
@@ -66,13 +68,13 @@ void nrd::InstanceImpl::Update_Reference(const DenoiserData& denoiserData)
     { // ACCUMULATE
         REFERENCE_TemporalAccumulationConstants* consts = (REFERENCE_TemporalAccumulationConstants*)PushDispatch(denoiserData, AsUint(Dispatch::ACCUMULATE));
         consts->gRectOrigin     = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
-        consts->gRectSizeInv    = float2(1.0f / float(rectW), 1.0f / float(rectH));
-        consts->gSplitScreen    = m_CommonSettings.splitScreen;
         consts->gAccumSpeed     = 1.0f / (1.0f + float(m_AccumulatedFrameNum));
         consts->gDebug          = m_CommonSettings.debug;
     }
 
     { // COPY
-        PushDispatch(denoiserData, AsUint(Dispatch::COPY));
+        REFERENCE_CopyConstants* consts = (REFERENCE_CopyConstants*)PushDispatch(denoiserData, AsUint(Dispatch::COPY));
+        consts->gRectSizeInv    = float2(1.0f / float(rectW), 1.0f / float(rectH));
+        consts->gSplitScreen    = m_CommonSettings.splitScreen;
     }
 }

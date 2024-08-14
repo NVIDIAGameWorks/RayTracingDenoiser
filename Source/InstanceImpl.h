@@ -208,12 +208,6 @@ namespace nrd
         void Add_Reference(DenoiserData& denoiserData);
         void Update_Reference(const DenoiserData& denoiserData);
 
-        void Add_SpecularReflectionMv(DenoiserData& denoiserData);
-        void Update_SpecularReflectionMv(const DenoiserData& denoiserData);
-
-        void Add_SpecularDeltaMv(DenoiserData& denoiserData);
-        void Update_SpecularDeltaMv(const DenoiserData& denoiserData);
-
     // Internal
     public:
         inline InstanceImpl(const StdAllocator<uint8_t>& stdAllocator) :
@@ -230,8 +224,6 @@ namespace nrd
             , m_ActiveDispatches(GetStdAllocator())
             , m_IndexRemap(GetStdAllocator())
         {
-            Rng::Hash::Initialize(m_RngState, 106937, 69);
-
             m_ConstantDataUnaligned = m_StdAllocator.allocate(CONSTANT_DATA_SIZE + sizeof(float4));
 
             // IMPORTANT: underlying memory for constants must be aligned, as well as any individual SSE-type containing member,
@@ -316,7 +308,6 @@ namespace nrd
         Vector<DispatchDesc> m_ActiveDispatches;
         Vector<uint16_t> m_IndexRemap;
         Timer m_Timer;
-        uint32_t m_RngState = {};
         InstanceDesc m_Desc = {};
         CommonSettings m_CommonSettings = {};
         float4x4 m_ViewToClip = float4x4::Identity();

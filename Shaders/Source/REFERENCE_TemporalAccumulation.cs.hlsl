@@ -18,12 +18,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 [numthreads( GROUP_X, GROUP_Y, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 {
-    float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
-
     float4 input = gIn_Input[ pixelPos ];
     float4 history = gInOut_History[ pixelPos ];
     float4 result = lerp( history, input, gAccumSpeed );
 
-    gInOut_History[ pixelPos ] = pixelUv.x > gSplitScreen ? result : input;
+    gInOut_History[ pixelPos ] = result;
 }
-

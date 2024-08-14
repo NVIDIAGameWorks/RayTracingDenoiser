@@ -283,20 +283,13 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
-    // Rotators
-    float4 rndAngle = Rng::Hash::GetFloat4(m_RngState) * radians(360.0f);
+    // Rotators (respecting sample patterns symmetry)
+    float angle1 = Sequence::Weyl1D(0.5f, commonSettings.frameIndex) * radians(90.0f);
+    m_Rotator_PrePass = Geometry::GetRotator(angle1);
 
-    float ca = cos( rndAngle.x );
-    float sa = sin( rndAngle.x );
-    m_Rotator_PrePass = float4( ca, sa, -sa, ca );
-
-    ca = cos( rndAngle.y );
-    sa = sin( rndAngle.y );
-    m_Rotator_Blur = float4( ca, sa, -sa, ca );
-
-    ca = cos( rndAngle.z );
-    sa = sin( rndAngle.z );
-    m_Rotator_PostBlur = float4( ca, sa, -sa, ca );
+    float angle2 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex) * radians(90.0f);
+    m_Rotator_Blur = Geometry::GetRotator(angle2);
+    m_Rotator_PostBlur = Geometry::GetRotator(angle2 + radians(45.0f));
 
     // Main matrices
     m_ViewToClip = float4x4
