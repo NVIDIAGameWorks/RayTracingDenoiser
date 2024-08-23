@@ -315,13 +315,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             float3 Fenv = BRDF::EnvironmentTerm_Rtg( Rf0, NoV, roughness );
 
-            float lumSpec = Color::Luminance( Fenv ) * virtualHistoryAmount; // TODO: review
+            float lumSpec = Color::Luminance( Fenv );
             float lumDiff = Color::Luminance( albedo * ( 1.0 - Fenv ) );
             float specProb = lumSpec / ( lumDiff + lumSpec + NRD_EPS );
 
-            Rng::Hash::Initialize( pixelPos, gFrameIndex );
             float f = Math::SmoothStep( gSpecProbabilityThresholdsForMvModification.x, gSpecProbabilityThresholdsForMvModification.y, specProb );
-            if( Rng::Hash::GetFloat( ) < f )
+            f *= 1.0 - GetSpecMagicCurve( roughness );
+            f *= 1.0 - Math::Sqrt01( abs( curvature ) );
+
+            if( f != 0.0 )
             {
                 float3 specMv = Xvirtual - X; // world-space delta fits badly into FP16! Prefer 2.5D motion!
                 if( gMvScale.w == 0.0 )
@@ -330,11 +332,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     specMv.z = Geometry::AffineTransform( gWorldToViewPrev, Xvirtual ).z - viewZ; // TODO: is it useful?
                 }
 
-                mv = specMv;
-
                 // Modify only .xy for 2D and .xyz for 2.5D and 3D MVs
-                inMv.xy = mv.xy / gMvScale.xy;
-                inMv.z = gMvScale.z == 0.0 ? inMv.z : mv.z / gMvScale.z;
+                mv.xy = specMv.xy / gMvScale.xy;
+                mv.z = gMvScale.z == 0.0 ? inMv.z : specMv.z / gMvScale.z;
+
+                inMv.xyz = lerp( inMv.xyz, mv, f );
 
                 gInOut_Mv[ WithRectOrigin( pixelPos ) ] = inMv;
             }

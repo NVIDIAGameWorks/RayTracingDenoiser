@@ -254,6 +254,7 @@ A single NRD instance can now include any combination of denoisers, including re
 
 - *API*:
   - exposed `ReblurSettings::hitDistanceStabilizationStrength` allowing to control the responsiviness of ambient and specular occlusion in the temporal stabilization pass and reach parity with `REBLUR_OCCLUSION` if set to `0`
+  - `MemoryAllocatorInterface` renamed to `AllocationCallbacks`
   - exposed `CommonSettings::strandMaterialID`, enabling "under-the-hood" tweaks for hair (and grass) denoising
   - exposed `CommonSettings::strandThickness`, defining how NRD adapts to sub-pixel thick details. It works in conjunction with `CommonSettings::disocclusionThresholdAlternate` for `CommonSettings::strandMaterialID` without a need to provide `IN_DISOCCLUSION_THRESHOLD_MIX` texture
 - *REBLUR*:

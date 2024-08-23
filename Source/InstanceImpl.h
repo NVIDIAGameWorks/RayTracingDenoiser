@@ -14,7 +14,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "NRD.h"
 
-typedef nrd::MemoryAllocatorInterface MemoryAllocatorInterface;
+typedef nrd::AllocationCallbacks AllocationCallbacks;
 #include "StdAllocator.h"
 
 #include "Timer.h"

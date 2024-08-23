@@ -373,7 +373,7 @@ namespace nrd
         MAX_NUM
     };
 
-    struct MemoryAllocatorInterface
+    struct AllocationCallbacks
     {
         void* (*Allocate)(void* userArg, size_t size, size_t alignment);
         void* (*Reallocate)(void* userArg, void* memory, size_t size, size_t alignment);
@@ -409,7 +409,7 @@ namespace nrd
 
     struct InstanceCreationDesc
     {
-        MemoryAllocatorInterface memoryAllocatorInterface;
+        AllocationCallbacks allocationCallbacks;
         const DenoiserDesc* denoisers;
         uint32_t denoisersNum;
     };

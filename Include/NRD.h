@@ -29,8 +29,8 @@ CREDITS:
 
 #define NRD_VERSION_MAJOR 4
 #define NRD_VERSION_MINOR 9
-#define NRD_VERSION_BUILD 1
-#define NRD_VERSION_DATE "14 August 2024"
+#define NRD_VERSION_BUILD 2
+#define NRD_VERSION_DATE "23 August 2024"
 
 #if defined(_MSC_VER)
     #define NRD_CALL __fastcall
@@ -41,7 +41,7 @@ CREDITS:
 #endif
 
 #ifndef NRD_API
-    #if NRD_STATIC_LIBRARY
+    #ifdef NRD_STATIC_LIBRARY
         #define NRD_API
     #else
         #define NRD_API extern "C"

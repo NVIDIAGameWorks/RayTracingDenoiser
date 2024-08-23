@@ -102,14 +102,14 @@ inline void AlignedFree(void* userArg, void* memory)
 
 #endif
 
-inline void CheckAndSetDefaultAllocator(MemoryAllocatorInterface& memoryAllocatorInterface)
+inline void CheckAndSetDefaultAllocator(AllocationCallbacks& allocationCallbacks)
 {
-    if (memoryAllocatorInterface.Allocate != nullptr)
+    if (allocationCallbacks.Allocate != nullptr)
         return;
 
-    memoryAllocatorInterface.Allocate = AlignedMalloc;
-    memoryAllocatorInterface.Reallocate = AlignedRealloc;
-    memoryAllocatorInterface.Free = AlignedFree;
+    allocationCallbacks.Allocate = AlignedMalloc;
+    allocationCallbacks.Reallocate = AlignedRealloc;
+    allocationCallbacks.Free = AlignedFree;
 }
 
 template<typename T>
@@ -121,7 +121,7 @@ struct StdAllocator
     typedef std::true_type propagate_on_container_move_assignment;
     typedef std::false_type is_always_equal;
 
-    StdAllocator(const MemoryAllocatorInterface& memoryAllocatorInterface) : m_Interface(memoryAllocatorInterface)
+    StdAllocator(const AllocationCallbacks& allocationCallbacks) : m_Interface(allocationCallbacks)
     { CheckAndSetDefaultAllocator(m_Interface); }
 
     StdAllocator(const StdAllocator<T>& allocator) : m_Interface(allocator.GetInterface())
@@ -143,14 +143,14 @@ struct StdAllocator
     void deallocate(T* memory, size_t) noexcept
     { m_Interface.Free(m_Interface.userArg, memory); }
 
-    const MemoryAllocatorInterface& GetInterface() const
+    const AllocationCallbacks& GetInterface() const
     { return m_Interface; }
 
     template<typename U>
     using other = StdAllocator<U>;
 
 private:
-    MemoryAllocatorInterface m_Interface = {};
+    AllocationCallbacks m_Interface = {};
 };
 
 template<typename T>

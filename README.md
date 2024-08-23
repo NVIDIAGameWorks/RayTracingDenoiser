@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.9.1 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.9.2 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -632,16 +632,19 @@ When denoising reflections in pure mirrors, some advantages can be reached if *N
 Notes, requirements and restrictions:
 - the primary hit (0th bounce) gets replaced with the first "non-pure mirror" hit in the bounce chain - this hit becomes *PSR*
 - all associated data in the g-buffer gets replaced by *PSR* data
-- the camera "sees" PSRs like the mirror surfaces in-between don't exist. This space is called virtual world space
-  - virtual space position lies on the same view vector as the primary hit position, but the position is elongated. Elongation depends on `hitT` and curvature at bounces, starting from the primary hit
+- the camera "sees" PSR like the mirror surface in-between don't exist. This space is called virtual world space
+  - virtual space position lies on the same view vector as the primary hit position, but the position is elongated. Elongation depends on `hitT` and curvature at hits, starting from the primary hit
   - virtual space normal is the normal at *PSR* hit mirrored several times  in the reversed order until the primary hit is reached
 - *PSR* data is NOT always data at the *PSR* hit!
   - material properties (albedo, metalness, roughness etc.) are from *PSR* hit
-  - `IN_VIEWZ` contains `viewZ` of the virtual position
-  - `IN_MV` contains motion of the virtual position
   - `IN_NORMAL_ROUGHNESS` contains normal at virtual world space and roughness at *PSR*
-  - accumulated `hitT` for *NRD* starts at the *PSR* hit. Curvature must be taken into account on the application side only for 2nd+ bounces starting from this hit (similarly to `hitT` requirements in *Noisy Inputs* section)
+  - `IN_VIEWZ` contains `viewZ` of the virtual position, potentially adjusted several times by curvature at hits
+  - `IN_MV` contains motion of the virtual position, potentially adjusted several times by curvature at hits
+  - accumulated `hitT` starts at the *PSR* hit, potentially adjusted several times by curvature at hits
+  - curvature should be taken into account starting from the 1st bounce, because the primary surface normal will be replaced by *PSR* normal, i.e. the former will be unreachable on the *NRD* side
   - ray direction for *NRD* must be transformed into virtual space
+
+IMPORTANT: in other words, *PSR* is perfect for flat mirrors. *PSR* on curved surfaces works even without respecting curvature, but reprojection artefacts can appear.
 
 In case of *PSR* *NRD* disocclusion logic doesn't take curvature at primary hit into account, because data for primary hits is replaced. This can lead to more intense disocclusions on bumpy surfaces due to significant ray divergence. To mitigate this problem 2x-10x larger `disocclusionThreshold` can be used. This is an applicable solution if the denoiser is used to denoise surfaces with *PSR* only (glass only, for example). In a general case, when *PSR* and normal surfaces are mixed on the screen, higher disocclusion thresholds are needed only for pixels with *PSR*. This can be achieved by using `IN_DISOCCLUSION_THRESHOLD_MIX` input to smoothly mix baseline `disocclusionThreshold` into bigger `disocclusionThresholdAlternate` from `CommonSettings`. Most likely the increased disocclusion threshold is needed only for pixels with normal details at primary hits (local curvature is not zero).
 
