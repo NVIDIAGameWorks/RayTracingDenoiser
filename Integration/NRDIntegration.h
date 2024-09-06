@@ -12,7 +12,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // IMPORTANT: these files must be included beforehand:
 //    NRD.h
-//    NRIDescs.h
+//    NRI.h
 //    Extensions/NRIHelper.h
 //    Extensions/NRIWrapperD3D11.h
 //    Extensions/NRIWrapperD3D12.h

@@ -194,11 +194,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     float3 V = GetViewVector( X );
     float NoV = abs( dot( N, V ) );
-    float mvLengthFactor = Math::LinearStep( 0.5, 1.0, smbParallaxInPixels );
-    float frontFacing = lerp( cos( Math::DegToRad( 135.0 ) ), cos( Math::DegToRad( 91.0 ) ), mvLengthFactor );
     float disocclusionThresholdSlopeScale = 1.0 / lerp( lerp( 0.05, 1.0, NoV ), 1.0, saturate( smbParallaxInPixels / 30.0 ) );
     float4 smbDisocclusionThreshold = saturate( disocclusionThreshold * disocclusionThresholdSlopeScale ) * frustumSize;
-    smbDisocclusionThreshold *= float( dot( prevNavg, Navg ) > frontFacing );
+    smbDisocclusionThreshold *= float( dot( prevNavg, Navg ) > cos( Math::DegToRad( 89.0 ) ) );
     smbDisocclusionThreshold *= IsInScreenBilinear( smbBilinearFilter.origin, gRectSizePrev );
     smbDisocclusionThreshold -= NRD_EPS;
 

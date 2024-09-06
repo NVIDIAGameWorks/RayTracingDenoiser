@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.9.2 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.9.3 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -406,9 +406,11 @@ The pseudo code below demonstrates how *NRD integration* and *NRI* can be used t
 // INITIALIZATION - DECLARATIONS
 //=======================================================================================================
 
-#include "NRIDescs.hpp"
-#include "Extensions/NRIWrapperD3D12.h"
+#include "NRI.h"
 #include "Extensions/NRIHelper.h"
+#include "Extensions/NRIWrapperD3D11.h"
+#include "Extensions/NRIWrapperD3D12.h"
+#include "Extensions/NRIWrapperVK.h"
 
 #include "NRD.h"
 #include "NRDIntegration.hpp"
