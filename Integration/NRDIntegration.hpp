@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "NRDIntegration.h"
 
 static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 9, "Unsupported NRD version!");
-static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 147, "Unsupported NRI version!");
+static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 151, "Unsupported NRI version!");
 
 #ifdef _WIN32
     #define alloca _alloca
@@ -188,7 +188,7 @@ void NrdIntegration::CreatePipelines()
     for (uint32_t i = 0; i < instanceDesc.pipelinesNum; i++)
     {
         const nrd::PipelineDesc& nrdPipelineDesc = instanceDesc.pipelines[i];
-        const nrd::ComputeShaderDesc& nrdComputeShader = (&nrdPipelineDesc.computeShaderDXBC)[(uint32_t)deviceDesc.graphicsAPI];
+        const nrd::ComputeShaderDesc& nrdComputeShader = (&nrdPipelineDesc.computeShaderDXBC)[std::max((int32_t)deviceDesc.graphicsAPI - 1, 0)];
 
         // Resources
         for (uint32_t j = 0; j < nrdPipelineDesc.resourceRangesNum; j++)
@@ -283,7 +283,15 @@ void NrdIntegration::CreateResources(uint16_t resourceWidth, uint16_t resourceHe
 
         uint16_t w = NRD_DivideUp(resourceWidth, nrdTextureDesc.downsampleFactor);
         uint16_t h = NRD_DivideUp(resourceHeight, nrdTextureDesc.downsampleFactor);
-        nri::TextureDesc textureDesc = nri::Texture2D(format, w, h, 1, 1, nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE);
+        
+        nri::TextureDesc textureDesc = {};
+        textureDesc.type = nri::TextureType::TEXTURE_2D;
+        textureDesc.usageMask = nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE;
+        textureDesc.format = format;
+        textureDesc.width = w;
+        textureDesc.height = h;
+        textureDesc.mipNum = 1;
+
         nri::Texture* texture = nullptr;
         NRD_INTEGRATION_ABORT_ON_FAILURE(m_NRI->CreateTexture(*m_Device, textureDesc, texture));
 
@@ -565,7 +573,8 @@ void NrdIntegration::Dispatch(nri::CommandBuffer& commandBuffer, nri::Descriptor
 
             // TODO: persistent mapping? But no D3D11 support...
             void* data = m_NRI->MapBuffer(*m_ConstantBuffer, m_ConstantBufferOffset, dispatchDesc.constantBufferDataSize);
-            memcpy(data, dispatchDesc.constantBufferData, dispatchDesc.constantBufferDataSize);
+            if (data)
+                memcpy(data, dispatchDesc.constantBufferData, dispatchDesc.constantBufferDataSize);
             m_NRI->UnmapBuffer(*m_ConstantBuffer);
         }
 

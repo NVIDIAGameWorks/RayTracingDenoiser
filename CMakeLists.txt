@@ -50,6 +50,12 @@ message ("NRD v${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_BUILD}")
 project (NRD LANGUAGES C CXX)
 message ("NRD encoding: NRD_NORMAL_ENCODING = ${NRD_NORMAL_ENCODING}; NRD_ROUGHNESS_ENCODING = ${NRD_ROUGHNESS_ENCODING}")
 
+if (IS_SUBMODULE)
+    file (RELATIVE_PATH PROJECT_FOLDER ${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+else ()
+    set (PROJECT_FOLDER ${PROJECT_NAME})
+endif ()
+
 # Generate "NRDEncoding.hlsli"
 file (WRITE Shaders/Include/NRDEncoding.hlsli
     "// This file is auto-generated during project deployment. Do not modify!\n"
@@ -150,7 +156,7 @@ target_include_directories (${PROJECT_NAME} PRIVATE "External")
 target_compile_definitions (${PROJECT_NAME} PRIVATE ${COMPILE_DEFINITIONS})
 target_compile_options (${PROJECT_NAME} PRIVATE ${COMPILE_OPTIONS})
 
-set_property (TARGET ${PROJECT_NAME} PROPERTY FOLDER "${PROJECT_NAME}")
+set_property (TARGET ${PROJECT_NAME} PROPERTY FOLDER ${PROJECT_FOLDER})
 
 set_target_properties (${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 message ("NRD output path: '${CMAKE_RUNTIME_OUTPUT_DIRECTORY}'")
@@ -166,6 +172,8 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
     if (NOT TARGET ShaderMake)
         set (SHADERMAKE_BIN_OUTPUT_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} CACHE STRING "")
         add_subdirectory (External/ShaderMake)
+        set_property (TARGET ShaderMake PROPERTY FOLDER "${PROJECT_FOLDER}/External")
+        set_property (TARGET ShaderMakeBlob PROPERTY FOLDER "${PROJECT_FOLDER}/External")
     endif ()
 
     # ShaderMake general arguments
@@ -212,6 +220,6 @@ if (NOT NRD_DISABLE_SHADER_COMPILATION)
         SOURCES ${SHADERS}
     )
 
-    set_property (TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER ${PROJECT_NAME})
+    set_property (TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER ${PROJECT_FOLDER})
     add_dependencies (${PROJECT_NAME} ${PROJECT_NAME}_Shaders)
 endif ()
