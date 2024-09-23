@@ -478,7 +478,7 @@ bool result = NRD.Initialize(resourceWidth, resourceHeight, instanceCreationDesc
 // INITIALIZATION or RENDER - WRAP NATIVE POINTERS
 //=======================================================================================================
 
-// Wrap the command buffer
+// Wrap a command buffer
 nri::CommandBufferD3D12Desc commandBufferDesc = {};
 commandBufferDesc.d3d12CommandList = (ID3D12GraphicsCommandList*)d3d12CommandList;
 
@@ -489,16 +489,17 @@ nri::CommandBuffer* nriCommandBuffer = nullptr;
 NRI.CreateCommandBufferD3D12(*nriDevice, commandBufferDesc, nriCommandBuffer);
 
 // Wrap required textures (better do it only once on initialization)
-nri::TextureTransitionBarrierDesc entryDescs[N] = {};
+nri::TextureBarrierDesc entryDescs[N] = {};
 nri::Format entryFormat[N] = {};
 
 for (uint32_t i = 0; i < N; i++)
 {
-    nri::TextureTransitionBarrierDesc& entryDesc = entryDescs[i];
+    nri::TextureBarrierDesc& entryDesc = entryDescs[i];
     const MyResource& myResource = GetMyResource(i);
 
     nri::TextureD3D12Desc textureDesc = {};
     textureDesc.d3d12Resource = myResource->GetNativePointer();
+
     NRI.CreateTextureD3D12(*nriDevice, textureDesc, (nri::Texture*&)entryDesc.texture );
 
     // You need to specify the current state of the resource here, after denoising NRD can modify
@@ -506,13 +507,16 @@ for (uint32_t i = 0; i < N; i++)
     // Useful information:
     //    SRV = nri::AccessBits::SHADER_RESOURCE, nri::TextureLayout::SHADER_RESOURCE
     //    UAV = nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::TextureLayout::GENERAL
-    entryDesc.nextState.accessBits = ConvertResourceStateToAccessBits( myResource->GetCurrentState() );
-    entryDesc.nextState.layout = ConvertResourceStateToLayout( myResource->GetCurrentState() );
+    entryDesc.after.access = ConvertResourceStateToAccess( myResource->GetCurrentState() );
+    entryDesc.after.layout = ConvertResourceStateToLayout( myResource->GetCurrentState() );
 }
 
 //=======================================================================================================
 // RENDER - DENOISE
 //=======================================================================================================
+
+// Must be called once on a frame start
+NRD.NewFrame();
 
 // Set common settings
 //  - for the first time use defaults
@@ -562,11 +566,11 @@ NRI.DestroyCommandBuffer(*nriCommandBuffer);
 // SHUTDOWN - DESTROY
 //=======================================================================================================
 
-// Release wrapped device
-nri::nriDestroyDevice(*nriDevice);
-
 // Also NRD needs to be recreated on "resize"
 NRD.Destroy();
+
+// Release wrapped device
+nri::nriDestroyDevice(*nriDevice);
 ```
 
 Shader part:
