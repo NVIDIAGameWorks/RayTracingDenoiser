@@ -91,7 +91,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
     float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
 
-    // Estimate penumbra size and filter shadow ( pass 1: dense 3x3 or 5x5 )
+    // Estimate penumbra size and filter shadow ( dense )
     float2 sum = 0;
     float penumbra = 0;
     SIGMA_TYPE result = 0;
@@ -133,13 +133,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             }
 
             float2 ww = w;
-            ww.y *= !IsLit( penum );
+            ww.y *= saturate( 1.0 - s.x ); // TODO: non linear?
 
             float penumInPixels = penum / unprojectZ;
             ww.y /= 1.0 + penumInPixels; // prefer smaller penumbra
 
             result += s * ww.x;
-            penumbra += penum * ww.y;
+            penumbra += ww.y == 0.0 ? 0.0 : penum * ww.y;
             sum += ww;
         }
     }
@@ -182,7 +182,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Random rotation
     float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
-    // Estimate penumbra size and filter shadow ( pass 2: sparse 8-taps )
+    // Estimate penumbra size and filter shadow ( sparse )
     float invEstimatedPenumbra = 1.0 / max( penumbra, NRD_EPS );
 
     [unroll]
@@ -232,13 +232,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Accumulate
         float2 ww = w;
-        ww.y *= !IsLit( penum );
+        ww.y *= saturate( 1.0 - s.x ); // TODO: non linear?
 
         float penumInPixels = penum / unprojectZ;
         ww.y /= 1.0 + penumInPixels; // prefer smaller penumbra
 
         result += s * ww.x;
-        penumbra += penum * ww.y;
+        penumbra += ww.y == 0.0 ? 0.0 : penum * ww.y;
         sum += ww;
     }
 

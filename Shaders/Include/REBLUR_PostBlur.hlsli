@@ -14,26 +14,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Tile-based early out
     float isSky = gIn_Tiles[ pixelPos >> 4 ];
     if( isSky != 0.0 || any( pixelPos > gRectSizeMinusOne ) )
-    {
-        // ~0 normal is needed to allow bilinear filter in TA ( 0 can't be used due to "division by zero" in "UnpackNormalRoughness" )
-        gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( 1.0 / 255.0 );
-
         return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
-    }
 
     // Early out
-    float viewZ = REBLUR_UnpackViewZ( gIn_ViewZ[ pixelPos ] );
+    float viewZ = UnpackViewZ( gIn_ViewZ[ pixelPos ] );
     if( viewZ > gDenoisingRange )
-    {
-        // ~0 normal is needed to allow bilinear filter in TA ( 0 can't be used due to "division by zero" in "UnpackNormalRoughness" )
-        gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( 1.0 / 255.0 );
-
         return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
-    }
 
     // Normal and roughness
     float materialID;
-    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( pixelPos ) ], materialID );
+    float4 normalAndRoughnessPacked = gIn_Normal_Roughness[ WithRectOrigin( pixelPos ) ];
+    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( normalAndRoughnessPacked, materialID );
     float3 N = normalAndRoughness.xyz;
     float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
     float roughness = normalAndRoughness.w;
@@ -49,7 +40,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float NoV = abs( dot( Nv, Vv ) );
 
     // Output
-    gOut_Normal_Roughness[ pixelPos ] = PackNormalRoughness( normalAndRoughness );
+    gOut_Normal_Roughness[ pixelPos ] = normalAndRoughnessPacked;
     #ifdef REBLUR_NO_TEMPORAL_STABILIZATION
         gOut_InternalData[ pixelPos ] = PackInternalData( data1.x + 1.0, data1.y + 1.0, materialID ); // increment history length
     #endif

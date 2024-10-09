@@ -47,7 +47,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    float viewZ = REBLUR_UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
     if( viewZ > gDenoisingRange )
         return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
 
@@ -403,7 +403,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specHistoryWeight = specTemporalAccumulationParams.x;
         specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= specStabilizationStrength;
-        specHistoryWeight *= materialID == gStrandMaterialID ? 0.5 : 1.0;
+
+        float responsiveFactor = RemapRoughnessToResponsiveFactor( roughness );
+        float smc = GetSpecMagicCurve( roughness );
+        float acceleration = lerp( smc, 1.0, 0.5 + responsiveFactor * 0.5 );
+        specHistoryWeight *= materialID == gStrandMaterialID ? 0.5 : acceleration;
 
         specHistory = Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
 

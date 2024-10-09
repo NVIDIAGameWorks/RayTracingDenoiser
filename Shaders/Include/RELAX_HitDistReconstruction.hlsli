@@ -16,7 +16,7 @@ float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float rou
     float angle = atan(GetSpecLobeTanHalfAngle(roughness));
     angle *= lerp(saturate(fraction), 1.0, nonLinearAccumSpeed); // TODO: use as "percentOfVolume" instead?
 
-    return 1.0 / max(angle, NRD_NORMAL_ULP);
+    return 1.0 / max(angle, RELAX_NORMAL_ULP);
 }
 
 void Preload(uint2 sharedPos, int2 globalPos)
@@ -25,7 +25,7 @@ void Preload(uint2 sharedPos, int2 globalPos)
 
     // It's ok that we don't use materialID in Hitdist reconstruction
     float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[WithRectOrigin(globalPos)]);
-    float viewZ = abs(gViewZ[WithRectOrigin(globalPos)]);
+    float viewZ = UnpackViewZ(gViewZ[WithRectOrigin(globalPos)]);
     float2 hitDist = gDenoisingRange;
 
     #ifdef RELAX_SPECULAR

@@ -11,12 +11,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA
 
 // Switches ( default 1 )
+#define SIGMA_USE_EARLY_OUT_IN_TS                       1 // improves performance in regions with hard shadow
 #define SIGMA_USE_CATROM                                1 // sharper reprojection
 #define SIGMA_5X5_TEMPORAL_KERNEL                       1 // provides variance estimation in a wider radius
 #define SIGMA_5X5_BLUR_RADIUS_ESTIMATION_KERNEL         1 // helps to improve stability, but adds 10% of overhead
 
 // Switches ( default 0 )
-#define SIGMA_SHOW                                      0 // 1 - tiles, 2 - history weight
+#define SIGMA_SHOW                                      0 // 1 - tiles, 2 - history weight, 3 - penumbra size in pixels
 #define SIGMA_SHOW_PENUMBRA_SIZE                        0
 
 // Settings
@@ -25,13 +26,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_POISSON_SAMPLES                           g_Special8
 #define SIGMA_MAX_PIXEL_RADIUS                          32.0
 #define SIGMA_TS_SIGMA_SCALE                            3.0
-#define SIGMA_TS_MAX_HISTORY_WEIGHT                     0.95
-#define SIGMA_TS_Z_FALLOFF                              1.0 // exp2( -SIGMA_TS_Z_FALLOFF * dz )
-#define SIGMA_TS_MOTION_MAX_REUSE                       0.11
-#define SIGMA_TS_EARLY_OUT_THRESHOLD                    0.25
-#define SIGMA_ANTILAG_SIGMA_SCALE                       0.25
-#define SIGMA_ANTILAG_POWER                             1.0
-#define SIGMA_ANTILAG_EPS                               0.05
+#define SIGMA_TS_MAX_HISTORY_WEIGHT                     0.8 // 4 frames ( longer accumulation worsens shadows in motion, since there is no shadow MV )
+#define SIGMA_TS_ANTILAG_POWER                          1.0
 
 // Data type
 #ifdef SIGMA_TRANSLUCENT

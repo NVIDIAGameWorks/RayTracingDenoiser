@@ -17,9 +17,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         return;
 
     // Early out
-    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
-    gOut_ViewZ[ pixelPos ] = REBLUR_PackViewZ( viewZ );
+    float viewZpacked = gIn_ViewZ[ WithRectOrigin( pixelPos ) ];
+    gOut_ViewZ[ pixelPos ] = viewZpacked;
 
+    float viewZ = UnpackViewZ( viewZpacked );
     if( viewZ > gDenoisingRange )
         return;
 

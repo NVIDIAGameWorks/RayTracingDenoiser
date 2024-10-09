@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.9.4 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.10.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -490,7 +490,6 @@ NRI.CreateCommandBufferD3D12(*nriDevice, commandBufferDesc, nriCommandBuffer);
 
 // Wrap required textures (better do it only once on initialization)
 nri::TextureBarrierDesc entryDescs[N] = {};
-nri::Format entryFormat[N] = {};
 
 for (uint32_t i = 0; i < N; i++)
 {
@@ -540,11 +539,10 @@ NRD.SetDenoiserSettings(identifier2, &settings2);
 // Fill up the user pool
 NrdUserPool userPool = {};
 {
-    // Fill only required "in-use" inputs and outputs in appropriate slots using entryDescs & entryFormat,
-    // applying remapping if necessary. Unused slots will be {nullptr, nri::Format::UNKNOWN}
-    NrdIntegration_SetResource(userPool, ...);
+    // Set "entryDescs" into the "in-use" slots, applying remapping if necessary
+    NrdIntegration_SetResource(userPool, nrd::ResourceType::IN_NORMAL_ROUGHNESS, &entryDescs[0]);
+    NrdIntegration_SetResource(userPool, nrd::ResourceType::IN_VIEWZ, &entryDescs[1]);
     ...
-    NrdIntegration_SetResource(userPool, ...);
 };
 
 const nrd::Identifier denoisers[] = {identifier1, identifier2};

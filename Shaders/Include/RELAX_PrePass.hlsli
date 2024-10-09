@@ -20,7 +20,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
         return;
 
     // Early out if linearZ is beyond denoising range
-    float centerViewZ = abs(gViewZ[WithRectOrigin(pixelPos)]);
+    float centerViewZ = UnpackViewZ(gViewZ[WithRectOrigin(pixelPos)]);
     if (centerViewZ > gDenoisingRange)
         return;
 
@@ -42,8 +42,8 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     if (gSpecCheckerboard != 2)
 #endif
     {
-        float viewZ0 = abs(gViewZ[WithRectOrigin(checkerboardPos.xz)]);
-        float viewZ1 = abs(gViewZ[WithRectOrigin(checkerboardPos.yz)]);
+        float viewZ0 = UnpackViewZ(gViewZ[WithRectOrigin(checkerboardPos.xz)]);
+        float viewZ1 = UnpackViewZ(gViewZ[WithRectOrigin(checkerboardPos.yz)]);
 
     #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
         NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[WithRectOrigin(checkerboardPos.xz)], materialID0);

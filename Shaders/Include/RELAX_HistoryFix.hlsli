@@ -31,7 +31,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
     // Early out if linearZ is beyond denoising range
     // Early out if no disocclusion detected
-    float centerViewZ = abs(gViewZ[pixelPos]);
+    float centerViewZ = UnpackViewZ(gViewZ[pixelPos]);
     float historyLength = 255.0 * gHistoryLength[pixelPos];
     if ((centerViewZ > gDenoisingRange) || (historyLength > gHistoryFixFrameNum || gHistoryFixFrameNum == 1.0))
         return;
@@ -89,7 +89,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             float sampleMaterialID;
             float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[samplePosInt], sampleMaterialID).rgb;
 
-            float sampleViewZ = abs(gViewZ[samplePosInt]);
+            float sampleViewZ = UnpackViewZ(gViewZ[samplePosInt]);
             float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(samplePosInt, sampleViewZ);
             float geometryWeight = GetPlaneDistanceWeight_Atrous(
                 centerWorldPos,

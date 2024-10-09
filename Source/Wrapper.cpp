@@ -17,6 +17,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 static_assert(VERSION_MAJOR == NRD_VERSION_MAJOR, "VERSION_MAJOR & NRD_VERSION_MAJOR don't match!");
 static_assert(VERSION_MINOR == NRD_VERSION_MINOR, "VERSION_MINOR & NRD_VERSION_MINOR don't match!");
 static_assert(VERSION_BUILD == NRD_VERSION_BUILD, "VERSION_BUILD & NRD_VERSION_BUILD don't match!");
+static_assert(NRD_NORMAL_ENCODING >= 0 && NRD_NORMAL_ENCODING < (uint32_t)nrd::NormalEncoding::MAX_NUM, "NRD_NORMAL_ENCODING out of bounds!");
+static_assert(NRD_ROUGHNESS_ENCODING >= 0 && NRD_ROUGHNESS_ENCODING < (uint32_t)nrd::RoughnessEncoding::MAX_NUM, "NRD_ROUGHNESS_ENCODING out of bounds!");
 
 constexpr std::array<nrd::Denoiser, (size_t)nrd::Denoiser::MAX_NUM> g_NrdSupportedDenoisers =
 {

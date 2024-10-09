@@ -17,7 +17,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
         return;
 
     // Early out if linearZ is beyond denoising range
-    float centerViewZ = abs(gViewZ[pixelPos]);
+    float centerViewZ = UnpackViewZ(gViewZ[pixelPos]);
     if (centerViewZ > gDenoisingRange)
         return;
 
@@ -146,7 +146,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             float4 sampleNormalRoughnes = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[p], sampleMaterialID);
             float3 sampleNormal = sampleNormalRoughnes.rgb;
             float sampleRoughness = sampleNormalRoughnes.a;
-            float sampleViewZ = abs(gViewZ[p]);
+            float sampleViewZ = UnpackViewZ(gViewZ[p]);
 
             // Calculating sample world position
             float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(p, sampleViewZ);

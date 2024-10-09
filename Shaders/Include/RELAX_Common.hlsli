@@ -144,7 +144,7 @@ float GetSpecularNormalWeight_ATrous(float2 params0, float3 n0, float3 n, float3
 float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
 {
     float angle = atan(GetSpecLobeTanHalfAngle(roughness, angleFraction));
-    angle = 1.0 / max(angle, NRD_NORMAL_ULP);
+    angle = 1.0 / max(angle, RELAX_NORMAL_ULP);
 
     return angle;
 }

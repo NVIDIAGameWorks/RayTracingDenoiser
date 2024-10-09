@@ -103,7 +103,7 @@ void Preload(uint2 sharedPos, int2 globalPos)
     float materialID;
     sharedNormalRoughness[sharedPos.y][sharedPos.x] = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[globalPos], materialID);
 
-    float viewZ = abs(gViewZ[globalPos]);
+    float viewZ = UnpackViewZ(gViewZ[globalPos]);
     sharedWorldPosMaterialID[sharedPos.y][sharedPos.x] = float4(GetCurrentWorldPosFromPixelPos(globalPos, viewZ), materialID);
 
 }
@@ -115,22 +115,24 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     float isSky = gTiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
+    // Prev ViewZ
+    float viewZpacked = gViewZ[pixelPos];
+    gOutViewZ[pixelPos] = viewZpacked;
+
+    // Prev normal and roughness
     int2 sharedMemoryIndex = threadPos.xy + int2(BORDER, BORDER);
-
-    float4 centerWorldPosMaterialID = sharedWorldPosMaterialID[sharedMemoryIndex.y][sharedMemoryIndex.x];
-    float3 centerWorldPos = centerWorldPosMaterialID.xyz;
-    float centerMaterialID = centerWorldPosMaterialID.w;
-    float centerViewZ = abs(gViewZ[pixelPos]);
-    gOutViewZ[pixelPos] = centerViewZ;
-
-    // Repacking normal and roughness to prev normal roughness to be used in the next frame
     float4 normalRoughness = sharedNormalRoughness[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float centerViewZ = UnpackViewZ(viewZpacked);
     if (centerViewZ > gDenoisingRange)
     {
         // Setting normal and roughness to close to zero for out of range pixels
         normalRoughness = 1.0 / 255.0;
     }
     gOutNormalRoughness[pixelPos] = PackPrevNormalRoughness(normalRoughness);
+
+    float4 centerWorldPosMaterialID = sharedWorldPosMaterialID[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float3 centerWorldPos = centerWorldPosMaterialID.xyz;
+    float centerMaterialID = centerWorldPosMaterialID.w;
 
 #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     gOutMaterialID[pixelPos] = centerMaterialID;

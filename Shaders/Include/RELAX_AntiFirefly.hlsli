@@ -170,7 +170,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         return;
 
     // Early out if linearZ is beyond denoising range
-    float centerViewZ = abs(gViewZ[pixelPos]);
+    float centerViewZ = UnpackViewZ(gViewZ[pixelPos]);
     if (centerViewZ > gDenoisingRange)
         return;
 

@@ -58,17 +58,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_CURVATURE_Z_THRESHOLD                               0.1 // normalized %
 #define NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION             15.0 // keep relatively high to avoid ruining concave mirrors
 
-// IMPORTANT: if == 1, then for 0-roughness "GetEncodingAwareNormalWeight" can return values < 1 even for same normals due to data re-packing
-// IMPORTANT: suits for REBLUR and RELAX because both use RGBA8 normals internally
-#define NRD_NORMAL_ULP                                          ( 1.5 / 255.0 )
-
-// IMPORTANT: best fit is critical for non oct-packed variants!
 #if( NRD_NORMAL_ENCODING < NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 255.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 1.50 / 255.0 )
 #elif( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 1023.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.75 / 255.0 )
 #else
-    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.5 / 65535.0 )
+    #define NRD_NORMAL_ENCODING_ERROR                           ( 0.50 / 255.0 )
 #endif
 
 //==================================================================================================================
@@ -201,10 +196,7 @@ static const float3 g_Special8[ 8 ] =
     #define CompareMaterials( m0, m, mask )     1.0
 #endif
 
-float UnpackViewZ( float z )
-{
-    return abs( z * gViewZScale );
-}
+#define UnpackViewZ( z )                        abs( z * gViewZScale )
 
 float PixelRadiusToWorld( float unproject, float orthoMode, float pixelRadius, float viewZ )
 {
@@ -333,6 +325,21 @@ float GetSpecLobeTanHalfAngle( float roughness, float percentOfVolume = 0.75 )
     percentOfVolume = saturate( percentOfVolume );
 
     return roughness * roughness * percentOfVolume / ( 1.0 - percentOfVolume + NRD_EPS );
+}
+
+float2 StochasticBilinear( float2 uv, float2 texSize )
+{
+#if( REBLUR_USE_STF == 1 )
+    // Requires: Rng::Hash::Initialize( pixelPos, gFrameIndex )
+    Filtering::Bilinear f = Filtering::GetBilinearFilter( uv, texSize );
+
+    float2 rnd = Rng::Hash::GetFloat2( );
+    f.origin += step( rnd, f.weights );
+
+    return ( f.origin + 0.5 ) / texSize;
+#else
+    return uv;
+#endif
 }
 
 // Thin lens
@@ -481,17 +488,17 @@ float GetGaussianWeight( float r )
 
 // Encoding precision aware weight functions ( for reprojection )
 
-float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float angleThreshold = 0.0 )
+float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float curvatureAngle, float thresholdAngle )
 {
-    // Anything below "angleThreshold" is ignored
-    angleThreshold += NRD_NORMAL_ULP;
+    // Anything below "thresholdAngle" is ignored
+    curvatureAngle += thresholdAngle;
 
     float cosa = dot( Ncurr, Nprev );
 
     float a = 1.0 / maxAngle;
     float d = Math::AcosApprox( cosa );
 
-    float w = Math::SmoothStep01( 1.0 - ( d - angleThreshold ) * a );
+    float w = Math::SmoothStep01( 1.0 - ( d - curvatureAngle ) * a );
 
     // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
     w = Math::SmoothStep( 0.05, 0.95, w );

@@ -259,3 +259,12 @@ A single NRD instance can now include any combination of denoisers, including re
   - exposed `CommonSettings::strandThickness`, defining how NRD adapts to sub-pixel thick details. It works in conjunction with `CommonSettings::disocclusionThresholdAlternate` for `CommonSettings::strandMaterialID` without a need to provide `IN_DISOCCLUSION_THRESHOLD_MIX` texture
 - *REBLUR*:
   - changed usage of `maxBlurRadius` and its default value, old values should be scaled by `2`
+
+## To v4.10
+
+- *NRD INTEGRATION*:
+  - `Nrd` prefix replaced with `nrd::` namespace
+  - removed `format` from `NrdIntegrationTexture`, which is now just `nri::TextureBarrierDesc`
+  - removed the constructor with arguments
+  - creation parameters grouped into `IntegrationCreationDesc`, which need to be passed to `Initialize`
+  - added a few potentially useful flags to `IntegrationCreationDesc`

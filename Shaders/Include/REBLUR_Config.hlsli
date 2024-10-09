@@ -19,6 +19,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_YCOCG                                        1
 #define REBLUR_USE_ANTIFIREFLY                                  1
 #define REBLUR_USE_CONFIDENCE_NON_LINEARLY                      1
+#define REBLUR_USE_STF                                          1 // gives very minor IQ boost visible only in debug visualization
 
 // Switches ( default 0 )
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
@@ -66,7 +67,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_HIT_DIST_MIN_WEIGHT( smc )                       ( 0.1 * smc ) // was 0.1
 
-#define REBLUR_FP16_VIEWZ_SCALE                                 ( gViewZScale * 0.125 ) // TODO: tuned for meters, i.e. gViewZScale = 1.0
+#define REBLUR_NORMAL_ULP                                       NRD_NORMAL_ENCODING_ERROR // was 1.5 / 255.0 ( too much for 0 roughness )
+#define REBLUR_ALMOST_ZERO_ANGLE                                cos( Math::DegToRad( 89.0 ) )
 #define REBLUR_MAX_PERCENT_OF_LOBE_VOLUME                       0.75
 #define REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM    1
 #define REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY        38.0
@@ -185,6 +187,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     #undef REBLUR_USE_SCREEN_SPACE_SAMPLING
     #define REBLUR_USE_SCREEN_SPACE_SAMPLING                    1
+
+    #undef REBLUR_USE_STF
+    #define REBLUR_USE_STF                                      0
 
     #undef REBLUR_POISSON_SAMPLE_NUM
     #define REBLUR_POISSON_SAMPLE_NUM                           6

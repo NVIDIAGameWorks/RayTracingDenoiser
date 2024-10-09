@@ -23,10 +23,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <map>
 
 #define NRD_INTEGRATION_MAJOR 1
-#define NRD_INTEGRATION_MINOR 12
-#define NRD_INTEGRATION_DATE "17 April 2024"
+#define NRD_INTEGRATION_MINOR 13
+#define NRD_INTEGRATION_DATE "7 October 2024"
 #define NRD_INTEGRATION 1
 
+// Debugging
 #define NRD_INTEGRATION_DEBUG_LOGGING 0
 
 #ifndef NRD_INTEGRATION_ASSERT
@@ -34,56 +35,70 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #define NRD_INTEGRATION_ASSERT(expr, msg) assert(msg && expr)
 #endif
 
-// "state->texture" represents the resource, the rest represents the state.
-struct NrdIntegrationTexture
-{
-    nri::TextureBarrierDesc* state;
-    nri::Format format;
-};
+#define NRD_INTEGRATION_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_INTEGRATION_ASSERT(false, "Abort on failure!")
 
-typedef std::array<NrdIntegrationTexture, (size_t)nrd::ResourceType::MAX_NUM - 2> NrdUserPool;
-
-// User pool must contain valid entries only for resources, which are required for requested denoisers, but
-// the entire pool must be zero-ed during initialization
-inline void NrdIntegration_SetResource(NrdUserPool& pool, nrd::ResourceType slot, const NrdIntegrationTexture& texture)
+namespace nrd
 {
-    NRD_INTEGRATION_ASSERT( texture.state->texture != nullptr, "Invalid texture!" );
-    NRD_INTEGRATION_ASSERT( texture.format != nri::Format::UNKNOWN, "Invalid format!" );
+
+// "TextureBarrierDesc::texture" represents the resource, the rest represents the state
+typedef std::array<nri::TextureBarrierDesc*, (size_t)ResourceType::MAX_NUM - 2> UserPool;
+
+// User pool must contain valid entries for resources, which are required for requested denoisers,
+// but the entire pool must be zero-ed during initialization
+inline void Integration_SetResource(UserPool& pool, ResourceType slot, nri::TextureBarrierDesc* texture)
+{
+    NRD_INTEGRATION_ASSERT(texture != nullptr, "Invalid texture!");
 
     pool[(size_t)slot] = texture;
 }
 
-class NrdIntegration
+struct IntegrationCreationDesc
+{
+    // Not so long name
+    const char* name = "";
+
+    // Resource dimensions
+    uint16_t resourceWidth = 0;
+    uint16_t resourceHeight = 0;
+
+    // (1-3) the application must provide number of buffered frames, it's needed to guarantee
+    // that constant data and descriptor sets are not overwritten while being executed on the GPU
+    uint8_t bufferedFramesNum = 2;
+
+    // true - enables descriptor caching for the whole lifetime of an Integration instance
+    // false - descriptors are cached only within a single "Denoise" call
+    bool enableDescriptorCaching = false;
+
+    // Demote FP32 to FP16 (slightly improves performance in exchange of precision loss)
+    // (FP32 is used only for viewZ under the hood, all denoisers are FP16 compatible)
+    bool demoteFloat32to16 = false;
+
+    // Promote FP16 to FP32 (overkill, kills performance)
+    bool promoteFloat16to32 = false;
+};
+
+class Integration
 {
 public:
-    // bufferedFramesNum (usually 2-3 frames):
-    //      The application must provide number of buffered frames, it's needed to guarantee that
-    //      constant data and descriptor sets are not overwritten while being executed on the GPU.
-    // enableDescriptorCaching:
-    //      true - enables descriptor caching for the whole lifetime of an NrdIntegration instance
-    //      false - descriptors are cached only within a single "Denoise" call
-    NrdIntegration(uint32_t bufferedFramesNum, bool enableDescriptorCaching, const char* persistentName = "") :
-        m_Name(persistentName)
-        , m_BufferedFramesNum(bufferedFramesNum)
-        , m_IsDescriptorCachingEnabled(enableDescriptorCaching)
+    inline Integration()
     {}
 
-    ~NrdIntegration()
-    { NRD_INTEGRATION_ASSERT( m_NRI == nullptr, "m_NRI must be NULL at this point!" ); }
+    inline ~Integration()
+    { NRD_INTEGRATION_ASSERT(m_NRI == nullptr, "m_NRI must be NULL at this point!"); }
 
     // There is no "Resize" functionality, because NRD full recreation costs nothing.
     // The main cost comes from render targets resizing, which needs to be done in any case
     // (call Destroy beforehand)
-    bool Initialize(uint16_t resourceWidth, uint16_t resourceHeight, const nrd::InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice, const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
+    bool Initialize(const IntegrationCreationDesc& nrdIntegrationDesc, const InstanceCreationDesc& instanceCreationDesc, nri::Device& nriDevice, const nri::CoreInterface& nriCore, const nri::HelperInterface& nriHelper);
 
     // Must be called once on a frame start
     void NewFrame();
 
     // Explicitly calls eponymous NRD API functions
-    bool SetCommonSettings(const nrd::CommonSettings& commonSettings);
-    bool SetDenoiserSettings(nrd::Identifier denoiser, const void* denoiserSettings);
+    bool SetCommonSettings(const CommonSettings& commonSettings);
+    bool SetDenoiserSettings(Identifier denoiser, const void* denoiserSettings);
 
-    void Denoise(const nrd::Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, const NrdUserPool& userPool);
+    void Denoise(const Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, const UserPool& userPool);
 
     // This function assumes that the device is in the IDLE state, i.e. there is no work in flight
     void Destroy();
@@ -102,17 +117,16 @@ public:
     { return double(m_TransientPoolSize) / (1024.0 * 1024.0); }
 
 private:
-    NrdIntegration(const NrdIntegration&) = delete;
+    Integration(const Integration&) = delete;
 
     void CreateResources(uint16_t resourceWidth, uint16_t resourceHeight);
     void AllocateAndBindMemory();
-    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const nrd::DispatchDesc& dispatchDesc, const NrdUserPool& userPool);
+    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const DispatchDesc& dispatchDesc, const UserPool& userPool);
 
 private:
-    std::vector<NrdIntegrationTexture> m_TexturePool;
+    std::vector<nri::TextureBarrierDesc> m_TexturePool;
     std::map<uint64_t, nri::Descriptor*> m_CachedDescriptors;
     std::vector<std::vector<nri::Descriptor*>> m_DescriptorsInFlight;
-    std::vector<nri::TextureBarrierDesc> m_ResourceState;
     std::vector<nri::PipelineLayout*> m_PipelineLayouts;
     std::vector<nri::Pipeline*> m_Pipelines;
     std::vector<nri::Memory*> m_MemoryAllocations;
@@ -124,18 +138,20 @@ private:
     nri::Device* m_Device = nullptr;
     nri::Buffer* m_ConstantBuffer = nullptr;
     nri::Descriptor* m_ConstantBufferView = nullptr;
-    nrd::Instance* m_Instance = nullptr;
-    const char* m_Name = nullptr;
+    Instance* m_Instance = nullptr;
     uint64_t m_PermanentPoolSize = 0;
     uint64_t m_TransientPoolSize = 0;
     uint64_t m_ConstantBufferSize = 0;
     uint32_t m_ConstantBufferViewSize = 0;
     uint32_t m_ConstantBufferOffset = 0;
-    uint32_t m_BufferedFramesNum = 0;
     uint32_t m_DescriptorPoolIndex = 0;
     uint32_t m_FrameIndex = 0;
-    bool m_IsShadersReloadRequested = false;
-    bool m_IsDescriptorCachingEnabled = false;
+    uint8_t m_BufferedFramesNum = 0;
+    char m_Name[32] = {};
+    bool m_ReloadShaders = false;
+    bool m_EnableDescriptorCaching = false;
+    bool m_DemoteFloat32to16 = false;
+    bool m_PromoteFloat16to32 = false;
 };
 
-#define NRD_INTEGRATION_ABORT_ON_FAILURE(result) if ((result) != nri::Result::SUCCESS) NRD_INTEGRATION_ASSERT(false, "Abort on failure!")
+}

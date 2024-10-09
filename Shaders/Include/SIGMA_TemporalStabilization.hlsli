@@ -49,11 +49,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     if( viewZ > gDenoisingRange )
         return;
 
-    // Early out
-    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-    float penumbraInPixels = centerPenumbra / unprojectZ;
+    // Tile-based early out ( potentially )
+    float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
+    float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
+    bool isHardShadow = ( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerPenumbra == 0.0 ) && SIGMA_USE_EARLY_OUT_IN_TS;
 
-    if( penumbraInPixels <= SIGMA_TS_EARLY_OUT_THRESHOLD && SIGMA_SHOW == 0 )
+    if( isHardShadow && SIGMA_SHOW == 0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
 
@@ -88,7 +89,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 input = s;
             else
             {
-                w = exp2( -SIGMA_TS_Z_FALLOFF * abs( z - viewZ ) ); // soft Z test // TODO: use relative difference?
+                w = abs( z - viewZ ) / max( z, viewZ ) < 0.02; // TODO: slope scale?
                 w *= IsLit( penum ) == IsLit( centerPenumbra ); // no-harm on a flat surface due to wide spatials, needed to prevent bleeding from one surface to another
                 w *= float( z < gDenoisingRange ); // ignore sky
                 w *= float( centerSignNoL == signNoL ); // ignore samples with different NoL signs
@@ -113,7 +114,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     SIGMA_TYPE sigma = GetStdDev( m1, m2 );
 
     // Compute previous pixel position
-    float2 pixelUv = ( float2( pixelPos ) + 0.5 ) * gRectSizeInv;
     float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZnearest, gOrthoMode );
     float3 X = Geometry::RotateVectorInverse( gWorldToView, Xv );
     float3 mv = gIn_Mv[ WithRectOrigin( pixelPos ) + offseti - BORDER ] * gMvScale.xyz;
@@ -129,52 +129,51 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     history = saturate( history );
     history = SIGMA_BackEnd_UnpackShadow( history );
 
-    // Antilag
-    float fast = m1.x;
-    float slow = history.x;
-
-    float a = abs( slow - fast ) - SIGMA_ANTILAG_SIGMA_SCALE * sigma.x - SIGMA_ANTILAG_EPS;
-    float b = max( slow, fast ) + SIGMA_ANTILAG_SIGMA_SCALE * sigma.x + SIGMA_ANTILAG_EPS;
-    float antilag = a / b;
-
-    antilag = Math::SmoothStep01( 1.0 - antilag );
-    antilag = Math::Pow01( antilag, SIGMA_ANTILAG_POWER );
-
     // Clamp history
     SIGMA_TYPE inputMin = m1 - sigma * SIGMA_TS_SIGMA_SCALE;
     SIGMA_TYPE inputMax = m1 + sigma * SIGMA_TS_SIGMA_SCALE;
     SIGMA_TYPE historyClamped = clamp( history, inputMin, inputMax );
 
+    // Antilag
+    float antilag = abs( historyClamped.x - history.x );
+    antilag = Math::Pow01( antilag, SIGMA_TS_ANTILAG_POWER );
+    antilag = 1.0 - antilag;
+
+    // Dark magic ( helps to smooth out "penumbra to 1" regions )
+    historyClamped = lerp( historyClamped, history, 0.5 );
+
     // History weight
     float historyWeight = SIGMA_TS_MAX_HISTORY_WEIGHT;
     historyWeight *= IsInScreenNearest( pixelUvPrev );
     historyWeight *= antilag;
-    historyWeight *= Math::SmoothStep( SIGMA_TS_EARLY_OUT_THRESHOLD, 1.0, penumbraInPixels );
     historyWeight *= gStabilizationStrength;
 
     // Combine with current frame
     SIGMA_TYPE result = lerp( input, historyClamped, historyWeight );
 
     // Debug
-    #if( SIGMA_SHOW != 0 )
-        #if( SIGMA_SHOW == 1 )
-            float tileValue = gIn_Tiles[ pixelPos >> 4 ].x;
-            tileValue = float( tileValue != 0.0 ); // optional, just to show fully discarded tiles
+    #if( SIGMA_SHOW == 1 )
+        tileValue = gIn_Tiles[ pixelPos >> 4 ].x;
+        tileValue = float( tileValue != 0.0 ); // optional, just to show fully discarded tiles
 
-            #ifdef SIGMA_TRANSLUCENT
-                result = lerp( float4( 0, 0, 1, 0 ), result, tileValue );
-            #else
-                result = tileValue;
-            #endif
-
-            // Show grid ( works badly with TAA )
-            result *= all( ( pixelPos & 15 ) != 0 );
-        #elif( SIGMA_SHOW == 2 )
-            // .x - is used in antilag computations!
-            #ifdef SIGMA_TRANSLUCENT
-                result.yzw = SIGMA_BackEnd_UnpackShadow( historyWeight );
-            #endif
+        #ifdef SIGMA_TRANSLUCENT
+            result = lerp( float4( 0, 0, 1, 0 ), result, tileValue );
+        #else
+            result = tileValue;
         #endif
+
+        // Show grid ( works badly with TAA )
+        result *= all( ( pixelPos & 15 ) != 0 );
+    #elif( SIGMA_SHOW == 2 )
+        // .x - is used in antilag computations!
+        #ifdef SIGMA_TRANSLUCENT
+            historyWeight *= float( !isHardShadow );
+            result.yzw = historyWeight;
+        #endif
+    #elif( SIGMA_SHOW == 3 )
+        float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+        float penumbraInPixels = centerPenumbra / unprojectZ;
+        result = saturate( penumbraInPixels / 10.0 );
     #endif
 
     // Output

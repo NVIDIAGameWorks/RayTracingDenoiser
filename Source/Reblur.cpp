@@ -46,8 +46,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_FORMAT_DIRECTIONAL_OCCLUSION_FAST_HISTORY            REBLUR_FORMAT_OCCLUSION_FAST_HISTORY
 
 #define REBLUR_FORMAT_PREV_VIEWZ                                    Format::R32_SFLOAT
-#define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                         Format::RGBA8_UNORM
 #define REBLUR_FORMAT_PREV_INTERNAL_DATA                            Format::R16_UINT
+
+#if (NRD_NORMAL_ENCODING == 0)
+    #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                     Format::RGBA8_UNORM
+#elif (NRD_NORMAL_ENCODING == 1)
+    #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                     Format::RGBA8_SNORM
+#elif (NRD_NORMAL_ENCODING == 2)
+    #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                     Format::R10_G10_B10_A2_UNORM
+#elif (NRD_NORMAL_ENCODING == 3)
+    #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                     Format::RGBA16_UNORM
+#elif (NRD_NORMAL_ENCODING == 4)
+    #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                     Format::RGBA16_SFLOAT
+#endif
 
 #define REBLUR_FORMAT_HITDIST_FOR_TRACKING                          Format::R16_SFLOAT
 

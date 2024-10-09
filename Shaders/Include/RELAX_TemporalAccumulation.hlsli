@@ -86,10 +86,10 @@ float loadSurfaceMotionBasedPrevData(
     float2 gatherOrigin10 = (float2(bilinearOrigin) + float2(2.0, 0.0)) * gResourceSizeInvPrev;
     float2 gatherOrigin01 = (float2(bilinearOrigin) + float2(0.0, 2.0)) * gResourceSizeInvPrev;
     float2 gatherOrigin11 = (float2(bilinearOrigin) + float2(2.0, 2.0)) * gResourceSizeInvPrev;
-    float4 prevViewZs00 = gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin00).wzxy;
-    float4 prevViewZs10 = gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin10).wzxy;
-    float4 prevViewZs01 = gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin01).wzxy;
-    float4 prevViewZs11 = gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin11).wzxy;
+    float4 prevViewZs00 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin00).wzxy);
+    float4 prevViewZs10 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin10).wzxy);
+    float4 prevViewZs01 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin01).wzxy);
+    float4 prevViewZs11 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin11).wzxy);
     float4 prevMaterialIDs00 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin00).wzxy;
     float4 prevMaterialIDs10 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin10).wzxy;
     float4 prevMaterialIDs01 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin01).wzxy;
@@ -274,7 +274,7 @@ float loadVirtualMotionBasedPrevData(
     vmbDisocclusionThreshold -= NRD_EPS;
 
     // Checking bilinear footprint only for virtual motion based specular reprojection
-    float4 prevViewZs = gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin).wzxy;
+    float4 prevViewZs = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin).wzxy);
     float4 prevMaterialIDs = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin).wzxy;
     float3 prevWorldPosInTap;
     float4 bilinearTapsValid;
@@ -376,7 +376,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         return;
 
     // Early out if linearZ is beyond denoising range
-    float currentLinearZ = abs(gViewZ[WithRectOrigin(pixelPos)]);
+    float currentLinearZ = UnpackViewZ(gViewZ[WithRectOrigin(pixelPos)]);
     if (currentLinearZ > gDenoisingRange)
         return;
 
@@ -698,16 +698,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float edgeLenSq = Math::LengthSquared(edge);
     float curvature = dot(n - currentNormal, edge) * Math::PositiveRcp(edgeLenSq);
 
-    // Correction #1 - values below this threshold get turned into garbage due to numerical imprecision
-    float d = Math::ManhattanDistance(currentNormal, n);
-    float s = Math::LinearStep(NRD_NORMAL_ENCODING_ERROR, 2.0 * NRD_NORMAL_ENCODING_ERROR, d);
-    curvature *= s;
-
-    // Correction #2 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
+    // Correction #1 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
     if (length(currentWorldPos) < -1.0 / curvature)
         curvature *= NoV;
 
-    // Correction #3 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
+    // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
     float2 uv1 = Geometry::GetScreenUv(gWorldToClipPrev, currentWorldPos - V * ApplyThinLensEquation(hitDist, curvature));
     float2 uv2 = Geometry::GetScreenUv(gWorldToClipPrev, currentWorldPos);
     float a = length((uv1 - uv2) * gRectSize);
@@ -775,9 +770,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float curvatureAngle = atan(tanCurvature);
 
     // Normal weight for virtual motion based reprojection
-    float lobeHalfAngle = max(atan(GetSpecLobeTanHalfAngle(currentRoughnessModified)), NRD_NORMAL_ULP);
+    float lobeHalfAngle = max(atan(GetSpecLobeTanHalfAngle(currentRoughnessModified)), RELAX_NORMAL_ULP);
     float angle = lobeHalfAngle + curvatureAngle;
-    float normalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, lobeHalfAngle, curvatureAngle);
+    float normalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, lobeHalfAngle, curvatureAngle, RELAX_NORMAL_ULP);
     virtualHistoryAmount *= lerp(1.0 - saturate(uvDiffLengthInPixels), 1.0, normalWeight); // jitter friendly
 
     // Roughness weight for virtual motion based reprojection
@@ -797,8 +792,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float4 backNormalRoughness2 = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, backUV2 * gResolutionScalePrev, 0));
     backNormalRoughness1.rgb = Geometry::RotateVector(gWorldPrevToWorld, backNormalRoughness1.rgb);
     backNormalRoughness2.rgb = Geometry::RotateVector(gWorldPrevToWorld, backNormalRoughness2.rgb);
-    float prevPrevNormalWeight = IsInScreenNearest(backUV1) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness1.rgb, lobeHalfAngle, curvatureAngle * 2.0) : 1.0;
-    prevPrevNormalWeight *= IsInScreenNearest(backUV2) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness2.rgb, lobeHalfAngle, curvatureAngle * 3.0) : 1.0;
+    float prevPrevNormalWeight = IsInScreenNearest(backUV1) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness1.rgb, lobeHalfAngle, curvatureAngle * 2.0, RELAX_NORMAL_ULP) : 1.0;
+    prevPrevNormalWeight *= IsInScreenNearest(backUV2) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness2.rgb, lobeHalfAngle, curvatureAngle * 3.0, RELAX_NORMAL_ULP) : 1.0;
     virtualHistoryAmount *= 0.33 + 0.67 * prevPrevNormalWeight;
     specVMBConfidence *= 0.33 + 0.67 * prevPrevNormalWeight;
     // Taking in account roughness 1 and 2 frames back helps cleaning up surfaces wigh varying roughness

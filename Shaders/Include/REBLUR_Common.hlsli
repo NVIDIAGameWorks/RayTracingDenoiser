@@ -22,24 +22,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Internal data ( from the previous frame )
 
-#define REBLUR_PackViewZ( p )                           min( p * REBLUR_FP16_VIEWZ_SCALE, NRD_FP16_MAX )
-#define REBLUR_UnpackViewZ( p )                         ( p / REBLUR_FP16_VIEWZ_SCALE )
-
-float4 PackNormalRoughness( float4 p )
-{
-    return float4( p.xyz * 0.5 + 0.5, p.w );
-}
-
-float4 UnpackNormalAndRoughness( float4 p, bool isNormalized = true )
-{
-    p.xyz = p.xyz * 2.0 - 1.0;
-
-    if( isNormalized )
-        p.xyz = _NRD_SafeNormalize( p.xyz );
-
-    return p;
-}
-
 uint PackInternalData( float diffAccumSpeed, float specAccumSpeed, float materialID )
 {
     float3 t = float3( diffAccumSpeed, specAccumSpeed, materialID );
@@ -149,6 +131,13 @@ float GetNonLinearAccumSpeed( float accumSpeed, float maxAccumSpeed, float confi
         nonLinearAccumSpeed *= lerp( 1.0 - gCheckerboardResolveAccumSpeed, 1.0, nonLinearAccumSpeed );
 
     return nonLinearAccumSpeed;
+}
+
+float RemapRoughnessToResponsiveFactor( float roughness )
+{
+    float amount = ( roughness + NRD_EPS ) / ( gResponsiveAccumulationRoughnessThreshold + NRD_EPS );
+
+    return Math::SmoothStep01( amount );
 }
 
 // Misc ( templates )
@@ -283,13 +272,6 @@ float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma
 
 // Kernel
 
-float GetResponsiveAccumulationAmount( float roughness )
-{
-    float amount = 1.0 - ( roughness + NRD_EPS ) / ( gResponsiveAccumulationRoughnessThreshold + NRD_EPS );
-
-    return Math::SmoothStep01( amount );
-}
-
 float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, float anisoFade = 1.0 )
 {
     float3x3 basis = Geometry::GetBasis( N );
@@ -320,7 +302,7 @@ float GetNormalWeightParams( float nonLinearAccumSpeed, float roughness = 1.0 )
     float percentOfVolume = REBLUR_MAX_PERCENT_OF_LOBE_VOLUME * lerp( gLobeAngleFraction, 1.0, nonLinearAccumSpeed );
     float angle = atan( ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume ) );
 
-    return 1.0 / max( angle, NRD_NORMAL_ULP );
+    return 1.0 / max( angle, REBLUR_NORMAL_ULP );
 }
 
 float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed )
