@@ -50,25 +50,15 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     int2 smemPos = threadPos + BORDER;
     float2 centerData = s_Penumbra_ViewZ[ smemPos.y ][ smemPos.x ];
     float centerPenumbra = centerData.x;
-    float centerSignNoL = float( centerPenumbra != 0.0 );
     float viewZ = centerData.y;
 
     // Early out
     if( viewZ > gDenoisingRange )
         return;
 
-    // Copy history
-    #ifdef SIGMA_FIRST_PASS
-        if( gStabilizationStrength != 0 )
-            gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
-    #endif
-
     // Tile-based early out ( potentially )
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
     float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
-    #ifdef SIGMA_FIRST_PASS
-        tileValue *= all( pixelPos < gRectSize ); // due to USE_MAX_DIMS
-    #endif
 
     if( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerPenumbra == 0.0 )
     {
@@ -87,9 +77,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Nv = Geometry::RotateVector( gWorldToView, N );
 
     // Parameters
-    float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+    float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
     float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
+    float3 Vv = GetViewVector( Xv, true );
+    float NoV = abs( dot( Nv, Vv ) );
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 0.0 );
 
     // Estimate penumbra size and filter shadow ( dense )
     float2 sum = 0;
@@ -105,42 +97,36 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         {
             int2 pos = threadPos + int2( i, j );
 
+            // Fetch data
             float2 data = s_Penumbra_ViewZ[ pos.y ][ pos.x ];
             float penum = data.x;
-            float z = data.y;
-            float signNoL = float( penum != 0.0 );
+            float zs = data.y;
 
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
 
-            float w;
+            // Sample weight
+            float w = 1.0;
             if( i == BORDER && j == BORDER )
-            {
                 centerTap = s;
-                w = 1.0;
-            }
             else
             {
                 float2 uv = pixelUv + float2( i - BORDER, j - BORDER ) * gRectSizeInv;
-                float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
-                float NoX = dot( Nv, Xvs );
+                float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
-                w = ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
+                w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
+                w *= AreBothLitOrUnlit( centerPenumbra, penum );
                 w *= GetGaussianWeight( length( float2( i - BORDER, j - BORDER ) / BORDER ) );
-                w *= float( z < gDenoisingRange );
-                w *= float( centerSignNoL == signNoL );
-
-                s = Denanify( w, s );
             }
 
-            float2 ww = w;
-            ww.y *= saturate( 1.0 - s.x ); // TODO: non linear?
+            // Accumulate
+            result += w == 0.0 ? 0.0 : s * w;
+            sum.x += w;
 
-            float penumInPixels = penum / unprojectZ;
-            ww.y /= 1.0 + penumInPixels; // prefer smaller penumbra
+            w *= pixelSize / ( pixelSize + penum ); // prefer smaller penumbra, same as "w /= 1.0 + penumInPixels", where penumInPixels = penum / pixelSize
+            w *= !IsLit( penum );
 
-            result += s * ww.x;
-            penumbra += ww.y == 0.0 ? 0.0 : penum * ww.y;
-            sum += ww;
+            penumbra += w == 0.0 ? 0.0 : penum * w;
+            sum.y += w;
         }
     }
 
@@ -150,37 +136,55 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     penumbra /= max( sum.y, NRD_EPS ); // yes, without patching
     sum.y = float( sum.y != 0.0 );
 
-    // Avoid 1-pixel wide blur if penumbra size < 1 pixel
-    float penumbraInPixels = penumbra / unprojectZ;
-    float f = Math::LinearStep( 0.75, 1.25, penumbraInPixels );
-    result = lerp( centerTap, result, f );
+    // Avoid blurry result if penumbra size < BORDER
+    float penumbraInPixels = penumbra / pixelSize;
+    float f = Math::SmoothStep( 0.0, BORDER, penumbraInPixels );
+    result = lerp( centerTap, result, f ); // TODO: not the best solution
 
-    // Tangent basis with anisotropy
-    float3x3 mWorldToLocal = Geometry::GetBasis( Nv );
-    float3 Tv = mWorldToLocal[ 0 ];
-    float3 Bv = mWorldToLocal[ 1 ];
+#if( SIGMA_USE_SPARSE_BLUR == 1 )
+    // Avoid unnecessary weight increase for the unfiltered center sample if the blur radius is small
+    f = lerp( 4.0, 1.0, f ); // TODO: adds blurriness
 
-    float3 t = cross( gLightDirectionView.xyz, Nv ); // TODO: add support for other light types to bring proper anisotropic filtering
-    if( length( t ) > 0.001 )
-    {
-        Tv = normalize( t );
-        Bv = cross( Tv, Nv );
-
-        float cosa = abs( dot( Nv, gLightDirectionView.xyz ) );
-        float skewFactor = lerp( 0.25, 1.0, cosa );
-
-        //Tv *= skewFactor; // TODO: let's not srink filtering in the other direction
-        Bv /= skewFactor;
-    }
+    result *= f;
+    penumbra *= f;
+    sum *= f;
 
     // Blur radius
-    float worldRadius = GetKernelRadiusInPixels( penumbra, unprojectZ, tileValue ) * unprojectZ;
+    float blurRadius = GetKernelRadiusInPixels( penumbra, pixelSize, tileValue );
 
-    Tv *= worldRadius;
-    Bv *= worldRadius;
-
-    // Random rotation
+    // Tangent basis with anisotropy
     float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
+
+    #if( SIGMA_USE_SCREEN_SPACE_SAMPLING == 1 )
+        float2 skew = lerp( 1.0 - abs( Nv.xy ), 1.0, NoV );
+        skew /= max( skew.x, skew.y );
+
+        skew *= gRectSizeInv * blurRadius;
+
+        float4 scaledRotator = Geometry::ScaleRotator( rotator, skew );
+    #else
+        float3x3 mWorldToLocal = Geometry::GetBasis( Nv );
+        float3 Tv = mWorldToLocal[ 0 ];
+        float3 Bv = mWorldToLocal[ 1 ];
+
+        float3 t = cross( gLightDirectionView.xyz, Nv ); // TODO: add support for other light types to bring proper anisotropic filtering
+        if( length( t ) > 0.001 )
+        {
+            Tv = normalize( t );
+            Bv = cross( Tv, Nv );
+
+            float cosa = abs( dot( Nv, gLightDirectionView.xyz ) );
+            float skewFactor = lerp( 0.25, 1.0, cosa );
+
+            //Tv *= skewFactor; // TODO: let's not srink filtering in the other direction
+            Bv /= skewFactor; // TODO: good for test 197, but adds bad correlations in test 212
+        }
+
+        float worldRadius = blurRadius * pixelSize;
+
+        Tv *= worldRadius;
+        Bv *= worldRadius;
+    #endif
 
     // Estimate penumbra size and filter shadow ( sparse )
     float invEstimatedPenumbra = 1.0 / max( penumbra, NRD_EPS );
@@ -190,7 +194,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     {
         // Sample coordinates
         float3 offset = SIGMA_POISSON_SAMPLES[ n ];
-        float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, Tv, Bv, rotator );
+
+        #if( SIGMA_USE_SCREEN_SPACE_SAMPLING == 1 )
+            float2 uv = pixelUv + Geometry::RotateVector( scaledRotator, offset.xy );
+        #else
+            float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, Tv, Bv, rotator );
+        #endif
 
         // Snap to the pixel center!
         uv = ( floor( uv * gRectSize ) + 0.5 ) * gRectSizeInv;
@@ -200,47 +209,41 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Fetch data
         float penum = gIn_Penumbra.SampleLevel( gNearestClamp, uvScaled, 0 );
-        float z = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
-        float signNoL = float( penum != 0.0 );
+        float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
 
-        // Sample weight
-        float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
-        float NoX = dot( Nv, Xvs );
-
-        float w = IsInScreenNearest( uv );
-        w *= GetGaussianWeight( offset.z );
-        w *= ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
-        w *= float( z < gDenoisingRange );
-        w *= float( centerSignNoL == signNoL );
-
-        // Avoid umbra leaking inside wide penumbra
-        float t = saturate( penum * invEstimatedPenumbra );
-        w *= Math::SmoothStep( 0.0, 1.0, t ); // TODO: it works surprisingly well, keep an eye on it!
-
-        // Fetch shadow
         SIGMA_TYPE s;
         #if( !defined SIGMA_FIRST_PASS || defined SIGMA_TRANSLUCENT )
             s = gIn_Shadow_Translucency.SampleLevel( gNearestClamp, uvScaled, 0 );
         #else
             s = IsLit( penum );
         #endif
-        s = Denanify( w, s );
 
         #ifndef SIGMA_FIRST_PASS
             s = SIGMA_BackEnd_UnpackShadow( s );
         #endif
 
+        // Sample weight
+        float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
+
+        float w = IsInScreenNearest( uv );
+        w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
+        w *= AreBothLitOrUnlit( centerPenumbra, penum );
+        w *= GetGaussianWeight( offset.z );
+
+        // Avoid umbra leaking inside wide penumbra
+        w *= saturate( penum * invEstimatedPenumbra ); // TODO: it works surprisingly well, keep an eye on it!
+
         // Accumulate
-        float2 ww = w;
-        ww.y *= saturate( 1.0 - s.x ); // TODO: non linear?
+        result += w == 0.0 ? 0.0 : s * w;
+        sum.x += w;
 
-        float penumInPixels = penum / unprojectZ;
-        ww.y /= 1.0 + penumInPixels; // prefer smaller penumbra
+        w *= pixelSize / ( pixelSize + penum ); // prefer smaller penumbra, same as "w /= 1.0 + penumInPixels", where penumInPixels = penum / pixelSize
+        w *= !IsLit( penum );
 
-        result += s * ww.x;
-        penumbra += ww.y == 0.0 ? 0.0 : penum * ww.y;
-        sum += ww;
+        penumbra += w == 0.0 ? 0.0 : penum * w;
+        sum.y += w;
     }
+#endif
 
     result /= sum.x;
     penumbra = sum.y == 0.0 ? centerPenumbra : penumbra / sum.y;

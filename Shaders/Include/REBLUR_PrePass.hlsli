@@ -21,20 +21,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     if( viewZ > gDenoisingRange )
         return;
 
-    // Checkerboard resolve
-    uint checkerboard = Sequence::CheckerBoard( pixelPos, gFrameIndex );
-
-    int3 checkerboardPos = pixelPos.xxy + int3( -1, 1, 0 );
-    checkerboardPos.x = max( checkerboardPos.x, 0 );
-    checkerboardPos.y = min( checkerboardPos.y, gRectSizeMinusOne.x );
-    float viewZ0 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.xz ) ] );
-    float viewZ1 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.yz ) ] );
-    float2 wc = GetBilateralWeight( float2( viewZ0, viewZ1 ), viewZ );
-    wc.x = ( viewZ0 > gDenoisingRange || pixelPos.x < 1 ) ? 0.0 : wc.x;
-    wc.y = ( viewZ1 > gDenoisingRange || pixelPos.x >= gRectSizeMinusOne.x ) ? 0.0 : wc.y;
-    wc *= Math::PositiveRcp( wc.x + wc.y );
-    checkerboardPos.xy >>= 1;
-
     // Normal and roughness
     float materialID;
     float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( pixelPos ) ], materialID );
@@ -45,11 +31,29 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     // Shared data
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
     float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
-    float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
 
     float3 Vv = GetViewVector( Xv, true );
     float NoV = abs( dot( Nv, Vv ) );
 
+    const float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
+    const float4 rotator = GetBlurKernelRotation( REBLUR_PRE_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
+
+    // Checkerboard resolve
+    uint checkerboard = Sequence::CheckerBoard( pixelPos, gFrameIndex );
+
+    int3 checkerboardPos = pixelPos.xxy + int3( -1, 1, 0 );
+    checkerboardPos.x = max( checkerboardPos.x, 0 );
+    checkerboardPos.y = min( checkerboardPos.y, gRectSizeMinusOne.x );
+    float viewZ0 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.xz ) ] );
+    float viewZ1 = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( checkerboardPos.yz ) ] );
+    float disocclusionThresholdCheckerboard = GetDisocclusionThreshold( NRD_DISOCCLUSION_THRESHOLD, frustumSize, NoV );
+    float2 wc = GetDisocclusionWeight( float2( viewZ0, viewZ1 ), viewZ, disocclusionThresholdCheckerboard );
+    wc.x = ( viewZ0 > gDenoisingRange || pixelPos.x < 1 ) ? 0.0 : wc.x;
+    wc.y = ( viewZ1 > gDenoisingRange || pixelPos.x >= gRectSizeMinusOne.x ) ? 0.0 : wc.y;
+    wc *= Math::PositiveRcp( wc.x + wc.y );
+    checkerboardPos.xy >>= 1;
+
+    // Spatial filtering
     #define REBLUR_SPATIAL_MODE REBLUR_PRE_BLUR
 
     #ifdef REBLUR_DIFFUSE

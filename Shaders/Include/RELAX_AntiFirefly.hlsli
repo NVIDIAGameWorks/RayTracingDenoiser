@@ -9,14 +9,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #ifdef RELAX_SPECULAR
-    groupshared float4 sharedSpecular[BUFFER_Y][BUFFER_X];
+    groupshared float4 s_Spec[BUFFER_Y][BUFFER_X];
 #endif
 
 #ifdef RELAX_DIFFUSE
-    groupshared float4 sharedDiffuse[BUFFER_Y][BUFFER_X];
+    groupshared float4 s_Diff[BUFFER_Y][BUFFER_X];
 #endif
 
-    groupshared float sharedMaterialID[BUFFER_Y][BUFFER_X];
+groupshared float s_MaterialID[BUFFER_Y][BUFFER_X];
 
 // Helper functions
 void Preload(uint2 sharedPos, int2 globalPos)
@@ -24,15 +24,15 @@ void Preload(uint2 sharedPos, int2 globalPos)
     globalPos = clamp(globalPos, 0, gRectSize - 1.0);
 
     float materialID;
-    NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[globalPos], materialID);
-    sharedMaterialID[sharedPos.y][sharedPos.x] = materialID;
+    NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[globalPos], materialID);
+    s_MaterialID[sharedPos.y][sharedPos.x] = materialID;
 
 #ifdef RELAX_SPECULAR
-    sharedSpecular[sharedPos.y][sharedPos.x] = gSpecIllumination[globalPos];
+    s_Spec[sharedPos.y][sharedPos.x] = gIn_Spec[globalPos];
 #endif
 
 #ifdef RELAX_DIFFUSE
-    sharedDiffuse[sharedPos.y][sharedPos.x] = gDiffIllumination[globalPos];
+    s_Diff[sharedPos.y][sharedPos.x] = gIn_Diff[globalPos];
 #endif
 }
 
@@ -50,10 +50,10 @@ void runRCRS(
 {
     // Fetching center data
     uint2 sharedMemoryIndex = threadPos + int2(BORDER, BORDER);
-    float centerMaterialID = sharedMaterialID[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float centerMaterialID = s_MaterialID[sharedMemoryIndex.y][sharedMemoryIndex.x];
 
 #ifdef RELAX_SPECULAR
-    float4 s = sharedSpecular[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float4 s = s_Spec[sharedMemoryIndex.y][sharedMemoryIndex.x];
     float3 specularIlluminationCenter = s.rgb;
     float specular2ndMomentCenter = s.a;
     float specularLuminanceCenter = Color::Luminance(specularIlluminationCenter);
@@ -65,7 +65,7 @@ void runRCRS(
 #endif
 
 #ifdef RELAX_DIFFUSE
-    float4 d = sharedDiffuse[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float4 d = s_Diff[sharedMemoryIndex.y][sharedMemoryIndex.x];
     float3 diffuseIlluminationCenter = d.rgb;
     float diffuse2ndMomentCenter = d.a;
     float diffuseLuminanceCenter = Color::Luminance(diffuseIlluminationCenter);
@@ -93,16 +93,16 @@ void runRCRS(
 
             // Fetching sample data
 #ifdef RELAX_SPECULAR
-            float3 specularIlluminationSample = sharedSpecular[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x].rgb;
+            float3 specularIlluminationSample = s_Spec[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x].rgb;
             float specularLuminanceSample = Color::Luminance(specularIlluminationSample);
 #endif
 
 #ifdef RELAX_DIFFUSE
-            float3 diffuseIlluminationSample = sharedDiffuse[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x].rgb;
+            float3 diffuseIlluminationSample = s_Diff[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x].rgb;
             float diffuseLuminanceSample = Color::Luminance(diffuseIlluminationSample);
 #endif
 
-            float sampleMaterialID = sharedMaterialID[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];
+            float sampleMaterialID = s_MaterialID[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];
 
 #ifdef RELAX_SPECULAR
             if (CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask) > 0)
@@ -146,7 +146,7 @@ void runRCRS(
         specularCoords = maxSpecularLuminanceCoords;
     if(specularLuminanceCenter < minSpecularLuminance)
         specularCoords = minSpecularLuminanceCoords;
-    outSpecular = float4(sharedSpecular[specularCoords.y][specularCoords.x].rgb, specular2ndMomentCenter);
+    outSpecular = float4(s_Spec[specularCoords.y][specularCoords.x].rgb, specular2ndMomentCenter);
 #endif
 
 #ifdef RELAX_DIFFUSE
@@ -155,14 +155,14 @@ void runRCRS(
         diffuseCoords = maxDiffuseLuminanceCoords;
     if(diffuseLuminanceCenter < minDiffuseLuminance)
         diffuseCoords = minDiffuseLuminanceCoords;
-    outDiffuse = float4(sharedDiffuse[diffuseCoords.y][diffuseCoords.x].rgb, diffuse2ndMomentCenter);
+    outDiffuse = float4(s_Diff[diffuseCoords.y][diffuseCoords.x].rgb, diffuse2ndMomentCenter);
 #endif
 }
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
 {
-    float isSky = gTiles[pixelPos >> 4];
+    float isSky = gIn_Tiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -170,7 +170,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         return;
 
     // Early out if linearZ is beyond denoising range
-    float centerViewZ = UnpackViewZ(gViewZ[pixelPos]);
+    float centerViewZ = UnpackViewZ(gIn_ViewZ[pixelPos]);
     if (centerViewZ > gDenoisingRange)
         return;
 
@@ -195,10 +195,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     );
 
 #ifdef RELAX_SPECULAR
-    gOutSpecularIllumination[pixelPos.xy] = outSpecularIlluminationAnd2ndMoment;
+    gOut_Spec[pixelPos.xy] = outSpecularIlluminationAnd2ndMoment;
 #endif
 
 #ifdef RELAX_DIFFUSE
-    gOutDiffuseIllumination[pixelPos.xy] = outDiffuseIlluminationAnd2ndMoment;
+    gOut_Diff[pixelPos.xy] = outDiffuseIlluminationAnd2ndMoment;
 #endif
 }

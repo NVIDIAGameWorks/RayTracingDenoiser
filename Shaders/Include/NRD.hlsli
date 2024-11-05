@@ -541,7 +541,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
         r.xyz = _NRD_DecodeUnitVector( p.xy, false, false );
         r.w = p.z;
 
-        materialID = p.w;
+        materialID = p.w * 3.0;
     #else
         #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_RGBA8_UNORM || NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_RGBA16_UNORM )
             p.xyz = p.xyz * 2.0 - 1.0;
@@ -550,7 +550,7 @@ float4 NRD_FrontEnd_UnpackNormalAndRoughness( float4 p, out float materialID )
         r.xyz = p.xyz;
         r.w = p.w;
 
-        materialID = 0;
+        materialID = 0.0;
     #endif
 
     r.xyz = _NRD_SafeNormalize( r.xyz );

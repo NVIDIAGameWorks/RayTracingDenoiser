@@ -9,14 +9,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
+NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
 {
-    // TODO: introduce "CopyResource" in NRD API?
-#ifdef RELAX_SPECULAR
-    gOut_Spec[pixelPos.xy] = gIn_Spec[pixelPos.xy];
-#endif
+    // Tile-based early out
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].y;
+    if( isSky != 0.0 && !gIsRectChanged )
+        return;
 
-#ifdef RELAX_DIFFUSE
-    gOut_Diff[pixelPos.xy] = gIn_Diff[pixelPos.xy];
-#endif
+    // TODO: introduce "CopyResource" in NRD API?
+    gOut_History[ pixelPos ] = gIn_History[ pixelPos ];
+    gOut_HistoryLength[ pixelPos ] = gIn_HistoryLength[ pixelPos ];
 }

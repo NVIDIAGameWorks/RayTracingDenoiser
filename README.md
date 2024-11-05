@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.10.0 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.11.0 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -15,11 +15,11 @@ For quick starting see *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSampl
 - *RELAX* - A-trous based denoiser, has been designed for *[RTXDI (RTX Direct Illumination)](https://developer.nvidia.com/rtxdi)*
 - *SIGMA* - shadow-only denoiser
 
-Performance on RTX 4080 @ 1440p (native resolution, default denoiser settings):
-- `REBLUR_DIFFUSE_SPECULAR` - 2.45 ms
-- `RELAX_DIFFUSE_SPECULAR` - 2.90 ms
-- `SIGMA_SHADOW` - 0.35 ms (0.25 ms if temporal stabilization is off)
-- `SIGMA_SHADOW_TRANSLUCENCY` - 0.45 ms (0.32 ms if temporal stabilization is off)
+Performance on RTX 4080 @ 1440p (native resolution, default denoiser settings, `NormalEncoding::R10_G10_B10_A2_UNORM`):
+- `REBLUR_DIFFUSE_SPECULAR` - 2.40 ms (2.15 in performance mode)
+- `RELAX_DIFFUSE_SPECULAR` - 2.95 ms
+- `SIGMA_SHADOW` - 0.40 ms
+- `SIGMA_SHADOW_TRANSLUCENCY` - 0.50 ms
 
 Supported signal types:
 - *RELAX*:
@@ -322,14 +322,14 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |            67.94 |            38.12 |            29.81 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |           266.12 |           105.62 |           160.50 |
 |            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |            84.56 |            42.25 |            42.31 |
-|            |                        RELAX_DIFFUSE |            99.25 |            63.31 |            35.94 |
+|            |                        RELAX_DIFFUSE |            90.81 |            54.88 |            35.94 |
 |            |                     RELAX_DIFFUSE_SH |           158.31 |            88.62 |            69.69 |
 |            |                       RELAX_SPECULAR |           101.44 |            63.38 |            38.06 |
 |            |                    RELAX_SPECULAR_SH |           168.94 |            97.12 |            71.81 |
 |            |               RELAX_DIFFUSE_SPECULAR |           168.94 |            97.12 |            71.81 |
 |            |            RELAX_DIFFUSE_SPECULAR_SH |           303.94 |           164.62 |           139.31 |
-|            |                         SIGMA_SHADOW |            15.00 |             0.00 |            15.00 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |            33.94 |             0.00 |            33.94 |
+|            |                         SIGMA_SHADOW |            31.88 |             8.44 |            23.44 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |            50.81 |             8.44 |            42.38 |
 |            |                            REFERENCE |            33.75 |            33.75 |             0.00 |
 |            |                                      |                  |                  |                  |
 |      1440p |                       REBLUR_DIFFUSE |           150.06 |            75.00 |            75.06 |
@@ -342,14 +342,14 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           120.06 |            67.50 |            52.56 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |           472.56 |           187.50 |           285.06 |
 |            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           150.06 |            75.00 |            75.06 |
-|            |                        RELAX_DIFFUSE |           176.31 |           112.50 |            63.81 |
+|            |                        RELAX_DIFFUSE |           161.31 |            97.50 |            63.81 |
 |            |                     RELAX_DIFFUSE_SH |           281.31 |           157.50 |           123.81 |
 |            |                       RELAX_SPECULAR |           180.06 |           112.50 |            67.56 |
 |            |                    RELAX_SPECULAR_SH |           300.06 |           172.50 |           127.56 |
 |            |               RELAX_DIFFUSE_SPECULAR |           300.06 |           172.50 |           127.56 |
 |            |            RELAX_DIFFUSE_SPECULAR_SH |           540.06 |           292.50 |           247.56 |
-|            |                         SIGMA_SHADOW |            26.38 |             0.00 |            26.38 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |            60.12 |             0.00 |            60.12 |
+|            |                         SIGMA_SHADOW |            56.38 |            15.00 |            41.38 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |            90.12 |            15.00 |            75.12 |
 |            |                            REFERENCE |            60.00 |            60.00 |             0.00 |
 |            |                                      |                  |                  |                  |
 |      2160p |                       REBLUR_DIFFUSE |           318.88 |           159.38 |           159.50 |
@@ -362,14 +362,14 @@ The *Persistent* column (matches *NRD Permanent pool*) indicates how much of the
 |            |    REBLUR_DIFFUSE_SPECULAR_OCCLUSION |           255.06 |           143.44 |           111.62 |
 |            |           REBLUR_DIFFUSE_SPECULAR_SH |          1004.12 |           398.44 |           605.69 |
 |            | REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION |           318.88 |           159.38 |           159.50 |
-|            |                        RELAX_DIFFUSE |           374.69 |           239.12 |           135.56 |
+|            |                        RELAX_DIFFUSE |           342.81 |           207.25 |           135.56 |
 |            |                     RELAX_DIFFUSE_SH |           597.81 |           334.75 |           263.06 |
 |            |                       RELAX_SPECULAR |           382.69 |           239.12 |           143.56 |
 |            |                    RELAX_SPECULAR_SH |           637.69 |           366.62 |           271.06 |
 |            |               RELAX_DIFFUSE_SPECULAR |           637.69 |           366.62 |           271.06 |
 |            |            RELAX_DIFFUSE_SPECULAR_SH |          1147.69 |           621.62 |           526.06 |
-|            |                         SIGMA_SHADOW |            56.19 |             0.00 |            56.19 |
-|            |            SIGMA_SHADOW_TRANSLUCENCY |           127.81 |             0.00 |           127.81 |
+|            |                         SIGMA_SHADOW |           119.94 |            31.88 |            88.06 |
+|            |            SIGMA_SHADOW_TRANSLUCENCY |           191.56 |            31.88 |           159.69 |
 |            |                            REFERENCE |           127.50 |           127.50 |             0.00 |
 
 # INTEGRATION VARIANTS
@@ -636,7 +636,7 @@ When denoising reflections in pure mirrors, some advantages can be reached if *N
 Notes, requirements and restrictions:
 - the primary hit (0th bounce) gets replaced with the first "non-pure mirror" hit in the bounce chain - this hit becomes *PSR*
 - all associated data in the g-buffer gets replaced by *PSR* data
-- the camera "sees" PSR like the mirror surface in-between don't exist. This space is called virtual world space
+- the camera "sees" PSR like the mirror surface in-between doesn't exist. This space is called virtual world space
   - virtual space position lies on the same view vector as the primary hit position, but the position is elongated. Elongation depends on `hitT` and curvature at hits, starting from the primary hit
   - virtual space normal is the normal at *PSR* hit mirrored several times  in the reversed order until the primary hit is reached
 - *PSR* data is NOT always data at the *PSR* hit!
@@ -674,7 +674,7 @@ IN_MV = GetMotionAt( B );
 
 ## INTERACTION WITH FRAME GENERATION TECHNIQUES
 
-Frame generation (FG) techniques boost FPS by interpolating between 2 last available frames. *NRD* works better when framerate increases, because it gets more data per second. It's not the case for FG, because all rendering pipeline underlying passes (like, denoising) continue to work on the original non-boosted framerate.
+Frame generation (FG) techniques boost FPS by interpolating between 2 last available frames. *NRD* works better when frame rate increases, because it gets more data per second. It's not the case for FG, because all rendering pipeline underlying passes (like, denoising) continue to work on the original non-boosted framerate. `GetMaxAccumulatedFrameNum` helper should get a real FPS, not a fake one.
 
 ## HAIR DENOISING TIPS
 
@@ -704,7 +704,7 @@ Hair strands tangent vectors *can't* be used as "normals guide" for *NRD* due to
 
 **[NRD]** *NRD* requires non-jittered matrices.
 
-**[NRD]** Most of denoisers do not write into output pixels outside of `CommonSettings::denoisingRange`.
+**[NRD]** Most denoisers do not write into output pixels outside of `CommonSettings::denoisingRange`.
 
 **[NRD]** When upgrading to the latest version keep an eye on `ResourceType` enumeration. The order of the input slots can be changed or something can be added, you need to adjust the inputs accordingly to match the mapping. Or use *NRD integration* to simplify the process.
 
@@ -771,7 +771,7 @@ maxAccumulatedFrameNum > maxFastAccumulatedFrameNum > historyFixFrameNum
 
 **[SIGMA]** Using "blue" noise helps to minimize shadow shimmering and flickering. It works best if the pattern has limited number of animated frames (4-8) or it is static on the screen.
 
-**[SIGMA]** *SIGMA* can be used for multi-light shadow denoising if applied "per light". `SigmaSettings::stabilizationStrength` can be set to `0` to disable temporal history. It provides the followinmg benefits:
+**[SIGMA]** *SIGMA* can be used for multi-light shadow denoising if applied "per light". `SigmaSettings::stabilizationStrength` can be set to `0` to disable temporal history. It provides the following benefits:
  - light count independent memory usage
  - no need to manage history buffers for lights
 

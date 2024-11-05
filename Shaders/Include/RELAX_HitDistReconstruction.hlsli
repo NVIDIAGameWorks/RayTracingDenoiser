@@ -8,36 +8,28 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-groupshared float4 sharedNormalRoughness[BUFFER_Y][BUFFER_X];
-groupshared float3 sharedHitdistViewZ[BUFFER_Y][BUFFER_X];
-
-float GetNormalWeightParams(float nonLinearAccumSpeed, float fraction, float roughness = 1.0)
-{
-    float angle = atan(GetSpecLobeTanHalfAngle(roughness));
-    angle *= lerp(saturate(fraction), 1.0, nonLinearAccumSpeed); // TODO: use as "percentOfVolume" instead?
-
-    return 1.0 / max(angle, RELAX_NORMAL_ULP);
-}
+groupshared float4 s_Normal_Roughness[BUFFER_Y][BUFFER_X];
+groupshared float3 s_HitDist_ViewZ[BUFFER_Y][BUFFER_X];
 
 void Preload(uint2 sharedPos, int2 globalPos)
 {
     globalPos = clamp(globalPos, 0, gRectSize - 1.0);
 
     // It's ok that we don't use materialID in Hitdist reconstruction
-    float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[WithRectOrigin(globalPos)]);
-    float viewZ = UnpackViewZ(gViewZ[WithRectOrigin(globalPos)]);
+    float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[WithRectOrigin(globalPos)]);
+    float viewZ = UnpackViewZ(gIn_ViewZ[WithRectOrigin(globalPos)]);
     float2 hitDist = gDenoisingRange;
 
     #ifdef RELAX_SPECULAR
-        hitDist.x = gSpecIllumination[globalPos].w;
+        hitDist.x = gIn_Spec[globalPos].w;
     #endif
 
     #ifdef RELAX_DIFFUSE
-        hitDist.y = gDiffIllumination[globalPos].w;
+        hitDist.y = gIn_Diff[globalPos].w;
     #endif
 
-    sharedNormalRoughness[sharedPos.y][sharedPos.x] = normalRoughness;
-    sharedHitdistViewZ[sharedPos.y][sharedPos.x] = float3(hitDist, viewZ);
+    s_Normal_Roughness[sharedPos.y][sharedPos.x] = normalRoughness;
+    s_HitDist_ViewZ[sharedPos.y][sharedPos.x] = float3(hitDist, viewZ);
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
@@ -46,7 +38,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
     float2 pixelUv = float2(pixelPos + 0.5) * gRectSizeInv;
 
     // Preload
-    float isSky = gTiles[pixelPos >> 4];
+    float isSky = gIn_Tiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -54,7 +46,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
         return;
 
     int2 smemPos = threadPos + BORDER;
-    float3 centerHitdistViewZ = sharedHitdistViewZ[smemPos.y][smemPos.x];
+    float3 centerHitdistViewZ = s_HitDist_ViewZ[smemPos.y][smemPos.x];
     float centerViewZ = centerHitdistViewZ.z;
 
     // Early out
@@ -62,25 +54,25 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
         return;
 
     // Center data
-    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[WithRectOrigin( pixelPos )]);
+    float4 normalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[WithRectOrigin( pixelPos )]);
     float3 centerNormal = normalAndRoughness.xyz;
     float centerRoughness = normalAndRoughness.w;
 
     // Hit distance reconstruction
 #ifdef RELAX_SPECULAR
-    float3 centerSpecularIllumination = gSpecIllumination[pixelPos].xyz;
+    float3 centerSpecularIllumination = gIn_Spec[pixelPos].xyz;
     float centerSpecularHitDist = centerHitdistViewZ.x;
     float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams(centerRoughness * centerRoughness);
-    float specularNormalWeightParam = GetNormalWeightParams(1.0, 1.0, centerRoughness);
+    float specularNormalWeightParam = GetNormalWeightParam(1.0, 1.0, centerRoughness);
 
     float sumSpecularWeight = 1000.0 * float(centerSpecularHitDist != 0.0);
     float sumSpecularHitDist = centerSpecularHitDist * sumSpecularWeight;
 #endif
 
 #ifdef RELAX_DIFFUSE
-    float3 centerDiffuseIllumination = gDiffIllumination[pixelPos].xyz;
+    float3 centerDiffuseIllumination = gIn_Diff[pixelPos].xyz;
     float centerDiffuseHitDist = centerHitdistViewZ.y;
-    float diffuseNormalWeightParam = GetNormalWeightParams(1.0, 1.0, 1.0);
+    float diffuseNormalWeightParam = GetNormalWeightParam(1.0, 1.0);
 
     float sumDiffuseWeight = 1000.0 * float(centerDiffuseHitDist != 0.0);
     float sumDiffuseHitDist = centerDiffuseHitDist * sumDiffuseWeight;
@@ -98,10 +90,10 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
                 continue;
 
             int2 pos = threadPos + int2(dx, dy);
-            float4 sampleNormalRoughness = sharedNormalRoughness[pos.y][pos.x];
+            float4 sampleNormalRoughness = s_Normal_Roughness[pos.y][pos.x];
             float3 sampleNormal = sampleNormalRoughness.xyz;
             float3 sampleRoughness = sampleNormalRoughness.w;
-            float3 sampleHitdistViewZ = sharedHitdistViewZ[pos.y][pos.x];
+            float3 sampleHitdistViewZ = s_HitDist_ViewZ[pos.y][pos.x];
             float sampleViewZ = sampleHitdistViewZ.z;
             float cosa = dot(centerNormal, sampleNormal);
             float angle = Math::AcosApprox(cosa);
@@ -143,12 +135,12 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
     // Output
 #ifdef RELAX_SPECULAR
     sumSpecularHitDist /= max(sumSpecularWeight, 1e-6);
-    gOutSpecularIllumination[pixelPos] = float4(centerSpecularIllumination, sumSpecularHitDist);
+    gOut_Spec[pixelPos] = float4(centerSpecularIllumination, sumSpecularHitDist);
 #endif
 
 #ifdef RELAX_DIFFUSE
     sumDiffuseHitDist /= max(sumDiffuseWeight, 1e-6);
-    gOutDiffuseIllumination[pixelPos] = float4(centerDiffuseIllumination, sumDiffuseHitDist);
+    gOut_Diff[pixelPos] = float4(centerDiffuseIllumination, sumDiffuseHitDist);
 #endif
 
 }

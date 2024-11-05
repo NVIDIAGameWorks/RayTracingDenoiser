@@ -28,14 +28,12 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 4
-#define NRD_VERSION_MINOR 10
+#define NRD_VERSION_MINOR 11
 #define NRD_VERSION_BUILD 0
-#define NRD_VERSION_DATE "9 October 2024"
+#define NRD_VERSION_DATE "5 November 2024"
 
-#if defined(_MSC_VER)
-    #define NRD_CALL __fastcall
-#elif !defined(__aarch64__) && !defined(__x86_64) && (defined(__GNUC__)  || defined (__clang__))
-    #define NRD_CALL __attribute__((fastcall))
+#if defined(_WIN32)
+    #define NRD_CALL __stdcall
 #else
     #define NRD_CALL
 #endif

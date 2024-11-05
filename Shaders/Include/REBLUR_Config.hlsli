@@ -20,10 +20,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_ANTIFIREFLY                                  1
 #define REBLUR_USE_CONFIDENCE_NON_LINEARLY                      1
 #define REBLUR_USE_STF                                          1 // gives very minor IQ boost visible only in debug visualization
+#define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             1 // TODO: for now full history reset is undesired
+#define REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE            1 // almost matches world-space sampling but simpler code
 
 // Switches ( default 0 )
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
-#define REBLUR_USE_ANTILAG_NOT_INVOKING_HISTORY_FIX             0
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
 
 #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
@@ -45,7 +46,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SHOW_VIRTUAL_HISTORY_PARALLAX_CONFIDENCE         8
 #define REBLUR_SHOW_HIT_DIST_FOR_TRACKING                       9
 
-#define REBLUR_SHOW                                             0 // 0 or "REBLUR_SHOW_X"
+#define REBLUR_SHOW                                             0 // 0 or REBLUR_SHOW_X
+
+// Constants
+#define REBLUR_PRE_BLUR                                         0
+#define REBLUR_BLUR                                             1
+#define REBLUR_POST_BLUR                                        2
+
+// Storage
+#define REBLUR_ACCUMSPEED_BITS                                  6
+#define REBLUR_MATERIALID_BITS                                  ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
+#define REBLUR_MAX_ACCUM_FRAME_NUM                              ( ( 1 << REBLUR_ACCUMSPEED_BITS ) - 1 )
+#define REBLUR_MAX_MATERIALID_NUM                               ( ( 1 << REBLUR_MATERIALID_BITS ) - 1 )
 
 // Settings
 #define REBLUR_PRE_BLUR_POISSON_SAMPLE_NUM                      8
@@ -69,13 +81,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_NORMAL_ULP                                       NRD_NORMAL_ENCODING_ERROR // was 1.5 / 255.0 ( too much for 0 roughness )
 #define REBLUR_ALMOST_ZERO_ANGLE                                cos( Math::DegToRad( 89.0 ) )
-#define REBLUR_MAX_PERCENT_OF_LOBE_VOLUME                       0.75
 #define REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM    1
 #define REBLUR_FIREFLY_SUPPRESSOR_MAX_RELATIVE_INTENSITY        38.0
 #define REBLUR_FIREFLY_SUPPRESSOR_RADIUS_SCALE                  0.1
+#define REBLUR_FIREFLY_SUPPRESSOR_FAST_RELATIVE_INTENSITY       4.0 // TODO: needed only for high FPS. Why?
 #define REBLUR_ANTI_FIREFLY_FILTER_RADIUS                       4 // pixels
 #define REBLUR_ANTI_FIREFLY_SIGMA_SCALE                         2.0
 #define REBLUR_ROUGHNESS_SENSITIVITY_IN_TA                      ( NRD_ROUGHNESS_SENSITIVITY * 0.3 )
+#define REBLUR_ANTILAG_MODE                                     2 // 0 - modernized old, 1 - overly reactive @ low FPS, 2 - best?
 #define REBLUR_SAMPLES_PER_FRAME                                1.0 // TODO: expose in settings, it will become useful with very clean signals, when max number of accumulated frames is low
 
 #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
@@ -97,6 +110,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Shared constants
 #define REBLUR_SHARED_CONSTANTS \
+    NRD_CONSTANT( float4x4, gWorldToClip ) \
     NRD_CONSTANT( float4x4, gViewToClip ) \
     NRD_CONSTANT( float4x4, gViewToWorld ) \
     NRD_CONSTANT( float4x4, gWorldToViewPrev ) \
@@ -126,6 +140,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( int2, gRectSizeMinusOne ) \
     NRD_CONSTANT( float, gDisocclusionThreshold ) \
     NRD_CONSTANT( float, gDisocclusionThresholdAlternate ) \
+    NRD_CONSTANT( float, gCameraAttachedReflectionMaterialID ) \
     NRD_CONSTANT( float, gStrandMaterialID ) \
     NRD_CONSTANT( float, gStrandThickness ) \
     NRD_CONSTANT( float, gStabilizationStrength ) \
@@ -171,7 +186,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #define REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TA          0
 #endif
 
-// PERFORMANCE MODE: x1.25 perf boost by sacrificing IQ ( DIFFUSE_SPECULAR on RTX 3090 @ 1440p 2.05 vs 2.55 ms )
 #ifdef REBLUR_PERFORMANCE_MODE
     #undef REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA
     #define REBLUR_USE_CATROM_FOR_SURFACE_MOTION_IN_TA          0
@@ -187,9 +201,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
     #undef REBLUR_USE_SCREEN_SPACE_SAMPLING
     #define REBLUR_USE_SCREEN_SPACE_SAMPLING                    1
-
-    #undef REBLUR_USE_STF
-    #define REBLUR_USE_STF                                      0
 
     #undef REBLUR_POISSON_SAMPLE_NUM
     #define REBLUR_POISSON_SAMPLE_NUM                           6

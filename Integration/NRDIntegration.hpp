@@ -567,6 +567,7 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
         {
             const ResourceDesc& nrdResource = dispatchDesc.resources[n];
 
+            // Get texture
             nri::TextureBarrierDesc* nrdTexture = nullptr;
             if (nrdResource.type == ResourceType::TRANSIENT_POOL)
                 nrdTexture = &m_TexturePool[nrdResource.indexInPool + instanceDesc.permanentPoolSize];
@@ -578,13 +579,19 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
                 NRD_INTEGRATION_ASSERT(nrdTexture && nrdTexture->texture, "'userPool' entry can't be NULL if it's in use!");
             }
 
-            const nri::AccessBits nextAccess = nrdResource.descriptorType == DescriptorType::TEXTURE ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::SHADER_RESOURCE_STORAGE;
-            const nri::Layout nextLayout =  nrdResource.descriptorType == DescriptorType::TEXTURE ? nri::Layout::SHADER_RESOURCE : nri::Layout::SHADER_RESOURCE_STORAGE;
-            bool isStateChanged = nextAccess != nrdTexture->after.access || nextLayout != nrdTexture->after.layout;
-            bool isStorageBarrier = nextAccess == nri::AccessBits::SHADER_RESOURCE_STORAGE && nrdTexture->after.access == nri::AccessBits::SHADER_RESOURCE_STORAGE;
-            if (isStateChanged || isStorageBarrier)
-                transitions[transitionBarriers.textureNum++] = nri::TextureBarrierFromState(*nrdTexture, {nextAccess, nextLayout}, 0, 1);
+            // Prepare barrier
+            nri::AccessLayoutStage next = {};
+            if (nrdResource.descriptorType == DescriptorType::TEXTURE)
+                next = {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::COMPUTE_SHADER};
+            else
+                next = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
 
+            bool isStateChanged = next.access != nrdTexture->after.access || next.layout != nrdTexture->after.layout;
+            bool isStorageBarrier = next.access == nri::AccessBits::SHADER_RESOURCE_STORAGE && nrdTexture->after.access == nri::AccessBits::SHADER_RESOURCE_STORAGE;
+            if (isStateChanged || isStorageBarrier)
+                transitions[transitionBarriers.textureNum++] = nri::TextureBarrierFromState(*nrdTexture, next);
+
+            // Create descriptor
             uint64_t resource = m_NRI->GetTextureNativeObject(*nrdTexture->texture);
             uint64_t key = CreateDescriptorKey(resource, isStorage);
             const auto& entry = m_CachedDescriptors.find(key);
@@ -606,6 +613,9 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
             descriptors[n++] = descriptor;
         }
     }
+
+    // Barriers
+    m_NRI->CmdBarrier(commandBuffer, transitionBarriers);
 
     // Allocating descriptor sets
     uint32_t descriptorSetSamplersIndex = instanceDesc.constantBufferSpaceIndex == instanceDesc.samplersSpaceIndex ? 0 : 1;
@@ -664,7 +674,6 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
     m_NRI->UpdateDescriptorRanges(*descriptorSets[descriptorSetResourcesIndex], instanceDesc.samplersSpaceIndex == instanceDesc.resourcesSpaceIndex ? 1 : 0, pipelineDesc.resourceRangesNum, resourceRanges);
 
     // Rendering
-    m_NRI->CmdBarrier(commandBuffer, transitionBarriers);
     m_NRI->CmdSetPipelineLayout(commandBuffer, *pipelineLayout);
 
     nri::Pipeline* pipeline = m_Pipelines[dispatchDesc.pipelineIndex];

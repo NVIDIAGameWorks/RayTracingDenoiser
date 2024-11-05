@@ -41,7 +41,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // Hit distance factor ( tests 53, 76, 95, 120 )
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
         float hitDist = ExtractHitDist( diff ) * hitDistScale;
-        float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
         float hitDistFactor = GetHitDistFactor( hitDist, frustumSize );
 
         // Blur radius
@@ -68,19 +67,29 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         // Weights
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
-        float normalWeightParams = GetNormalWeightParams( diffNonLinearAccumSpeed ) / fractionScale;
-        float2 px = float2( geometryWeightParams.x, normalWeightParams );
-        float2 py = float2( geometryWeightParams.y, 0.0 );
+        float normalWeightParam = GetNormalWeightParam( diffNonLinearAccumSpeed, gLobeAngleFraction ) / fractionScale;
 
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( 1.0 ) * fractionScale;
 
         // Sampling
+    #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE == 1 )
+        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+            float2 skew = 1.0; // seems that uniform screen space sampling in pre-pass breaks residual boiling better
+        #else
+            float2 skew = lerp( 1.0 - abs( Nv.xy ), 1.0, NoV );
+            skew /= max( skew.x, skew.y );
+        #endif
+        skew *= gRectSizeInv * blurRadius;
+
+        float4 scaledRotator = Geometry::ScaleRotator( rotator, skew );
+    #else
         float2x3 TvBv = GetKernelBasis( Nv, Nv, 1.0 ); // D = N
 
         float worldRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
         TvBv[ 0 ] *= worldRadius;
         TvBv[ 1 ] *= worldRadius;
+    #endif
 
         [unroll]
         for( uint n = 0; n < POISSON_SAMPLE_NUM; n++ )
@@ -88,8 +97,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float3 offset = POISSON_SAMPLES( n );
 
             // Sample coordinates
-        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 uv = pixelUv + Geometry::RotateVector( rotator, offset.xy ) * gRectSizeInv * blurRadius;
+        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE == 1 )
+            float2 uv = pixelUv + Geometry::RotateVector( scaledRotator, offset.xy );
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
         #endif
@@ -117,22 +126,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
         #endif
 
-            float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
-
             float materialIDs;
             float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 );
             Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
             // Weight
-            float w = IsInScreenNearest( uv );
-            w *= float( zs < gDenoisingRange );
-            w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+            float angle = Math::AcosApprox( dot( N, Ns.xyz ) );
+            float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
-            float2 x;
-            x.x = dot( Nv, Xvs );
-            x.y = Math::AcosApprox( dot( N, Ns.xyz ) );
-            x = ComputeWeight( x, px, py );
-            w *= x.x * x.y;
+            float w = IsInScreenNearest( uv );
+            w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
+            w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+            w *= ComputeWeight( angle, normalWeightParam, 0.0 );
 
             REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
             s = Denanify( w, s );

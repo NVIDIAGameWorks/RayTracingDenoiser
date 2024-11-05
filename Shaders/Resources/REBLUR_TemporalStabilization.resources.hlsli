@@ -28,14 +28,14 @@ NRD_SAMPLERS_END
         NRD_INPUT( Texture2D<uint>, gIn_Data2, t, 5 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 6 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 7 )
-        NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff_StabilizedHistory, t, 8 )
-        NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Spec_StabilizedHistory, t, 9 )
-        NRD_INPUT( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 10 )
+        NRD_INPUT( Texture2D<REBLUR_TYPE>, gHistory_DiffStabilized, t, 8 )
+        NRD_INPUT( Texture2D<REBLUR_TYPE>, gHistory_SpecStabilized, t, 9 )
+        NRD_INPUT( Texture2D<float>, gIn_SpecHitDistForTracking, t, 10 )
         #ifdef REBLUR_SH
             NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 11 )
             NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 12 )
-            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_StabilizedHistory, t, 13 )
-            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_StabilizedHistory, t, 14 )
+            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gHistory_DiffShStabilized, t, 13 )
+            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gHistory_SpecShStabilized, t, 14 )
         #endif
     NRD_INPUTS_END
 
@@ -59,10 +59,10 @@ NRD_SAMPLERS_END
         NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 3 )
         NRD_INPUT( Texture2D<uint>, gIn_Data2, t, 4 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 5 )
-        NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff_StabilizedHistory, t, 6 )
+        NRD_INPUT( Texture2D<REBLUR_TYPE>, gHistory_DiffStabilized, t, 6 )
         #ifdef REBLUR_SH
             NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh, t, 7 )
-            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_DiffSh_StabilizedHistory, t, 8 )
+            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gHistory_DiffShStabilized, t, 8 )
         #endif
     NRD_INPUTS_END
 
@@ -85,11 +85,11 @@ NRD_SAMPLERS_END
         NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 4 )
         NRD_INPUT( Texture2D<uint>, gIn_Data2, t, 5 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 6 )
-        NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Spec_StabilizedHistory, t, 7 )
-        NRD_INPUT( Texture2D<float>, gIn_Spec_HitDistForTracking, t, 8 )
+        NRD_INPUT( Texture2D<REBLUR_TYPE>, gHistory_SpecStabilized, t, 7 )
+        NRD_INPUT( Texture2D<float>, gIn_SpecHitDistForTracking, t, 8 )
         #ifdef REBLUR_SH
             NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh, t, 9 )
-            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gIn_SpecSh_StabilizedHistory, t, 10 )
+            NRD_INPUT( Texture2D<REBLUR_SH_TYPE>, gHistory_SpecShStabilized, t, 10 )
         #endif
     NRD_INPUTS_END
 

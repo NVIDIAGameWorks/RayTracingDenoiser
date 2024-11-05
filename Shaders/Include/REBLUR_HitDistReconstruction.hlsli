@@ -62,15 +62,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 N = normalAndRoughness.xyz;
     float roughness = normalAndRoughness.w;
 
-    float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, center.z );
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
     float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, center.z, gOrthoMode );
     float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
-    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
+    float3 Vv = GetViewVector( Xv, true );
 
+    float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, center.z );
+
+    float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, 1.0 );
     float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness );
-    float diffNormalWeightParam = GetNormalWeightParams( 1.0 );
-    float specNormalWeightParam = GetNormalWeightParams( 1.0, roughness );
+    float diffNormalWeightParam = GetNormalWeightParam( 1.0, 1.0 );
+    float specNormalWeightParam = GetNormalWeightParam( 1.0, 1.0, roughness );
 
     // Hit distance reconstruction
     float2 sum = 1000.0 * float2( center.xy != 0.0 );
@@ -87,17 +89,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 continue;
 
             int2 pos = threadPos + int2( i, j );
-            float3 temp = s_HitDist_ViewZ[ pos.y ][ pos.x ];
+            float3 data = s_HitDist_ViewZ[ pos.y ][ pos.x ];
 
             // Weight
             float w = IsInScreenNearest( pixelUv + o * gRectSizeInv );
-            w *= float( temp.z < gDenoisingRange );
             w *= GetGaussianWeight( length( o ) * 0.5 );
 
             // This weight is strict ( non exponential ) because we need to avoid accessing data from other surfaces
-            float3 Xvs = Geometry::ReconstructViewPosition( pixelUv + o * gRectSizeInv, gFrustum, temp.z, gOrthoMode );
-            float NoX = dot( Nv, Xvs );
-            w *= ComputeWeight( NoX, geometryWeightParams.x, geometryWeightParams.y );
+            float2 uv = pixelUv + o * gRectSizeInv;
+            float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, data.z, gOrthoMode );
+            w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
 
             float2 ww = w;
             #ifndef REBLUR_PERFORMANCE_MODE
@@ -112,12 +113,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 ww.y *= ComputeExponentialWeight( normalAndRoughness.w * normalAndRoughness.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
             #endif
 
-            temp.x = Denanify( ww.x, temp.x );
-            temp.y = Denanify( ww.y, temp.y );
-            ww *= float2( temp.xy != 0.0 );
+            data.x = Denanify( ww.x, data.x );
+            data.y = Denanify( ww.y, data.y );
+            ww *= float2( data.xy != 0.0 );
 
             // Accumulate
-            center.xy += temp.xy * ww;
+            center.xy += data.xy * ww;
             sum += ww;
         }
     }

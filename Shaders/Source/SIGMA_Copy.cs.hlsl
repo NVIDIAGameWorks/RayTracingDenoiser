@@ -8,15 +8,11 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-[numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
-{
-    // TODO: introduce "CopyResource" in NRD API?
-#ifdef RELAX_SPECULAR
-    gOut_Spec[pixelPos.xy] = gIn_Spec[pixelPos.xy];
-#endif
+#include "NRD.hlsli"
+#include "ml.hlsli"
 
-#ifdef RELAX_DIFFUSE
-    gOut_Diff[pixelPos.xy] = gIn_Diff[pixelPos.xy];
-#endif
-}
+#include "SIGMA_Config.hlsli"
+#include "SIGMA_Copy.resources.hlsli"
+
+#include "Common.hlsli"
+#include "SIGMA_Copy.hlsli"

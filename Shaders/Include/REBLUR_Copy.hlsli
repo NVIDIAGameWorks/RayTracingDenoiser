@@ -16,7 +16,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
     if( isSky != 0.0 && !gIsRectChanged )
         return;
 
-    // TODO: is it possible to introduce "CopyResource" in NRD API?
+    // TODO: introduce "CopyResource" in NRD API?
     #ifdef REBLUR_DIFFUSE
         gOut_Diff[ pixelPos ] = gIn_Diff[ pixelPos ];
         #ifdef REBLUR_SH

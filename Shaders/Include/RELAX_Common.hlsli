@@ -109,6 +109,16 @@ float GetPlaneDistanceWeight_Atrous(float3 centerWorldPos, float3 centerNormal, 
     return distanceToCenterPointPlane < threshold ? 1.0 : 0.0;
 }
 
+float GetSpecLobeTanHalfAngle( float roughness, float percentOfVolume = 0.75 )
+{
+    // TODO: ideally should migrate to fixed "ImportanceSampling::GetSpecularLobeTanHalfAngle", but since
+    // denoisers behavior have been tuned for the old version, let's continue to use it in critical places
+    roughness = saturate( roughness );
+    percentOfVolume = saturate( percentOfVolume );
+
+    return roughness * roughness * percentOfVolume / ( 1.0 - percentOfVolume + NRD_EPS );
+}
+
 float2 GetNormalWeightParams_ATrous(float roughness, float numFramesInHistory, float specularReprojectionConfidence, float normalEdgeStoppingRelaxation, float specularLobeAngleFraction, float specularLobeAngleSlack)
 {
     // Relaxing normal weights if not enough frames in history
@@ -141,7 +151,8 @@ float GetSpecularNormalWeight_ATrous(float2 params0, float3 n0, float3 n, float3
     return saturate(1.0 - a * params0.y);
 }
 
-float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
+// TODO: better use "GetNormalWeightParam"
+float GetNormalWeightParam2(float roughness, float angleFraction)
 {
     float angle = atan(GetSpecLobeTanHalfAngle(roughness, angleFraction));
     angle = 1.0 / max(angle, RELAX_NORMAL_ULP);
@@ -149,17 +160,9 @@ float GetNormalWeightParams(float roughness, float angleFraction = 0.75)
     return angle;
 }
 
-float GetNormalWeight(float3 Ncurr, float3 Nprev, float maxAngle)
-{
-    float cosa = dot(Ncurr, Nprev);
-
-    float a = 1.0 / maxAngle;
-    float d = Math::AcosApprox(cosa);
-
-    float w = Math::SmoothStep01(1.0 - (d * a));
-
-    return w;
-}
+// TODO: better use "GetDisocclusionWeight"
+#define GetBilateralWeight( z, zc ) \
+    Math::LinearStep( 0.03, 0.0, abs( z - zc ) * rcp( max( z, zc ) ) )
 
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invResourceSize,

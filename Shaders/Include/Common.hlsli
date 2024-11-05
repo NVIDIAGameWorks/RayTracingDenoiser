@@ -8,6 +8,19 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
+//==================================================================================================================
+// Naming convention
+//==================================================================================================================
+// g[In/Prev/History/Out]_[A]_[B]
+// gIn_         - an input
+// gPrev_       - an input from the previous frame ( looks better than "gInPrev_" )
+// gHistory_    - an input from the previous frame, which is a history buffer ( looks better than "gInHistory_" )
+// gOut_        - an output
+// _            - means "and" ( when used in-between A and B )
+// s_           - shared memory
+// Fast         - fast history
+// Noisy        - noisy input, where an emphasis needed
+
 #include "Poisson.hlsli"
 
 // Constants
@@ -50,20 +63,24 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_USE_VIEWPORT_OFFSET                                 0 // enable if "CommonSettings::rectOrigin" is used
 
 // Settings
-#define NRD_BILATERAL_WEIGHT_CUTOFF                             0.03
+#define NRD_DISOCCLUSION_THRESHOLD                              0.02 // normalized % // TODO: use CommonSettings::disocclusionThreshold?
 #define NRD_CATROM_SHARPNESS                                    0.5 // [ 0; 1 ], 0.5 matches Catmull-Rom
 #define NRD_RADIANCE_COMPRESSION_MODE                           3 // 0-4, specular color compression for spatial passes
 #define NRD_EXP_WEIGHT_DEFAULT_SCALE                            3.0
 #define NRD_ROUGHNESS_SENSITIVITY                               0.01 // smaller => more sensitive
 #define NRD_CURVATURE_Z_THRESHOLD                               0.1 // normalized %
 #define NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION             15.0 // keep relatively high to avoid ruining concave mirrors
+#define NRD_MAX_PERCENT_OF_LOBE_VOLUME                          0.75 // normalized %
 
 #if( NRD_NORMAL_ENCODING < NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     #define NRD_NORMAL_ENCODING_ERROR                           ( 1.50 / 255.0 )
+    #define STOCHASTIC_BILINEAR_FILTER                          gLinearClamp
 #elif( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     #define NRD_NORMAL_ENCODING_ERROR                           ( 0.75 / 255.0 )
+    #define STOCHASTIC_BILINEAR_FILTER                          gNearestClamp
 #else
     #define NRD_NORMAL_ENCODING_ERROR                           ( 0.50 / 255.0 )
+    #define STOCHASTIC_BILINEAR_FILTER                          gLinearClamp
 #endif
 
 //==================================================================================================================
@@ -281,9 +298,11 @@ float GetSpecMagicCurve( float roughness, float power = 0.25 )
 
 float ComputeParallaxInPixels( float3 X, float2 uvForZeroParallax, float4x4 mWorldToClip, float2 rectSize )
 {
-    // Produce same results:
-    // - ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
-    // - ComputeParallaxInPixels( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize );
+    // Both produce same results, but behavior is different on objects attached to the camera:
+    // non-0 parallax on pure translations, 0 parallax on pure rotations
+    //      ComputeParallaxInPixels( Xprev + gCameraDelta, gOrthoMode == 0.0 ? smbPixelUv : pixelUv, gWorldToClipPrev, gRectSize );
+    // 0 parallax on translations, non-0 parallax on pure rotations
+    //      ComputeParallaxInPixels( Xprev - gCameraDelta, gOrthoMode == 0.0 ? pixelUv : smbPixelUv, gWorldToClip, gRectSize );
 
     float2 uv = Geometry::GetScreenUv( mWorldToClip, X );
     float2 parallaxInUv = uv - uvForZeroParallax;
@@ -317,19 +336,9 @@ float GetColorCompressionExposureForSpatialPasses( float roughness )
     #endif
 }
 
-float GetSpecLobeTanHalfAngle( float roughness, float percentOfVolume = 0.75 )
-{
-    // TODO: ideally should migrate to fixed "ImportanceSampling::GetSpecularLobeTanHalfAngle", but since
-    // denoisers behavior have been tuned for the old version, let's continue to use it in critical places
-    roughness = saturate( roughness );
-    percentOfVolume = saturate( percentOfVolume );
-
-    return roughness * roughness * percentOfVolume / ( 1.0 - percentOfVolume + NRD_EPS );
-}
-
 float2 StochasticBilinear( float2 uv, float2 texSize )
 {
-#if( REBLUR_USE_STF == 1 )
+#if( REBLUR_USE_STF == 1 && NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     // Requires: Rng::Hash::Initialize( pixelPos, gFrameIndex )
     Filtering::Bilinear f = Filtering::GetBilinearFilter( uv, texSize );
 
@@ -397,7 +406,7 @@ float2 GetKernelSampleCoordinates( float4x4 mToClip, float3 offset, float3 X, fl
         offset.xy *= offset.z;
     #endif
 
-    // We can't rotate T and B instead, because T is skewed
+    // We can't rotate T and B instead, because they can be skewed
     offset.xy = Geometry::RotateVector( rotator, offset.xy );
 
     float3 p = X + T * offset.x + B * offset.y;
@@ -412,13 +421,24 @@ float2 GetKernelSampleCoordinates( float4x4 mToClip, float3 offset, float3 X, fl
 
 // Weight parameters
 
+float GetNormalWeightParam( float nonLinearAccumSpeed, float lobeAngleFraction, float roughness = 1.0 )
+{
+    float percentOfVolume = NRD_MAX_PERCENT_OF_LOBE_VOLUME * lerp( lobeAngleFraction, 1.0, nonLinearAccumSpeed );
+    float tanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume );
+
+    float angle = atan( tanHalfAngle );
+    angle = max( angle, NRD_NORMAL_ENCODING_ERROR );
+
+    return 1.0 / angle;
+}
+
 float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumSize, float3 Xv, float3 Nv, float nonLinearAccumSpeed )
 {
-    float relaxation = lerp( 1.0, 0.25, nonLinearAccumSpeed );
-    float a = relaxation / ( planeDistSensitivity * frustumSize );
-    float b = -dot( Nv, Xv ) * a;
+    float norm = planeDistSensitivity * frustumSize;
+    float a = 1.0 / norm;
+    float b = dot( Nv, Xv ) * a;
 
-    return float2( a, b );
+    return float2( a, -b );
 }
 
 float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, float roughness = 1.0 )
@@ -426,7 +446,7 @@ float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, flo
     // IMPORTANT: since this weight is exponential, 3% can lead to leaks from bright objects in reflections.
     // Even 1% is not enough in some cases, but using a lower value makes things even more fragile
     float smc = GetSpecMagicCurve( roughness );
-    float norm = lerp( NRD_EPS, 1.0, min( nonLinearAccumSpeed, smc ) );
+    float norm = lerp( 0.0005, 1.0, min( nonLinearAccumSpeed, smc ) );
     float a = 1.0 / norm;
     float b = hitDist * a;
 
@@ -468,12 +488,12 @@ float2 GetRelaxedRoughnessWeightParams( float m, float fraction = 1.0, float sen
     ExpApprox( -NRD_EXP_WEIGHT_DEFAULT_SCALE * abs( ( x ) * px + py ) )
 
 // A good choice for non noisy data
-// IMPORTANT: cutoffs are needed to minimize floating point precision drifting
+// Previously "Math::SmoothStep( 0.999, 0.001" was used, but it seems to be not needed anymore
 #define ComputeNonExponentialWeight( x, px, py ) \
-    Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) )
+    Math::SmoothStep( 1.0, 0.0, abs( ( x ) * px + py ) )
 
 #define ComputeNonExponentialWeightWithSigma( x, px, py, sigma ) \
-    Math::SmoothStep( 0.999, 0.001, abs( ( x ) * px + py ) - sigma * px )
+    Math::SmoothStep( 1.0, 0.0, abs( ( x ) * px + py ) - sigma * px )
 
 #if( NRD_USE_EXPONENTIAL_WEIGHTS == 1 )
     #define ComputeWeight( x, px, py )     ComputeExponentialWeight( x, px, py )
@@ -488,28 +508,27 @@ float GetGaussianWeight( float r )
 
 // Encoding precision aware weight functions ( for reprojection )
 
-float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float curvatureAngle, float thresholdAngle )
+float GetEncodingAwareNormalWeight( float3 Ncurr, float3 Nprev, float maxAngle, float curvatureAngle, float thresholdAngle, bool remap = false )
 {
-    // Anything below "thresholdAngle" is ignored
-    curvatureAngle += thresholdAngle;
-
     float cosa = dot( Ncurr, Nprev );
-
-    float a = 1.0 / maxAngle;
-    float d = Math::AcosApprox( cosa );
-
-    float w = Math::SmoothStep01( 1.0 - ( d - curvatureAngle ) * a );
+    float angle = Math::AcosApprox( cosa );
+    float w = Math::SmoothStep01( 1.0 - ( angle - curvatureAngle - thresholdAngle ) / maxAngle );
 
     // Needed to mitigate imprecision issues because prev normals are RGBA8 ( test 3, 43 if roughness is low )
-    w = Math::SmoothStep( 0.05, 0.95, w );
+    if( remap ) // TODO: needed only for RELAX
+        w = Math::SmoothStep( 0.05, 0.95, w );
 
     return w;
 }
 
-// Only for checkerboard resolve and some "lazy" comparisons
+// Only for viewZ comparisons for close to each other pixels ( not sparse filters! )
 
-#define GetBilateralWeight( z, zc ) \
-    Math::LinearStep( NRD_BILATERAL_WEIGHT_CUTOFF, 0.0, abs( z - zc ) * rcp( max( z, zc ) ) )
+float GetDisocclusionThreshold( float disocclusionThreshold, float frustumSize, float NoV )
+{
+    return frustumSize * saturate( disocclusionThreshold / max( 0.01, NoV ) );
+}
+
+#define GetDisocclusionWeight( z, z0, disocclusionThreshold ) step( abs( z - z0 ), disocclusionThreshold )
 
 // Upsampling
 

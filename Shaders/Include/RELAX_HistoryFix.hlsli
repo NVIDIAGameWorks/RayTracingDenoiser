@@ -25,20 +25,20 @@ float getRadius(float historyLength)
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 {
     // Tile-based early out
-    float isSky = gTiles[pixelPos >> 4];
+    float isSky = gIn_Tiles[pixelPos >> 4];
     if (isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y)
         return;
 
     // Early out if linearZ is beyond denoising range
     // Early out if no disocclusion detected
-    float centerViewZ = UnpackViewZ(gViewZ[pixelPos]);
-    float historyLength = 255.0 * gHistoryLength[pixelPos];
+    float centerViewZ = UnpackViewZ(gIn_ViewZ[pixelPos]);
+    float historyLength = 255.0 * gIn_HistoryLength[pixelPos];
     if ((centerViewZ > gDenoisingRange) || (historyLength > gHistoryFixFrameNum || gHistoryFixFrameNum == 1.0))
         return;
 
     // Loading center data
     float centerMaterialID;
-    float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pixelPos], centerMaterialID);
+    float4 centerNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[pixelPos], centerMaterialID);
     float3 centerNormal = centerNormalRoughness.rgb;
     float centerRoughness = centerNormalRoughness.a;
     float3 centerWorldPos = GetCurrentWorldPosFromPixelPos(pixelPos, centerViewZ);
@@ -46,17 +46,17 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     float depthThreshold = gDepthThreshold * (gOrthoMode == 0 ? centerViewZ : 1.0);
 
 #ifdef RELAX_DIFFUSE
-    float4 diffuseIlluminationAnd2ndMomentSum = gDiffIllumination[pixelPos];
+    float4 diffuseIlluminationAnd2ndMomentSum = gIn_Diff[pixelPos];
     #ifdef RELAX_SH
-        float4 diffuseSumSH1 = gDiffSH1[pixelPos];
+        float4 diffuseSumSH = gIn_DiffSh[pixelPos];
     #endif
     float diffuseWSum = 1;
 #endif
 #ifdef RELAX_SPECULAR
-    float4 specularIlluminationAnd2ndMomentSum = gSpecIllumination[pixelPos];
+    float4 specularIlluminationAnd2ndMomentSum = gIn_Spec[pixelPos];
     #ifdef RELAX_SH
-        float4 specularSumSH1 = gSpecSH1[pixelPos];
-        float roughnessModified = specularSumSH1.w;
+        float4 specularSumSH = gIn_SpecSh[pixelPos];
+        float roughnessModified = specularSumSH.w;
     #endif
     float specularWSum = 1;
     float2 specularNormalWeightParams =
@@ -65,7 +65,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             5.0, // History length,
             1.0, // Specular reprojection confidence
             0.0, // Normal edge stopping relaxation
-            gSpecLobeAngleFraction,
+            gLobeAngleFraction,
             gSpecLobeAngleSlack);
 #endif
 
@@ -87,9 +87,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
                 continue;
 
             float sampleMaterialID;
-            float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[samplePosInt], sampleMaterialID).rgb;
+            float3 sampleNormal = NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[samplePosInt], sampleMaterialID).rgb;
 
-            float sampleViewZ = UnpackViewZ(gViewZ[samplePosInt]);
+            float sampleViewZ = UnpackViewZ(gIn_ViewZ[samplePosInt]);
             float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(samplePosInt, sampleViewZ);
             float geometryWeight = GetPlaneDistanceWeight_Atrous(
                 centerWorldPos,
@@ -106,11 +106,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
             if (diffuseW > 1e-4)
             {
-                float4 sampleDiffuseIlluminationAnd2ndMoment = gDiffIllumination[samplePosInt];
+                float4 sampleDiffuseIlluminationAnd2ndMoment = gIn_Diff[samplePosInt];
                 diffuseIlluminationAnd2ndMomentSum += sampleDiffuseIlluminationAnd2ndMoment * diffuseW;
                 #ifdef RELAX_SH
-                    float4 sampleDiffuseSH1 = gDiffSH1[samplePosInt];
-                    diffuseSumSH1 += sampleDiffuseSH1 * diffuseW;
+                    float4 sampleDiffuseSH = gIn_DiffSh[samplePosInt];
+                    diffuseSumSH += sampleDiffuseSH * diffuseW;
                 #endif
                 diffuseWSum += diffuseW;
             }
@@ -130,11 +130,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
             if (specularW > 1e-4)
             {
-                float4 sampleSpecularIlluminationAnd2ndMoment = gSpecIllumination[samplePosInt];
+                float4 sampleSpecularIlluminationAnd2ndMoment = gIn_Spec[samplePosInt];
                 specularIlluminationAnd2ndMomentSum += sampleSpecularIlluminationAnd2ndMoment * specularW;
                 #ifdef RELAX_SH
-                    float4 sampleSpecularSH1 = gSpecSH1[samplePosInt];
-                    specularSumSH1 += sampleSpecularSH1 * specularW;
+                    float4 sampleSpecularSH = gIn_SpecSh[samplePosInt];
+                    specularSumSH += sampleSpecularSH * specularW;
                 #endif
                 specularWSum += specularW;
             }
@@ -146,17 +146,17 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
     // The next shader will have to copy these areas to normal and responsive history buffers.
 #ifdef RELAX_DIFFUSE
     float4 outDiffuseIlluminationAnd2ndMoment = diffuseIlluminationAnd2ndMomentSum / diffuseWSum;
-    gOutDiffuseIllumination[pixelPos] = outDiffuseIlluminationAnd2ndMoment;
+    gOut_Diff[pixelPos] = outDiffuseIlluminationAnd2ndMoment;
     #ifdef RELAX_SH
-        gOutDiffuseSH1[pixelPos] = diffuseSumSH1 / diffuseWSum;
+        gOut_DiffSh[pixelPos] = diffuseSumSH / diffuseWSum;
     #endif
 #endif
 
 #ifdef RELAX_SPECULAR
     float4 outSpecularIlluminationAnd2ndMoment = specularIlluminationAnd2ndMomentSum / specularWSum;
-    gOutSpecularIllumination[pixelPos] = outSpecularIlluminationAnd2ndMoment;
+    gOut_Spec[pixelPos] = outSpecularIlluminationAnd2ndMoment;
     #ifdef RELAX_SH
-        gOutSpecularSH1[pixelPos] = float4(specularSumSH1.rgb / specularWSum, roughnessModified);
+        gOut_SpecSh[pixelPos] = float4(specularSumSH.rgb / specularWSum, roughnessModified);
     #endif
 #endif
 }

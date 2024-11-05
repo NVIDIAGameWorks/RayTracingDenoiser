@@ -31,7 +31,6 @@ void nrd::InstanceImpl::Add_RelaxDiffuse(DenoiserData& denoiserData)
     AddTextureToPermanentPool( {Format::RGBA8_UNORM, 1} );
     AddTextureToPermanentPool( {Format::R8_UNORM, 1} );
     AddTextureToPermanentPool( {Format::R32_SFLOAT, 1} );
-    AddTextureToPermanentPool( {Format::R32_SFLOAT, 1} );
 
     enum class Transient
     {

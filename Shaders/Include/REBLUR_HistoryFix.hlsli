@@ -58,7 +58,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
     float3 Vv = GetViewVector( Xv, true );
     float NoV = abs( dot( Nv, Vv ) );
-    float slopeScale = 1.0 / max( NoV, 0.2 ); // TODO: bigger scale introduces ghosting
 
     // Smooth number of accumulated frames
     int2 smemPos = threadPos + BORDER;
@@ -118,8 +117,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             // Parameters
             float diffNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNum.x );
 
-            float diffNormalWeightParam = GetNormalWeightParams( diffNonLinearAccumSpeed );
-            float2 diffGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity * slopeScale, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
+            float normalWeightParam = GetNormalWeightParam( diffNonLinearAccumSpeed, gLobeAngleFraction );
+            float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, diffNonLinearAccumSpeed );
 
             float sumd = 1.0 + frameNum.x;
             #ifdef REBLUR_PERFORMANCE_MODE
@@ -152,23 +151,20 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     pos = clamp( pos, 0, gRectSizeMinusOne );
 
                     // Fetch data
-                    float z = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
+                    float zs = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
 
                     float materialIDs;
                     float4 Ns = gIn_Normal_Roughness[ WithRectOrigin( pos ) ];
                     Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
-                    float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
-                    float NoX = dot( Nv, Xvs );
-
-                    float angle = Math::AcosApprox( dot( Ns.xyz, N ) );
-
                     // Weight
+                    float angle = Math::AcosApprox( dot( Ns.xyz, N ) );
+                    float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
+
                     float w = IsInScreenNearest( uv );
-                    w *= float( z < gDenoisingRange );
+                    w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
                     w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
-                    w *= ComputeWeight( NoX, diffGeometryWeightParams.x, diffGeometryWeightParams.y );
-                    w *= ComputeExponentialWeight( angle, diffNormalWeightParam, 0.0 );
+                    w *= ComputeExponentialWeight( angle, normalWeightParam, 0.0 );
 
                     #ifndef REBLUR_PERFORMANCE_MODE
                         w *= 1.0 + UnpackData1( gIn_Data1[ pos ] ).x;
@@ -305,8 +301,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNum.y );
             float hitDistNormAtCenter = ExtractHitDist( spec );
 
-            float specNormalWeightParam = GetNormalWeightParams( specNonLinearAccumSpeed, roughness );
-            float2 specGeometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity * slopeScale, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
+            float normalWeightParam = GetNormalWeightParam( specNonLinearAccumSpeed, gLobeAngleFraction, roughness );
+            float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
             float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness, sqrt( gRoughnessFraction ) );
             float2 hitDistanceWeightParams = GetHitDistanceWeightParams( hitDistNormAtCenter, specNonLinearAccumSpeed, roughness );
 
@@ -341,23 +337,20 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     pos = clamp( pos, 0, gRectSizeMinusOne );
 
                     // Fetch data
-                    float z = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
+                    float zs = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
 
                     float materialIDs;
                     float4 Ns = gIn_Normal_Roughness[ WithRectOrigin( pos ) ];
                     Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
-                    float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, z, gOrthoMode );
-                    float NoX = dot( Nv, Xvs );
-
                     float angle = Math::AcosApprox( dot( Ns.xyz, N ) );
+                    float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
                     // Weight
                     float w = IsInScreenNearest( uv );
-                    w *= float( z < gDenoisingRange );
+                    w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
                     w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
-                    w *= ComputeWeight( NoX, specGeometryWeightParams.x, specGeometryWeightParams.y );
-                    w *= ComputeExponentialWeight( angle, specNormalWeightParam, 0.0 );
+                    w *= ComputeExponentialWeight( angle, normalWeightParam, 0.0 );
                     w *= ComputeExponentialWeight( Ns.w * Ns.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
 
                     #ifndef REBLUR_PERFORMANCE_MODE

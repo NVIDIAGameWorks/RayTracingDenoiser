@@ -98,6 +98,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     }
 
     SharedConstants* consts                                     = (SharedConstants*)data;
+    consts->gWorldToClip                                        = m_WorldToClip;
     consts->gWorldToClipPrev                                    = m_WorldToClipPrev;
     consts->gWorldToViewPrev                                    = m_WorldToViewPrev;
     consts->gWorldPrevToWorld                                   = m_WorldPrevToWorld;
@@ -120,21 +121,21 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gPrintfAt                                           = uint2(m_CommonSettings.printfAt[0], m_CommonSettings.printfAt[1]);
     consts->gRectOrigin                                         = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
     consts->gRectSize                                           = uint2(rectW, rectH);
-    consts->gSpecMaxAccumulatedFrameNum                         = (float)settings.specularMaxAccumulatedFrameNum;
-    consts->gSpecMaxFastAccumulatedFrameNum                     = (float)settings.specularMaxFastAccumulatedFrameNum;
-    consts->gDiffMaxAccumulatedFrameNum                         = (float)settings.diffuseMaxAccumulatedFrameNum;
-    consts->gDiffMaxFastAccumulatedFrameNum                     = (float)settings.diffuseMaxFastAccumulatedFrameNum;
+    consts->gSpecMaxAccumulatedFrameNum                         = (float)min(settings.specularMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
+    consts->gSpecMaxFastAccumulatedFrameNum                     = (float)min(settings.specularMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
+    consts->gDiffMaxAccumulatedFrameNum                         = (float)min(settings.diffuseMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
+    consts->gDiffMaxFastAccumulatedFrameNum                     = (float)min(settings.diffuseMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
     consts->gDisocclusionThreshold                              = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
     consts->gDisocclusionThresholdAlternate                     = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
     consts->gStrandMaterialID                                   = m_CommonSettings.strandMaterialID;
+    consts->gStrandThickness                                    = m_CommonSettings.strandThickness;
     consts->gRoughnessFraction                                  = settings.roughnessFraction;
     consts->gSpecVarianceBoost                                  = settings.specularVarianceBoost;
     consts->gSplitScreen                                        = m_CommonSettings.splitScreen;
     consts->gDiffBlurRadius                                     = settings.diffusePrepassBlurRadius;
     consts->gSpecBlurRadius                                     = settings.specularPrepassBlurRadius;
     consts->gDepthThreshold                                     = settings.depthThreshold;
-    consts->gDiffLobeAngleFraction                              = settings.diffuseLobeAngleFraction;
-    consts->gSpecLobeAngleFraction                              = settings.specularLobeAngleFraction;
+    consts->gLobeAngleFraction                                  = settings.lobeAngleFraction;
     consts->gSpecLobeAngleSlack                                 = radians(settings.specularLobeAngleSlack);
     consts->gHistoryFixEdgeStoppingNormalPower                  = settings.historyFixEdgeStoppingNormalPower;
     consts->gRoughnessEdgeStoppingRelaxation                    = settings.roughnessEdgeStoppingRelaxation;
@@ -346,7 +347,6 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 
 #include "Denoisers/Relax_Diffuse.hpp"
 
-
 // RELAX_DIFFUSE_SH
 #ifdef NRD_EMBEDS_DXBC_SHADERS
     #include "RELAX_DiffuseSh_PrePass.cs.dxbc.h"
@@ -385,7 +385,6 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 #endif
 
 #include "Denoisers/Relax_DiffuseSh.hpp"
-
 
 // RELAX_SPECULAR
 #ifdef NRD_EMBEDS_DXBC_SHADERS
@@ -432,7 +431,6 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 
 #include "Denoisers/Relax_Specular.hpp"
 
-
 // RELAX_SPECULAR_SH
 #ifdef NRD_EMBEDS_DXBC_SHADERS
     #include "RELAX_SpecularSh_PrePass.cs.dxbc.h"
@@ -471,7 +469,6 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 #endif
 
 #include "Denoisers/Relax_SpecularSh.hpp"
-
 
 // RELAX_DIFFUSE_SPECULAR
 #ifdef NRD_EMBEDS_DXBC_SHADERS
@@ -517,7 +514,6 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 #endif
 
 #include "Denoisers/Relax_DiffuseSpecular.hpp"
-
 
 // RELAX_DIFFUSE_SPECULAR_SH
 #ifdef NRD_EMBEDS_DXBC_SHADERS

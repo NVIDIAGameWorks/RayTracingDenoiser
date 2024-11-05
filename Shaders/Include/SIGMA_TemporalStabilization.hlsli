@@ -8,23 +8,35 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-groupshared float2 s_Penumbra_ViewZ[ BUFFER_Y ][ BUFFER_X ];
+groupshared float s_Penumbra[ BUFFER_Y ][ BUFFER_X ];
 groupshared SIGMA_TYPE s_Shadow_Translucency[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
 
-    float2 data;
-    data.x = gIn_Penumbra[ globalPos ];
-    data.y = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( globalPos ) ] );
-
-    s_Penumbra_ViewZ[ sharedPos.y ][ sharedPos.x ] = data;
-
     SIGMA_TYPE s = gIn_Shadow_Translucency[ globalPos ];
     s = SIGMA_BackEnd_UnpackShadow( s );
 
     s_Shadow_Translucency[ sharedPos.y ][ sharedPos.x ] = s;
+    s_Penumbra[ sharedPos.y ][ sharedPos.x ] = gIn_Penumbra[ globalPos ];
+}
+
+uint PackViewZAndHistoryLength( float viewZ, float historyLength )
+{
+    uint p = asuint( viewZ ) & ~7;
+    p |= min( uint( historyLength + 0.5 ), 7 );
+
+    return p;
+}
+
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invResourceSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<SIGMA_TYPE> tex0, out SIGMA_TYPE c0 )
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
@@ -34,22 +46,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float isSky = gIn_Tiles[ pixelPos >> 4 ].y;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
-    // Tile-based early out
-    if( isSky != 0.0 || any( pixelPos > gRectSizeMinusOne ) )
-        return;
-
     // Center data
     int2 smemPos = threadPos + BORDER;
-    float2 centerData = s_Penumbra_ViewZ[ smemPos.y ][ smemPos.x ];
-    float centerPenumbra = centerData.x;
-    float centerSignNoL = float( centerData.x != 0.0 );
-    float viewZ = centerData.y;
+    float centerPenumbra = s_Penumbra[ smemPos.y ][ smemPos.x ];
+    float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
 
-    // Early out
-    if( viewZ > gDenoisingRange )
+    // Early out #1
+    if( isSky != 0.0 || any( pixelPos > gRectSizeMinusOne ) || viewZ > gDenoisingRange )
         return;
 
-    // Tile-based early out ( potentially )
+    // Early out #2
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
     float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
     bool isHardShadow = ( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerPenumbra == 0.0 ) && SIGMA_USE_EARLY_OUT_IN_TS;
@@ -57,6 +63,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     if( isHardShadow && SIGMA_SHOW == 0 )
     {
         gOut_Shadow_Translucency[ pixelPos ] = PackShadow( s_Shadow_Translucency[ smemPos.y ][ smemPos.x ] );
+        gOut_HistoryLength[ pixelPos ] = PackViewZAndHistoryLength( viewZ, SIGMA_MAX_ACCUM_FRAME_NUM ); // TODO: yes, SIGMA_MAX_ACCUM_FRAME_NUM to allow accumulation in neighbors
 
         return;
     }
@@ -67,9 +74,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     SIGMA_TYPE m2 = 0;
     SIGMA_TYPE input = 0;
 
-    float viewZnearest = viewZ;
-    int2 offseti = int2( BORDER, BORDER );
-
     [unroll]
     for( j = 0; j <= BORDER * 2; j++ )
     {
@@ -77,28 +81,17 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         for( i = 0; i <= BORDER * 2; i++ )
         {
             int2 pos = threadPos + int2( i, j );
-            float2 data = s_Penumbra_ViewZ[ pos.y ][ pos.x ];
-
             SIGMA_TYPE s = s_Shadow_Translucency[ pos.y ][ pos.x ];
-            float penum = data.x;
-            float z = data.y;
-            float signNoL = float( penum != 0.0 );
 
             float w = 1.0;
             if( i == BORDER && j == BORDER )
                 input = s;
             else
             {
-                w = abs( z - viewZ ) / max( z, viewZ ) < 0.02; // TODO: slope scale?
-                w *= IsLit( penum ) == IsLit( centerPenumbra ); // no-harm on a flat surface due to wide spatials, needed to prevent bleeding from one surface to another
-                w *= float( z < gDenoisingRange ); // ignore sky
-                w *= float( centerSignNoL == signNoL ); // ignore samples with different NoL signs
+                float penum = s_Penumbra[ pos.y ][ pos.x ];
 
-                if( z < viewZnearest )
-                {
-                    viewZnearest = z;
-                    offseti = int2( i, j );
-                }
+                w = AreBothLitOrUnlit( centerPenumbra, penum );
+                w *= GetGaussianWeight( length( float2( i - BORDER, j - BORDER ) / BORDER ) );
             }
 
             m1 += s * w;
@@ -107,52 +100,99 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         }
     }
 
-    float invSum = Math::PositiveRcp( sum );
-    m1 *= invSum;
-    m2 *= invSum;
+    m1 /= sum; // sum can't be 0
+    m2 /= sum;
 
     SIGMA_TYPE sigma = GetStdDev( m1, m2 );
 
-    // Compute previous pixel position
-    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZnearest, gOrthoMode );
+    // Current and previous positions
+    float3 Xv = Geometry::ReconstructViewPosition( pixelUv, gFrustum, viewZ, gOrthoMode );
     float3 X = Geometry::RotateVectorInverse( gWorldToView, Xv );
-    float3 mv = gIn_Mv[ WithRectOrigin( pixelPos ) + offseti - BORDER ] * gMvScale.xyz;
-    float2 pixelUvPrev = pixelUv + mv.xy;
 
-    if( gMvScale.w != 0.0 )
-        pixelUvPrev = Geometry::GetScreenUv( gWorldToClipPrev, X + mv );
+    float3 mv = gIn_Mv[ WithRectOrigin( pixelPos ) ] * gMvScale.xyz;
+    float3 Xprev = X;
+    float2 smbPixelUv = pixelUv + mv.xy;
+
+    if( gMvScale.w == 0.0 )
+    {
+        if( gMvScale.z == 0.0 )
+            mv.z = Geometry::AffineTransform( gWorldToViewPrev, X ).z - viewZ;
+
+        float viewZprev = viewZ + mv.z;
+        float3 Xvprevlocal = Geometry::ReconstructViewPosition( smbPixelUv, gFrustumPrev, viewZprev, gOrthoMode ); // TODO: use gOrthoModePrev
+
+        Xprev = Geometry::RotateVectorInverse( gWorldToViewPrev, Xvprevlocal ) + gCameraDelta.xyz;
+    }
+    else
+    {
+        Xprev += mv;
+        smbPixelUv = Geometry::GetScreenUv( gWorldToClipPrev, Xprev );
+    }
+
+    // History length
+    Filtering::Bilinear smbBilinearFilter = Filtering::GetBilinearFilter( smbPixelUv, gRectSizePrev );
+    float2 smbBilinearGatherUv = ( smbBilinearFilter.origin + 1.0 ) * gResourceSizeInvPrev;
+    uint4 prevData = gIn_HistoryLength.GatherRed( gNearestClamp, smbBilinearGatherUv ).wzxy;
+    float4 prevViewZ = asfloat( prevData & ~7 );
+    float4 prevHistoryLength = float4( prevData & 7 );
+
+    float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
+    float disocclusionThreshold = GetDisocclusionThreshold( NRD_DISOCCLUSION_THRESHOLD, frustumSize, 1.0 ); // TODO: slope scale?
+    disocclusionThreshold *= IsInScreenNearest( smbPixelUv );
+    disocclusionThreshold -= NRD_EPS;
+
+    float3 Xvprev = Geometry::AffineTransform( gWorldToViewPrev, Xprev );
+    float4 smbPlaneDist = abs( prevViewZ - Xvprev.z );
+    float4 smbOcclusion = step( smbPlaneDist, disocclusionThreshold );
+
+    float4 smbOcclusionWeights = Filtering::GetBilinearCustomWeights( smbBilinearFilter, smbOcclusion );
+    float historyLength = Filtering::ApplyBilinearCustomWeights( prevHistoryLength.x, prevHistoryLength.y, prevHistoryLength.z, prevHistoryLength.w, smbOcclusionWeights );
 
     // Sample history
+    bool isCatRomAllowed = dot( smbOcclusionWeights, 1.0 ) > 3.5;
+
     SIGMA_TYPE history;
-    BicubicFilterNoCorners( saturate( pixelUvPrev ) * gRectSizePrev, gResourceSizeInvPrev, SIGMA_USE_CATROM, gIn_History, history );
+    BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+        saturate( smbPixelUv ) * gRectSizePrev, gResourceSizeInvPrev,
+        smbOcclusionWeights, isCatRomAllowed,
+        gIn_History, history );
 
     history = saturate( history );
     history = SIGMA_BackEnd_UnpackShadow( history );
 
     // Clamp history
-    SIGMA_TYPE inputMin = m1 - sigma * SIGMA_TS_SIGMA_SCALE;
-    SIGMA_TYPE inputMax = m1 + sigma * SIGMA_TS_SIGMA_SCALE;
+    sigma *= lerp( SIGMA_TS_SIGMA_SCALE, 1.0, 1.0 / ( 1.0 + historyLength ) ); // TODO: lerp( SIGMA_TS_SIGMA_SCALE, 1.0, 0.125 ) != SIGMA_TS_SIGMA_SCALE
+
+    SIGMA_TYPE inputMin = m1 - sigma;
+    SIGMA_TYPE inputMax = m1 + sigma;
     SIGMA_TYPE historyClamped = clamp( history, inputMin, inputMax );
 
     // Antilag
     float antilag = abs( historyClamped.x - history.x );
-    antilag = Math::Pow01( antilag, SIGMA_TS_ANTILAG_POWER );
-    antilag = 1.0 - antilag;
+    #if( SIGMA_ADJUST_HISTORY_LENGTH_BY_ANTILAG == 1 )
+        antilag = Math::Sqrt01( antilag );
+    #endif
+    antilag = saturate( 1.0 - antilag );
 
-    // Dark magic ( helps to smooth out "penumbra to 1" regions )
-    historyClamped = lerp( historyClamped, history, 0.5 );
+    #if( SIGMA_ADJUST_HISTORY_LENGTH_BY_ANTILAG == 1 )
+        historyLength *= antilag; // TODO: reduce influence if history is short?
+    #endif
 
     // History weight
-    float historyWeight = SIGMA_TS_MAX_HISTORY_WEIGHT;
-    historyWeight *= IsInScreenNearest( pixelUvPrev );
-    historyWeight *= antilag;
-    historyWeight *= gStabilizationStrength;
+    float historyWeight = historyLength / ( 1.0 + historyLength );
+    #if( SIGMA_ADJUST_HISTORY_LENGTH_BY_ANTILAG == 0 )
+        historyWeight *= antilag;
+    #endif
 
-    // Combine with current frame
-    SIGMA_TYPE result = lerp( input, historyClamped, historyWeight );
+    // Street magic ( helps to smooth out "penumbra to 1" regions )
+    float streetMagic = 0.6 * historyWeight; // TODO: * historyClamped.x? * float( historyClamped.x != 0.0 )?
+    historyClamped = lerp( historyClamped, history, streetMagic );
 
-    // Debug
-    #if( SIGMA_SHOW == 1 )
+    // Combine with the current frame
+    SIGMA_TYPE result = lerp( input, historyClamped, min( gStabilizationStrength, historyWeight ) );
+
+    // Debug ( don't forget that ".x" is used in antilag computations! )
+    #if( SIGMA_SHOW == SIGMA_SHOW_TILES )
         tileValue = gIn_Tiles[ pixelPos >> 4 ].x;
         tileValue = float( tileValue != 0.0 ); // optional, just to show fully discarded tiles
 
@@ -162,20 +202,23 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             result = tileValue;
         #endif
 
-        // Show grid ( works badly with TAA )
         result *= all( ( pixelPos & 15 ) != 0 );
-    #elif( SIGMA_SHOW == 2 )
-        // .x - is used in antilag computations!
+    #elif( SIGMA_SHOW == SIGMA_SHOW_HISTORY_WEIGHT )
         #ifdef SIGMA_TRANSLUCENT
-            historyWeight *= float( !isHardShadow );
-            result.yzw = historyWeight;
+            result.yzw = historyWeight * float( !isHardShadow );
         #endif
-    #elif( SIGMA_SHOW == 3 )
-        float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-        float penumbraInPixels = centerPenumbra / unprojectZ;
-        result = saturate( penumbraInPixels / 10.0 );
+    #elif( SIGMA_SHOW == SIGMA_SHOW_HISTORY_LENGTH )
+        #ifdef SIGMA_TRANSLUCENT
+            result.yzw = historyLength / SIGMA_MAX_ACCUM_FRAME_NUM;
+        #endif
+    #elif( SIGMA_SHOW == SIGMA_SHOW_PENUMBRA_SIZE )
+        result = centerPenumbra; // like in SplitScreen
     #endif
+
+    // Update history length for the next frame
+    historyLength = min( historyLength + 1.0, SIGMA_MAX_ACCUM_FRAME_NUM );
 
     // Output
     gOut_Shadow_Translucency[ pixelPos ] = PackShadow( result );
+    gOut_HistoryLength[ pixelPos ] = PackViewZAndHistoryLength( viewZ, historyLength );
 }

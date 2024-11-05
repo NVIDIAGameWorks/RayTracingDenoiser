@@ -123,7 +123,7 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
     const ReblurProps& props = g_ReblurProps[ size_t(denoiserData.desc.denoiser) - size_t(Denoiser::REBLUR_DIFFUSE) ];
 
     bool enableHitDistanceReconstruction = settings.hitDistanceReconstructionMode != HitDistanceReconstructionMode::OFF && settings.checkerboardMode == CheckerboardMode::OFF;
-    bool skipTemporalStabilization = settings.stabilizationStrength == 0.0f;
+    bool skipTemporalStabilization = settings.maxStabilizedFrameNum == 0;
     bool skipPrePass = (settings.diffusePrepassBlurRadius == 0.0f || !props.hasDiffuse) &&
         (settings.specularPrepassBlurRadius == 0.0f || !props.hasSpecular) &&
         settings.checkerboardMode == CheckerboardMode::OFF;
@@ -324,7 +324,8 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     float diffusePrepassBlurRadius = settings.diffusePrepassBlurRadius * worstResolutionScale;
     float specularPrepassBlurRadius = settings.specularPrepassBlurRadius * worstResolutionScale;
     float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
-    float stabilizationStrength = m_CommonSettings.accumulationMode == AccumulationMode::CONTINUE ? settings.stabilizationStrength : 0.0f;
+    float stabilizationStrength = settings.maxStabilizedFrameNum / (1.0f + settings.maxStabilizedFrameNum);
+    float hitDistanceStabilizationStrength = settings.maxStabilizedFrameNumForHitDistance / (1.0f + settings.maxStabilizedFrameNumForHitDistance);
     uint32_t maxAccumulatedFrameNum = min(settings.maxAccumulatedFrameNum, REBLUR_MAX_HISTORY_FRAME_NUM);
 
     uint32_t diffCheckerboard = 2;
@@ -342,6 +343,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     }
 
     SharedConstants* consts                                     = (SharedConstants*)data;
+    consts->gWorldToClip                                        = m_WorldToClip;
     consts->gViewToClip                                         = m_ViewToClip;
     consts->gViewToWorld                                        = m_ViewToWorld;
     consts->gWorldToViewPrev                                    = m_WorldToViewPrev;
@@ -350,7 +352,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gFrustum                                            = m_Frustum;
     consts->gFrustumPrev                                        = m_FrustumPrev;
     consts->gCameraDelta                                        = m_CameraDelta.xmm;
-    consts->gAntilagParams                                      = float4(settings.antilagSettings.luminanceSigmaScale, settings.antilagSettings.hitDistanceSigmaScale, settings.antilagSettings.luminanceAntilagPower, settings.antilagSettings.hitDistanceAntilagPower);
+    consts->gAntilagParams                                      = float4(settings.antilagSettings.luminanceSigmaScale, settings.antilagSettings.hitDistanceSigmaScale, settings.antilagSettings.luminanceSensitivity, settings.antilagSettings.hitDistanceSensitivity);
     consts->gHitDistParams                                      = float4(settings.hitDistanceParameters.A, settings.hitDistanceParameters.B, settings.hitDistanceParameters.C, settings.hitDistanceParameters.D);
     consts->gViewVectorWorld                                    = m_ViewDirection.xmm;
     consts->gViewVectorWorldPrev                                = m_ViewDirectionPrev.xmm;
@@ -371,9 +373,11 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gRectSizeMinusOne                                   = int2(rectW - 1, rectH - 1);
     consts->gDisocclusionThreshold                              = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
     consts->gDisocclusionThresholdAlternate                     = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
+    consts->gCameraAttachedReflectionMaterialID                 = m_CommonSettings.cameraAttachedReflectionMaterialID;
     consts->gStrandMaterialID                                   = m_CommonSettings.strandMaterialID;
-    consts->gStabilizationStrength                              = stabilizationStrength;
-    consts->gHitDistStabilizationStrength                       = min(stabilizationStrength, settings.hitDistanceStabilizationStrength);
+    consts->gStrandThickness                                    = m_CommonSettings.strandThickness;
+    consts->gStabilizationStrength                              = isHistoryReset ? 0.0f : stabilizationStrength;
+    consts->gHitDistStabilizationStrength                       = isHistoryReset ? 0.0f : hitDistanceStabilizationStrength;
     consts->gDebug                                              = m_CommonSettings.debug;
     consts->gOrthoMode                                          = m_OrthoMode;
     consts->gUnproject                                          = unproject;
@@ -499,7 +503,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 
 #include "Denoisers/Reblur_Diffuse.hpp"
 
-
 // REBLUR_DIFFUSE_OCCLUSION
 #ifdef NRD_EMBEDS_DXBC_SHADERS
     #include "REBLUR_DiffuseOcclusion_HitDistReconstruction.cs.dxbc.h"
@@ -550,7 +553,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 #endif
 
 #include "Denoisers/Reblur_DiffuseOcclusion.hpp"
-
 
 // REBLUR_DIFFUSE_SH
 #ifdef NRD_EMBEDS_DXBC_SHADERS
@@ -614,7 +616,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 #endif
 
 #include "Denoisers/Reblur_DiffuseSh.hpp"
-
 
 // REBLUR_SPECULAR
 #ifdef NRD_EMBEDS_DXBC_SHADERS
@@ -692,7 +693,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 
 #include "Denoisers/Reblur_Specular.hpp"
 
-
 // REBLUR_SPECULAR_OCCLUSION
 #ifdef NRD_EMBEDS_DXBC_SHADERS
     #include "REBLUR_SpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
@@ -743,7 +743,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 #endif
 
 #include "Denoisers/Reblur_SpecularOcclusion.hpp"
-
 
 // REBLUR_SPECULAR_SH
 #ifdef NRD_EMBEDS_DXBC_SHADERS
@@ -807,7 +806,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 #endif
 
 #include "Denoisers/Reblur_SpecularSh.hpp"
-
 
 // REBLUR_DIFFUSE_SPECULAR
 #ifdef NRD_EMBEDS_DXBC_SHADERS
@@ -884,7 +882,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 
 #include "Denoisers/Reblur_DiffuseSpecular.hpp"
 
-
 // REBLUR_DIFFUSE_SPECULAR_OCCLUSION
 #ifdef NRD_EMBEDS_DXBC_SHADERS
     #include "REBLUR_DiffuseSpecularOcclusion_HitDistReconstruction.cs.dxbc.h"
@@ -935,7 +932,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 #endif
 
 #include "Denoisers/Reblur_DiffuseSpecularOcclusion.hpp"
-
 
 // REBLUR_DIFFUSE_SPECULAR_SH
 #ifdef NRD_EMBEDS_DXBC_SHADERS
@@ -999,7 +995,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
 #endif
 
 #include "Denoisers/Reblur_DiffuseSpecularSh.hpp"
-
 
 // REBLUR_DIFFUSE_DIRECTIONAL_OCCLUSION
 #ifdef NRD_EMBEDS_DXBC_SHADERS

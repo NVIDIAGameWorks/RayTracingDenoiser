@@ -15,10 +15,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_USE_CATROM                                1 // sharper reprojection
 #define SIGMA_5X5_TEMPORAL_KERNEL                       1 // provides variance estimation in a wider radius
 #define SIGMA_5X5_BLUR_RADIUS_ESTIMATION_KERNEL         1 // helps to improve stability, but adds 10% of overhead
+#define SIGMA_ADJUST_HISTORY_LENGTH_BY_ANTILAG          1 // TODO: is it needed?
+#define SIGMA_USE_SPARSE_BLUR                           1 // can be disabled for debugging purposes
+#define SIGMA_USE_SCREEN_SPACE_SAMPLING                 1 // almost matches world-space sampling but simpler code ( TODO: doesn't elongate shadow )
 
-// Switches ( default 0 )
-#define SIGMA_SHOW                                      0 // 1 - tiles, 2 - history weight, 3 - penumbra size in pixels
-#define SIGMA_SHOW_PENUMBRA_SIZE                        0
+// Show
+#define SIGMA_SHOW_TILES                                1
+#define SIGMA_SHOW_HISTORY_WEIGHT                       2
+#define SIGMA_SHOW_HISTORY_LENGTH                       3
+#define SIGMA_SHOW_PENUMBRA_SIZE                        4
+
+#define SIGMA_SHOW                                      0 // 0 or SIGMA_SHOW_X
 
 // Settings
 #define SIGMA_ROTATOR_MODE                              NRD_FRAME
@@ -26,8 +33,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define SIGMA_POISSON_SAMPLES                           g_Special8
 #define SIGMA_MAX_PIXEL_RADIUS                          32.0
 #define SIGMA_TS_SIGMA_SCALE                            3.0
-#define SIGMA_TS_MAX_HISTORY_WEIGHT                     0.8 // 4 frames ( longer accumulation worsens shadows in motion, since there is no shadow MV )
-#define SIGMA_TS_ANTILAG_POWER                          1.0
+#define SIGMA_MAX_ACCUM_FRAME_NUM                       7
 
 // Data type
 #ifdef SIGMA_TRANSLUCENT
@@ -41,8 +47,12 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float4x4, gWorldToView ) \
     NRD_CONSTANT( float4x4, gViewToClip ) \
     NRD_CONSTANT( float4x4, gWorldToClipPrev ) \
+    NRD_CONSTANT( float4x4, gWorldToViewPrev ) \
+    NRD_CONSTANT( float4, gViewVectorWorld ) \
     NRD_CONSTANT( float4, gLightDirectionView ) \
     NRD_CONSTANT( float4, gFrustum ) \
+    NRD_CONSTANT( float4, gFrustumPrev ) \
+    NRD_CONSTANT( float4, gCameraDelta ) \
     NRD_CONSTANT( float4, gMvScale ) \
     NRD_CONSTANT( float2, gResourceSizeInv ) \
     NRD_CONSTANT( float2, gResourceSizeInvPrev ) \
@@ -64,4 +74,5 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gSplitScreen ) \
     NRD_CONSTANT( float, gViewZScale ) \
     NRD_CONSTANT( float, gMinRectDimMulUnproject ) \
-    NRD_CONSTANT( uint, gFrameIndex )
+    NRD_CONSTANT( uint, gFrameIndex ) \
+    NRD_CONSTANT( uint, gIsRectChanged )

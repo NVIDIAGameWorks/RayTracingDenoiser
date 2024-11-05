@@ -47,7 +47,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float NoD = abs( dot( Nv, Dv.xyz ) );
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         float hitDist = ExtractHitDist( spec ) * hitDistScale;
-        float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
         float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumSize );
 
         // Blur radius
@@ -78,20 +77,25 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         // Weights
         float roughnessFractionScaled = saturate( gRoughnessFraction * fractionScale );
         float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
-        float normalWeightParams = GetNormalWeightParams( specNonLinearAccumSpeed, roughness ) / fractionScale;
+        float normalWeightParam = GetNormalWeightParam( specNonLinearAccumSpeed, gLobeAngleFraction, roughness ) / fractionScale;
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScaled );
-        float3 px = float3( geometryWeightParams.x, normalWeightParams, roughnessWeightParams.x );
-        float3 py = float3( geometryWeightParams.y, 0.0, roughnessWeightParams.y );
 
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( smc ) * fractionScale;
 
         // Sampling
+    #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        float2 skew = 1.0; // TODO: even for rough specular diffuse-like behavior is undesired ( especially visible in performance mode )
+        skew *= gRectSizeInv * blurRadius;
+
+        float4 scaledRotator = Geometry::ScaleRotator( rotator, skew );
+    #else
         float2x3 TvBv = GetKernelBasis( Dv.xyz, Nv, NoD, roughness, specNonLinearAccumSpeed );
 
         float worldRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
         TvBv[ 0 ] *= worldRadius;
         TvBv[ 1 ] *= worldRadius;
+    #endif
 
         [unroll]
         for( uint n = 0; n < POISSON_SAMPLE_NUM; n++ )
@@ -100,7 +104,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             // Sample coordinates
         #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 uv = pixelUv + Geometry::RotateVector( rotator, offset.xy ) * gRectSizeInv * blurRadius;
+            float2 uv = pixelUv + Geometry::RotateVector( scaledRotator, offset.xy );
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
         #endif
@@ -128,23 +132,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float zs = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 ) );
         #endif
 
-            float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
-
             float materialIDs;
             float4 Ns = gIn_Normal_Roughness.SampleLevel( gNearestClamp, WithRectOffset( uvScaled ), 0 );
             Ns = NRD_FrontEnd_UnpackNormalAndRoughness( Ns, materialIDs );
 
             // Weight
-            float w = IsInScreenNearest( uv );
-            w *= float( zs < gDenoisingRange );
-            w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
+            float angle = Math::AcosApprox( dot( N, Ns.xyz ) );
+            float3 Xvs = Geometry::ReconstructViewPosition( uv, gFrustum, zs, gOrthoMode );
 
-            float3 x;
-            x.x = dot( Nv, Xvs );
-            x.y = Math::AcosApprox( dot( N, Ns.xyz ) );
-            x.z = Ns.w;
-            x = ComputeWeight( x, px, py );
-            w *= x.x * x.y * x.z;
+            float w = IsInScreenNearest( uv );
+            w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
+            w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
+            w *= ComputeWeight( angle, normalWeightParam, 0.0 );
+            w *= ComputeWeight( Ns.w, roughnessWeightParams.x, roughnessWeightParams.y );
 
             REBLUR_TYPE s = gIn_Spec.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
             s = Denanify( w, s );
@@ -191,7 +191,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         // Output
-        gOut_Spec_HitDistForTracking[ pixelPos ] = minHitDist == NRD_INF ? 0.0 : minHitDist; // TODO: lerp to hitT at center based on NoV or NoD?
+        gOut_SpecHitDistForTracking[ pixelPos ] = minHitDist == NRD_INF ? 0.0 : minHitDist; // TODO: lerp to hitT at center based on NoV or NoD?
     }
 
     // Checkerboard resolve ( if pre-pass failed )

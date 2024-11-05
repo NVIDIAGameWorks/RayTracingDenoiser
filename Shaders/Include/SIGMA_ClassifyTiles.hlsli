@@ -52,8 +52,8 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
             mask += ( isInf ? 1 : 0 ) << 18;
 
             float hitDist = ( isLit || isInf ) ? 0 : h;
-            float unprojectZ = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
-            float pixelRadius = GetKernelRadiusInPixels( hitDist, unprojectZ );
+            float pixelSize = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ );
+            float pixelRadius = GetKernelRadiusInPixels( hitDist, pixelSize );
 
             maxRadius = max( pixelRadius, maxRadius );
         }

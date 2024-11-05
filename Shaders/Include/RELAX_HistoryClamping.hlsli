@@ -9,13 +9,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 #ifdef RELAX_SPECULAR
-    groupshared float4 sharedSpecularResponsiveYCoCg[BUFFER_Y][BUFFER_X];
-    groupshared float4 sharedSpecularNoisyAnd2ndMoment[BUFFER_Y][BUFFER_X];
+    groupshared float4 s_SpecResponsiveYCoCg[BUFFER_Y][BUFFER_X];
+    groupshared float4 s_SpecNoisy_M2[BUFFER_Y][BUFFER_X];
 #endif
 
 #ifdef RELAX_DIFFUSE
-    groupshared float4 sharedDiffuseNoisyAnd2ndMoment[BUFFER_Y][BUFFER_X];
-    groupshared float4 sharedDiffuseResponsiveYCoCg[BUFFER_Y][BUFFER_X];
+    groupshared float4 s_DiffNoisy_M2[BUFFER_Y][BUFFER_X];
+    groupshared float4 s_DiffResponsiveYCoCg[BUFFER_Y][BUFFER_X];
 #endif
 
 void Preload(uint2 sharedPos, int2 globalPos)
@@ -23,30 +23,37 @@ void Preload(uint2 sharedPos, int2 globalPos)
     globalPos = clamp(globalPos, 0, gRectSize - 1.0);
 
     #ifdef RELAX_SPECULAR
-        float4 specularResponsive = gSpecIlluminationResponsive[globalPos];
-        sharedSpecularResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(Color::RgbToYCoCg(specularResponsive.rgb), specularResponsive.a);
+        float4 specularResponsive = gIn_SpecFast[globalPos];
+        s_SpecResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(Color::RgbToYCoCg(specularResponsive.rgb), specularResponsive.a);
 
-        float4 specularNoisy = gNoisySpecularIllumination[globalPos];
+        float4 specularNoisy = gIn_SpecNoisy[globalPos];
         float specularNoisyLuminance = Color::Luminance(specularNoisy.rgb);
-        sharedSpecularNoisyAnd2ndMoment[sharedPos.y][sharedPos.x] = float4(specularNoisy.rgb, specularNoisyLuminance * specularNoisyLuminance);
+        s_SpecNoisy_M2[sharedPos.y][sharedPos.x] = float4(specularNoisy.rgb, specularNoisyLuminance * specularNoisyLuminance);
 
     #endif
 
     #ifdef RELAX_DIFFUSE
-        float4 diffuseResponsive = gDiffIlluminationResponsive[globalPos];
-        sharedDiffuseResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(Color::RgbToYCoCg(diffuseResponsive.rgb), diffuseResponsive.a);
+        float4 diffuseResponsive = gIn_DiffFast[globalPos];
+        s_DiffResponsiveYCoCg[sharedPos.y][sharedPos.x] = float4(Color::RgbToYCoCg(diffuseResponsive.rgb), diffuseResponsive.a);
 
-        float4 diffuseNoisy = gNoisyDiffuseIllumination[globalPos];
+        float4 diffuseNoisy = gIn_DiffNoisy[globalPos];
         float diffuseNoisyLuminance = Color::Luminance(diffuseNoisy.rgb);
-        sharedDiffuseNoisyAnd2ndMoment[sharedPos.y][sharedPos.x] = float4(diffuseNoisy.rgb, diffuseNoisyLuminance * diffuseNoisyLuminance);
+        s_DiffNoisy_M2[sharedPos.y][sharedPos.x] = float4(diffuseNoisy.rgb, diffuseNoisyLuminance * diffuseNoisyLuminance);
     #endif
 }
+
+/*
+// TODO: antilag code can be simplified to this:
+    float f = saturate( ( lumaSlowClamped - lumaSlow ) / ( lumaFast - lumaSlow ) * gAccelerationAmount );
+    slow = lerp( slow, fast, f );
+    fast = lerp( fast, noisyFirstMoment, f );
+*/
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
 {
     // Preload
-    float isSky = gTiles[pixelPos >> 4];
+    float isSky = gIn_Tiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -54,7 +61,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         return;
 
     // Reading history length
-    float historyLength = 255.0 * gHistoryLength[pixelPos];
+    float historyLength = 255.0 * gIn_HistoryLength[pixelPos];
 
     // Reading normal history
 #ifdef RELAX_SPECULAR
@@ -82,21 +89,21 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
             uint2 sharedMemoryIndexP = sharedMemoryIndex + int2(dx, dy);
 
 #ifdef RELAX_SPECULAR
-            float3 specularSampleYCoCg = sharedSpecularResponsiveYCoCg[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
+            float3 specularSampleYCoCg = s_SpecResponsiveYCoCg[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
             specularResponsiveFirstMomentYCoCg += specularSampleYCoCg;
             specularResponsiveSecondMomentYCoCg += specularSampleYCoCg * specularSampleYCoCg;
 
-            float4 specularNoisySample = sharedSpecularNoisyAnd2ndMoment[sharedMemoryIndexP.y][sharedMemoryIndexP.x];
+            float4 specularNoisySample = s_SpecNoisy_M2[sharedMemoryIndexP.y][sharedMemoryIndexP.x];
             specularNoisyFirstMoment += specularNoisySample.rgb;
             specularNoisySecondMoment += specularNoisySample.a;
 #endif
 
 #ifdef RELAX_DIFFUSE
-            float3 diffuseSampleYCoCg = sharedDiffuseResponsiveYCoCg[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
+            float3 diffuseSampleYCoCg = s_DiffResponsiveYCoCg[sharedMemoryIndexP.y][sharedMemoryIndexP.x].rgb;
             diffuseResponsiveFirstMomentYCoCg += diffuseSampleYCoCg;
             diffuseResponsiveSecondMomentYCoCg += diffuseSampleYCoCg * diffuseSampleYCoCg;
 
-            float4 diffuseNoisySample = sharedDiffuseNoisyAnd2ndMoment[sharedMemoryIndexP.y][sharedMemoryIndexP.x];
+            float4 diffuseNoisySample = s_DiffNoisy_M2[sharedMemoryIndexP.y][sharedMemoryIndexP.x];
             diffuseNoisyFirstMoment += diffuseNoisySample.rgb;
             diffuseNoisySecondMoment += diffuseNoisySample.a;
 #endif
@@ -114,12 +121,12 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 specularResponsiveColorMaxYCoCg = specularResponsiveFirstMomentYCoCg + gColorBoxSigmaScale * specularResponsiveSigmaYCoCg;
 
     // Expanding color box with color of the center pixel to minimize introduced bias
-    float4 specularResponsiveCenterYCoCg = sharedSpecularResponsiveYCoCg[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float4 specularResponsiveCenterYCoCg = s_SpecResponsiveYCoCg[sharedMemoryIndex.y][sharedMemoryIndex.x];
     specularResponsiveColorMinYCoCg = min(specularResponsiveColorMinYCoCg, specularResponsiveCenterYCoCg.rgb);
     specularResponsiveColorMaxYCoCg = max(specularResponsiveColorMaxYCoCg, specularResponsiveCenterYCoCg.rgb);
 
     // Clamping color with color box expansion
-    float4 specularIlluminationAnd2ndMoment = gSpecIllumination[pixelPos];
+    float4 specularIlluminationAnd2ndMoment = gIn_Spec[pixelPos];
     float3 specularYCoCg = Color::RgbToYCoCg(specularIlluminationAnd2ndMoment.rgb);
     float3 clampedSpecularYCoCg = specularYCoCg;
     if (gSpecMaxFastAccumulatedFrameNum < gSpecMaxAccumulatedFrameNum)
@@ -190,8 +197,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     specularHistoryResetAmount = saturate(specularHistoryResetAmount);
 
     // Resetting history
-    outSpecular.rgb = lerp(outSpecular.rgb, sharedSpecularNoisyAnd2ndMoment[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, specularHistoryResetAmount);
-    outSpecularResponsive.rgb = lerp(outSpecularResponsive.rgb, sharedSpecularNoisyAnd2ndMoment[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, specularHistoryResetAmount);
+    outSpecular.rgb = lerp(outSpecular.rgb, s_SpecNoisy_M2[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, specularHistoryResetAmount);
+    outSpecularResponsive.rgb = lerp(outSpecularResponsive.rgb, s_SpecNoisy_M2[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, specularHistoryResetAmount);
 
     // 2nd moment correction
     float outSpecularL = Color::Luminance(outSpecular.rgb);
@@ -201,15 +208,15 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     outSpecular.a = max(0, outSpecular.a);
 
     // Writing outputs
-    gOutSpecularIllumination[pixelPos.xy] = outSpecular;
-    gOutSpecularIlluminationResponsive[pixelPos.xy] = outSpecularResponsive;
+    gOut_Spec[pixelPos.xy] = outSpecular;
+    gOut_SpecFast[pixelPos.xy] = outSpecularResponsive;
 
 #ifdef RELAX_SH
-    float4 specularSH1 = gSpecSH1[pixelPos.xy];
-    float4 specularResponsiveSH1 = gSpecResponsiveSH1[pixelPos.xy];
+    float4 specularSH = gIn_SpecSh[pixelPos.xy];
+    float4 specularResponsiveSH = gIn_SpecShFast[pixelPos.xy];
 
-    gOutSpecularSH1[pixelPos.xy] = lerp(specularSH1, specularResponsiveSH1, specClampingFactor);
-    gOutSpecularResponsiveSH1[pixelPos.xy] = specularResponsiveSH1;
+    gOut_SpecSh[pixelPos.xy] = lerp(specularSH, specularResponsiveSH, specClampingFactor);
+    gOut_SpecShFast[pixelPos.xy] = specularResponsiveSH;
 #endif
 
 #endif
@@ -225,13 +232,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 diffuseResponsiveColorMaxYCoCg = diffuseResponsiveFirstMomentYCoCg + gColorBoxSigmaScale * diffuseResponsiveSigmaYCoCg;
 
     // Expanding color box with color of the center pixel to minimize introduced bias
-    float4 diffuseResponsiveCenterYCoCg = sharedDiffuseResponsiveYCoCg[sharedMemoryIndex.y][sharedMemoryIndex.x];
+    float4 diffuseResponsiveCenterYCoCg = s_DiffResponsiveYCoCg[sharedMemoryIndex.y][sharedMemoryIndex.x];
     diffuseResponsiveColorMinYCoCg = min(diffuseResponsiveColorMinYCoCg, diffuseResponsiveCenterYCoCg.rgb);
     diffuseResponsiveColorMaxYCoCg = max(diffuseResponsiveColorMaxYCoCg, diffuseResponsiveCenterYCoCg.rgb);
 
 
     // Clamping color with color box expansion
-    float4 diffuseIlluminationAnd2ndMoment = gDiffIllumination[pixelPos];
+    float4 diffuseIlluminationAnd2ndMoment = gIn_Diff[pixelPos];
     float3 diffuseYCoCg = Color::RgbToYCoCg(diffuseIlluminationAnd2ndMoment.rgb);
     float3 clampedDiffuseYCoCg = diffuseYCoCg;
     if (gDiffMaxFastAccumulatedFrameNum < gDiffMaxAccumulatedFrameNum)
@@ -300,8 +307,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float diffuseHistoryResetAmount = gHistoryResetAmount * max(0, abs(diffuseL - diffuseNoisyInputL) - noisydiffuseSpatialSigma - noisydiffuseTemporalSigma) / (1.0e-6 + max(diffuseL, diffuseNoisyInputL) + noisydiffuseSpatialSigma + noisydiffuseTemporalSigma);
     diffuseHistoryResetAmount = saturate(diffuseHistoryResetAmount);
     // Resetting history
-    outDiffuse.rgb = lerp(outDiffuse.rgb, sharedDiffuseNoisyAnd2ndMoment[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, diffuseHistoryResetAmount);
-    outDiffuseResponsive.rgb = lerp(outDiffuseResponsive.rgb, sharedDiffuseNoisyAnd2ndMoment[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, diffuseHistoryResetAmount);
+    outDiffuse.rgb = lerp(outDiffuse.rgb, s_DiffNoisy_M2[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, diffuseHistoryResetAmount);
+    outDiffuseResponsive.rgb = lerp(outDiffuseResponsive.rgb, s_DiffNoisy_M2[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb, diffuseHistoryResetAmount);
 
     // 2nd moment correction
     float outDiffuseL = Color::Luminance(outDiffuse.rgb);
@@ -311,19 +318,19 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     outDiffuse.a = max(0, outDiffuse.a);
 
     // Writing outputs
-    gOutDiffuseIllumination[pixelPos.xy] = outDiffuse;
-    gOutDiffuseIlluminationResponsive[pixelPos.xy] = outDiffuseResponsive;
+    gOut_Diff[pixelPos.xy] = outDiffuse;
+    gOut_DiffFast[pixelPos.xy] = outDiffuseResponsive;
 
     #ifdef RELAX_SH
-        float4 diffuseSH1 = gDiffSH1[pixelPos.xy];
-        float4 diffuseResponsiveSH1 = gDiffResponsiveSH1[pixelPos.xy];
+        float4 diffuseSH = gIn_DiffSh[pixelPos.xy];
+        float4 diffuseResponsiveSH = gIn_DiffShFast[pixelPos.xy];
 
-        gOutDiffuseSH1[pixelPos.xy] = lerp(diffuseSH1, diffuseResponsiveSH1, diffClampingFactor);
-        gOutDiffuseResponsiveSH1[pixelPos.xy] = diffuseResponsiveSH1;
+        gOut_DiffSh[pixelPos.xy] = lerp(diffuseSH, diffuseResponsiveSH, diffClampingFactor);
+        gOut_DiffShFast[pixelPos.xy] = diffuseResponsiveSH;
     #endif
 
 #endif
 
     // Writing out history length for use in the next frame
-    gOutHistoryLength[pixelPos] = historyLength / 255.0;
+    gOut_HistoryLength[pixelPos] = historyLength / 255.0;
 }

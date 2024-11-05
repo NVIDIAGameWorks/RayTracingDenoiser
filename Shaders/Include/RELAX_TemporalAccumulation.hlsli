@@ -37,7 +37,7 @@ float loadSurfaceMotionBasedPrevData(
     float currentReflectionHitT,
 #endif
     float NoV,
-    float parallaxInPixels,
+    float smbParallaxInPixelsMax,
     float currentMaterialID,
     uint materialIDMask,
     float disocclusionThreshold,
@@ -48,8 +48,8 @@ float loadSurfaceMotionBasedPrevData(
     , out float4 prevDiffuseIllumAnd2ndMoment
     , out float3 prevDiffuseResponsiveIllum
     #ifdef RELAX_SH
-        , out float4 prevDiffuseSH1
-        , out float4 prevDiffuseResponsiveSH1
+        , out float4 prevDiffuseSH
+        , out float4 prevDiffuseResponsiveSH
     #endif
 #endif
 #ifdef RELAX_SPECULAR
@@ -57,8 +57,8 @@ float loadSurfaceMotionBasedPrevData(
     , out float3 prevSpecularResponsiveIllum
     , out float  prevReflectionHitT
     #ifdef RELAX_SH
-        , out float4 prevSpecularSH1
-        , out float4 prevSpecularResponsiveSH1
+        , out float4 prevSpecularSH
+        , out float4 prevSpecularResponsiveSH
     #endif
 #endif
 )
@@ -86,19 +86,19 @@ float loadSurfaceMotionBasedPrevData(
     float2 gatherOrigin10 = (float2(bilinearOrigin) + float2(2.0, 0.0)) * gResourceSizeInvPrev;
     float2 gatherOrigin01 = (float2(bilinearOrigin) + float2(0.0, 2.0)) * gResourceSizeInvPrev;
     float2 gatherOrigin11 = (float2(bilinearOrigin) + float2(2.0, 2.0)) * gResourceSizeInvPrev;
-    float4 prevViewZs00 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin00).wzxy);
-    float4 prevViewZs10 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin10).wzxy);
-    float4 prevViewZs01 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin01).wzxy);
-    float4 prevViewZs11 = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin11).wzxy);
-    float4 prevMaterialIDs00 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin00).wzxy;
-    float4 prevMaterialIDs10 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin10).wzxy;
-    float4 prevMaterialIDs01 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin01).wzxy;
-    float4 prevMaterialIDs11 = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin11).wzxy;
+    float4 prevViewZs00 = UnpackViewZ(gPrev_ViewZ.GatherRed(gNearestClamp, gatherOrigin00).wzxy);
+    float4 prevViewZs10 = UnpackViewZ(gPrev_ViewZ.GatherRed(gNearestClamp, gatherOrigin10).wzxy);
+    float4 prevViewZs01 = UnpackViewZ(gPrev_ViewZ.GatherRed(gNearestClamp, gatherOrigin01).wzxy);
+    float4 prevViewZs11 = UnpackViewZ(gPrev_ViewZ.GatherRed(gNearestClamp, gatherOrigin11).wzxy);
+    float4 prevMaterialIDs00 = gPrev_MateriallID.GatherRed(gNearestClamp, gatherOrigin00).wzxy * 255.0;
+    float4 prevMaterialIDs10 = gPrev_MateriallID.GatherRed(gNearestClamp, gatherOrigin10).wzxy * 255.0;
+    float4 prevMaterialIDs01 = gPrev_MateriallID.GatherRed(gNearestClamp, gatherOrigin01).wzxy * 255.0;
+    float4 prevMaterialIDs11 = gPrev_MateriallID.GatherRed(gNearestClamp, gatherOrigin11).wzxy * 255.0;
 
     // Calculating disocclusion threshold
     float pixelSize = PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, currentLinearZ);
     float frustumSize = pixelSize * min(gRectSize.x, gRectSize.y);
-    float disocclusionThresholdSlopeScale = 1.0 / lerp(lerp(0.05, 1.0, NoV), 1.0, saturate(parallaxInPixels / 30.0));
+    float disocclusionThresholdSlopeScale = 1.0 / lerp(lerp(0.05, 1.0, NoV), 1.0, saturate(smbParallaxInPixelsMax / 30.0));
     float4 smbDisocclusionThreshold = saturate(disocclusionThreshold * disocclusionThresholdSlopeScale) * frustumSize;
     smbDisocclusionThreshold *= IsInScreenBilinear(bilinearOrigin, gRectSizePrev);
     smbDisocclusionThreshold -= NRD_EPS;
@@ -123,7 +123,7 @@ float loadSurfaceMotionBasedPrevData(
 
     // Using bilinear to average 4 normal samples
     float2 uv = (float2(bilinearOrigin)+float2(1.0, 1.0)) * gResourceSizeInvPrev;
-    float3 prevNormalFlat = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, uv, 0)).xyz;
+    float3 prevNormalFlat = UnpackPrevNormalRoughness(gPrev_Normal_Roughness.SampleLevel(gLinearClamp, uv, 0)).xyz;
     prevNormalFlat = Geometry::RotateVector(gWorldPrevToWorld, prevNormalFlat);
 
     // Reject backfacing history: if angle between current normal and previous normal is larger than 90 deg
@@ -146,10 +146,10 @@ float loadSurfaceMotionBasedPrevData(
         prevPixelPosFloat, gResourceSizeInvPrev,
         bilinearCustomWeights, useBicubic
     #ifdef RELAX_DIFFUSE
-        , gPrevDiffuseIllumination, prevDiffuseIllumAnd2ndMoment
+        , gHistory_Diff, prevDiffuseIllumAnd2ndMoment
     #endif
     #ifdef RELAX_SPECULAR
-        , gPrevSpecularIllumination, prevSpecularIllumAnd2ndMoment
+        , gHistory_Spec, prevSpecularIllumAnd2ndMoment
     #endif
     );
 
@@ -160,10 +160,10 @@ float loadSurfaceMotionBasedPrevData(
         prevPixelPosFloat, gResourceSizeInvPrev,
         bilinearCustomWeights, useBicubic
     #ifdef RELAX_DIFFUSE
-        , gPrevDiffuseIlluminationResponsive, diff
+        , gHistory_DiffFast, diff
     #endif
     #ifdef RELAX_SPECULAR
-        , gPrevSpecularIlluminationResponsive, spec
+        , gHistory_SpecFast, spec
     #endif
     );
 
@@ -179,18 +179,18 @@ float loadSurfaceMotionBasedPrevData(
     // Fitering previous SH data
 #ifdef RELAX_SH
     #ifdef RELAX_DIFFUSE
-        prevDiffuseSH1 = BilinearWithCustomWeightsFloat4(gPrevDiffuseSH1, bilinearOrigin, bilinearCustomWeights);
-        prevDiffuseResponsiveSH1 = BilinearWithCustomWeightsFloat4(gPrevDiffuseResponsiveSH1, bilinearOrigin, bilinearCustomWeights);
+        prevDiffuseSH = BilinearWithCustomWeightsFloat4(gHistory_DiffSh, bilinearOrigin, bilinearCustomWeights);
+        prevDiffuseResponsiveSH = BilinearWithCustomWeightsFloat4(gHistory_DiffShFast, bilinearOrigin, bilinearCustomWeights);
     #endif
     #ifdef RELAX_SPECULAR
-        prevSpecularSH1 = BilinearWithCustomWeightsFloat4(gPrevSpecularSH1, bilinearOrigin, bilinearCustomWeights);
-        prevSpecularResponsiveSH1 = BilinearWithCustomWeightsFloat4(gPrevSpecularResponsiveSH1, bilinearOrigin, bilinearCustomWeights);
+        prevSpecularSH = BilinearWithCustomWeightsFloat4(gHistory_SpecSh, bilinearOrigin, bilinearCustomWeights);
+        prevSpecularResponsiveSH = BilinearWithCustomWeightsFloat4(gHistory_SpecShFast, bilinearOrigin, bilinearCustomWeights);
     #endif
 #endif
 
     // Fitering more previous data that does not need bicubic
     float2 gatherOrigin = (float2(bilinearOrigin) + 1.0) * gResourceSizeInvPrev;
-    float4 prevHistoryLengths = gPrevHistoryLength.GatherRed(gNearestClamp, gatherOrigin).wzxy;
+    float4 prevHistoryLengths = gPrev_HistoryLength.GatherRed(gNearestClamp, gatherOrigin).wzxy;
     historyLength = 255.0 * BilinearWithCustomWeightsImmediateFloat(
         prevHistoryLengths.x,
         prevHistoryLengths.y,
@@ -199,7 +199,7 @@ float loadSurfaceMotionBasedPrevData(
         bilinearCustomWeights);
 
 #ifdef RELAX_SPECULAR
-    float4 prevReflectionHitTs = gPrevReflectionHitT.GatherRed(gNearestClamp, gatherOrigin).wzxy;
+    float4 prevReflectionHitTs = gPrev_SpecHitDist.GatherRed(gNearestClamp, gatherOrigin).wzxy;
     prevReflectionHitT = BilinearWithCustomWeightsImmediateFloat(prevReflectionHitTs.x, prevReflectionHitTs.y, prevReflectionHitTs.z, prevReflectionHitTs.w, bilinearCustomWeights);
     prevReflectionHitT = max(0.001, prevReflectionHitT);
 #endif
@@ -232,7 +232,7 @@ float loadVirtualMotionBasedPrevData(
     float currentMaterialID,
     uint materialIDMask,
     float2 prevSurfaceMotionBasedUV,
-    float parallaxInPixels,
+    float smbParallaxInPixelsMax,
     float NoV,
     float disocclusionThreshold,
     out float4 prevSpecularIllumAnd2ndMoment,
@@ -242,8 +242,8 @@ float loadVirtualMotionBasedPrevData(
     out float prevReflectionHitT,
     out float2 prevUVVMB
     #ifdef RELAX_SH
-        , out float4 prevSpecularSH1
-        , out float4 prevSpecularResponsiveSH1
+        , out float4 prevSpecularSH
+        , out float4 prevSpecularResponsiveSH
     #endif
     )
 {
@@ -274,8 +274,8 @@ float loadVirtualMotionBasedPrevData(
     vmbDisocclusionThreshold -= NRD_EPS;
 
     // Checking bilinear footprint only for virtual motion based specular reprojection
-    float4 prevViewZs = UnpackViewZ(gPrevViewZ.GatherRed(gNearestClamp, gatherOrigin).wzxy);
-    float4 prevMaterialIDs = gPrevMaterialID.GatherRed(gNearestClamp, gatherOrigin).wzxy;
+    float4 prevViewZs = UnpackViewZ(gPrev_ViewZ.GatherRed(gNearestClamp, gatherOrigin).wzxy);
+    float4 prevMaterialIDs = gPrev_MateriallID.GatherRed(gNearestClamp, gatherOrigin).wzxy * 255.0;
     float3 prevWorldPosInTap;
     float4 bilinearTapsValid;
 
@@ -297,8 +297,8 @@ float loadVirtualMotionBasedPrevData(
     prevRoughness = 0;
     prevReflectionHitT = gDenoisingRange;
     #ifdef RELAX_SH
-        prevSpecularSH1 = 0;
-        prevSpecularResponsiveSH1 = 0;
+        prevSpecularSH = 0;
+        prevSpecularResponsiveSH = 0;
     #endif
 
     // Weighted bilinear (or bicubic optionally) for prev specular data based on virtual motion.
@@ -315,7 +315,7 @@ float loadVirtualMotionBasedPrevData(
         BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             prevVirtualPixelPosFloat, gResourceSizeInvPrev,
             bilinearCustomWeights, useBicubic,
-            gPrevSpecularIllumination, prevSpecularIllumAnd2ndMoment);
+            gHistory_Spec, prevSpecularIllumAnd2ndMoment);
 
         prevSpecularIllumAnd2ndMoment = max(prevSpecularIllumAnd2ndMoment, 0.0);
 
@@ -323,21 +323,21 @@ float loadVirtualMotionBasedPrevData(
         BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
             prevVirtualPixelPosFloat, gResourceSizeInvPrev,
             bilinearCustomWeights, useBicubic,
-            gPrevSpecularIlluminationResponsive, prevSpecularResponsiveIllum);
+            gHistory_SpecFast, prevSpecularResponsiveIllum);
 
         prevSpecularResponsiveIllum = max(prevSpecularResponsiveIllum, 0.0);
 
         // Fitering previous SH data
         #ifdef RELAX_SH
-            prevSpecularSH1 = BilinearWithCustomWeightsFloat4(gPrevSpecularSH1, bilinearOrigin, bilinearCustomWeights);
-            prevSpecularResponsiveSH1 = BilinearWithCustomWeightsFloat4(gPrevSpecularResponsiveSH1, bilinearOrigin, bilinearCustomWeights);
+            prevSpecularSH = BilinearWithCustomWeightsFloat4(gHistory_SpecSh, bilinearOrigin, bilinearCustomWeights);
+            prevSpecularResponsiveSH = BilinearWithCustomWeightsFloat4(gHistory_SpecShFast, bilinearOrigin, bilinearCustomWeights);
         #endif
 
         // Fitering previous data that does not need bicubic
-        prevReflectionHitT = gPrevReflectionHitT.SampleLevel(gLinearClamp, prevUVVMB * gResolutionScalePrev, 0).x;
+        prevReflectionHitT = gPrev_SpecHitDist.SampleLevel(gLinearClamp, prevUVVMB * gResolutionScalePrev, 0).x;
         prevReflectionHitT = max(0.001, prevReflectionHitT);
 
-        float4 prevNormalRoughness = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, prevUVVMB * gResolutionScalePrev, 0));
+        float4 prevNormalRoughness = UnpackPrevNormalRoughness(gPrev_Normal_Roughness.SampleLevel(gLinearClamp, prevUVVMB * gResolutionScalePrev, 0));
         prevNormal = prevNormalRoughness.xyz;
         prevNormal = Geometry::RotateVector(gWorldPrevToWorld, prevNormal);
         prevRoughness = prevNormalRoughness.w;
@@ -353,11 +353,11 @@ void Preload(uint2 sharedPos, int2 globalPos)
 {
     globalPos = clamp(globalPos, 0, gRectSize - 1.0);
 
-    float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[WithRectOrigin(globalPos)]);
+    float4 normalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[WithRectOrigin(globalPos)]);
     float4 normalSpecHitT = normalRoughness;
 
 #ifdef RELAX_SPECULAR
-    float4 inSpecularIllumination = gSpecIllumination[globalPos];
+    float4 inSpecularIllumination = gIn_Spec[globalPos];
     normalSpecHitT.a = inSpecularIllumination.a;
 #endif
 
@@ -368,7 +368,7 @@ void Preload(uint2 sharedPos, int2 globalPos)
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
 {
-    float isSky = gTiles[pixelPos >> 4];
+    float isSky = gIn_Tiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -376,7 +376,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         return;
 
     // Early out if linearZ is beyond denoising range
-    float currentLinearZ = UnpackViewZ(gViewZ[WithRectOrigin(pixelPos)]);
+    float currentLinearZ = UnpackViewZ(gIn_ViewZ[WithRectOrigin(pixelPos)]);
     if (currentLinearZ > gDenoisingRange)
         return;
 
@@ -384,7 +384,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Reading current GBuffer data
     float currentMaterialID;
-    float4 currentNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[WithRectOrigin(pixelPos)], currentMaterialID);
+    float4 currentNormalRoughness = NRD_FrontEnd_UnpackNormalAndRoughness(gIn_Normal_Roughness[WithRectOrigin(pixelPos)], currentMaterialID);
     float3 currentNormal = currentNormalRoughness.xyz;
     float currentRoughness = currentNormalRoughness.w;
 
@@ -396,35 +396,35 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Getting previous position
     float2 pixelUv = float2(pixelPos + 0.5) * gRectSizeInv;
-    float3 mv = gMv[WithRectOrigin(pixelPos)] * gMvScale.xyz;
+    float3 mv = gIn_Mv[WithRectOrigin(pixelPos)] * gMvScale.xyz;
     float3 prevWorldPos = currentWorldPos;
     float2 prevUVSMB = pixelUv + mv.xy;
 
-    if (gMvScale.w != 0.0)
-    {
-        prevWorldPos += mv;
-        prevUVSMB = Geometry::GetScreenUv(gWorldToClipPrev, prevWorldPos);
-    }
-    else
+    if (gMvScale.w == 0.0)
     {
         if (gMvScale.z == 0.0)
             mv.z = Geometry::AffineTransform(gWorldToViewPrev, currentWorldPos).z - currentLinearZ;
 
         prevWorldPos = GetPreviousWorldPosFromClipSpaceXY(prevUVSMB * 2.0 - 1.0, currentLinearZ + mv.z) + gCameraDelta.xyz;
     }
+    else
+    {
+        prevWorldPos += mv;
+        prevUVSMB = Geometry::GetScreenUv(gWorldToClipPrev, prevWorldPos);
+    }
 
     // Input noisy data
 #ifdef RELAX_DIFFUSE
-    float3 diffuseIllumination = gDiffIllumination[pixelPos].rgb;
+    float3 diffuseIllumination = gIn_Diff[pixelPos].rgb;
     #ifdef RELAX_SH
-        float4 diffuseSH1 = gDiffSH1[pixelPos];
+        float4 diffuseSH = gIn_DiffSh[pixelPos];
     #endif
 #endif
 
 #ifdef RELAX_SPECULAR
-    float4 specularIllumination = gSpecIllumination[pixelPos];
+    float4 specularIllumination = gIn_Spec[pixelPos];
     #ifdef RELAX_SH
-        float4 specularSH1 = gSpecSH1[pixelPos];
+        float4 specularSH = gIn_SpecSh[pixelPos];
     #endif
 #endif
 
@@ -467,7 +467,12 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 #endif
 
     // Calculating surface parallax
-    float parallaxInPixels = ComputeParallaxInPixels(prevWorldPos + gCameraDelta.xyz, gOrthoMode == 0.0 ? prevUVSMB : pixelUv, gWorldToClipPrev, gRectSize);
+    float smbParallaxInPixels1 = ComputeParallaxInPixels( prevWorldPos + gCameraDelta.xyz, gOrthoMode == 0.0 ? prevUVSMB : pixelUv, gWorldToClipPrev, gRectSize );
+    float smbParallaxInPixels2 = ComputeParallaxInPixels( prevWorldPos - gCameraDelta.xyz, gOrthoMode == 0.0 ? pixelUv : prevUVSMB, gWorldToClip, gRectSize );
+
+    float smbParallaxInPixelsMax = max( smbParallaxInPixels1, smbParallaxInPixels2 );
+    float smbParallaxInPixelsMin = min( smbParallaxInPixels1, smbParallaxInPixels2 );
+
     float pixelSize = PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, currentLinearZ);
 
     // Calculating disocclusion threshold
@@ -475,7 +480,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     if(currentMaterialID == gStrandMaterialID)
         disocclusionThresholdMix = NRD_GetNormalizedStrandThickness(gStrandThickness, pixelSize);
     if(gHasDisocclusionThresholdMix && NRD_USE_DISOCCLUSION_THRESHOLD_MIX)
-        disocclusionThresholdMix = gDisocclusionThresholdMix[WithRectOrigin(pixelPos)];
+        disocclusionThresholdMix = gIn_DisocclusionThresholdMix[WithRectOrigin(pixelPos)];
 
     float disocclusionThreshold = lerp(gDisocclusionThreshold, gDisocclusionThresholdAlternate, disocclusionThresholdMix);
 
@@ -485,8 +490,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float4 prevDiffuseIlluminationAnd2ndMomentSMB;
     float3 prevDiffuseIlluminationAnd2ndMomentSMBResponsive;
     #ifdef RELAX_SH
-        float4 prevDiffuseSH1;
-        float4 prevDiffuseResponsiveSH1;
+        float4 prevDiffuseSH;
+        float4 prevDiffuseResponsiveSH;
     #endif
 #endif
 
@@ -495,8 +500,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 prevSpecularIlluminationAnd2ndMomentSMBResponsive;
     float  prevReflectionHitTSMB;
     #ifdef RELAX_SH
-        float4 prevSpecularSMBSH1;
-        float4 prevSpecularSMBResponsiveSH1;
+        float4 prevSpecularSMBSH;
+        float4 prevSpecularSMBResponsiveSH;
     #endif
 #endif
 
@@ -511,7 +516,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         specularIllumination.a,
     #endif
         NoV,
-        parallaxInPixels,
+        smbParallaxInPixelsMax,
         currentMaterialID,
         gDiffMaterialMask | gSpecMaterialMask, // TODO: improve?
         disocclusionThreshold,
@@ -521,8 +526,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         , prevDiffuseIlluminationAnd2ndMomentSMB
         , prevDiffuseIlluminationAnd2ndMomentSMBResponsive
         #ifdef RELAX_SH
-            , prevDiffuseSH1
-            , prevDiffuseResponsiveSH1
+            , prevDiffuseSH
+            , prevDiffuseResponsiveSH
         #endif
     #endif
     #ifdef RELAX_SPECULAR
@@ -530,8 +535,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         , prevSpecularIlluminationAnd2ndMomentSMBResponsive
         , prevReflectionHitTSMB
         #ifdef RELAX_SH
-            , prevSpecularSMBSH1
-            , prevSpecularSMBResponsiveSH1
+            , prevSpecularSMBSH
+            , prevSpecularSMBResponsiveSH
         #endif
     #endif
     );
@@ -580,7 +585,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
     {
-        float inDiffConfidence = gDiffConfidence[WithRectOrigin(pixelPos)];
+        float inDiffConfidence = gIn_DiffConfidence[WithRectOrigin(pixelPos)];
         diffMaxAccumulatedFrameNum *= inDiffConfidence;
         diffMaxFastAccumulatedFrameNum *= inDiffConfidence;
     }
@@ -605,25 +610,25 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 accumulatedDiffuseIlluminationResponsive = lerp(prevDiffuseIlluminationAnd2ndMomentSMBResponsive.rgb, diffuseIllumination.rgb, diffuseAlphaResponsive);
 
     // Write out the diffuse results
-    gOutDiffuseIllumination[pixelPos] = accumulatedDiffuseIlluminationAnd2ndMoment;
-    gOutDiffuseIlluminationResponsive[pixelPos] = float4(accumulatedDiffuseIlluminationResponsive, 0);
+    gOut_Diff[pixelPos] = accumulatedDiffuseIlluminationAnd2ndMoment;
+    gOut_DiffFast[pixelPos] = float4(accumulatedDiffuseIlluminationResponsive, 0);
 
     #ifdef RELAX_SH
-        float4 accumulatedDiffuseSH1 = lerp(prevDiffuseSH1, diffuseSH1, diffuseAlpha);
-        float4 accumulatedDiffuseResponsiveSH1 = lerp(prevDiffuseResponsiveSH1, diffuseSH1, diffuseAlphaResponsive);
-        gOutDiffuseSH1[pixelPos] = accumulatedDiffuseSH1;
-        gOutDiffuseResponsiveSH1[pixelPos] = float4(accumulatedDiffuseResponsiveSH1);
+        float4 accumulatedDiffuseSH = lerp(prevDiffuseSH, diffuseSH, diffuseAlpha);
+        float4 accumulatedDiffuseResponsiveSH = lerp(prevDiffuseResponsiveSH, diffuseSH, diffuseAlphaResponsive);
+        gOut_DiffSh[pixelPos] = accumulatedDiffuseSH;
+        gOut_DiffShFast[pixelPos] = float4(accumulatedDiffuseResponsiveSH);
     #endif
 #endif
 
-    gOutHistoryLength[pixelPos] = historyLength / 255.0;
+    gOut_HistoryLength[pixelPos] = historyLength / 255.0;
 
 #ifdef RELAX_SPECULAR
     float specMaxAccumulatedFrameNum = gSpecMaxAccumulatedFrameNum;
     float specMaxFastAccumulatedFrameNum = gSpecMaxFastAccumulatedFrameNum;
     if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
     {
-        float inSpecConfidence = gSpecConfidence[WithRectOrigin(pixelPos)];
+        float inSpecConfidence = gIn_SpecConfidence[WithRectOrigin(pixelPos)];
         specMaxAccumulatedFrameNum *= inSpecConfidence;
         specMaxFastAccumulatedFrameNum *= inSpecConfidence;
     }
@@ -636,77 +641,84 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float hitDist = minHitDist3x3 == NRD_INF ? 0.0 : minHitDist3x3;
 
     // Calculating curvature along the direction of motion
-    // IMPORTANT: this code allows to get non-zero parallax on objects attached to the camera
-    float2 uvForZeroParallax = gOrthoMode == 0.0 ? prevUVSMB : pixelUv;
-    float2 deltaUv = Geometry::GetScreenUv(gWorldToClipPrev, prevWorldPos - gCameraDelta.xyz) - uvForZeroParallax;
-    deltaUv *= gRectSize;
-    float deltaUvLen = length(deltaUv);
-    deltaUv /= max(deltaUvLen, 1.0 / 256.0);
-    float2 motionUv = pixelUv + 0.99 * deltaUv * gRectSizeInv; // stay in SMEM
-
-    // Construct the other edge point "x"
-    float z = UnpackViewZ(gViewZ.SampleLevel(gLinearClamp, WithRectOffset(motionUv * gResolutionScale), 0));
-    float3 x = GetCurrentWorldPosFromClipSpaceXY(motionUv * 2.0 - 1.0, z);
-
-    // Interpolate normal at "x"
-    Filtering::Bilinear f = Filtering::GetBilinearFilter(motionUv, gRectSize);
-
-    int2 pos = threadPos + BORDER + int2(f.origin) - pixelPos;
-    pos = clamp(pos, 0, int2(BUFFER_X, BUFFER_Y) - 2); // just in case?
-
-    float3 n00 = sharedNormalSpecHitT[pos.y][pos.x].xyz;
-    float3 n10 = sharedNormalSpecHitT[pos.y][pos.x + 1].xyz;
-    float3 n01 = sharedNormalSpecHitT[pos.y + 1][pos.x].xyz;
-    float3 n11 = sharedNormalSpecHitT[pos.y + 1][pos.x + 1].xyz;
-
-    float3 n = _NRD_SafeNormalize(Filtering::ApplyBilinearFilter(n00, n10, n01, n11, f));
-
-    // ( Optional ) High parallax - flattens surface on high motion ( test 132, e9 )
-    // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33 )
-    float deltaUvLenFixed = deltaUvLen * (NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0); // it fixes silhouettes, but leads to less flattening
-    float2 motionUvHigh = pixelUv + deltaUvLenFixed * deltaUv * gRectSizeInv;
-    if (NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLenFixed > 1.0 && IsInScreenNearest(motionUvHigh))
+    float curvature = 0.0;
     {
-        float zHigh = UnpackViewZ(gViewZ.SampleLevel(gLinearClamp, WithRectOffset(motionUvHigh * gResolutionScale), 0));
-        float3 xHigh = GetCurrentWorldPosFromClipSpaceXY(motionUvHigh * 2.0 - 1.0, zHigh);
+        // IMPORTANT: non-zero parallax on objects attached to the camera is needed
+        // IMPORTANT: the direction of "deltaUv" is important ( test 1 )
+        float2 uvForZeroParallax = gOrthoMode == 0.0 ? prevUVSMB : pixelUv;
+        float2 deltaUv = uvForZeroParallax - Geometry::GetScreenUv( gWorldToClipPrev, prevWorldPos + gCameraDelta.xyz ); // TODO: repeats code for "smbParallaxInPixels1" with "-" sign
+        deltaUv *= gRectSize;
+        deltaUv /= max( smbParallaxInPixels1, 1.0 / 256.0 );
 
-        #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-            f = Filtering::GetBilinearFilter(motionUvHigh, gRectSize);
+        // 10 edge
+        float3 n10, x10;
+        {
+            float3 x = GetCurrentWorldPosFromClipSpaceXY( ( pixelUv + float2( 1, 0 ) * gRectSizeInv ) * 2.0 - 1.0, 1.0 );
+            float3 v = gOrthoMode == 0.0 ? normalize( -x ) : gFrustumForward.xyz;
+            float3 o = gOrthoMode == 0.0 ? 0 : x;
 
-            f.origin = clamp(f.origin, 0, gRectSize - 2.0);
-            pos = gRectOrigin + int2(f.origin);
+            x10 = o + v * dot( currentWorldPos - o, currentNormal ) / dot( currentNormal, v ); // line-plane intersection
+            n10 = sharedNormalSpecHitT[ threadPos.y + BORDER ][ threadPos.x + BORDER + 1 ].xyz;
+        }
 
-            n00 = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pos]).xyz;
-            n10 = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pos + int2(1, 0)]).xyz;
-            n01 = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pos + int2(0, 1)]).xyz;
-            n11 = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness[pos + int2(1, 1)]).xyz;
+        // 01 edge
+        float3 n01, x01;
+        {
+            float3 x = GetCurrentWorldPosFromClipSpaceXY( ( pixelUv + float2( 0, 1 ) * gRectSizeInv ) * 2.0 - 1.0, 1.0 );
+            float3 v = gOrthoMode == 0.0 ? normalize( -x ) : gFrustumForward.xyz;
+            float3 o = gOrthoMode == 0.0 ? 0 : x;
 
-            float3 nHigh = _NRD_SafeNormalize(Filtering::ApplyBilinearFilter(n00, n10, n01, n11, f));
-        #else
-            float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness(gNormalRoughness.SampleLevel(gLinearClamp, WithRectOffset(motionUvHigh * gResolutionScale), 0)).xyz;
-        #endif
+            x01 = o + v * dot( currentWorldPos - o, currentNormal ) / dot( currentNormal, v ); // line-plane intersection
+            n01 = sharedNormalSpecHitT[ threadPos.y + BORDER + 1 ][ threadPos.x + BORDER ].xyz;
+        }
 
-        float zError = abs(zHigh - currentLinearZ) * rcp(max(zHigh, currentLinearZ));
-        bool cmp = zError < NRD_CURVATURE_Z_THRESHOLD;
+        // Mix
+        float2 w = abs( deltaUv ) + 1.0 / 256.0;
+        w /= w.x + w.y;
 
-        n = cmp ? nHigh : n;
-        x = cmp ? xHigh : x;
+        float3 x = x10 * w.x + x01 * w.y;
+        float3 n = normalize( n10 * w.x + n01 * w.y );
+
+        // ( Optional ) High parallax - flattens surface on high motion ( test 132, e9 )
+        // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33 )
+        float deltaUvLenFixed = smbParallaxInPixelsMin; // not needed for objects attached to the camera!
+        deltaUvLenFixed *= NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0; // it fixes silhouettes, but leads to less flattening
+
+        float2 motionUvHigh = pixelUv + deltaUvLenFixed * deltaUv * gRectSizeInv;
+        motionUvHigh = ( floor( motionUvHigh * gRectSize ) + 0.5 ) * gRectSizeInv; // Snap to the pixel center!
+
+        if( NRD_USE_HIGH_PARALLAX_CURVATURE && deltaUvLenFixed > 1.0 && IsInScreenNearest( motionUvHigh ) )
+        {
+            float2 uvScaled = WithRectOffset( ClampUvToViewport( motionUvHigh ) );
+
+            float zHigh = UnpackViewZ( gIn_ViewZ.SampleLevel( gNearestClamp, uvScaled, 0 ) );
+            float3 xHigh = GetCurrentWorldPosFromClipSpaceXY( motionUvHigh * 2.0 - 1.0, zHigh );
+
+            float3 nHigh = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness.SampleLevel( gNearestClamp, uvScaled, 0 ) ).xyz;
+
+            // Replace if same surface
+            float zError = abs( zHigh - currentLinearZ ) * rcp( max( zHigh, currentLinearZ ) );
+            bool cmp = zError < NRD_CURVATURE_Z_THRESHOLD; // TODO: use common disocclusion logic?
+
+            n = cmp ? nHigh : n;
+            x = cmp ? xHigh : x;
+        }
+
+        // Estimate curvature for the edge { x; currentWorldPos }
+        float3 edge = x - currentWorldPos;
+        float edgeLenSq = Math::LengthSquared( edge );
+        curvature = dot( n - currentNormal, edge ) * Math::PositiveRcp( edgeLenSq );
+
+        // Correction #1 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
+        if( length( currentWorldPos ) < -1.0 / curvature ) // TODO: test 78
+            curvature *= NoV;
+
+        // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
+        float2 uv1 = Geometry::GetScreenUv( gWorldToClipPrev, currentWorldPos - V * ApplyThinLensEquation( hitDist, curvature ) );
+        float2 uv2 = Geometry::GetScreenUv( gWorldToClipPrev, currentWorldPos );
+        float a = length( ( uv1 - uv2 ) * gRectSize );
+        curvature *= float( a < NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION * smbParallaxInPixelsMax + gRectSizeInv.x );
     }
-
-    // Estimate curvature for the edge { x; currentWorldPos }
-    float3 edge = x - currentWorldPos;
-    float edgeLenSq = Math::LengthSquared(edge);
-    float curvature = dot(n - currentNormal, edge) * Math::PositiveRcp(edgeLenSq);
-
-    // Correction #1 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
-    if (length(currentWorldPos) < -1.0 / curvature)
-        curvature *= NoV;
-
-    // Correction #2 - very negative inconsistent with previous frame curvature blows up reprojection ( tests 164, 171 - 176 )
-    float2 uv1 = Geometry::GetScreenUv(gWorldToClipPrev, currentWorldPos - V * ApplyThinLensEquation(hitDist, curvature));
-    float2 uv2 = Geometry::GetScreenUv(gWorldToClipPrev, currentWorldPos);
-    float a = length((uv1 - uv2) * gRectSize);
-    curvature *= float(a < NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION * deltaUvLen + gRectSizeInv.x);
 
     // Thin lens equation for adjusting reflection HitT
     float hitDistFocused = ApplyThinLensEquation(hitDist, curvature);
@@ -719,8 +731,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float prevRoughnessVMB;
     float prevReflectionHitTVMB;
     #ifdef RELAX_SH
-        float4 prevSpecularVMBSH1;
-        float4 prevSpecularVMBResponsiveSH1;
+        float4 prevSpecularVMBSH;
+        float4 prevSpecularVMBResponsiveSH;
     #endif
 
     float VMBReprojectionFound = loadVirtualMotionBasedPrevData(
@@ -736,7 +748,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         currentMaterialID,
         gSpecMaterialMask,
         prevUVSMB,
-        parallaxInPixels,
+        smbParallaxInPixelsMax,
         NoV,
         disocclusionThreshold,
         prevSpecularIlluminationAnd2ndMomentVMB,
@@ -746,8 +758,8 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         prevReflectionHitTVMB,
         prevUVVMB
     #ifdef RELAX_SH
-        , prevSpecularVMBSH1
-        , prevSpecularVMBResponsiveSH1
+        , prevSpecularVMBSH
+        , prevSpecularVMBResponsiveSH
     #endif
     );
 
@@ -771,8 +783,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Normal weight for virtual motion based reprojection
     float lobeHalfAngle = max(atan(GetSpecLobeTanHalfAngle(currentRoughnessModified)), RELAX_NORMAL_ULP);
-    float angle = lobeHalfAngle + curvatureAngle;
-    float normalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, lobeHalfAngle, curvatureAngle, RELAX_NORMAL_ULP);
+    float normalWeight = GetEncodingAwareNormalWeight(currentNormal, prevNormalVMB, lobeHalfAngle, curvatureAngle, RELAX_NORMAL_ULP, true);
     virtualHistoryAmount *= lerp(1.0 - saturate(uvDiffLengthInPixels), 1.0, normalWeight); // jitter friendly
 
     // Roughness weight for virtual motion based reprojection
@@ -788,12 +799,12 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     uvDiff *= saturate(uvDiffLengthInPixels / 0.1) + uvDiffLengthInPixels / 2.0;
     float2 backUV1 = prevUVVMB + 1.0 * uvDiff;
     float2 backUV2 = prevUVVMB + 2.0 * uvDiff;
-    float4 backNormalRoughness1 = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, backUV1 * gResolutionScalePrev, 0));
-    float4 backNormalRoughness2 = UnpackPrevNormalRoughness(gPrevNormalRoughness.SampleLevel(gLinearClamp, backUV2 * gResolutionScalePrev, 0));
+    float4 backNormalRoughness1 = UnpackPrevNormalRoughness(gPrev_Normal_Roughness.SampleLevel(gLinearClamp, backUV1 * gResolutionScalePrev, 0));
+    float4 backNormalRoughness2 = UnpackPrevNormalRoughness(gPrev_Normal_Roughness.SampleLevel(gLinearClamp, backUV2 * gResolutionScalePrev, 0));
     backNormalRoughness1.rgb = Geometry::RotateVector(gWorldPrevToWorld, backNormalRoughness1.rgb);
     backNormalRoughness2.rgb = Geometry::RotateVector(gWorldPrevToWorld, backNormalRoughness2.rgb);
-    float prevPrevNormalWeight = IsInScreenNearest(backUV1) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness1.rgb, lobeHalfAngle, curvatureAngle * 2.0, RELAX_NORMAL_ULP) : 1.0;
-    prevPrevNormalWeight *= IsInScreenNearest(backUV2) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness2.rgb, lobeHalfAngle, curvatureAngle * 3.0, RELAX_NORMAL_ULP) : 1.0;
+    float prevPrevNormalWeight = IsInScreenNearest(backUV1) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness1.rgb, lobeHalfAngle, curvatureAngle * 2.0, RELAX_NORMAL_ULP, true) : 1.0;
+    prevPrevNormalWeight *= IsInScreenNearest(backUV2) ? GetEncodingAwareNormalWeight(prevNormalVMB, backNormalRoughness2.rgb, lobeHalfAngle, curvatureAngle * 3.0, RELAX_NORMAL_ULP, true) : 1.0;
     virtualHistoryAmount *= 0.33 + 0.67 * prevPrevNormalWeight;
     specVMBConfidence *= 0.33 + 0.67 * prevPrevNormalWeight;
     // Taking in account roughness 1 and 2 frames back helps cleaning up surfaces wigh varying roughness
@@ -832,7 +843,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     // Current specular signal ( surface motion )
     float specSMBConfidence = (SMBReprojectionFound > 0 ? 1.0 : 0.0) *
-        GetNormalWeight(V, Vprev, lobeHalfAngle * NoV / gFramerateScale);
+        GetEncodingAwareNormalWeight(V, Vprev, lobeHalfAngle * NoV / gFramerateScale, 0.0, 0.0, false);
 
     float specSMBAlpha = 1.0 - specSMBConfidence;
     float specSMBResponsiveAlpha = 1.0 - specSMBConfidence;
@@ -843,7 +854,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     if (gSpecCheckerboard != 2)
         specHasData = checkerboard == gSpecCheckerboard;
 
-    if (!specHasData && (parallaxInPixels < 0.5))
+    if (!specHasData && (smbParallaxInPixelsMax < 0.5))
     {
         // Adjusting surface motion based specular accumulation weights for checkerboard
         specSMBAlpha *= 1.0 - gCheckerboardResolveAccumSpeed * (SMBReprojectionFound > 0 ? 1.0 : 0.0);
@@ -866,7 +877,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     specVMBHitTAlpha = max(specVMBHitTAlpha, 1.0 / (1.0 + specHistoryFrames));
 
     [flatten]
-    if (!specHasData && (parallaxInPixels < 0.5))
+    if (!specHasData && (smbParallaxInPixelsMax < 0.5))
     {
         // Adjusting virtual motion based specular accumulation weights for checkerboard
         specVMBAlpha *= 1.0 - gCheckerboardResolveAccumSpeed * (VMBReprojectionFound > 0 ? 1.0 : 0.0);
@@ -892,16 +903,16 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float accumulatedSpecular2ndMoment = lerp(accumulatedSpecularM2SMB, accumulatedSpecularM2VMB, virtualHistoryAmount);
 
     #ifdef RELAX_SH
-        float4 accumulatedSpecularSMBSH1 = lerp(prevSpecularSMBSH1, specularSH1, specSMBAlpha);
-        float4 accumulatedSpecularSMBResponsiveSH1 = lerp(prevSpecularSMBResponsiveSH1, specularSH1, specSMBResponsiveAlpha);
+        float4 accumulatedSpecularSMBSH = lerp(prevSpecularSMBSH, specularSH, specSMBAlpha);
+        float4 accumulatedSpecularSMBResponsiveSH = lerp(prevSpecularSMBResponsiveSH, specularSH, specSMBResponsiveAlpha);
 
-        float4 accumulatedSpecularVMBSH1 = lerp(prevSpecularVMBSH1, specularSH1, specVMBAlpha);
-        float4 accumulatedSpecularVMBResponsiveSH1 = lerp(prevSpecularVMBResponsiveSH1, specularSH1, specVMBResponsiveAlpha);
+        float4 accumulatedSpecularVMBSH = lerp(prevSpecularVMBSH, specularSH, specVMBAlpha);
+        float4 accumulatedSpecularVMBResponsiveSH = lerp(prevSpecularVMBResponsiveSH, specularSH, specVMBResponsiveAlpha);
 
-        float4 accumulatedSpecularSH1 = lerp(accumulatedSpecularSMBSH1, accumulatedSpecularVMBSH1, virtualHistoryAmount);
-        float4 accumulatedSpecularResponsiveSH1 = lerp(accumulatedSpecularSMBResponsiveSH1, accumulatedSpecularVMBResponsiveSH1, virtualHistoryAmount);
-        gOutSpecularSH1[pixelPos] = float4(accumulatedSpecularSH1.rgb, currentRoughnessModified);
-        gOutSpecularResponsiveSH1[pixelPos] = accumulatedSpecularResponsiveSH1;
+        float4 accumulatedSpecularSH = lerp(accumulatedSpecularSMBSH, accumulatedSpecularVMBSH, virtualHistoryAmount);
+        float4 accumulatedSpecularResponsiveSH = lerp(accumulatedSpecularSMBResponsiveSH, accumulatedSpecularVMBResponsiveSH, virtualHistoryAmount);
+        gOut_SpecSh[pixelPos] = float4(accumulatedSpecularSH.rgb, currentRoughnessModified);
+        gOut_SpecShFast[pixelPos] = accumulatedSpecularResponsiveSH;
     #endif
 
     // If zero specular sample (color = 0), artificially adding variance for pixels with low reprojection confidence
@@ -909,10 +920,10 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     if (accumulatedSpecular2ndMoment == 0) accumulatedSpecular2ndMoment = gSpecVarianceBoost * (1.0 - specularHistoryConfidence);
 
     // Write out the results
-    gOutSpecularIllumination[pixelPos] = float4(accumulatedSpecularIllumination, accumulatedSpecular2ndMoment);
-    gOutSpecularIlluminationResponsive[pixelPos] = float4(accumulatedSpecularIlluminationResponsive, hitDist);
+    gOut_Spec[pixelPos] = float4(accumulatedSpecularIllumination, accumulatedSpecular2ndMoment);
+    gOut_SpecFast[pixelPos] = float4(accumulatedSpecularIlluminationResponsive, hitDist);
 
-    gOutReflectionHitT[pixelPos] = accumulatedReflectionHitT;
-    gOutSpecularReprojectionConfidence[pixelPos] = specularHistoryConfidence;
+    gOut_SpecHitDist[pixelPos] = accumulatedReflectionHitT;
+    gOut_SpecReprojectionConfidence[pixelPos] = specularHistoryConfidence;
 #endif
 }

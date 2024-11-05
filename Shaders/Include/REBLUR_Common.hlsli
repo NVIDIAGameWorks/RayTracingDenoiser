@@ -8,24 +8,13 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// Spatial filtering
-
-#define REBLUR_PRE_BLUR                                 0
-#define REBLUR_BLUR                                     1
-#define REBLUR_POST_BLUR                                2
-
-// Storage
-
-#define REBLUR_MAX_ACCUM_FRAME_NUM                      63.0
-#define REBLUR_ACCUMSPEED_BITS                          7 // "( 1 << REBLUR_ACCUMSPEED_BITS ) - 1" must be >= REBLUR_MAX_ACCUM_FRAME_NUM
-#define REBLUR_MATERIALID_BITS                          ( 16 - REBLUR_ACCUMSPEED_BITS - REBLUR_ACCUMSPEED_BITS )
-
 // Internal data ( from the previous frame )
 
 uint PackInternalData( float diffAccumSpeed, float specAccumSpeed, float materialID )
 {
-    float3 t = float3( diffAccumSpeed, specAccumSpeed, materialID );
-    t.xy /= REBLUR_MAX_ACCUM_FRAME_NUM;
+    float3 t;
+    t.xy = float2( diffAccumSpeed, specAccumSpeed ) / REBLUR_MAX_ACCUM_FRAME_NUM;
+    t.z = materialID / REBLUR_MAX_MATERIALID_NUM;
 
     uint p = Packing::RgbaToUint( t.xyzz, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 );
 
@@ -36,6 +25,7 @@ float3 UnpackInternalData( uint p )
 {
     float3 t = Packing::UintToRgba( p, REBLUR_ACCUMSPEED_BITS, REBLUR_ACCUMSPEED_BITS, REBLUR_MATERIALID_BITS, 0 ).xyz;
     t.xy *= REBLUR_MAX_ACCUM_FRAME_NUM;
+    t.z *= REBLUR_MAX_MATERIALID_NUM;
 
     return t;
 }
@@ -251,21 +241,34 @@ float GetLumaScale( float currLuma, float newLuma )
 
 #endif
 
-float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE signal, REBLUR_TYPE sigma, float4 antilagParams, float accumSpeed )
+float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE avg, REBLUR_TYPE sigma, float accumSpeed )
 {
-    float2 slow = float2( GetLuma( history ), ExtractHitDist( history ) );
-    float2 fast = float2( GetLuma( signal ), ExtractHitDist( signal ) );
-    float2 s = float2( GetLuma( sigma ), ExtractHitDist( sigma ) );
+    // Tests 4, 36, 44, 47, 95 ( no SHARC, stop animation )
+    float2 h = float2( GetLuma( history ), ExtractHitDist( history ) );
+    float2 a = float2( GetLuma( avg ), ExtractHitDist( avg ) );
+    float2 s = float2( GetLuma( sigma ), ExtractHitDist( sigma ) ) * gAntilagParams.xy;
+    float2 magic = gAntilagParams.zw * gFramerateScale * gFramerateScale;
 
-    float2 a = abs( slow - fast ) - antilagParams.xy * s - NRD_EPS;
-    float2 b = max( slow, fast ) + antilagParams.xy * s + NRD_EPS;
-    float2 d = a / b;
+    #if( REBLUR_ANTILAG_MODE == 0 )
+        // Old mode, but uses better threshold ( not bad )
+        float2 x = abs( h - a ) - s - NRD_EPS;
+        float2 y = max( h, a ) + s + NRD_EPS;
+        float2 d = x / y;
 
-    d = Math::SmoothStep01( 1.0 - d );
-    d = Math::Pow01( d, antilagParams.zw );
+        d = Math::LinearStep( magic / ( 1.0 + accumSpeed ), 0.0, d );
+    #elif( REBLUR_ANTILAG_MODE == 1 )
+        // New mode, but overly reactive at low FPS ( undesired )
+        float2 hc = Color::Clamp( a, s, h );
+        float2 d = abs( h - hc ) / ( max( h, hc ) + NRD_EPS );
 
-    // Needed at least for test 156, especially when motion is accelerated
-    d = lerp( 1.0, d, GetFadeBasedOnAccumulatedFrames( accumSpeed ) );
+        d = Math::LinearStep( magic / ( 1.0 + accumSpeed ), 0.0, d );
+    #else
+        // New mode, pretends to respect "no harm" idiom ( best? )
+        float2 hc = Color::Clamp( a, s, h );
+        float2 d = abs( h - hc ) / ( max( h, hc ) + NRD_EPS );
+
+        d = 1.0 / ( 1.0 + d * accumSpeed / magic );
+    #endif
 
     return REBLUR_SHOW == 0 ? min( d.x, d.y ) : 1.0;
 }
@@ -297,14 +300,6 @@ float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, f
 
 // Weight parameters
 
-float GetNormalWeightParams( float nonLinearAccumSpeed, float roughness = 1.0 )
-{
-    float percentOfVolume = REBLUR_MAX_PERCENT_OF_LOBE_VOLUME * lerp( gLobeAngleFraction, 1.0, nonLinearAccumSpeed );
-    float angle = atan( ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume ) );
-
-    return 1.0 / max( angle, REBLUR_NORMAL_ULP );
-}
-
 float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float accumSpeed )
 {
     accumSpeed *= REBLUR_SAMPLES_PER_FRAME;
@@ -316,7 +311,7 @@ float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float
     return float2( w, 1.0 + 3.0 * gFramerateScale * w );
 }
 
-// Weights
+// Filtering
 
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invResourceSize,

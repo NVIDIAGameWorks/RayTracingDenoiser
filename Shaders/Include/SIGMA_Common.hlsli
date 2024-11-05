@@ -13,12 +13,31 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define PackShadow( s )         Math::Sqrt01( s ) // must match "SIGMA_BackEnd_UnpackShadow"
 #define IsLit( p )              ( p >= NRD_FP16_MAX )
 
+float3 GetViewVector( float3 X, bool isViewSpace = false )
+{
+    return gOrthoMode == 0.0 ? normalize( -X ) : ( isViewSpace ? float3( 0, 0, -1 ) : gViewVectorWorld.xyz );
+}
+
 float GetKernelRadiusInPixels( float hitDist, float unprojectZ, float scale = 1.0 )
 {
     float unclampedRadius = hitDist / unprojectZ;
-    float minRadius = min( unclampedRadius, BORDER );
+    unclampedRadius *= scale;
 
-    return clamp( unclampedRadius * scale, minRadius, SIGMA_MAX_PIXEL_RADIUS );
+    #if( SIGMA_5X5_BLUR_RADIUS_ESTIMATION_KERNEL == 1 )
+        float minRadius = min( unclampedRadius, 2.0 );
+    #else
+        float minRadius = min( unclampedRadius, 1.0 );
+    #endif
+
+    return clamp( unclampedRadius, minRadius, SIGMA_MAX_PIXEL_RADIUS );
+}
+
+float AreBothLitOrUnlit( float penumbra1, float penumbra2 )
+{
+    bool NoL1 = penumbra1 == 0.0;
+    bool NoL2 = penumbra2 == 0.0;
+
+    return float( NoL1 == NoL2 );
 }
 
 // TODO: move code below to STL.hlsl

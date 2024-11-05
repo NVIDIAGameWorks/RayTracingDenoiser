@@ -20,6 +20,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // Shared constants
 #define RELAX_SHARED_CONSTANTS \
+    NRD_CONSTANT( float4x4, gWorldToClip ) \
     NRD_CONSTANT( float4x4, gWorldToClipPrev ) \
     NRD_CONSTANT( float4x4, gWorldToViewPrev ) \
     NRD_CONSTANT( float4x4, gWorldPrevToWorld ) \
@@ -56,8 +57,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gDiffBlurRadius ) \
     NRD_CONSTANT( float, gSpecBlurRadius ) \
     NRD_CONSTANT( float, gDepthThreshold ) \
-    NRD_CONSTANT( float, gDiffLobeAngleFraction ) \
-    NRD_CONSTANT( float, gSpecLobeAngleFraction ) \
+    NRD_CONSTANT( float, gLobeAngleFraction ) \
     NRD_CONSTANT( float, gSpecLobeAngleSlack ) \
     NRD_CONSTANT( float, gHistoryFixEdgeStoppingNormalPower ) \
     NRD_CONSTANT( float, gRoughnessEdgeStoppingRelaxation ) \

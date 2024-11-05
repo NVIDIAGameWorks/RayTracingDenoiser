@@ -23,11 +23,13 @@ NRD_INPUTS_START
     NRD_INPUT( Texture2D<float>, gIn_Penumbra, t, 2 )
     NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_Shadow_Translucency, t, 3 )
     NRD_INPUT( Texture2D<SIGMA_TYPE>, gIn_History, t, 4 )
-    NRD_INPUT( Texture2D<float2>, gIn_Tiles, t, 5 )
+    NRD_INPUT( Texture2D<uint>, gIn_HistoryLength, t, 5 )
+    NRD_INPUT( Texture2D<float2>, gIn_Tiles, t, 6 )
 NRD_INPUTS_END
 
 NRD_OUTPUTS_START
     NRD_OUTPUT( RWTexture2D<SIGMA_TYPE>, gOut_Shadow_Translucency, u, 0 )
+    NRD_OUTPUT( RWTexture2D<uint>, gOut_HistoryLength, u, 1 )
 NRD_OUTPUTS_END
 
 // Macro magic

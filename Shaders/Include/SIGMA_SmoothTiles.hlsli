@@ -8,15 +8,6 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-#include "NRD.hlsli"
-#include "ml.hlsli"
-
-#include "SIGMA_Config.hlsli"
-#include "SIGMA_SmoothTiles.resources.hlsli"
-
-#include "Common.hlsli"
-#include "SIGMA_Common.hlsli"
-
 groupshared float s_Tile[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( uint2 sharedPos, int2 globalPos )

@@ -287,9 +287,13 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     float angle1 = Sequence::Weyl1D(0.5f, commonSettings.frameIndex) * radians(90.0f);
     m_Rotator_PrePass = Geometry::GetRotator(angle1);
 
-    float angle2 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex) * radians(90.0f);
-    m_Rotator_Blur = Geometry::GetRotator(angle2);
-    m_Rotator_PostBlur = Geometry::GetRotator(angle2 + radians(45.0f));
+    float a0 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex * 2) * radians(90.0f);
+    float a1 = Sequence::Bayer4x4(uint2(0, 0), commonSettings.frameIndex * 2) * radians(360.0f);
+    m_Rotator_Blur = Geometry::CombineRotators(Geometry::GetRotator(a0), Geometry::GetRotator(a1));
+
+    float a2 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex * 2 + 1) * radians(90.0f);
+    float a3 = Sequence::Bayer4x4(uint2(0, 0), commonSettings.frameIndex * 2 + 1) * radians(360.0f);
+    m_Rotator_PostBlur = Geometry::CombineRotators(Geometry::GetRotator(a2), Geometry::GetRotator(a3));
 
     // Main matrices
     m_ViewToClip = float4x4

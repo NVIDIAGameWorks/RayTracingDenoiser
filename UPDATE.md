@@ -268,3 +268,21 @@ A single NRD instance can now include any combination of denoisers, including re
   - removed the constructor with arguments
   - creation parameters grouped into `IntegrationCreationDesc`, which need to be passed to `Initialize`
   - added a few potentially useful flags to `IntegrationCreationDesc`
+
+## To v4.11
+- *API*:
+  - exposed `DEFAULT_ACCUMULATION_TIME` for all denoisers
+  - added some missing `MAX_HISTORY_FRAME_NUM` constants
+  - exposed `GetMaxAccumulatedFrameNum` helper, converting time to frames
+- *REBLUR*:
+  - `stabilizationStrength` replaced with `maxStabilizedFrameNum`
+  - `hitDistanceStabilizationStrength` replaced with `maxStabilizedFrameNumForHitDistance`
+  - `luminanceAntilagPower` replaced with `luminanceSensitivity`
+  - `hitDistanceAntilagPower` replaced with `hitDistanceSensitivity`
+  - tweaked the default values for `ReblurAntilagSettings`
+  - the new default value for `planeDistanceSensitivity = 0.02` matches the behavior for the old value `0.005`
+  - slightly reduced `lobeAngleFraction` to squeeze more normal details (it's safe to use the old value `0.2`)
+- *SIGMA*:
+  - `stabilizationStrength` replaced with `maxStabilizedFrameNum`
+  - the new default value for `planeDistanceSensitivity = 0.02` matches the behavior for the old value `0.005`
+

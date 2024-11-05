@@ -20,81 +20,81 @@ NRD_SAMPLERS_END
 #if( defined RELAX_DIFFUSE && defined RELAX_SPECULAR )
 
     NRD_INPUTS_START
-        NRD_INPUT( Texture2D<float>, gTiles, t, 0 )
-        NRD_INPUT( Texture2D<float4>, gNoisySpecularIllumination, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gNoisyDiffuseIllumination, t, 2 )
-        NRD_INPUT( Texture2D<float4>, gSpecIllumination, t, 3 )
-        NRD_INPUT( Texture2D<float4>, gDiffIllumination, t, 4 )
-        NRD_INPUT( Texture2D<float4>, gSpecIlluminationResponsive, t, 5 )
-        NRD_INPUT( Texture2D<float4>, gDiffIlluminationResponsive, t, 6 )
-        NRD_INPUT( Texture2D<float>, gHistoryLength, t, 7 )
+        NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecNoisy, t, 1 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffNoisy, t, 2 )
+        NRD_INPUT( Texture2D<float4>, gIn_Spec, t, 3 )
+        NRD_INPUT( Texture2D<float4>, gIn_Diff, t, 4 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecFast, t, 5 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffFast, t, 6 )
+        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 7 )
         #ifdef RELAX_SH
-            NRD_INPUT( Texture2D<float4>, gSpecSH1, t, 8 )
-            NRD_INPUT( Texture2D<float4>, gDiffSH1, t, 9 )
-            NRD_INPUT( Texture2D<float4>, gSpecResponsiveSH1, t, 10 )
-            NRD_INPUT( Texture2D<float4>, gDiffResponsiveSH1, t, 11 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecSh, t, 8 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffSh, t, 9 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecShFast, t, 10 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffShFast, t, 11 )
         #endif
     NRD_INPUTS_END
 
     NRD_OUTPUTS_START
-        NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseIllumination, u, 1 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularIlluminationResponsive, u, 2 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseIlluminationResponsive, u, 3 )
-        NRD_OUTPUT( RWTexture2D<float>, gOutHistoryLength, u, 4 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_Spec, u, 0 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_Diff, u, 1 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_SpecFast, u, 2 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_DiffFast, u, 3 )
+        NRD_OUTPUT( RWTexture2D<float>, gOut_HistoryLength, u, 4 )
         #ifdef RELAX_SH
-            NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularSH1, u, 5 )
-            NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseSH1, u, 6 )
-            NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularResponsiveSH1, u, 7 )
-            NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseResponsiveSH1, u, 8 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_SpecSh, u, 5 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_DiffSh, u, 6 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_SpecShFast, u, 7 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_DiffShFast, u, 8 )
         #endif
     NRD_OUTPUTS_END
 
 #elif( defined RELAX_DIFFUSE )
 
     NRD_INPUTS_START
-        NRD_INPUT( Texture2D<float>, gTiles, t, 0 )
-        NRD_INPUT( Texture2D<float4>, gNoisyDiffuseIllumination, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gDiffIllumination, t, 2 )
-        NRD_INPUT( Texture2D<float4>, gDiffIlluminationResponsive, t, 3 )
-        NRD_INPUT( Texture2D<float>, gHistoryLength, t, 4 )
+        NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffNoisy, t, 1 )
+        NRD_INPUT( Texture2D<float4>, gIn_Diff, t, 2 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffFast, t, 3 )
+        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 4 )
         #ifdef RELAX_SH
-            NRD_INPUT( Texture2D<float4>, gDiffSH1, t, 5 )
-            NRD_INPUT( Texture2D<float4>, gDiffResponsiveSH1, t, 6 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffSh, t, 5 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffShFast, t, 6 )
         #endif
     NRD_INPUTS_END
 
     NRD_OUTPUTS_START
-        NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseIllumination, u, 0 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseIlluminationResponsive, u, 1 )
-        NRD_OUTPUT( RWTexture2D<float>, gOutHistoryLength, u, 2 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_Diff, u, 0 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_DiffFast, u, 1 )
+        NRD_OUTPUT( RWTexture2D<float>, gOut_HistoryLength, u, 2 )
         #ifdef RELAX_SH
-            NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseSH1, u, 3 )
-            NRD_OUTPUT( RWTexture2D<float4>, gOutDiffuseResponsiveSH1, u, 4 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_DiffSh, u, 3 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_DiffShFast, u, 4 )
         #endif
     NRD_OUTPUTS_END
 
 #elif( defined RELAX_SPECULAR )
 
     NRD_INPUTS_START
-        NRD_INPUT( Texture2D<float>, gTiles, t, 0 )
-        NRD_INPUT( Texture2D<float4>, gNoisySpecularIllumination, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gSpecIllumination, t, 2 )
-        NRD_INPUT( Texture2D<float4>, gSpecIlluminationResponsive, t, 3 )
-        NRD_INPUT( Texture2D<float>, gHistoryLength, t, 4 )
+        NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecNoisy, t, 1 )
+        NRD_INPUT( Texture2D<float4>, gIn_Spec, t, 2 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecFast, t, 3 )
+        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 4 )
         #ifdef RELAX_SH
-            NRD_INPUT( Texture2D<float4>, gSpecSH1, t, 5 )
-            NRD_INPUT( Texture2D<float4>, gSpecResponsiveSH1, t, 6 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecSh, t, 5 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecShFast, t, 6 )
         #endif
     NRD_INPUTS_END
 
     NRD_OUTPUTS_START
-        NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularIllumination, u, 0 )
-        NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularIlluminationResponsive, u, 1 )
-        NRD_OUTPUT( RWTexture2D<float>, gOutHistoryLength, u, 2 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_Spec, u, 0 )
+        NRD_OUTPUT( RWTexture2D<float4>, gOut_SpecFast, u, 1 )
+        NRD_OUTPUT( RWTexture2D<float>, gOut_HistoryLength, u, 2 )
         #ifdef RELAX_SH
-            NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularSH1, u, 3 )
-            NRD_OUTPUT( RWTexture2D<float4>, gOutSpecularResponsiveSH1, u, 4 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_SpecSh, u, 3 )
+            NRD_OUTPUT( RWTexture2D<float4>, gOut_SpecShFast, u, 4 )
         #endif
     NRD_OUTPUTS_END
 

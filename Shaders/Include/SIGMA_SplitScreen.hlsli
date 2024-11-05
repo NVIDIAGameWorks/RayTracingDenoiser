@@ -25,7 +25,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 pixelPos : SV_DispatchThreadId)
         s = IsLit( data.x );
     #endif
 
-    #if( SIGMA_SHOW_PENUMBRA_SIZE == 1 )
+    #if( SIGMA_SHOW == SIGMA_SHOW_PENUMBRA_SIZE )
         s = PackShadow( data.x );
     #endif
 
