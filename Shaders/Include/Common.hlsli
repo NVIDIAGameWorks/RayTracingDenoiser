@@ -70,7 +70,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_ROUGHNESS_SENSITIVITY                               0.01 // smaller => more sensitive
 #define NRD_CURVATURE_Z_THRESHOLD                               0.1 // normalized %
 #define NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION             15.0 // keep relatively high to avoid ruining concave mirrors
-#define NRD_MAX_PERCENT_OF_LOBE_VOLUME                          0.75 // normalized %
+#define NRD_MAX_PERCENT_OF_LOBE_VOLUME                          0.75 // normalized % // TODO: have a gut feeling that it's too much...
 
 #if( NRD_NORMAL_ENCODING < NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
     #define NRD_NORMAL_ENCODING_ERROR                           ( 1.50 / 255.0 )
@@ -426,6 +426,10 @@ float GetNormalWeightParam( float nonLinearAccumSpeed, float lobeAngleFraction, 
     float percentOfVolume = NRD_MAX_PERCENT_OF_LOBE_VOLUME * lerp( lobeAngleFraction, 1.0, nonLinearAccumSpeed );
     float tanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, percentOfVolume );
 
+    // TODO: use gLobeAngleFraction = 0.1 ( non squared! ) and:
+    //float tanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, NRD_MAX_PERCENT_OF_LOBE_VOLUME );
+    //tanHalfAngle *= lerp( gLobeAngleFraction, 1.0, nonLinearAccumSpeed );
+
     float angle = atan( tanHalfAngle );
     angle = max( angle, NRD_NORMAL_ENCODING_ERROR );
 
@@ -443,6 +447,7 @@ float2 GetGeometryWeightParams( float planeDistSensitivity, float frustumSize, f
 
 float2 GetHitDistanceWeightParams( float hitDist, float nonLinearAccumSpeed, float roughness = 1.0 )
 {
+    // TODO: compare "GetHitDistFactor"?
     // IMPORTANT: since this weight is exponential, 3% can lead to leaks from bright objects in reflections.
     // Even 1% is not enough in some cases, but using a lower value makes things even more fragile
     float smc = GetSpecMagicCurve( roughness );
@@ -463,10 +468,10 @@ float2 GetRoughnessWeightParams( float roughness, float fraction, float sensitiv
 
 float2 GetRelaxedRoughnessWeightParams( float m, float fraction = 1.0, float sensitivity = NRD_ROUGHNESS_SENSITIVITY )
 {
-    // "m" makes test less sensitive to small deltas
+    // "m = roughness * roughness" makes test less sensitive to small deltas
 
     // https://www.desmos.com/calculator/wkvacka5za
-    float a = 1.0 / lerp( lerp( m * m, m, fraction ), 1.0, sensitivity );
+    float a = 1.0 / lerp( sensitivity, 1.0, lerp( m * m, m, fraction ) );
     float b = m * a;
 
     return float2( a, -b );

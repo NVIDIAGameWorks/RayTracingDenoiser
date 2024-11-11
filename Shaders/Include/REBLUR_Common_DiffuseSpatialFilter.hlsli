@@ -72,10 +72,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( 1.0 ) * fractionScale;
 
-        // Sampling
-    #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE == 1 )
+        // Screen-space settings
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE == 1 )
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            float2 skew = 1.0; // seems that uniform screen space sampling in pre-pass breaks residual boiling better
+            float2 skew = 1.0; // TODO: seems that uniform screen space sampling in pre-pass breaks residual boiling better
         #else
             float2 skew = lerp( 1.0 - abs( Nv.xy ), 1.0, NoV );
             skew /= max( skew.x, skew.y );
@@ -84,20 +84,22 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         float4 scaledRotator = Geometry::ScaleRotator( rotator, skew );
     #else
-        float2x3 TvBv = GetKernelBasis( Nv, Nv, 1.0 ); // D = N
+        // World-space settings
+        float2x3 TvBv = GetKernelBasis( Nv, Nv ); // D = N
 
         float worldRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
         TvBv[ 0 ] *= worldRadius;
         TvBv[ 1 ] *= worldRadius;
     #endif
 
+        // Sampling
         [unroll]
         for( uint n = 0; n < POISSON_SAMPLE_NUM; n++ )
         {
             float3 offset = POISSON_SAMPLES( n );
 
             // Sample coordinates
-        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE == 1 )
+        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE == 1 )
             float2 uv = pixelUv + Geometry::RotateVector( scaledRotator, offset.xy );
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );

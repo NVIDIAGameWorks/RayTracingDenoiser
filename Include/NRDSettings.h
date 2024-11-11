@@ -71,11 +71,13 @@ namespace nrd
         OFF,
 
         // If hit distance is invalid due to probabilistic sampling, reconstruct using 3x3 neighbors.
-        // Probability at primary hit must be clamped to [1/4; 3/4] range to guarantee a sample in this area
+        // Probability at primary hit must be clamped to [1/4; 3/4] range to guarantee a sample in this area.
+        // White noise must be replaced with Bayer dithering to gurantee a sample in this area (see NRD sample)
         AREA_3X3,
 
         // If hit distance is invalid due to probabilistic sampling, reconstruct using 5x5 neighbors.
-        // Probability at primary hit must be clamped to [1/16; 15/16] range to guarantee a sample in this area
+        // Probability at primary hit must be clamped to [1/16; 15/16] range to guarantee a sample in this area.
+        // White noise must be replaced with Bayer dithering to gurantee a sample in this area (see NRD sample)
         AREA_5X5,
 
         MAX_NUM
@@ -213,12 +215,12 @@ namespace nrd
 
     struct ReblurAntilagSettings
     {
-        // [1; 3] - delta is reduced by local variance multiplied by this value
-        float luminanceSigmaScale = 3.0f;
+        // [1; 5] - delta is reduced by local variance multiplied by this value
+        float luminanceSigmaScale = 4.0f; // can be 3.0 or even less if signal is good
         float hitDistanceSigmaScale = 3.0f;
 
-        // [1; 3] - antilag sensitivity (smaller values increase sensitivity)
-        float luminanceSensitivity = 2.0f;
+        // [1; 5] - antilag sensitivity (smaller values increase sensitivity)
+        float luminanceSensitivity = 3.0f; // can be 2.0 or even less if signal is good
         float hitDistanceSensitivity = 2.0f;
     };
 

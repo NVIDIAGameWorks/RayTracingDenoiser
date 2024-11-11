@@ -15,8 +15,7 @@ void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
 
-    float4 temp = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( globalPos ) ] );
-    s_Normal_Roughness[ sharedPos.y ][ sharedPos.x ] = temp;
+    s_Normal_Roughness[ sharedPos.y ][ sharedPos.x ] = NRD_FrontEnd_UnpackNormalAndRoughness( gIn_Normal_Roughness[ WithRectOrigin( globalPos ) ] );
 
     #ifdef REBLUR_SPECULAR
         #ifdef REBLUR_OCCLUSION
@@ -33,7 +32,7 @@ void Preload( uint2 sharedPos, int2 globalPos )
             float hitDist = gSpecPrepassBlurRadius == 0.0 ? ExtractHitDist( spec ) : gIn_SpecHitDistForTracking[ globalPos ];
         #endif
 
-        s_HitDistForTracking[ sharedPos.y ][ sharedPos.x ] = hitDist;
+        s_HitDistForTracking[ sharedPos.y ][ sharedPos.x ] = hitDist == 0.0 ? NRD_INF : hitDist;
     #endif
 }
 
@@ -82,7 +81,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             #ifdef REBLUR_SPECULAR
                 // Min hit distance for tracking, ignoring 0 values ( which still can be produced by VNDF sampling )
                 float h = s_HitDistForTracking[ pos.y ][ pos.x ];
-                hitDistForTracking = min( hitDistForTracking, h == 0.0 ? NRD_INF : h );
+                hitDistForTracking = min( hitDistForTracking, h );
 
                 // Roughness variance
                 // IMPORTANT: squared because the test uses "roughness ^ 2"
@@ -115,9 +114,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             Rng::Hash::Initialize( pixelPos, gFrameIndex );
         #endif
 
-        float hitDistNormalization = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         hitDistForTracking = hitDistForTracking == NRD_INF ? 0.0 : hitDistForTracking;
 
+        float hitDistNormalization = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         #ifdef REBLUR_OCCLUSION
             hitDistForTracking *= hitDistNormalization;
         #else
@@ -446,7 +445,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float XvirtualLength = length( Xvirtual );
 
         float2 vmbPixelUv = Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
-        vmbPixelUv = materialID == gCameraAttachedReflectionMaterialID ? pixelUv : vmbPixelUv;
+        vmbPixelUv = materialID == gCameraAttachedReflectionMaterialID ? smbPixelUv : vmbPixelUv;
 
         float2 vmbDelta = vmbPixelUv - smbPixelUv;
         float vmbPixelsTraveled = length( vmbDelta * gRectSize );
@@ -532,6 +531,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float percentOfVolume = NRD_MAX_PERCENT_OF_LOBE_VOLUME / ( 1.0 + vmbSpecAccumSpeed );
         float lobeTanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughnessModified, percentOfVolume );
 
+        // TODO: use old code and sync with "GetNormalWeightParam"?
+        //float lobeTanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughnessModified, NRD_MAX_PERCENT_OF_LOBE_VOLUME );
+        //lobeTanHalfAngle /= 1.0 + vmbSpecAccumSpeed;
+
         float lobeHalfAngle = atan( lobeTanHalfAngle );
         lobeHalfAngle = max( lobeHalfAngle, NRD_NORMAL_ENCODING_ERROR );
 
@@ -552,7 +555,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float3 XvirtualPrev = GetXvirtual( hitDistForTrackingPrev, curvature, X, Xprev, V, Dfactor );
 
             float2 vmbPixelUvPrev = Geometry::GetScreenUv( gWorldToClipPrev, XvirtualPrev );
-            vmbPixelUvPrev = materialID == gCameraAttachedReflectionMaterialID ? pixelUv : vmbPixelUvPrev;
+            vmbPixelUvPrev = materialID == gCameraAttachedReflectionMaterialID ? smbPixelUv : vmbPixelUvPrev;
 
             float pixelSizeAtXvirtual = PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, XvirtualLength );
             float r = ( lobeTanHalfAngle + curvatureAngle ) * min( hitDistForTracking, hitDistForTrackingPrev ) / pixelSizeAtXvirtual; // "pixelSize" at "XvirtualPrev" seems to be not needed
@@ -625,11 +628,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float h = lerp( ExtractHitDist( smbSpecHistory ), ExtractHitDist( spec ), nonLinearAccumSpeed ) * hitDistNormalization;
             float hdf = GetHitDistFactor( h, frustumSize );
 
-            float a0 = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughnessModified, NRD_MAX_PERCENT_OF_LOBE_VOLUME ); // base lobe angle
-            a0 *= lerp( NoV, 1.0, roughnessModified ); // make more strict if NoV is low and lobe is very V-dependent
-            a0 *= nonLinearAccumSpeed; // make more strict if history is long
-            a0 /= hdf + NRD_EPS; // make relaxed "in corners", where reflection is close to the surface
-            a0 = atan( a0 );
+            float tana0 = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughnessModified, NRD_MAX_PERCENT_OF_LOBE_VOLUME ); // base lobe angle
+            tana0 *= lerp( NoV, 1.0, roughnessModified ); // make more strict if NoV is low and lobe is very V-dependent
+            tana0 *= nonLinearAccumSpeed; // make more strict if history is long
+            tana0 /= hdf + NRD_EPS; // make relaxed "in corners", where reflection is close to the surface
+
+            float a0 = atan( tana0 );
             a0 = max( a0, NRD_NORMAL_ENCODING_ERROR );
 
             float f = Math::LinearStep( a0, 0.0, a );

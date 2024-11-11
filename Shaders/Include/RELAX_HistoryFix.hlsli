@@ -59,14 +59,13 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
         float roughnessModified = specularSumSH.w;
     #endif
     float specularWSum = 1;
-    float2 specularNormalWeightParams =
-        GetNormalWeightParams_ATrous(
-            centerRoughness,
-            5.0, // History length,
-            1.0, // Specular reprojection confidence
-            0.0, // Normal edge stopping relaxation
-            gLobeAngleFraction,
-            gSpecLobeAngleSlack);
+    float2 specularNormalWeightParams = GetNormalWeightParams_ATrous(
+        centerRoughness,
+        5.0, // History length,
+        1.0, // Specular reprojection confidence
+        0.0, // Normal edge stopping relaxation
+        gLobeAngleFraction,
+        gSpecLobeAngleSlack);
 #endif
 
     // Running sparse cross-bilateral filter
@@ -123,8 +122,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
 
             // Summing up specular result
             float specularW = geometryWeight;
-            specularW *=
-                GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
+            specularW *= GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
             specularW = isInside ? specularW : 0;
             specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
 

@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.11.0 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.11.1 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -176,7 +176,7 @@ NRD sample is a good start to familiarize yourself with input requirements and b
 
 Radiance:
 - Since *NRD* denoisers accumulate signals for a limited number of frames, the input signal must converge *reasonably* well for this number of frames. `REFERENCE` denoiser can be used to estimate temporal signal quality
-- Since *NRD* denoisers process signals spatially, high-energy fireflies in the input signal should be avoided. Most of them can be removed by enabling anti-firefly filter in *NRD*, but it will only work if the "background" signal is confident. The worst case is having a single pixel with high energy divided by a very small PDF to represent the lack of energy in neighboring non-representative (black) pixels
+- Since *NRD* denoisers process signals spatially, high-energy fireflies in the input signal should be avoided. Some of them can be removed by enabling anti-firefly filter in *NRD*, but it will only work if the "background" signal is confident. The worst case is having a single pixel with a high energy divided by a very small PDF to represent the lack of energy in neighboring non-representative (black) pixels. Probabilistic diffuse / specular split for the 1st bounce requires special treatment described in `HitDistanceReconstructionMode`. In case of probabilistic split for 2nd+ bounces, it's still recommended to clamp diffuse / specular probabilities to a sane range to avoid division by a very small value, leading to a high energy firefly, difficult to get rid of in a short amount of time. Energy increase should not be more than 20x-30x, what corresponds to around `0.05` min probability. `0` and `1` probabilities are absolutely acceptable (for example, metals don't have diffuse component)
 - Radiance must be separated into diffuse and specular at primary hit (or secondary hit in case of *PSR*)
 
 Hit distance (*REBLUR* and *RELAX*):
@@ -191,9 +191,9 @@ Hit distance (*REBLUR* and *RELAX*):
 - In case of probabilistic diffuse / specular selection at the primary hit, provided `hitT` must follow the following rules:
   - Should not be divided by `PDF`
   - If diffuse or specular sampling is skipped, `hitT` must be set to `0` for corresponding signal type
-  - `hitDistanceReconstructionMode` must be set to something other than `OFF`, but bear in mind that the search area is limited to 3x3 or 5x5. In other words, it's the application's responsibility to guarantee a valid sample in this area. It can be achieved by clamping probabilities and using Bayer-like dithering (see the sample for more details)
+  - `hitDistanceReconstructionMode` must be set to something other than `OFF`, but bear in mind that the search area is limited to 3x3 or 5x5. In other words, it's the application's responsibility to guarantee a valid sample in this area. It can be achieved by clamping probabilities and using Bayer-like dithering (see the sample for more details and read comments for `HitDistanceReconstructionMode` fields)
   - Pre-pass must be enabled (i.e. `diffusePrepassBlurRadius` and `specularPrepassBlurRadius` must be set to 20-70 pixels) to compensate entropy increase, since radiance in valid samples is divided by probability to compensate 0 values in some neighbors
-- Probabilistic sampling for 2nd+ bounces is absolutely acceptable
+- Probabilistic split for 2nd+ bounces is absolutely acceptable
 - In case of many paths per pixel `hitT` for specular must be "averaged" by `NRD_FrontEnd_SpecHitDistAveraging_*` functions from `NRD.hlsli`
 - For *REBLUR* hits distance must be normalized using `REBLUR_FrontEnd_GetNormHitDist`
 

@@ -127,6 +127,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gDiffMaxFastAccumulatedFrameNum                     = (float)min(settings.diffuseMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
     consts->gDisocclusionThreshold                              = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
     consts->gDisocclusionThresholdAlternate                     = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
+    consts->gCameraAttachedReflectionMaterialID                 = m_CommonSettings.cameraAttachedReflectionMaterialID;
     consts->gStrandMaterialID                                   = m_CommonSettings.strandMaterialID;
     consts->gStrandThickness                                    = m_CommonSettings.strandThickness;
     consts->gRoughnessFraction                                  = settings.roughnessFraction;

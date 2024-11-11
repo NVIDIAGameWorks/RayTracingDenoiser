@@ -125,6 +125,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                 sumd = 1.0 + 1.0 / ( 1.0 + gMaxAccumulatedFrameNum ) - diffNonLinearAccumSpeed;
             #endif
 
+            // TODO: non-standard use of "hitDistFactor" as "hitDist", but works well
+            float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, 1.0 );
+            float hitDist = ExtractHitDist( diff ) * hitDistScale;
+            float hitDistFactor = GetHitDistFactor( hitDist, frustumSize );
+            float2 hitDistanceWeightParams = GetHitDistanceWeightParams( hitDistFactor, diffNonLinearAccumSpeed, 1.0 );
+
             diff *= sumd;
             #ifdef REBLUR_SH
                 diffSh *= sumd;
@@ -170,11 +176,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                         w *= 1.0 + UnpackData1( gIn_Data1[ pos ] ).x;
                     #endif
 
+                    REBLUR_TYPE s = gIn_Diff[ pos ];
+                    s = Denanify( w, s );
+
+                    float hs = ExtractHitDist( s ) * hitDistScale;
+                    float hsFactor = GetHitDistFactor( hs, frustumSize );
+                    w *= ComputeExponentialWeight( hsFactor, hitDistanceWeightParams.x, hitDistanceWeightParams.y );
+
                     // Accumulate
                     sumd += w;
 
-                    REBLUR_TYPE s = gIn_Diff[ pos ];
-                    s = Denanify( w, s );
                     diff += s * w;
                     #ifdef REBLUR_SH
                         float4 sh = gIn_DiffSh[ pos ];
@@ -299,12 +310,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             // Parameters
             float specNonLinearAccumSpeed = 1.0 / ( 1.0 + frameNum.y );
-            float hitDistNormAtCenter = ExtractHitDist( spec );
 
             float normalWeightParam = GetNormalWeightParam( specNonLinearAccumSpeed, gLobeAngleFraction, roughness );
             float2 geometryWeightParams = GetGeometryWeightParams( gPlaneDistSensitivity, frustumSize, Xv, Nv, specNonLinearAccumSpeed );
             float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness, sqrt( gRoughnessFraction ) );
-            float2 hitDistanceWeightParams = GetHitDistanceWeightParams( hitDistNormAtCenter, specNonLinearAccumSpeed, roughness );
+
+            // TODO: non-standard use of "hitDistFactor" as "hitDist", but works well
+            float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
+            float hitDist = ExtractHitDist( spec ) * hitDistScale;
+            float hitDistFactor = GetHitDistFactor( hitDist, frustumSize );
+            float2 hitDistanceWeightParams = GetHitDistanceWeightParams( hitDistFactor, specNonLinearAccumSpeed, roughness );
 
             float sums = 1.0 + frameNum.y;
             #ifdef REBLUR_PERFORMANCE_MODE
@@ -360,7 +375,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     REBLUR_TYPE s = gIn_Spec[ pos ];
                     s = Denanify( w, s );
 
-                    w *= ComputeExponentialWeight( ExtractHitDist( s ), hitDistanceWeightParams.x, hitDistanceWeightParams.y );
+                    float hs = ExtractHitDist( s ) * hitDistScale;
+                    float hsFactor = GetHitDistFactor( hs, frustumSize );
+                    w *= ComputeExponentialWeight( hsFactor, hitDistanceWeightParams.x, hitDistanceWeightParams.y );
 
                     // Accumulate
                     sums += w;

@@ -47,11 +47,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float NoD = abs( dot( Nv, Dv.xyz ) );
         float hitDistScale = _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness );
         float hitDist = ExtractHitDist( spec ) * hitDistScale;
-        float hitDistFactor = GetHitDistFactor( hitDist * NoD, frustumSize );
+        float hitDistFactor = GetHitDistFactor( hitDist, frustumSize ); // using "hitDist * NoD" worsens denoising at glancing angles
 
         // Blur radius
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-        float minHitDist = hitDist == 0.0 ? NRD_INF : hitDist;
+        float hitDistForTracking = hitDist == 0.0 ? NRD_INF : hitDist;
 
         float blurRadius = gSpecPrepassBlurRadius;
         float areaFactor = roughness * hitDistFactor;
@@ -68,6 +68,17 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
         blurRadius *= Math::Sqrt01( areaFactor ); // "areaFactor" affects area, not radius
 
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        // The "area factor" idea works well and offers linear progression of blur radiuses over time, but it makes
+        // the blur radius depend on "sqrt( roughness )" not "roughness". It hurts the pre pass, which can be very wide.
+        // The code below fixes completely wrong big blur radiuses.
+        float lobeTanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughness, REBLUR_MAX_PERCENT_OF_LOBE_VOLUME_FOR_PRE_PASS );
+        float lobeRadius = hitDist * NoD * lobeTanHalfAngle;
+        float minBlurRadius = lobeRadius / PixelRadiusToWorld( gUnproject, gOrthoMode, 1.0, viewZ + hitDist * Dv.w );
+
+        blurRadius = min( blurRadius, minBlurRadius );
+    #endif
+
         // Blur radius - scale
         blurRadius *= radiusScale;
 
@@ -83,27 +94,36 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
         float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( smc ) * fractionScale;
 
-        // Sampling
-    #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        // Screen-space settings
+    #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR == 1 )
         float2 skew = 1.0; // TODO: even for rough specular diffuse-like behavior is undesired ( especially visible in performance mode )
         skew *= gRectSizeInv * blurRadius;
 
         float4 scaledRotator = Geometry::ScaleRotator( rotator, skew );
     #else
-        float2x3 TvBv = GetKernelBasis( Dv.xyz, Nv, NoD, roughness, specNonLinearAccumSpeed );
+        // World-space settings
+        float bentFactor = sqrt( hitDistFactor );
+
+        float skewFactor = lerp( 0.25 + 0.75 * roughness, 1.0, NoD ); // TODO: tune max skewing factor?
+        skewFactor = lerp( skewFactor, 1.0, specNonLinearAccumSpeed );
+        skewFactor = lerp( 1.0, skewFactor, bentFactor );
+
+        float3 bentDv = normalize( lerp( Nv.xyz, Dv.xyz, bentFactor ) );
+        float2x3 TvBv = GetKernelBasis( bentDv, Nv );
 
         float worldRadius = PixelRadiusToWorld( gUnproject, gOrthoMode, blurRadius, viewZ );
-        TvBv[ 0 ] *= worldRadius;
-        TvBv[ 1 ] *= worldRadius;
+        TvBv[ 0 ] *= worldRadius * skewFactor;
+        TvBv[ 1 ] *= worldRadius / skewFactor;
     #endif
 
+        // Sampling
         [unroll]
         for( uint n = 0; n < POISSON_SAMPLE_NUM; n++ )
         {
             float3 offset = POISSON_SAMPLES( n );
 
             // Sample coordinates
-        #if( REBLUR_USE_SCREEN_SPACE_SAMPLING == 1 || REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
+        #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR == 1 )
             float2 uv = pixelUv + Geometry::RotateVector( scaledRotator, offset.xy );
         #else
             float2 uv = GetKernelSampleCoordinates( gViewToClip, offset, Xv, TvBv[ 0 ], TvBv[ 1 ], rotator );
@@ -156,7 +176,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
             float d = length( Xvs - Xv ) + NRD_EPS;
             float geometryWeight = w * saturate( hs / d );
             if( Rng::Hash::GetFloat( ) < geometryWeight )
-                minHitDist = min( minHitDist, hs );
+                hitDistForTracking = min( hitDistForTracking, hs );
 
             // In rare cases, when bright samples are so sparse that any bright neighbors can't be reached,
             // pre-pass transforms a standalone bright pixel into a standalone bright blob, worsening the
@@ -191,7 +211,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
         // Output
-        gOut_SpecHitDistForTracking[ pixelPos ] = minHitDist == NRD_INF ? 0.0 : minHitDist; // TODO: lerp to hitT at center based on NoV or NoD?
+        gOut_SpecHitDistForTracking[ pixelPos ] = hitDistForTracking == NRD_INF ? 0.0 : hitDistForTracking; // TODO: lerp to hitT at center based on NoV or NoD?
     }
 
     // Checkerboard resolve ( if pre-pass failed )

@@ -49,6 +49,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gDiffMaxFastAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gDisocclusionThreshold ) \
     NRD_CONSTANT( float, gDisocclusionThresholdAlternate ) \
+    NRD_CONSTANT( float, gCameraAttachedReflectionMaterialID ) \
     NRD_CONSTANT( float, gStrandMaterialID ) \
     NRD_CONSTANT( float, gStrandThickness ) \
     NRD_CONSTANT( float, gRoughnessFraction ) \

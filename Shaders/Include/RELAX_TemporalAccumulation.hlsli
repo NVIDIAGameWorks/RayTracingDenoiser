@@ -28,7 +28,6 @@ float isReprojectionTapValid(float3 currentWorldPos, float3 previousWorldPos, fl
 // 0 - reprojection not found
 
 float loadSurfaceMotionBasedPrevData(
-    int2 pixelPos,
     float3 prevWorldPos,
     float2 prevUVSMB,
     float currentLinearZ,
@@ -220,7 +219,6 @@ float loadSurfaceMotionBasedPrevData(
 // Returns specular reprojection search result based on virtual motion
 #ifdef RELAX_SPECULAR
 float loadVirtualMotionBasedPrevData(
-    int2 pixelPos,
     float3 currentWorldPos,
     float3 currentNormal,
     float currentLinearZ,
@@ -231,7 +229,7 @@ float loadVirtualMotionBasedPrevData(
     bool surfaceBicubicValid,
     float currentMaterialID,
     uint materialIDMask,
-    float2 prevSurfaceMotionBasedUV,
+    float2 prevUVSMB,
     float smbParallaxInPixelsMax,
     float NoV,
     float disocclusionThreshold,
@@ -257,6 +255,7 @@ float loadVirtualMotionBasedPrevData(
     float4 prevVirtualClipPos = mul(gWorldToClipPrev, float4(prevVirtualWorldPos, 1.0));
     prevVirtualClipPos.xy /= prevVirtualClipPos.w;
     prevUVVMB = prevVirtualClipPos.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
+    prevUVVMB = currentMaterialID == gCameraAttachedReflectionMaterialID ? prevUVSMB : prevUVVMB;
 
     float2 prevVirtualPixelPosFloat = prevUVVMB * gRectSizePrev;
 
@@ -507,7 +506,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
 
     float historyLength;
     float SMBReprojectionFound = loadSurfaceMotionBasedPrevData(
-        pixelPos,
         prevWorldPos,
         prevUVSMB,
         currentLinearZ,
@@ -736,7 +734,6 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     #endif
 
     float VMBReprojectionFound = loadVirtualMotionBasedPrevData(
-        pixelPos,
         currentWorldPos,
         currentNormal,
         currentLinearZ,
@@ -830,6 +827,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
     float3 prevVirtualWorldPos = GetXvirtual(hitDistForTrackingPrev, curvature, currentWorldPos, prevWorldPos, V, D.w);
     float virtualWorldPosLengthPrev = length(prevVirtualWorldPos);
     float2 prevUVVMBTest = Geometry::GetScreenUv(gWorldToClipPrev, prevVirtualWorldPos, false);
+    prevUVVMBTest = currentMaterialID == gCameraAttachedReflectionMaterialID ? prevUVSMB : prevUVVMBTest;
 
     float percentOfVolume = 0.6;
     float lobeTanHalfAngle = GetSpecLobeTanHalfAngle(currentRoughness, percentOfVolume);

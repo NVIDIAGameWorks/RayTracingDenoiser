@@ -275,24 +275,18 @@ float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE avg, REBLUR_TYPE sigma, f
 
 // Kernel
 
-float2x3 GetKernelBasis( float3 D, float3 N, float NoD, float roughness = 1.0, float anisoFade = 1.0 )
+float2x3 GetKernelBasis( float3 D, float3 N )
 {
     float3x3 basis = Geometry::GetBasis( N );
 
     float3 T = basis[ 0 ];
     float3 B = basis[ 1 ];
 
-    if( NoD < 0.999 )
+    if( abs( dot( D, N ) ) < 0.999 )
     {
         float3 R = reflect( -D, N );
         T = normalize( cross( N, R ) );
         B = cross( R, T );
-
-        float skewFactor = lerp( 0.5 + 0.5 * roughness, 1.0, NoD );
-        skewFactor = lerp( skewFactor, 1.0, anisoFade );
-
-        //T *= skewFactor; // TODO: let's not srink filtering in the other direction
-        B /= skewFactor;
     }
 
     return float2x3( T, B );

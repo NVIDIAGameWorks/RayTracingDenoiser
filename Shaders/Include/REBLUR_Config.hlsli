@@ -24,7 +24,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE            1 // almost matches world-space sampling but simpler code
 
 // Switches ( default 0 )
-#define REBLUR_USE_SCREEN_SPACE_SAMPLING                        0
+#define REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR           0 // specular is more complicated
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
 
 #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
@@ -90,6 +90,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_ROUGHNESS_SENSITIVITY_IN_TA                      ( NRD_ROUGHNESS_SENSITIVITY * 0.3 )
 #define REBLUR_ANTILAG_MODE                                     2 // 0 - modernized old, 1 - overly reactive @ low FPS, 2 - best?
 #define REBLUR_SAMPLES_PER_FRAME                                1.0 // TODO: expose in settings, it will become useful with very clean signals, when max number of accumulated frames is low
+#define REBLUR_MAX_PERCENT_OF_LOBE_VOLUME_FOR_PRE_PASS          0.3 // specially tuned for "hitDistForTracking"
 
 #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
     #define REBLUR_COLOR_CLAMPING_SIGMA_SCALE                   1.0 // much more predictable signal quality
@@ -199,8 +200,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #undef REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS
     #define REBLUR_USE_CATROM_FOR_VIRTUAL_MOTION_IN_TS          0
 
-    #undef REBLUR_USE_SCREEN_SPACE_SAMPLING
-    #define REBLUR_USE_SCREEN_SPACE_SAMPLING                    1
+    #undef REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE
+    #define REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE        1
+
+    #undef REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR
+    #define REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR       1
 
     #undef REBLUR_POISSON_SAMPLE_NUM
     #define REBLUR_POISSON_SAMPLE_NUM                           6
