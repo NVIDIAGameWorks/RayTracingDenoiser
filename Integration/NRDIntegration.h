@@ -148,6 +148,7 @@ private:
     uint32_t m_ConstantBufferOffset = 0;
     uint32_t m_DescriptorPoolIndex = 0;
     uint32_t m_FrameIndex = uint32_t(-1); // 0 needed after 1st "NewFrame"
+    uint32_t m_PrevFrameIndexFromSettings = 0;
     uint8_t m_BufferedFramesNum = 0;
     char m_Name[32] = {};
     bool m_ReloadShaders = false;

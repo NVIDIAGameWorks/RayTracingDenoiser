@@ -302,9 +302,6 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     isValid &= commonSettings.disocclusionThresholdAlternate > 0.0f;
     assert("'disocclusionThresholdAlternate' must be > 0" && isValid);
 
-    isValid &= commonSettings.accumulationMode != AccumulationMode::CONTINUE || commonSettings.frameIndex == m_CommonSettings.frameIndex + 1 || m_IsFirstUse;
-    assert("'frameIndex' must be a consecutively growing number" && isValid);
-
     isValid &= commonSettings.strandMaterialID != 0.0f || GetLibraryDesc().normalEncoding == NormalEncoding::R10_G10_B10_A2_UNORM;
     assert("'strandMaterialID' can't be 0 if material ID is not supported by encoding" && isValid);
 

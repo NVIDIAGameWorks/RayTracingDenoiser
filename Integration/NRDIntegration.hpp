@@ -478,6 +478,7 @@ void Integration::NewFrame()
     }
 
     m_FrameIndex++;
+    m_PrevFrameIndexFromSettings++;
 }
 
 bool Integration::SetCommonSettings(const CommonSettings& commonSettings)
@@ -486,6 +487,11 @@ bool Integration::SetCommonSettings(const CommonSettings& commonSettings)
 
     Result result = nrd::SetCommonSettings(*m_Instance, commonSettings);
     NRD_INTEGRATION_ASSERT(result == Result::SUCCESS, "SetCommonSettings(): failed!");
+
+    if (m_FrameIndex == 0 || commonSettings.accumulationMode != AccumulationMode::CONTINUE)
+        m_PrevFrameIndexFromSettings = commonSettings.frameIndex;
+    else
+        NRD_INTEGRATION_ASSERT(m_PrevFrameIndexFromSettings == commonSettings.frameIndex, "'frameIndex' must be incremented by 1 on each frame");
 
     return result == Result::SUCCESS;
 }
