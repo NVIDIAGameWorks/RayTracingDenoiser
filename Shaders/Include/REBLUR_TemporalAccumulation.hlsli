@@ -543,9 +543,10 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         normalWeight = lerp( Math::SmoothStep( 1.0, 0.0, vmbPixelsTraveled ), 1.0, normalWeight ); // jitter friendly
         virtualHistoryNormalBasedConfidence = min( virtualHistoryNormalBasedConfidence, normalWeight );
 
-        // Virtual history amount - normal confidence ( tests 9e, 65, 66, 107, 111, 132 )
-        // IMPORTANT: this is currently needed for bumpy surfaces, because virtual motion gets ruined by big curvature
-        float virtualHistoryAmount = virtualHistoryNormalBasedConfidence;
+        // Virtual history amount
+        // Tests 65, 66, 103, 107, 111, 132, e9, e11
+        float virtualHistoryAmount = Math::SmoothStep( 0.05, 0.95, Dfactor );
+        virtualHistoryAmount *= virtualHistoryNormalBasedConfidence; // helps on bumpy surfaces, because virtual motion gets ruined by big curvature
 
         // Virtual motion - virtual parallax difference
         // Tests 3, 6, 8, 11, 14, 100, 103, 104, 106, 109, 110, 114, 120, 127, 130, 131, 132, 138, 139 and 9e
@@ -599,6 +600,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Virtual history confidence
         float virtualHistoryConfidenceForSmbRelaxation = virtualHistoryNormalBasedConfidence * virtualHistoryRoughnessBasedConfidence;
         float virtualHistoryConfidence = virtualHistoryNormalBasedConfidence * virtualHistoryRoughnessBasedConfidence * virtualHistoryParallaxBasedConfidence;
+
+        virtualHistoryAmount *= virtualHistoryRoughnessBasedConfidence; // helps to preserve roughness details, which lies on surfaces
 
         // Sample surface history
         REBLUR_TYPE smbSpecHistory;
@@ -664,18 +667,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Virtual motion: max allowed frames
         float vmbMaxFrameNum = gMaxAccumulatedFrameNum;
-        vmbMaxFrameNum *= virtualHistoryParallaxBasedConfidence;
-        vmbMaxFrameNum *= virtualHistoryNormalBasedConfidence;
+        vmbMaxFrameNum *= virtualHistoryConfidence; // previously was just "virtualHistoryParallaxBasedConfidence * virtualHistoryNormalBasedConfidence"
         vmbMaxFrameNum = min( vmbMaxFrameNum, maxResponsiveFrameNum.y );
 
         // Limit number of accumulated frames
         float smbSpecAccumSpeedNoBoost = min( smbSpecAccumSpeed, smbMaxFrameNumNoBoost );
         smbSpecAccumSpeed = min( smbSpecAccumSpeed, smbMaxFrameNum );
         vmbSpecAccumSpeed = min( vmbSpecAccumSpeed, vmbMaxFrameNum );
-
-        // Virtual history amount - other ( tests 65, 66, 103, 111, 132, e9, e11 )
-        virtualHistoryAmount *= Math::SmoothStep( 0.05, 0.95, Dfactor );
-        virtualHistoryAmount *= virtualHistoryRoughnessBasedConfidence;
 
         // Fallback to "smb" if "vmb" history is short // ***
         // Interactive comparison of two methods: https://www.desmos.com/calculator/syocjyk9wc

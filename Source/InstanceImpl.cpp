@@ -268,18 +268,48 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
 
 nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSettings)
 {
-    // TODO: matrix verifications? return INVALID_ARGUMENT?
-    assert("'viewZScale' can't be <= 0" && commonSettings.viewZScale > 0.0f);
-    assert("'resourceSize' can't be 0" && commonSettings.resourceSize[0] != 0 && commonSettings.resourceSize[1] != 0);
-    assert("'resourceSizePrev' can't be 0" && commonSettings.resourceSizePrev[0] != 0 && commonSettings.resourceSizePrev[1] != 0);
-    assert("'rectSize' can't be 0" && commonSettings.rectSize[0] != 0 && commonSettings.rectSize[1] != 0);
-    assert("'rectSizePrev' can't be 0" && commonSettings.rectSizePrev[0] != 0 && commonSettings.rectSizePrev[1] != 0);
-    assert("'mvScale.xy' can't be 0" && ((commonSettings.motionVectorScale[0] != 0.0f && commonSettings.motionVectorScale[1] != 0.0f) || commonSettings.isMotionVectorInWorldSpace));
-    assert("'cameraJitter' must be in range [-0.5; 0.5]" && commonSettings.cameraJitter[0] >= -0.5f && commonSettings.cameraJitter[0] <= 0.5f && commonSettings.cameraJitter[1] >= -0.5f && commonSettings.cameraJitter[1] <= 0.5f);
-    assert("'cameraJitterPrev' must be in range [-0.5; 0.5]" && commonSettings.cameraJitterPrev[0] >= -0.5f && commonSettings.cameraJitterPrev[0] <= 0.5f && commonSettings.cameraJitterPrev[1] >= -0.5f && commonSettings.cameraJitterPrev[1] <= 0.5f);
-    assert("'denoisingRange' must be >= 0" && commonSettings.denoisingRange > 0.0f);
-    assert("'disocclusionThreshold' must be > 0" && commonSettings.disocclusionThreshold > 0.0f);
-    assert("'disocclusionThresholdAlternate' must be > 0" && commonSettings.disocclusionThresholdAlternate > 0.0f);
+    // TODO: matrix verifications?
+    bool isValid = commonSettings.viewZScale > 0.0f;
+    assert("'viewZScale' can't be <= 0" && isValid);
+
+    isValid &= commonSettings.resourceSize[0] != 0 && commonSettings.resourceSize[1] != 0;
+    assert("'resourceSize' can't be 0" && isValid);
+
+    isValid &= commonSettings.resourceSizePrev[0] != 0 && commonSettings.resourceSizePrev[1] != 0;
+    assert("'resourceSizePrev' can't be 0" && isValid);
+
+    isValid &= commonSettings.rectSize[0] != 0 && commonSettings.rectSize[1] != 0;
+    assert("'rectSize' can't be 0" && isValid);
+
+    isValid &= commonSettings.rectSizePrev[0] != 0 && commonSettings.rectSizePrev[1] != 0;
+    assert("'rectSizePrev' can't be 0" && isValid);
+
+    isValid &= ((commonSettings.motionVectorScale[0] != 0.0f && commonSettings.motionVectorScale[1] != 0.0f) || commonSettings.isMotionVectorInWorldSpace);
+    assert("'mvScale.xy' can't be 0" && isValid);
+
+    isValid &= commonSettings.cameraJitter[0] >= -0.5f && commonSettings.cameraJitter[0] <= 0.5f && commonSettings.cameraJitter[1] >= -0.5f && commonSettings.cameraJitter[1] <= 0.5f;
+    assert("'cameraJitter' must be in range [-0.5; 0.5]" && isValid);
+
+    isValid &= commonSettings.cameraJitterPrev[0] >= -0.5f && commonSettings.cameraJitterPrev[0] <= 0.5f && commonSettings.cameraJitterPrev[1] >= -0.5f && commonSettings.cameraJitterPrev[1] <= 0.5f;
+    assert("'cameraJitterPrev' must be in range [-0.5; 0.5]" && isValid);
+
+    isValid &= commonSettings.denoisingRange > 0.0f;
+    assert("'denoisingRange' must be >= 0" && isValid);
+
+    isValid &= commonSettings.disocclusionThreshold > 0.0f;
+    assert("'disocclusionThreshold' must be > 0" && isValid);
+
+    isValid &= commonSettings.disocclusionThresholdAlternate > 0.0f;
+    assert("'disocclusionThresholdAlternate' must be > 0" && isValid);
+
+    isValid &= commonSettings.accumulationMode != AccumulationMode::CONTINUE || commonSettings.frameIndex == m_CommonSettings.frameIndex + 1 || m_IsFirstUse;
+    assert("'frameIndex' must be a consecutively growing number" && isValid);
+
+    isValid &= commonSettings.strandMaterialID != 0.0f || GetLibraryDesc().normalEncoding == NormalEncoding::R10_G10_B10_A2_UNORM;
+    assert("'strandMaterialID' can't be 0 if material ID is not supported by encoding" && isValid);
+
+    isValid &= commonSettings.cameraAttachedReflectionMaterialID != 0.0f || GetLibraryDesc().normalEncoding == NormalEncoding::R10_G10_B10_A2_UNORM;
+    assert("'cameraAttachedReflectionMaterialID' can't be 0 if material ID is not supported by encoding" && isValid);
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
@@ -425,7 +455,7 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     float nonLinearAccumSpeed = FPS * 0.25f / (1.0f + FPS * 0.25f);
     m_CheckerboardResolveAccumSpeed = lerp(nonLinearAccumSpeed, 0.5f, m_JitterDelta);
 
-    return Result::SUCCESS;
+    return isValid ? Result::SUCCESS : Result::INVALID_ARGUMENT;
 }
 
 nrd::Result nrd::InstanceImpl::SetDenoiserSettings(Identifier identifier, const void* denoiserSettings)

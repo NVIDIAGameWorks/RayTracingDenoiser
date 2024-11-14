@@ -21,10 +21,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <array>
 #include <vector>
 #include <map>
+#include <stdio.h>
 
 #define NRD_INTEGRATION_MAJOR 1
-#define NRD_INTEGRATION_MINOR 13
-#define NRD_INTEGRATION_DATE "7 October 2024"
+#define NRD_INTEGRATION_MINOR 14
+#define NRD_INTEGRATION_DATE "14 November 2024"
 #define NRD_INTEGRATION 1
 
 // Debugging
@@ -138,6 +139,7 @@ private:
     nri::Device* m_Device = nullptr;
     nri::Buffer* m_ConstantBuffer = nullptr;
     nri::Descriptor* m_ConstantBufferView = nullptr;
+    FILE* m_Log = nullptr;
     Instance* m_Instance = nullptr;
     uint64_t m_PermanentPoolSize = 0;
     uint64_t m_TransientPoolSize = 0;
@@ -145,7 +147,7 @@ private:
     uint32_t m_ConstantBufferViewSize = 0;
     uint32_t m_ConstantBufferOffset = 0;
     uint32_t m_DescriptorPoolIndex = 0;
-    uint32_t m_FrameIndex = 0;
+    uint32_t m_FrameIndex = uint32_t(-1); // 0 needed after 1st "NewFrame"
     uint8_t m_BufferedFramesNum = 0;
     char m_Name[32] = {};
     bool m_ReloadShaders = false;

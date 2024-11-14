@@ -30,7 +30,7 @@ namespace nrd
         return (uint32_t)(accumulationTime * fps);
     }
 
-    // Internally, NRD uses the following sequence based on "CommonSettings::frameIndex":
+    // Sequence is based on "CommonSettings::frameIndex":
     //     Even frame (0)  Odd frame (1)   ...
     //         B W             W B
     //         W B             B W
@@ -138,7 +138,7 @@ namespace nrd
         // [0.01; 0.02] - two samples considered occluded if relative distance difference is greater than this slope-scaled threshold
         float disocclusionThreshold = 0.01f;
 
-        // [0.02; 0.2] - an alternative disocclusion threshold, which is mixed to based on:
+        // (Optional) [0.02; 0.2] - an alternative disocclusion threshold, which is mixed to based on:
         // - "strandThickness", if there is "strandMaterialID" match
         // - IN_DISOCCLUSION_THRESHOLD_MIX texture, if "isDisocclusionThresholdMixAvailable = true" (has higher priority and ignores "strandMaterialID")
         float disocclusionThresholdAlternate = 0.05f;
@@ -166,10 +166,13 @@ namespace nrd
         // IN_DISOCCLUSION_THRESHOLD_MIX and IN_BASECOLOR_METALNESS. Must be manually enabled via NRD_USE_VIEWPORT_OFFSET macro switch
         uint32_t rectOrigin[2] = {};
 
-        // A consecutive number
+        // A consecutively growing number. Valid usage:
+        // - must be incremented by 1 each frame
+        // - sequence can be restarted after passing "AccumulationMode != CONTINUE"
+        // - must be in sync with "CheckerboardMode" (if not OFF)
         uint32_t frameIndex = 0;
 
-        // To reset history set to RESTART / CLEAR_AND_RESTART for one frame
+        // To reset history set to RESTART or CLEAR_AND_RESTART for one frame
         AccumulationMode accumulationMode = AccumulationMode::CONTINUE;
 
         // If "true" IN_MV is 3D motion in world-space (0 should be everywhere if the scene is static, camera motion must not be included),

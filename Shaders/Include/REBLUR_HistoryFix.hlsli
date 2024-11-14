@@ -100,6 +100,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
     // Diffuse
     #ifdef REBLUR_DIFFUSE
+    {
         REBLUR_TYPE diff = gIn_Diff[ pixelPos ];
         #ifdef REBLUR_SH
             float4 diffSh = gIn_DiffSh[ pixelPos ];
@@ -207,7 +208,8 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float diffM1 = diffCenter;
         float diffM2 = diffM1 * diffM1;
 
-        diffCenter = lerp( GetLuma( diff ), diffCenter, saturate( frameNum.x / ( gHistoryFixFrameNum + NRD_EPS ) ) );
+        float f = saturate( frameNum.x / ( gHistoryFixFrameNum + NRD_EPS ) );
+        diffCenter = lerp( GetLuma( diff ), diffCenter, f );
         gOut_DiffFast[ pixelPos ] = diffCenter;
 
         [unroll]
@@ -288,10 +290,12 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SH
             gOut_DiffSh[ pixelPos ] = diffSh;
         #endif
+    }
     #endif
 
     // Specular
     #ifdef REBLUR_SPECULAR
+    {
         REBLUR_TYPE spec = gIn_Spec[ pixelPos ];
         #ifdef REBLUR_SH
             float4 specSh = gIn_SpecSh[ pixelPos ];
@@ -403,7 +407,9 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float specM1 = specCenter;
         float specM2 = specM1 * specM1;
 
-        specCenter = lerp( GetLuma( spec ), specCenter, saturate( frameNum.y / ( gHistoryFixFrameNum + NRD_EPS ) ) );
+        float f = saturate( frameNum.y / ( gHistoryFixFrameNum + NRD_EPS ) );
+        f = lerp( 1.0, f, smc ); // HistoryFix-ed data is undesired in fast history for low roughness ( test 115 )
+        specCenter = lerp( GetLuma( spec ), specCenter, f );
         gOut_SpecFast[ pixelPos ] = specCenter;
 
         [unroll]
@@ -484,5 +490,6 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         #ifdef REBLUR_SH
             gOut_SpecSh[ pixelPos ] = specSh;
         #endif
+    }
     #endif
 }

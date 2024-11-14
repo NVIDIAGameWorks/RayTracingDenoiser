@@ -124,6 +124,14 @@ bool Integration::Initialize(const IntegrationCreationDesc& integrationDesc, con
 
     strncpy(m_Name, integrationDesc.name, sizeof(m_Name));
 
+#if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
+    char filename[128];
+    snprintf(filename, sizeof(filename), "NRD-%s.log", m_Name);
+    m_Log = fopen(filename, "w");
+    if (m_Log)
+        fprintf(m_Log, "Resource size = %u x %u\n", integrationDesc.resourceWidth, integrationDesc.resourceHeight);
+#endif
+
     CreatePipelines();
     CreateResources(integrationDesc.resourceWidth, integrationDesc.resourceHeight);
 
@@ -316,7 +324,7 @@ void Integration::CreateResources(uint16_t resourceWidth, uint16_t resourceHeigh
 
         uint16_t w = DivideUp(resourceWidth, nrdTextureDesc.downsampleFactor);
         uint16_t h = DivideUp(resourceHeight, nrdTextureDesc.downsampleFactor);
-        
+
         nri::TextureDesc textureDesc = {};
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE | nri::TextureUsageBits::SHADER_RESOURCE_STORAGE;
@@ -330,9 +338,9 @@ void Integration::CreateResources(uint16_t resourceWidth, uint16_t resourceHeigh
 
         char name[128];
         if (i < instanceDesc.permanentPoolSize)
-            snprintf(name, sizeof(name), "%s::PermamentPool%u", m_Name, i);
+            snprintf(name, sizeof(name), "%s::P(%u)", m_Name, i);
         else
-            snprintf(name, sizeof(name), "%s::TransientPool%u", m_Name, i - instanceDesc.permanentPoolSize);
+            snprintf(name, sizeof(name), "%s::T(%u)", m_Name, i - instanceDesc.permanentPoolSize);
         m_NRI->SetTextureDebugName(*texture, name);
 
         // Construct NRD texture
@@ -349,12 +357,14 @@ void Integration::CreateResources(uint16_t resourceWidth, uint16_t resourceHeigh
             m_TransientPoolSize += memoryDesc.size;
 
     #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("%s format=%u downsampleFactor=%u\n", name, nrdTextureDesc.format, nrdTextureDesc.downsampleFactor);
+        if (m_Log)
+            fprintf(m_Log, "%s\n\tformat=%u downsampleFactor=%u\n", name, nrdTextureDesc.format, nrdTextureDesc.downsampleFactor);
     #endif
     }
 
 #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-    printf("%s: %.1f Mb (permanent), %.1f Mb (transient)\n\n", m_Name, double(m_PermanentPoolSize) / (1024.0f * 1024.0f), double(m_TransientPoolSize) / (1024.0f * 1024.0f));
+    if (m_Log)
+        fprintf(m_Log, "%.1f Mb (permanent), %.1f Mb (transient)\n\n", double(m_PermanentPoolSize) / (1024.0f * 1024.0f), double(m_TransientPoolSize) / (1024.0f * 1024.0f));
 #endif
 
     // Samplers
@@ -407,6 +417,11 @@ void Integration::CreateResources(uint16_t resourceWidth, uint16_t resourceHeigh
         m_DescriptorSetSamplers.push_back(nullptr);
         m_DescriptorsInFlight.push_back({});
     }
+
+#if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
+    if (m_Log)
+        fflush(m_Log);
+#endif
 }
 
 void Integration::AllocateAndBindMemory()
@@ -440,8 +455,12 @@ void Integration::NewFrame()
     NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
 
 #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("%s (frame %u) ==============================================================================\n\n", m_Name, m_FrameIndex);
-    #endif
+    if (m_Log)
+    {
+        fflush(m_Log);
+        fprintf(m_Log, "(frame %u) ==============================================================================\n\n", m_FrameIndex);
+    }
+#endif
 
     m_DescriptorPoolIndex = m_FrameIndex % m_BufferedFramesNum;
     nri::DescriptorPool* descriptorPool = m_DescriptorPools[m_DescriptorPoolIndex];
@@ -491,7 +510,7 @@ void Integration::Denoise(const Identifier* denoisers, uint32_t denoisersNum, nr
         const nri::Texture* normalRoughnessTexture = userPool[(size_t)ResourceType::IN_NORMAL_ROUGHNESS]->texture;
         const nri::TextureDesc& normalRoughnessDesc = m_NRI->GetTextureDesc(*normalRoughnessTexture);
         const LibraryDesc& nrdLibraryDesc = GetLibraryDesc();
-        
+
         bool isNormalRoughnessFormatValid = false;
         switch(nrdLibraryDesc.normalEncoding)
         {
@@ -685,24 +704,27 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
     m_NRI->CmdDispatch(commandBuffer, {dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1});
 
     // Debug logging
-    #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
-        printf("Pipeline #%u : %s\n\t", dispatchDesc.pipelineIndex, dispatchDesc.name);
+#if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
+    if (m_Log)
+    {
+        fprintf(m_Log, "Pipeline #%u : %s\n\t", dispatchDesc.pipelineIndex, dispatchDesc.name);
         for( uint32_t i = 0; i < dispatchDesc.resourcesNum; i++ )
         {
             const ResourceDesc& r = dispatchDesc.resources[i];
 
             if( r.type == ResourceType::PERMANENT_POOL )
-                printf("P(%u) ", r.indexInPool);
+                fprintf(m_Log, "P(%u) ", r.indexInPool);
             else if( r.type == ResourceType::TRANSIENT_POOL )
-                printf("T(%u) ", r.indexInPool);
+                fprintf(m_Log, "T(%u) ", r.indexInPool);
             else
             {
                 const char* s = GetResourceTypeString(r.type);
-                printf("%s ", s);
+                fprintf(m_Log, "%s ", s);
             }
         }
-        printf("\n\n");
-    #endif
+        fprintf(m_Log, "\n\n");
+    }
+#endif
 }
 
 void Integration::Destroy()
@@ -764,6 +786,11 @@ void Integration::Destroy()
     m_FrameIndex = 0;
     m_ReloadShaders = false;
     m_EnableDescriptorCaching = false;
+
+#if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
+    if (m_Log)
+        fclose(m_Log);
+#endif
 }
 
 }
