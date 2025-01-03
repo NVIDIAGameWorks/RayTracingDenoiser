@@ -24,8 +24,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include <stdio.h>
 
 #define NRD_INTEGRATION_MAJOR 1
-#define NRD_INTEGRATION_MINOR 14
-#define NRD_INTEGRATION_DATE "14 November 2024"
+#define NRD_INTEGRATION_MINOR 16
+#define NRD_INTEGRATION_DATE "20 December 2024"
 #define NRD_INTEGRATION 1
 
 // Debugging
@@ -41,7 +41,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 namespace nrd
 {
 
-// "TextureBarrierDesc::texture" represents the resource, the rest represents the state
+// "TextureBarrierDesc::texture" represents the resource, the rest represents the state ("before" state is unused and can be zeroed)
 typedef std::array<nri::TextureBarrierDesc*, (size_t)ResourceType::MAX_NUM - 2> UserPool;
 
 // User pool must contain valid entries for resources, which are required for requested denoisers,
@@ -99,7 +99,12 @@ public:
     bool SetCommonSettings(const CommonSettings& commonSettings);
     bool SetDenoiserSettings(Identifier denoiser, const void* denoiserSettings);
 
-    void Denoise(const Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, const UserPool& userPool);
+    // Invokes denoising for specified denoisers
+    // At the end of the function "nri::TextureBarrierDesc" from "userPool" will represent "final"
+    // state of a resource, which must be used as "before" state in the next "barrier" call. The initial
+    // state of resources in "userPool" can be restored by using "restoreInitialState = true" (redundant
+    // transition barriers will be emitted). This function binds own descriptor heap / pool.
+    void Denoise(const Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, UserPool& userPool, bool restoreInitialState = false);
 
     // This function assumes that the device is in the IDLE state, i.e. there is no work in flight
     void Destroy();
@@ -122,7 +127,7 @@ private:
 
     void CreateResources(uint16_t resourceWidth, uint16_t resourceHeight);
     void AllocateAndBindMemory();
-    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const DispatchDesc& dispatchDesc, const UserPool& userPool);
+    void Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const DispatchDesc& dispatchDesc, UserPool& userPool);
 
 private:
     std::vector<nri::TextureBarrierDesc> m_TexturePool;
@@ -146,9 +151,12 @@ private:
     uint64_t m_ConstantBufferSize = 0;
     uint32_t m_ConstantBufferViewSize = 0;
     uint32_t m_ConstantBufferOffset = 0;
+    uint32_t m_ConstantBufferOffsetPrev = 0;
     uint32_t m_DescriptorPoolIndex = 0;
     uint32_t m_FrameIndex = uint32_t(-1); // 0 needed after 1st "NewFrame"
     uint32_t m_PrevFrameIndexFromSettings = 0;
+    uint16_t m_Width = 0;
+    uint16_t m_Height = 0;
     uint8_t m_BufferedFramesNum = 0;
     char m_Name[32] = {};
     bool m_ReloadShaders = false;

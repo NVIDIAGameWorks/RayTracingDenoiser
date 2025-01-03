@@ -9,8 +9,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_REVERSED;
+
     // TODO: introduce "CopyResource" in NRD API?
 #ifdef RELAX_SPECULAR
     gOut_Spec[pixelPos.xy] = gIn_Spec[pixelPos.xy];

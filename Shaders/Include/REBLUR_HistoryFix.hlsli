@@ -31,8 +31,10 @@ void Preload( uint2 sharedPos, int2 globalPos )
 // TODO: potentially do color clamping after reconstruction in a separate pass
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_REVERSED;
+
     // Preload
     float isSky = gIn_Tiles[ pixelPos >> 4 ];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
@@ -382,6 +384,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
                     float hs = ExtractHitDist( s ) * hitDistScale;
                     float hsFactor = GetHitDistFactor( hs, frustumSize );
                     w *= ComputeExponentialWeight( hsFactor, hitDistanceWeightParams.x, hitDistanceWeightParams.y );
+
+                    // Special case for low roughness ( hit distances work as a non-noisy guide )
+                    float d = abs( hitDist - hs ) / ( max( hitDist, hs ) + 0.001 );
+                    float b = Math::LinearStep( 0.03, 0.05, roughness );
+                    w *= Math::SmoothStep( 0.2 + b, 0.05 + b, d );
 
                     // Accumulate
                     sums += w;

@@ -37,8 +37,10 @@ void Preload( uint2 sharedPos, int2 globalPos )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     // Preload
     float isSky = gIn_Tiles[ pixelPos >> 4 ];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
@@ -398,10 +400,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             float3 x = x10 * w.x + x01 * w.y;
             float3 n = normalize( n10 * w.x + n01 * w.y );
 
-            // ( Optional ) High parallax - flattens surface on high motion ( test 132, e9 )
-            // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33 )
-            float deltaUvLenFixed = smbParallaxInPixelsMin; // not needed for objects attached to the camera!
+            // High parallax - flattens surface on high motion ( test 132, 172, 173, 174, 190, 201, 202, 203, e9 )
+            // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33, 202 )
+            float deltaUvLenFixed = smbParallaxInPixelsMin; // "min" because not needed for objects attached to the camera!
             deltaUvLenFixed *= NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0; // it fixes silhouettes, but leads to less flattening
+            deltaUvLenFixed *= 1.0 + gFramerateScale * Sequence::Bayer4x4( pixelPos, gFrameIndex ); // improves behavior if FPS is high, dithering is needed to avoid artefacts in test 1
 
             float2 motionUvHigh = pixelUv + deltaUvLenFixed * deltaUv * gRectSizeInv;
             motionUvHigh = ( floor( motionUvHigh * gRectSize ) + 0.5 ) * gRectSizeInv; // Snap to the pixel center!
@@ -453,7 +456,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         // Virtual motion - roughness
         Filtering::Bilinear vmbBilinearFilter = Filtering::GetBilinearFilter( vmbPixelUv, gRectSizePrev );
         float2 vmbBilinearGatherUv = ( vmbBilinearFilter.origin + 1.0 ) * gResourceSizeInvPrev;
-        float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness, gRoughnessFraction, REBLUR_ROUGHNESS_SENSITIVITY_IN_TA );
+        float2 relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( roughness * roughness, gRoughnessFraction, REBLUR_ROUGHNESS_SENSITIVITY_IN_TA ); // TODO: GetRoughnessWeightParams with 0.05 sensitivity?
     #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
         float4 vmbRoughness = gPrev_Normal_Roughness.GatherBlue( gNearestClamp, vmbBilinearGatherUv ).wzxy;
     #else
@@ -468,13 +471,16 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float3 vmbN = Geometry::RotateVector( gWorldPrevToWorld, vmbNormalAndRoughness.xyz );
         float virtualHistoryNormalBasedConfidence = 1.0 / ( 1.0 + 0.5 * Dfactor * saturate( length( N - vmbN ) - REBLUR_NORMAL_ULP ) * vmbPixelsTraveled );
 
+        // Patch "smbNavg" if "smb" motion is invalid ( make relative tests a NOP )
+        smbNavg = smbFootprintQuality == 0.0 ? vmbN : smbNavg;
+
         // Virtual motion - disocclusion: plane distance and roughness
         float4 vmbOcclusion;
         {
             float4 vmbOcclusionThreshold = disocclusionThreshold * frustumSize;
             vmbOcclusionThreshold *= lerp( 0.25, 1.0, NoV ); // yes, "*" not "/" // TODO: it's from commit "fixed suboptimal "vmb" reprojection behavior in disocclusions", but is it really needed?
             vmbOcclusionThreshold *= float( dot( vmbN, N ) > REBLUR_ALMOST_ZERO_ANGLE ); // good for vmb
-            vmbOcclusionThreshold *= float( dot( smbNavg, vmbN ) > REBLUR_ALMOST_ZERO_ANGLE ); // bonus check for test 168
+            vmbOcclusionThreshold *= float( dot( vmbN, smbNavg ) > REBLUR_ALMOST_ZERO_ANGLE ); // bonus check for test 168
             vmbOcclusionThreshold *= IsInScreenBilinear( vmbBilinearFilter.origin, gRectSizePrev );
             vmbOcclusionThreshold -= NRD_EPS;
 
@@ -545,7 +551,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
         // Virtual history amount
         // Tests 65, 66, 103, 107, 111, 132, e9, e11
-        float virtualHistoryAmount = Math::SmoothStep( 0.05, 0.95, Dfactor );
+        float virtualHistoryAmount = Math::SmoothStep( 0.05, 0.95, Dfactor ); // TODO: too much for high roughness under glancing angles ( test 81 )
         virtualHistoryAmount *= virtualHistoryNormalBasedConfidence; // helps on bumpy surfaces, because virtual motion gets ruined by big curvature
 
         // Virtual motion - virtual parallax difference
@@ -574,7 +580,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         vmbDelta *= Math::Rsqrt( Math::LengthSquared( vmbDelta ) );
         vmbDelta /= gRectSizePrev;
 
-        relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( vmbNormalAndRoughness.w * vmbNormalAndRoughness.w, gRoughnessFraction, REBLUR_ROUGHNESS_SENSITIVITY_IN_TA );
+        relaxedRoughnessWeightParams = GetRelaxedRoughnessWeightParams( vmbNormalAndRoughness.w * vmbNormalAndRoughness.w, gRoughnessFraction, REBLUR_ROUGHNESS_SENSITIVITY_IN_TA ); // TODO: GetRoughnessWeightParams with 0.05 sensitivity?
 
         [unroll]
         for( i = 1; i <= REBLUR_VIRTUAL_MOTION_PREV_PREV_WEIGHT_ITERATION_NUM; i++ )
@@ -601,6 +607,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         float virtualHistoryConfidenceForSmbRelaxation = virtualHistoryNormalBasedConfidence * virtualHistoryRoughnessBasedConfidence;
         float virtualHistoryConfidence = virtualHistoryNormalBasedConfidence * virtualHistoryRoughnessBasedConfidence * virtualHistoryParallaxBasedConfidence;
 
+        // TODO: more fallback to "smb" needed in many cases if roughness changes
         virtualHistoryAmount *= virtualHistoryRoughnessBasedConfidence; // helps to preserve roughness details, which lies on surfaces
 
         // Sample surface history
@@ -629,12 +636,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
 
             float nonLinearAccumSpeed = 1.0 / ( 1.0 + smbSpecAccumSpeed );
             float h = lerp( ExtractHitDist( smbSpecHistory ), ExtractHitDist( spec ), nonLinearAccumSpeed ) * hitDistNormalization;
-            float hdf = GetHitDistFactor( h, frustumSize );
 
             float tana0 = ImportanceSampling::GetSpecularLobeTanHalfAngle( roughnessModified, NRD_MAX_PERCENT_OF_LOBE_VOLUME ); // base lobe angle
             tana0 *= lerp( NoV, 1.0, roughnessModified ); // make more strict if NoV is low and lobe is very V-dependent
             tana0 *= nonLinearAccumSpeed; // make more strict if history is long
-            tana0 /= hdf + NRD_EPS; // make relaxed "in corners", where reflection is close to the surface
+            tana0 /= GetHitDistFactor( h, frustumSize ) + NRD_EPS; // make relaxed "in corners", where reflection is close to the surface
 
             float a0 = atan( tana0 );
             a0 = max( a0, NRD_NORMAL_ENCODING_ERROR );
@@ -658,12 +664,13 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         }
 
         // Surface motion: max allowed frames
-        float smbMaxFrameNumNoBoost = gMaxAccumulatedFrameNum;
-        smbMaxFrameNumNoBoost *= surfaceHistoryConfidence;
-        smbMaxFrameNumNoBoost = min( smbMaxFrameNumNoBoost, maxResponsiveFrameNum.x );
+        float smbMaxFrameNum = gMaxAccumulatedFrameNum;
+        smbMaxFrameNum *= surfaceHistoryConfidence;
+        smbMaxFrameNum = min( smbMaxFrameNum, maxResponsiveFrameNum.x );
 
-        // Ensure that HistoryFix pass doesn't pop up without a disocclusion in critical cases
-        float smbMaxFrameNum = max( smbMaxFrameNumNoBoost, gHistoryFixFrameNum * ( 1.0 - virtualHistoryConfidenceForSmbRelaxation ) );
+        // Ensure that HistoryFix pass doesn't pop up without a disocclusion in some critical cases
+        float smbBoostedMaxFrameNum = max( smbMaxFrameNum, gHistoryFixFrameNum * ( 1.0 - virtualHistoryConfidenceForSmbRelaxation ) );
+        float smbSpecAccumSpeedBoosted = min( smbSpecAccumSpeed, smbBoostedMaxFrameNum );
 
         // Virtual motion: max allowed frames
         float vmbMaxFrameNum = gMaxAccumulatedFrameNum;
@@ -671,17 +678,24 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         vmbMaxFrameNum = min( vmbMaxFrameNum, maxResponsiveFrameNum.y );
 
         // Limit number of accumulated frames
-        float smbSpecAccumSpeedNoBoost = min( smbSpecAccumSpeed, smbMaxFrameNumNoBoost );
         smbSpecAccumSpeed = min( smbSpecAccumSpeed, smbMaxFrameNum );
         vmbSpecAccumSpeed = min( vmbSpecAccumSpeed, vmbMaxFrameNum );
 
         // Fallback to "smb" if "vmb" history is short // ***
+    #if( REBLUR_USE_OLD_SMB_FALLBACK_LOGIC == 1 )
         // Interactive comparison of two methods: https://www.desmos.com/calculator/syocjyk9wc
         // TODO: the amount gets shifted heavily towards "smb" if "smb" > "vmb" even by 5 frames
         float vmbToSmbRatio = saturate( vmbSpecAccumSpeed / ( smbSpecAccumSpeed + NRD_EPS ) );
         float smbBonusFrames = max( smbSpecAccumSpeed - vmbSpecAccumSpeed, 0.0 );
         virtualHistoryAmount *= vmbToSmbRatio;
         virtualHistoryAmount /= 1.0 + smbBonusFrames * ( 1.0 - vmbToSmbRatio );
+    #else
+        // This version works in both directions: towards "smb" and towards "vmb"
+        // TODO: "magic" is tuned to ~match old logic and also offer non-aggressive fallback to "vmb" on top ( test 218 )
+        float magic = vmbSpecAccumSpeed > smbSpecAccumSpeed ? 8.0 : 0.5;
+        virtualHistoryAmount *= 1.0 + ( vmbSpecAccumSpeed - smbSpecAccumSpeed ) / ( magic * max( vmbSpecAccumSpeed, smbSpecAccumSpeed ) + 1.0 );
+        virtualHistoryAmount = saturate( virtualHistoryAmount );
+    #endif
 
         #if( REBLUR_VIRTUAL_HISTORY_AMOUNT != 2 )
             virtualHistoryAmount = REBLUR_VIRTUAL_HISTORY_AMOUNT;
@@ -707,7 +721,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
         vmbSpecHistory = ClampNegativeToZero( vmbSpecHistory );
 
         // Accumulation
-        float smbSpecNonLinearAccumSpeed = 1.0 / ( 1.0 + smbSpecAccumSpeedNoBoost );
+        float smbSpecNonLinearAccumSpeed = 1.0 / ( 1.0 + smbSpecAccumSpeed );
         float vmbSpecNonLinearAccumSpeed = 1.0 / ( 1.0 + vmbSpecAccumSpeed );
 
         if( !specHasData )
@@ -732,7 +746,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
             specShResult.w = roughnessModified; // IMPORTANT: must not be blurred! this is why "specSh.xyz" is used ~everywhere
         #endif
 
-        float specAccumSpeed = lerp( smbSpecAccumSpeed, vmbSpecAccumSpeed, virtualHistoryAmount );
+        float specAccumSpeed = lerp( smbSpecAccumSpeedBoosted, vmbSpecAccumSpeed, virtualHistoryAmount );
         REBLUR_TYPE specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
 
         // Firefly suppressor

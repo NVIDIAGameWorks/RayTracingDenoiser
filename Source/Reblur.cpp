@@ -154,9 +154,8 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
     if (!skipPrePass)
     {
         uint32_t passIndex = AsUint(Dispatch::PREPASS) + (enableHitDistanceReconstruction ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
-        REBLUR_PrePassConstants* consts = (REBLUR_PrePassConstants*)PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
-        consts->gRotator = m_Rotator_PrePass; // TODO: push constant
     }
 
     { // TEMPORAL_ACCUMULATION
@@ -175,23 +174,21 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
 
     { // BLUR
         uint32_t passIndex = AsUint(Dispatch::BLUR) + (settings.enablePerformanceMode ? 1 : 0);
-        REBLUR_BlurConstants* consts = (REBLUR_BlurConstants*)PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
-        consts->gRotator = m_Rotator_Blur; // TODO: push constant
     }
 
     { // POST_BLUR
         uint32_t passIndex = AsUint(Dispatch::POST_BLUR) + (skipTemporalStabilization ? 0 : 2) + (settings.enablePerformanceMode ? 1 : 0);
-        REBLUR_PostBlurConstants* consts = (REBLUR_PostBlurConstants*)PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
-        consts->gRotator = m_Rotator_PostBlur; // TODO: push constant
     }
 
     // COPY
     if (!skipTemporalStabilization)
     {
         uint32_t passIndex = AsUint(Dispatch::COPY);
-        void* consts = (REBLUR_CopyConstants*)PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
     }
 
@@ -278,16 +275,14 @@ void nrd::InstanceImpl::Update_ReblurOcclusion(const DenoiserData& denoiserData)
 
     { // BLUR
         uint32_t passIndex = AsUint(Dispatch::BLUR) + (settings.enablePerformanceMode ? 1 : 0);
-        REBLUR_BlurConstants* consts = (REBLUR_BlurConstants* )PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
-        consts->gRotator = m_Rotator_Blur; // TODO: push constant
     }
 
     { // POST_BLUR
         uint32_t passIndex = AsUint(Dispatch::POST_BLUR) + (settings.enablePerformanceMode ? 1 : 0);
-        REBLUR_PostBlurConstants* consts = (REBLUR_PostBlurConstants*)PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
-        consts->gRotator = m_Rotator_PostBlur; // TODO: push constant
     }
 
     // SPLIT_SCREEN
@@ -349,6 +344,9 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gWorldToViewPrev                                    = m_WorldToViewPrev;
     consts->gWorldToClipPrev                                    = m_WorldToClipPrev;
     consts->gWorldPrevToWorld                                   = m_WorldPrevToWorld;
+    consts->gRotatorPre                                         = m_RotatorPre;
+    consts->gRotator                                            = m_Rotator;
+    consts->gRotatorPost                                        = m_RotatorPost;
     consts->gFrustum                                            = m_Frustum;
     consts->gFrustumPrev                                        = m_FrustumPrev;
     consts->gCameraDelta                                        = m_CameraDelta.xmm;

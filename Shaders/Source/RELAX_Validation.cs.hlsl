@@ -29,8 +29,10 @@ Viewport layout:
 */
 
 [numthreads( 16, 16, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     if( gResetHistory != 0 )
     {
         gOut_Validation[ pixelPos ] = 0;

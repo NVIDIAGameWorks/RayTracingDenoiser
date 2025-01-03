@@ -12,11 +12,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define POISSON_SAMPLES         g_Poisson8
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_REVERSED;
+
     // Tile-based early out
     float isSky = gIn_Tiles[pixelPos >> 4];
-    if (isSky != 0.0 || pixelPos.x >= (int)gRectSize.x || pixelPos.y >= (int)gRectSize.y)
+    if (isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y)
         return;
 
     // Early out if linearZ is beyond denoising range
@@ -52,7 +54,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 
         checkerboardResolveWeights = GetBilateralWeight(float2(viewZ0, viewZ1), centerViewZ);
         checkerboardResolveWeights.x = (viewZ0 > gDenoisingRange || pixelPos.x < 1) ? 0.0 : checkerboardResolveWeights.x;
-        checkerboardResolveWeights.y = (viewZ1 > gDenoisingRange || pixelPos.x > (int)gRectSize.x - 2) ? 0.0 : checkerboardResolveWeights.y;
+        checkerboardResolveWeights.y = (viewZ1 > gDenoisingRange || pixelPos.x > gRectSize.x - 2) ? 0.0 : checkerboardResolveWeights.y;
     }
 
     checkerboardPos.xy >>= 1;
@@ -63,7 +65,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
     float centerRoughness = centerNormalRoughness.w;
 
     float3 centerWorldPos = GetCurrentWorldPosFromPixelPos(pixelPos, centerViewZ);
-    float4 rotator = GetBlurKernelRotation(NRD_FRAME, pixelPos, gRotator, gFrameIndex);
+    float4 rotator = GetBlurKernelRotation(NRD_FRAME, pixelPos, gRotatorPre, gFrameIndex);
 
     float2 pixelUv = float2(pixelPos + 0.5) * gRectSizeInv;
 

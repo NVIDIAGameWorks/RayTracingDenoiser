@@ -323,9 +323,9 @@ namespace nrd
         float4x4 m_ClipToWorld = float4x4::Identity();
         float4x4 m_ClipToWorldPrev = float4x4::Identity();
         float4x4 m_WorldPrevToWorld = float4x4::Identity();
-        float4 m_Rotator_PrePass = float4::Zero();
-        float4 m_Rotator_Blur = float4::Zero();
-        float4 m_Rotator_PostBlur = float4::Zero();
+        float4 m_RotatorPre = float4::Zero();
+        float4 m_Rotator = float4::Zero();
+        float4 m_RotatorPost = float4::Zero();
         float4 m_Frustum = float4::Zero();
         float4 m_FrustumPrev = float4::Zero();
         float3 m_CameraDelta = float3::Zero();

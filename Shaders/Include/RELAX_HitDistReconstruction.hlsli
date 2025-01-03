@@ -33,8 +33,10 @@ void Preload(uint2 sharedPos, int2 globalPos)
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     float2 pixelUv = float2(pixelPos + 0.5) * gRectSizeInv;
 
     // Preload
@@ -42,7 +44,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 threadPos : SV_GroupThreadId, int2 pixelPos : S
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
-    if (isSky != 0.0 || pixelPos.x >= (int)gRectSize.x || pixelPos.y >= (int)gRectSize.y)
+    if (isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y)
         return;
 
     int2 smemPos = threadPos + BORDER;

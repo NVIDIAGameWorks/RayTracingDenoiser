@@ -87,6 +87,24 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // CTA & preloading
 //==================================================================================================================
 
+// CTA swizzling
+#define NRD_CS_MAIN_ARGS                                        int2 threadPos : SV_GroupThreadId, uint2 groupPos : SV_GroupId, int2 _pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex
+
+// IMPORTANT: incompatible with "USE_MAX_DIMS", "IGNORE_RS" and dispatches with "downsampleFactor > 1"
+#if 1
+    // Helps to reuse data already stored in caches
+    #define NRD_CTA_ORDER_REVERSED \
+        const uint2 numGroups = ( uint2( gRectSize ) + uint2( GROUP_X, GROUP_Y ) - 1 ) / uint2( GROUP_X, GROUP_Y ); \
+        const int2 pixelPos = ( numGroups - 1 - groupPos ) * uint2( GROUP_X, GROUP_Y ) + threadPos
+#else
+    #define NRD_CTA_ORDER_REVERSED \
+        const int2 pixelPos = _pixelPos
+#endif
+
+#define NRD_CTA_ORDER_DEFAULT \
+    const int2 pixelPos = _pixelPos
+
+// Preloading in SMEM
 #ifdef NRD_USE_BORDER_2
     #define BORDER                                              2
 #else

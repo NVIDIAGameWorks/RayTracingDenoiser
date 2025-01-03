@@ -9,8 +9,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     // Tile-based early out
     float isSky = gIn_Tiles[pixelPos >> 4];
     if (isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y)
@@ -138,7 +140,7 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             if (isCenter)
                 continue;
 
-            bool isInside = all(p >= int2(0, 0)) && all(p < int2(gRectSize));
+            bool isInside = all(p >= int2(0, 0)) && all(p < gRectSize);
             float kernel = kernelWeightGaussian3x3[abs(xx)] * kernelWeightGaussian3x3[abs(yy)];
 
             // Fetching normal, roughness, linear Z

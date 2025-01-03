@@ -113,7 +113,8 @@ namespace nrd
             0.0f, 0.0f, 0.0f, 1.0f
         };
 
-        // Used as "IN_MV * motionVectorScale" (use .z = 0 for 2D screen-space motion)
+        // Used as "mv = IN_MV * motionVectorScale" (use .z = 0 for 2D screen-space motion)
+        // Expected usage: "pixelUvPrev = pixelUv + mv.xy" (where "pixelUv" is in (0; 1) range)
         float motionVectorScale[3] = {1.0f, 1.0f, 0.0f};
 
         // [-0.5; 0.5] - sampleUv = pixelUv + cameraJitter

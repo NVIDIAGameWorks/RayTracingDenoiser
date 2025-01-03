@@ -9,8 +9,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_REVERSED;
+
     // Tile-based early out
     float isSky = gIn_Tiles[ pixelPos >> 4 ];
     if( isSky != 0.0 || any( pixelPos > gRectSizeMinusOne ) )
@@ -39,7 +41,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float NoV = abs( dot( Nv, Vv ) );
 
     const float frustumSize = GetFrustumSize( gMinRectDimMulUnproject, gOrthoMode, viewZ );
-    const float4 rotator = GetBlurKernelRotation( REBLUR_POST_BLUR_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
+    const float4 rotator = GetBlurKernelRotation( REBLUR_POST_BLUR_ROTATOR_MODE, pixelPos, gRotatorPost, gFrameIndex );
 
     // Output
     gOut_Normal_Roughness[ pixelPos ] = normalAndRoughnessPacked;

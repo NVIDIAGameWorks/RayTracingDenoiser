@@ -10,7 +10,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRD_CONSTANTS_START( SIGMA_BlurConstants )
     SIGMA_SHARED_CONSTANTS
-    NRD_CONSTANT( float4, gRotator )
 NRD_CONSTANTS_END
 
 NRD_SAMPLERS_START

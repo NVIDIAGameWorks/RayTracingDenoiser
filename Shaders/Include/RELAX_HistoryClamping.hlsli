@@ -50,8 +50,10 @@ void Preload(uint2 sharedPos, int2 globalPos)
 */
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     // Preload
     float isSky = gIn_Tiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;

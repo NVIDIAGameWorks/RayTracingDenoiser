@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.9
+// NRD v4.11
 
 // IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
 
@@ -282,6 +282,8 @@ NOISY INPUTS:
 #define NRD_REJITTER_VIEWZ_THRESHOLD                                                    0.01 // normalized %
 #define NRD_ROUGHNESS_EPS                                                               sqrt( sqrt( NRD_EPS ) ) // "m2" fitting in FP32 to "linear roughness"
 #define NRD_INF                                                                         1e6
+#define NRD_MATERIAL_FACTOR_MIN_SCALE                                                   0.02 // very small scales can lead to instabilities
+#define NRD_ROUGHNESS_FACTOR_MIN_SCALE                                                  0.1 // very small scales can lead to instabilities and bias
 
 // Misc
 float3 _NRD_SafeNormalize( float3 v )
@@ -453,6 +455,35 @@ float2 _NRD_ComputeBrdfs( float3 Ld, float3 Ls, float3 N, float3 V, float Rf0, f
     return result;
 }
 
+float3 _NRD_EnvironmentTerm_Rtg( float3 Rf0, float NoV, float roughness )
+{
+    // "Ray Tracing Gems", Chapter 32, Equation 4 - the approximation assumes GGX VNDF and Schlick's approximation
+    float m = saturate( roughness * roughness );
+
+    float4 X;
+    X.x = 1.0;
+    X.y = NoV;
+    X.z = NoV * NoV;
+    X.w = NoV * X.z;
+
+    float4 Y;
+    Y.x = 1.0;
+    Y.y = m;
+    Y.z = m * m;
+    Y.w = m * Y.z;
+
+    const float2x2 M1 = float2x2( 0.99044, -1.28514, 1.29678, -0.755907 );
+    const float3x3 M2 = float3x3( 1.0, 2.92338, 59.4188, 20.3225, -27.0302, 222.592, 121.563, 626.13, 316.627 );
+
+    const float2x2 M3 = float2x2( 0.0365463, 3.32707, 9.0632, -9.04756 );
+    const float3x3 M4 = float3x3( 1.0, 3.59685, -1.36772, 9.04401, -16.3174, 9.22949, 5.56589, 19.7886, -20.2123 );
+
+    float bias = dot( mul( M1, X.xy ), Y.xy ) * rcp( max( dot( mul( M2, X.xyw ), Y.xyw ), NRD_EPS ) );
+    float scale = dot( mul( M3, X.xy ), Y.xy ) * rcp( max( dot( mul( M4, X.xzw ), Y.xyw ), NRD_EPS ) );
+
+    return saturate( Rf0 * scale + bias );
+}
+
 // Hit distance normalization
 float _REBLUR_GetHitDistanceNormalization( float viewZ, float4 hitDistParams, float roughness )
 {
@@ -601,6 +632,26 @@ float4 NRD_FrontEnd_PackNormalAndRoughness( float3 N, float roughness, float mat
     #endif
 
     return p;
+}
+
+// Material de-modulation
+//   Front-end usage ( before NRD, convert irradiance into radiance ):
+//      diffIrradiance /= diffFactor
+//      specIrradiance /= specFactor
+//   Back-end usage ( after NRD, convert radiance back into irradiance ):
+//      diffRadiance *= diffFactor
+//      specRadiance *= specFactor
+void NRD_MaterialFactors( float3 N, float3 V, float3 albedo, float3 Rf0, float roughness, out float3 diffFactor, out float3 specFactor )
+{
+    float NoV = abs( dot( N, V ) );
+    float3 Fenv = _NRD_EnvironmentTerm_Rtg( Rf0, NoV, roughness );
+
+    diffFactor = ( 1.0 - Fenv ) * albedo;
+    diffFactor = lerp( NRD_MATERIAL_FACTOR_MIN_SCALE, 1.0, diffFactor );
+
+    specFactor = Fenv;
+    specFactor *= lerp( NRD_ROUGHNESS_FACTOR_MIN_SCALE, 1.0, roughness ); // don't be greedy, it's a biased solution
+    specFactor = lerp( NRD_MATERIAL_FACTOR_MIN_SCALE, 1.0, specFactor );
 }
 
 //=================================================================================================================================

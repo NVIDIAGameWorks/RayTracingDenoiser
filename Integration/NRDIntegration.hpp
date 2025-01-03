@@ -18,7 +18,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #endif
 
 static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 10, "Unsupported NRD version!");
-static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 152, "Unsupported NRI version!");
+static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 158, "Unsupported NRI version!");
 
 namespace nrd
 {
@@ -418,6 +418,9 @@ void Integration::CreateResources(uint16_t resourceWidth, uint16_t resourceHeigh
         m_DescriptorsInFlight.push_back({});
     }
 
+    m_Width = resourceWidth;
+    m_Height = resourceHeight;
+
 #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
     if (m_Log)
         fflush(m_Log);
@@ -484,6 +487,10 @@ void Integration::NewFrame()
 bool Integration::SetCommonSettings(const CommonSettings& commonSettings)
 {
     NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
+    NRD_INTEGRATION_ASSERT(commonSettings.resourceSize[0] == commonSettings.resourceSizePrev[0]
+        && commonSettings.resourceSize[1] == commonSettings.resourceSizePrev[1]
+        && commonSettings.resourceSize[0] == m_Width && commonSettings.resourceSize[1] == m_Height,
+        "NRD integration preallocates resources statically: DRS is only supported via 'rectSize / rectSizePrev'");
 
     Result result = nrd::SetCommonSettings(*m_Instance, commonSettings);
     NRD_INTEGRATION_ASSERT(result == Result::SUCCESS, "SetCommonSettings(): failed!");
@@ -506,9 +513,21 @@ bool Integration::SetDenoiserSettings(Identifier denoiser, const void* denoiserS
     return result == Result::SUCCESS;
 }
 
-void Integration::Denoise(const Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, const UserPool& userPool)
+void Integration::Denoise(const Identifier* denoisers, uint32_t denoisersNum, nri::CommandBuffer& commandBuffer, UserPool& userPool, bool restoreInitialState)
 {
     NRD_INTEGRATION_ASSERT(m_Instance, "Uninitialized! Did you forget to call 'Initialize'?");
+
+    // Save initial state
+    nri::TextureBarrierDesc* initialStates = (nri::TextureBarrierDesc*)alloca(sizeof(nri::TextureBarrierDesc) * userPool.size());
+    if (restoreInitialState)
+    {
+        for (size_t i = 0; i < userPool.size(); i++)
+        {
+            const nri::TextureBarrierDesc* nrdTexture = userPool[i];
+            if (nrdTexture)
+                initialStates[i] = *nrdTexture;
+        }
+    }
 
     // One time sanity check
     if (m_FrameIndex == 0)
@@ -540,6 +559,7 @@ void Integration::Denoise(const Identifier* denoisers, uint32_t denoisersNum, nr
         NRD_INTEGRATION_ASSERT(isNormalRoughnessFormatValid, "IN_NORMAL_ROUGHNESS format doesn't match NRD normal encoding");
     }
 
+    // Retrieve dispatches
     const DispatchDesc* dispatchDescs = nullptr;
     uint32_t dispatchDescsNum = 0;
     GetComputeDispatches(*m_Instance, denoisers, denoisersNum, dispatchDescs, dispatchDescsNum);
@@ -548,21 +568,61 @@ void Integration::Denoise(const Identifier* denoisers, uint32_t denoisersNum, nr
     if (!m_EnableDescriptorCaching)
         m_CachedDescriptors.clear();
 
+    // Set descriptor pool
     nri::DescriptorPool* descriptorPool = m_DescriptorPools[m_DescriptorPoolIndex];
     m_NRI->CmdSetDescriptorPool(commandBuffer, *descriptorPool);
+
+    // Invoke dispatches
+    constexpr uint32_t lawnGreen = 0xFF7CFC00;
+    constexpr uint32_t limeGreen = 0xFF32CD32;
 
     for (uint32_t i = 0; i < dispatchDescsNum; i++)
     {
         const DispatchDesc& dispatchDesc = dispatchDescs[i];
-        m_NRI->CmdBeginAnnotation(commandBuffer, dispatchDesc.name);
+        m_NRI->CmdBeginAnnotation(commandBuffer, dispatchDesc.name, (i & 0x1) ? lawnGreen : limeGreen);
 
         Dispatch(commandBuffer, *descriptorPool, dispatchDesc, userPool);
 
         m_NRI->CmdEndAnnotation(commandBuffer);
     }
+
+    // Restore state
+    if (restoreInitialState)
+    {
+        nri::TextureBarrierDesc* uniqueBarriers = initialStates;
+        uint32_t uniqueBarrierNum = 0;
+
+        for (size_t i = 0; i < userPool.size(); i++)
+        {
+            nri::TextureBarrierDesc* nrdTexture = userPool[i];
+            if (!nrdTexture)
+                continue;
+
+            const nri::TextureBarrierDesc* nrdTextureInitial = &initialStates[i];
+            if (nrdTexture->after.access != nrdTextureInitial->after.access || nrdTexture->after.layout != nrdTextureInitial->after.layout)
+            {
+                nrdTexture->before = nrdTexture->after;
+                nrdTexture->after = nrdTextureInitial->after;
+
+                bool isDifferent = nrdTexture->after.access != nrdTexture->before.access || nrdTexture->after.layout != nrdTexture->before.layout;
+                bool isUnknown = nrdTexture->after.access == nri::AccessBits::UNKNOWN || nrdTexture->after.layout == nri::Layout::UNKNOWN;
+                if (isDifferent && !isUnknown)
+                    uniqueBarriers[uniqueBarrierNum++] = *nrdTexture;
+            }
+        }
+
+        if (uniqueBarrierNum)
+        {
+            nri::BarrierGroupDesc transitionBarriers = {};
+            transitionBarriers.textures = uniqueBarriers;
+            transitionBarriers.textureNum = uniqueBarrierNum;
+
+            m_NRI->CmdBarrier(commandBuffer, transitionBarriers);
+        }
+    }
 }
 
-void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const DispatchDesc& dispatchDesc, const UserPool& userPool)
+void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPool& descriptorPool, const DispatchDesc& dispatchDesc, UserPool& userPool)
 {
     const InstanceDesc& instanceDesc = GetInstanceDesc(*m_Instance);
     const PipelineDesc& pipelineDesc = instanceDesc.pipelines[dispatchDesc.pipelineIndex];
@@ -635,6 +695,7 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
             else
                 descriptor = entry->second;
 
+            // Add descriptor to the range
             descriptors[n++] = descriptor;
         }
     }
@@ -658,25 +719,33 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
     }
 
     // Updating constants
-    uint32_t dynamicConstantBufferOffset = 0;
+    uint32_t dynamicConstantBufferOffset = m_ConstantBufferOffsetPrev;
     if (dispatchDesc.constantBufferDataSize)
     {
         if (!dispatchDesc.constantBufferDataMatchesPreviousDispatch)
         {
+            // Ring-buffer logic
             if (m_ConstantBufferOffset + m_ConstantBufferViewSize > m_ConstantBufferSize)
                 m_ConstantBufferOffset = 0;
 
+            // Upload CB data
             // TODO: persistent mapping? But no D3D11 support...
             void* data = m_NRI->MapBuffer(*m_ConstantBuffer, m_ConstantBufferOffset, dispatchDesc.constantBufferDataSize);
             if (data)
+            {
                 memcpy(data, dispatchDesc.constantBufferData, dispatchDesc.constantBufferDataSize);
-            m_NRI->UnmapBuffer(*m_ConstantBuffer);
+                m_NRI->UnmapBuffer(*m_ConstantBuffer);
+            }
+
+            // Ring-buffer logic
+            dynamicConstantBufferOffset = m_ConstantBufferOffset;
+            m_ConstantBufferOffset += m_ConstantBufferViewSize;
+
+            // Save previous offset for potential CB data reuse
+            m_ConstantBufferOffsetPrev = dynamicConstantBufferOffset;
         }
 
         m_NRI->UpdateDynamicConstantBuffers(*descriptorSets[0], 0, 1, &m_ConstantBufferView);
-
-        dynamicConstantBufferOffset = m_ConstantBufferOffset;
-        m_ConstantBufferOffset += m_ConstantBufferViewSize;
     }
 
     // Updating samplers
@@ -713,7 +782,7 @@ void Integration::Dispatch(nri::CommandBuffer& commandBuffer, nri::DescriptorPoo
 #if( NRD_INTEGRATION_DEBUG_LOGGING == 1 )
     if (m_Log)
     {
-        fprintf(m_Log, "Pipeline #%u : %s\n\t", dispatchDesc.pipelineIndex, dispatchDesc.name);
+        fprintf(m_Log, "%c Pipeline #%u : %s\n\t", dispatchDesc.constantBufferDataMatchesPreviousDispatch ? ' ' : '!', dispatchDesc.pipelineIndex, dispatchDesc.name);
         for( uint32_t i = 0; i < dispatchDesc.resourcesNum; i++ )
         {
             const ResourceDesc& r = dispatchDesc.resources[i];

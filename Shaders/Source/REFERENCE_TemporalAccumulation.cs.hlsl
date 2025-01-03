@@ -16,8 +16,10 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "Common.hlsli"
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( uint2 pixelPos : SV_DispatchThreadId )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     float4 input = gIn_Input[ pixelPos ];
     float4 history = gInOut_History[ pixelPos ];
     float4 result = lerp( history, input, gAccumSpeed );

@@ -312,15 +312,15 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
 
     // Rotators (respecting sample patterns symmetry)
     float angle1 = Sequence::Weyl1D(0.5f, commonSettings.frameIndex) * radians(90.0f);
-    m_Rotator_PrePass = Geometry::GetRotator(angle1);
+    m_RotatorPre = Geometry::GetRotator(angle1);
 
     float a0 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex * 2) * radians(90.0f);
     float a1 = Sequence::Bayer4x4(uint2(0, 0), commonSettings.frameIndex * 2) * radians(360.0f);
-    m_Rotator_Blur = Geometry::CombineRotators(Geometry::GetRotator(a0), Geometry::GetRotator(a1));
+    m_Rotator = Geometry::CombineRotators(Geometry::GetRotator(a0), Geometry::GetRotator(a1));
 
     float a2 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex * 2 + 1) * radians(90.0f);
     float a3 = Sequence::Bayer4x4(uint2(0, 0), commonSettings.frameIndex * 2 + 1) * radians(360.0f);
-    m_Rotator_PostBlur = Geometry::CombineRotators(Geometry::GetRotator(a2), Geometry::GetRotator(a3));
+    m_RotatorPost = Geometry::CombineRotators(Geometry::GetRotator(a2), Geometry::GetRotator(a3));
 
     // Main matrices
     m_ViewToClip = float4x4
@@ -541,6 +541,19 @@ nrd::Result nrd::InstanceImpl::GetComputeDispatches(const Identifier* identifier
             Update_Reference(denoiserData);
     }
 
+    // Maximize CB reuse
+    for (size_t i = 1; i < m_ActiveDispatches.size(); i++)
+    {
+        const DispatchDesc& dispatchDescPrev = m_ActiveDispatches[i - 1];
+        DispatchDesc& dispatchDescCurr = m_ActiveDispatches[i];
+        if (dispatchDescPrev.constantBufferDataSize == dispatchDescCurr.constantBufferDataSize)
+        {
+            if (!memcmp(dispatchDescPrev.constantBufferData, dispatchDescCurr.constantBufferData, dispatchDescCurr.constantBufferDataSize))
+                dispatchDescCurr.constantBufferDataMatchesPreviousDispatch = true;
+        }
+    }
+
+    // Output
     dispatchDescs = m_ActiveDispatches.data();
     dispatchDescsNum = (uint32_t)m_ActiveDispatches.size();
 
@@ -797,16 +810,9 @@ void* nrd::InstanceImpl::PushDispatch(const DenoiserData& denoiserData, uint32_t
     dispatchDesc.constantBufferDataSize = internalDispatchDesc.constantBufferDataSize;
     m_ConstantDataOffset += internalDispatchDesc.constantBufferDataSize;
 
-    dispatchDesc.constantBufferDataMatchesPreviousDispatch = false;
-    if (!m_ActiveDispatches.empty())
-    {
-        const DispatchDesc& dispatchDescPrev = m_ActiveDispatches.back();
-        if (dispatchDescPrev.constantBufferDataSize == dispatchDesc.constantBufferDataSize)
-        {
-            if (!memcmp(dispatchDescPrev.constantBufferData, dispatchDesc.constantBufferData, dispatchDesc.constantBufferDataSize))
-                dispatchDesc.constantBufferDataMatchesPreviousDispatch = true;
-        }
-    }
+    // Needed for "constantBufferDataMatchesPreviousDispatch"
+    if (dispatchDesc.constantBufferData)
+        memset((void*)dispatchDesc.constantBufferData, 0, dispatchDesc.constantBufferDataSize);
 
     // Update grid size
     uint16_t w = m_CommonSettings.rectSize[0];

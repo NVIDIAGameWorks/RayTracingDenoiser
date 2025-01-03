@@ -22,8 +22,10 @@ float getRadius(float historyLength)
 
 // Main
 [numthreads(GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_REVERSED;
+
     // Tile-based early out
     float isSky = gIn_Tiles[pixelPos >> 4];
     if (isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y)
@@ -79,9 +81,9 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId)
             int dx = (int)(i * r);
             int dy = (int)(j * r);
 
-            int2 samplePosInt = (int2)pixelPos + int2(dx, dy);
+            int2 samplePosInt = pixelPos + int2(dx, dy);
 
-            bool isInside = all(samplePosInt >= int2(0, 0)) && all(samplePosInt < (int2)gRectSize);
+            bool isInside = all(samplePosInt >= int2(0, 0)) && all(samplePosInt < gRectSize);
             if ((i == 0) && (j == 0))
                 continue;
 

@@ -24,6 +24,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float4x4, gWorldToClipPrev ) \
     NRD_CONSTANT( float4x4, gWorldToViewPrev ) \
     NRD_CONSTANT( float4x4, gWorldPrevToWorld ) \
+    NRD_CONSTANT( float4, gRotatorPre ) \
     NRD_CONSTANT( float4, gFrustumRight ) \
     NRD_CONSTANT( float4, gFrustumUp ) \
     NRD_CONSTANT( float4, gFrustumForward ) \
@@ -42,7 +43,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float2, gResourceSizeInvPrev ) \
     NRD_CONSTANT( uint2, gPrintfAt ) \
     NRD_CONSTANT( uint2, gRectOrigin ) \
-    NRD_CONSTANT( uint2, gRectSize ) \
+    NRD_CONSTANT( int2, gRectSize ) \
     NRD_CONSTANT( float, gSpecMaxAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gSpecMaxFastAccumulatedFrameNum ) \
     NRD_CONSTANT( float, gDiffMaxAccumulatedFrameNum ) \

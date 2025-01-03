@@ -40,8 +40,10 @@ void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     // Preload
     float isSky = gIn_Tiles[ pixelPos >> 4 ].y;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
@@ -185,7 +187,7 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     #endif
 
     // Street magic ( helps to smooth out "penumbra to 1" regions )
-    float streetMagic = 0.6 * historyWeight; // TODO: * historyClamped.x? * float( historyClamped.x != 0.0 )?
+    float streetMagic = 0.6 * historyWeight * antilag; // TODO: * historyClamped.x? previously was without "* antilag"
     historyClamped = lerp( historyClamped, history, streetMagic );
 
     // Combine with the current frame

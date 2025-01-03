@@ -102,6 +102,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gWorldToClipPrev                                    = m_WorldToClipPrev;
     consts->gWorldToViewPrev                                    = m_WorldToViewPrev;
     consts->gWorldPrevToWorld                                   = m_WorldPrevToWorld;
+    consts->gRotatorPre                                         = m_RotatorPre;
     consts->gFrustumRight                                       = float4(frustumRight.x, frustumRight.y, frustumRight.z, 0.0f);
     consts->gFrustumUp                                          = float4(frustumUp.x, frustumUp.y, frustumUp.z, 0.0f);
     consts->gFrustumForward                                     = float4(frustumForward.x, frustumForward.y, frustumForward.z, 0.0f);
@@ -120,7 +121,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gResourceSizeInvPrev                                = float2(1.0f / resourceWprev, 1.0f / resourceHprev);
     consts->gPrintfAt                                           = uint2(m_CommonSettings.printfAt[0], m_CommonSettings.printfAt[1]);
     consts->gRectOrigin                                         = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
-    consts->gRectSize                                           = uint2(rectW, rectH);
+    consts->gRectSize                                           = int2(rectW, rectH);
     consts->gSpecMaxAccumulatedFrameNum                         = (float)min(settings.specularMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
     consts->gSpecMaxFastAccumulatedFrameNum                     = (float)min(settings.specularMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
     consts->gDiffMaxAccumulatedFrameNum                         = (float)min(settings.diffuseMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
@@ -223,9 +224,8 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 
     { // PREPASS
         uint32_t passIndex = AsUint(Dispatch::PREPASS) + (enableHitDistanceReconstruction ? 1 : 0);
-        RELAX_PrePassConstants* consts = (RELAX_PrePassConstants*)PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Relax(settings, consts);
-        consts->gRotator = m_Rotator_PrePass; // TODO: push constant
     }
 
     { // TEMPORAL_ACCUMULATION
@@ -268,8 +268,8 @@ void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)
 
         RELAX_AtrousConstants* consts = (RELAX_AtrousConstants*)PushDispatch(denoiserData, AsUint(passIndex)); // TODO: same as "RELAX_AtrousSmemConstants"
         AddSharedConstants_Relax(settings, consts);
-        consts->gStepSize = 1 << i; // TODO: push constants
-        consts->gIsLastPass = i == iterationNum - 1 ? 1 : 0; // TODO: push constants
+        consts->gStepSize = 1 << i; // TODO: push constant
+        consts->gIsLastPass = i == iterationNum - 1 ? 1 : 0; // TODO: push constant
     }
 
     // SPLIT_SCREEN

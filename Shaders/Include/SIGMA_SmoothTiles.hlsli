@@ -18,8 +18,9 @@ void Preload( uint2 sharedPos, int2 globalPos )
 }
 
 [numthreads( GROUP_X, GROUP_X, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
     PRELOAD_INTO_SMEM;
 
     float3 center = gIn_Tiles[ pixelPos ];

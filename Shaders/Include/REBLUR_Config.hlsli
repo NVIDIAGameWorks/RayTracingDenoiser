@@ -26,6 +26,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // Switches ( default 0 )
 #define REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR           0 // specular is more complicated
 #define REBLUR_USE_DECOMPRESSED_HIT_DIST_IN_RECONSTRUCTION      0 // compression helps to preserve "lobe important" values
+#define REBLUR_USE_OLD_SMB_FALLBACK_LOGIC                       0 // TODO: here to avoid regressions
 
 #if( defined REBLUR_OCCLUSION || defined REBLUR_DIRECTIONAL_OCCLUSION )
     #undef REBLUR_USE_ANTIFIREFLY
@@ -117,6 +118,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float4x4, gWorldToViewPrev ) \
     NRD_CONSTANT( float4x4, gWorldToClipPrev ) \
     NRD_CONSTANT( float4x4, gWorldPrevToWorld ) \
+    NRD_CONSTANT( float4, gRotatorPre ) \
+    NRD_CONSTANT( float4, gRotator ) \
+    NRD_CONSTANT( float4, gRotatorPost ) \
     NRD_CONSTANT( float4, gFrustum ) \
     NRD_CONSTANT( float4, gFrustumPrev ) \
     NRD_CONSTANT( float4, gCameraDelta ) \

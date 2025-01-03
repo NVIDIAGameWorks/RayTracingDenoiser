@@ -48,6 +48,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float4x4, gViewToClip ) \
     NRD_CONSTANT( float4x4, gWorldToClipPrev ) \
     NRD_CONSTANT( float4x4, gWorldToViewPrev ) \
+    NRD_CONSTANT( float4, gRotator ) \
+    NRD_CONSTANT( float4, gRotatorPost ) \
     NRD_CONSTANT( float4, gViewVectorWorld ) \
     NRD_CONSTANT( float4, gLightDirectionView ) \
     NRD_CONSTANT( float4, gFrustum ) \

@@ -64,16 +64,14 @@ void nrd::InstanceImpl::Update_SigmaShadow(const DenoiserData& denoiserData)
     }
 
     { // BLUR
-        SIGMA_BlurConstants* consts = (SIGMA_BlurConstants*)PushDispatch(denoiserData, AsUint(Dispatch::BLUR));
+        void* consts = PushDispatch(denoiserData, AsUint(Dispatch::BLUR));
         AddSharedConstants_Sigma(settings, consts);
-        consts->gRotator = m_Rotator_Blur; // TODO: push constant
     }
 
     { // POST_BLUR
         uint32_t passIndex = AsUint(Dispatch::POST_BLUR) + (settings.maxStabilizedFrameNum ? 1 : 0);
-        SIGMA_BlurConstants* consts = (SIGMA_BlurConstants*)PushDispatch(denoiserData, passIndex);
+        void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Sigma(settings, consts);
-        consts->gRotator = m_Rotator_PostBlur; // TODO: push constant
     }
 
     // TEMPORAL_STABILIZATION
@@ -114,6 +112,8 @@ void nrd::InstanceImpl::AddSharedConstants_Sigma(const SigmaSettings& settings, 
     consts->gViewToClip             = m_ViewToClip;
     consts->gWorldToClipPrev        = m_WorldToClipPrev;
     consts->gWorldToViewPrev        = m_WorldToViewPrev;
+    consts->gRotator                = m_Rotator;
+    consts->gRotatorPost            = m_RotatorPost;
     consts->gViewVectorWorld        = m_ViewDirection.xmm;
     consts->gLightDirectionView     = float4(lightDirectionView.x, lightDirectionView.y, lightDirectionView.z, 0.0f);
     consts->gFrustum                = m_Frustum;

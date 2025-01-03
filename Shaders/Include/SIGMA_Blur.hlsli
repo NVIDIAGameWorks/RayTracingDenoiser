@@ -36,8 +36,14 @@ void Preload( uint2 sharedPos, int2 globalPos )
 }
 
 [numthreads( GROUP_X, GROUP_Y, 1 )]
-NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : SV_DispatchThreadId, uint threadIndex : SV_GroupIndex )
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+#ifdef SIGMA_FIRST_PASS
+    NRD_CTA_ORDER_DEFAULT;
+#else
+    NRD_CTA_ORDER_REVERSED;
+#endif
+
     // Preload
     float isSky = gIn_Tiles[ pixelPos >> 4 ].y;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
@@ -153,7 +159,11 @@ NRD_EXPORT void NRD_CS_MAIN( int2 threadPos : SV_GroupThreadId, int2 pixelPos : 
     float blurRadius = GetKernelRadiusInPixels( penumbra, pixelSize, tileValue );
 
     // Tangent basis with anisotropy
-    float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
+    #ifdef SIGMA_FIRST_PASS
+        float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotator, gFrameIndex );
+    #else
+        float4 rotator = GetBlurKernelRotation( SIGMA_ROTATOR_MODE, pixelPos, gRotatorPost, gFrameIndex );
+    #endif
 
     #if( SIGMA_USE_SCREEN_SPACE_SAMPLING == 1 )
         float2 skew = lerp( 1.0 - abs( Nv.xy ), 1.0, NoV );

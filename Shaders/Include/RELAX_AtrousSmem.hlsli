@@ -109,8 +109,10 @@ void Preload(uint2 sharedPos, int2 globalPos)
 }
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_REVERSED;
+
     // Preload
     float isSky = gIn_Tiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
@@ -139,7 +141,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
 #endif
 
     // Tile-based early out
-    if (isSky != 0.0 || pixelPos.x >= (int)gRectSize.x || pixelPos.y >= (int)gRectSize.y)
+    if (isSky != 0.0 || pixelPos.x >= gRectSize.x || pixelPos.y >= gRectSize.y)
         return;
 
     // Early out if linearZ is beyond denoising range
@@ -255,7 +257,7 @@ NRD_EXPORT void NRD_CS_MAIN(int2 pixelPos : SV_DispatchThreadId, uint2 threadPos
             {
                 const int2 p = pixelPos + int2(cx, cy);
                 const bool isCenter = ((cx == 0) && (cy == 0));
-                const bool isInside = all(p >= 0) && all(p < int2(gRectSize));
+                const bool isInside = all(p >= 0) && all(p < gRectSize);
                 const float kernel = isInside ? kernelWeightGaussian3x3[abs(cx)] * kernelWeightGaussian3x3[abs(cy)] : 0.0;
 
                 int2 sharedMemoryIndexP = sharedMemoryIndex + int2(cx, cy);

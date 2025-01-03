@@ -365,8 +365,10 @@ void Preload(uint2 sharedPos, int2 globalPos)
 
 // Main
 [numthreads(GROUP_X, GROUP_Y, 1)]
-NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPos : SV_GroupThreadId, uint threadIndex : SV_GroupIndex)
+NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 {
+    NRD_CTA_ORDER_DEFAULT;
+
     float isSky = gIn_Tiles[pixelPos >> 4];
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
@@ -677,10 +679,11 @@ NRD_EXPORT void NRD_CS_MAIN(uint2 pixelPos : SV_DispatchThreadId, uint2 threadPo
         float3 x = x10 * w.x + x01 * w.y;
         float3 n = normalize( n10 * w.x + n01 * w.y );
 
-        // ( Optional ) High parallax - flattens surface on high motion ( test 132, e9 )
-        // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33 )
-        float deltaUvLenFixed = smbParallaxInPixelsMin; // not needed for objects attached to the camera!
+        // High parallax - flattens surface on high motion ( test 132, 172, 173, 174, 190, 201, 202, 203, e9 )
+        // IMPORTANT: a must for 8-bit and 10-bit normals ( tests b7, b10, b33, 202 )
+        float deltaUvLenFixed = smbParallaxInPixelsMin; // "min" because not needed for objects attached to the camera!
         deltaUvLenFixed *= NRD_USE_HIGH_PARALLAX_CURVATURE_SILHOUETTE_FIX ? NoV : 1.0; // it fixes silhouettes, but leads to less flattening
+        deltaUvLenFixed *= 1.0 + gFramerateScale * Sequence::Bayer4x4( pixelPos, gFrameIndex ); // improves behavior if FPS is high, dithering is needed to avoid artefacts in test 1
 
         float2 motionUvHigh = pixelUv + deltaUvLenFixed * deltaUv * gRectSizeInv;
         motionUvHigh = ( floor( motionUvHigh * gRectSize ) + 0.5 ) * gRectSizeInv; // Snap to the pixel center!

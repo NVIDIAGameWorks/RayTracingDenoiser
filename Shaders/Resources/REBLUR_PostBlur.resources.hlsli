@@ -10,7 +10,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 NRD_CONSTANTS_START( REBLUR_PostBlurConstants )
     REBLUR_SHARED_CONSTANTS
-    NRD_CONSTANT( float4, gRotator )
 NRD_CONSTANTS_END
 
 NRD_SAMPLERS_START
