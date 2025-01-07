@@ -239,6 +239,7 @@ NOISY INPUTS:
     #define float4                                                                      vec4
     #define float3                                                                      vec3
     #define float2                                                                      vec2
+    #define float2x2                                                                    mat2x2
     #define float2x3                                                                    mat2x3
     #define float3x3                                                                    mat3x3
     #define rsqrt                                                                       inversesqrt
@@ -647,11 +648,11 @@ void NRD_MaterialFactors( float3 N, float3 V, float3 albedo, float3 Rf0, float r
     float3 Fenv = _NRD_EnvironmentTerm_Rtg( Rf0, NoV, roughness );
 
     diffFactor = ( 1.0 - Fenv ) * albedo;
-    diffFactor = lerp( NRD_MATERIAL_FACTOR_MIN_SCALE, 1.0, diffFactor );
+    diffFactor = lerp( NRD_MATERIAL_FACTOR_MIN_SCALE.xxx, float3( 1.0, 1.0, 1.0 ), diffFactor );
 
     specFactor = Fenv;
-    specFactor *= lerp( NRD_ROUGHNESS_FACTOR_MIN_SCALE, 1.0, roughness ); // don't be greedy, it's a biased solution
-    specFactor = lerp( NRD_MATERIAL_FACTOR_MIN_SCALE, 1.0, specFactor );
+    specFactor *= lerp( NRD_ROUGHNESS_FACTOR_MIN_SCALE.xxx, float3( 1.0, 1.0, 1.0 ), roughness ); // don't be greedy, it's a biased solution
+    specFactor = lerp( NRD_MATERIAL_FACTOR_MIN_SCALE.xxx, float3( 1.0, 1.0, 1.0 ), specFactor );
 }
 
 //=================================================================================================================================
