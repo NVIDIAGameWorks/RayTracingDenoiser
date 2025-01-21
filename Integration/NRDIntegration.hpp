@@ -17,8 +17,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     #include <alloca.h>
 #endif
 
-static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 10, "Unsupported NRD version!");
-static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 158, "Unsupported NRI version!");
+static_assert(NRD_VERSION_MAJOR >= 4 && NRD_VERSION_MINOR >= 11, "Unsupported NRD version!");
+static_assert(NRI_VERSION_MAJOR >= 1 && NRI_VERSION_MINOR >= 161, "Unsupported NRI version!");
 
 namespace nrd
 {
@@ -341,7 +341,7 @@ void Integration::CreateResources(uint16_t resourceWidth, uint16_t resourceHeigh
             snprintf(name, sizeof(name), "%s::P(%u)", m_Name, i);
         else
             snprintf(name, sizeof(name), "%s::T(%u)", m_Name, i - instanceDesc.permanentPoolSize);
-        m_NRI->SetTextureDebugName(*texture, name);
+        m_NRI->SetDebugName(texture, name);
 
         // Construct NRD texture
         nri::TextureBarrierDesc& nrdTexture = m_TexturePool[i];
@@ -349,7 +349,7 @@ void Integration::CreateResources(uint16_t resourceWidth, uint16_t resourceHeigh
 
         // Adjust memory usage
         nri::MemoryDesc memoryDesc = {};
-        m_NRI->GetTextureMemoryDesc(*m_Device, textureDesc, nri::MemoryLocation::DEVICE, memoryDesc);
+        m_NRI->GetTextureMemoryDesc(*texture, nri::MemoryLocation::DEVICE, memoryDesc);
 
         if (i < instanceDesc.permanentPoolSize)
             m_PermanentPoolSize += memoryDesc.size;

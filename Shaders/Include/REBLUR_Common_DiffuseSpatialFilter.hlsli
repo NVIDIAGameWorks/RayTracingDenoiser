@@ -106,14 +106,16 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         #endif
 
             // Snap to the pixel center!
-            uv = ( floor( uv * gRectSize ) + 0.5 ) * gRectSizeInv;
+            uv = floor( uv * gRectSize ) + 0.5;
 
             // Apply checkerboard shift
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
-            uv = ApplyCheckerboardShift( uv * gRectSize, gDiffCheckerboard, n, gFrameIndex ) * gRectSizeInv;
+            uv = ApplyCheckerboardShift( uv, gDiffCheckerboard, n, gFrameIndex );
         #endif
 
             // Texture coordinates
+            uv *= gRectSizeInv;
+
             float2 uvScaled = ClampUvToViewport( uv );
             float2 checkerboardUvScaled = uvScaled;
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )

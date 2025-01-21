@@ -262,7 +262,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float diffHistoryWeight = diffTemporalAccumulationParams.x;
         diffHistoryWeight *= diffAntilag; // this is important
         diffHistoryWeight *= float( pixelUv.x >= gSplitScreen );
-        diffHistoryWeight *= float( smbPixelUv.x >= gSplitScreen );
+        diffHistoryWeight *= float( smbPixelUv.x >= gSplitScreenPrev );
 
         smbDiffHistory = Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
 
@@ -407,8 +407,8 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float specHistoryWeight = specTemporalAccumulationParams.x;
         specHistoryWeight *= specAntilag; // this is important
         specHistoryWeight *= float( pixelUv.x >= gSplitScreen );
-        specHistoryWeight *= virtualHistoryAmount != 1.0 ? float( smbPixelUv.x >= gSplitScreen ) : 1.0;
-        specHistoryWeight *= virtualHistoryAmount != 0.0 ? float( vmbPixelUv.x >= gSplitScreen ) : 1.0;
+        specHistoryWeight *= virtualHistoryAmount != 1.0 ? float( smbPixelUv.x >= gSplitScreenPrev ) : 1.0;
+        specHistoryWeight *= virtualHistoryAmount != 0.0 ? float( vmbPixelUv.x >= gSplitScreenPrev ) : 1.0;
 
         float responsiveFactor = RemapRoughnessToResponsiveFactor( roughness );
         float smc = GetSpecMagicCurve( roughness );

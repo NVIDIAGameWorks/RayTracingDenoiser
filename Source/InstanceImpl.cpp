@@ -268,58 +268,84 @@ nrd::Result nrd::InstanceImpl::Create(const InstanceCreationDesc& instanceCreati
 
 nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSettings)
 {
-    // TODO: matrix verifications?
-    bool isValid = commonSettings.viewZScale > 0.0f;
-    assert("'viewZScale' can't be <= 0" && isValid);
-
-    isValid &= commonSettings.resourceSize[0] != 0 && commonSettings.resourceSize[1] != 0;
-    assert("'resourceSize' can't be 0" && isValid);
-
-    isValid &= commonSettings.resourceSizePrev[0] != 0 && commonSettings.resourceSizePrev[1] != 0;
-    assert("'resourceSizePrev' can't be 0" && isValid);
-
-    isValid &= commonSettings.rectSize[0] != 0 && commonSettings.rectSize[1] != 0;
-    assert("'rectSize' can't be 0" && isValid);
-
-    isValid &= commonSettings.rectSizePrev[0] != 0 && commonSettings.rectSizePrev[1] != 0;
-    assert("'rectSizePrev' can't be 0" && isValid);
-
-    isValid &= ((commonSettings.motionVectorScale[0] != 0.0f && commonSettings.motionVectorScale[1] != 0.0f) || commonSettings.isMotionVectorInWorldSpace);
-    assert("'mvScale.xy' can't be 0" && isValid);
-
-    isValid &= commonSettings.cameraJitter[0] >= -0.5f && commonSettings.cameraJitter[0] <= 0.5f && commonSettings.cameraJitter[1] >= -0.5f && commonSettings.cameraJitter[1] <= 0.5f;
-    assert("'cameraJitter' must be in range [-0.5; 0.5]" && isValid);
-
-    isValid &= commonSettings.cameraJitterPrev[0] >= -0.5f && commonSettings.cameraJitterPrev[0] <= 0.5f && commonSettings.cameraJitterPrev[1] >= -0.5f && commonSettings.cameraJitterPrev[1] <= 0.5f;
-    assert("'cameraJitterPrev' must be in range [-0.5; 0.5]" && isValid);
-
-    isValid &= commonSettings.denoisingRange > 0.0f;
-    assert("'denoisingRange' must be >= 0" && isValid);
-
-    isValid &= commonSettings.disocclusionThreshold > 0.0f;
-    assert("'disocclusionThreshold' must be > 0" && isValid);
-
-    isValid &= commonSettings.disocclusionThresholdAlternate > 0.0f;
-    assert("'disocclusionThresholdAlternate' must be > 0" && isValid);
-
-    isValid &= commonSettings.strandMaterialID != 0.0f || GetLibraryDesc().normalEncoding == NormalEncoding::R10_G10_B10_A2_UNORM;
-    assert("'strandMaterialID' can't be 0 if material ID is not supported by encoding" && isValid);
-
-    isValid &= commonSettings.cameraAttachedReflectionMaterialID != 0.0f || GetLibraryDesc().normalEncoding == NormalEncoding::R10_G10_B10_A2_UNORM;
-    assert("'cameraAttachedReflectionMaterialID' can't be 0 if material ID is not supported by encoding" && isValid);
+    m_SplitScreenPrev = m_CommonSettings.splitScreen;
 
     memcpy(&m_CommonSettings, &commonSettings, sizeof(commonSettings));
 
+    // Silently fix settings for known cases
+    if (m_IsFirstUse)
+    {
+        m_CommonSettings.accumulationMode = AccumulationMode::CLEAR_AND_RESTART;
+        m_IsFirstUse = false;
+    }
+
+    if (m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE)
+    {
+        m_SplitScreenPrev = 0.0f;
+
+        m_WorldToViewPrev = m_WorldToView;
+        m_ViewToClipPrev = m_ViewToClip;
+
+        m_CommonSettings.resourceSizePrev[0] = m_CommonSettings.resourceSize[0];
+        m_CommonSettings.resourceSizePrev[1] = m_CommonSettings.resourceSize[1];
+
+        m_CommonSettings.rectSizePrev[0] = m_CommonSettings.rectSize[0];
+        m_CommonSettings.rectSizePrev[1] = m_CommonSettings.rectSize[1];
+
+        m_CommonSettings.cameraJitterPrev[0] = m_CommonSettings.cameraJitter[0];
+        m_CommonSettings.cameraJitterPrev[1] = m_CommonSettings.cameraJitter[1];
+    }
+
+    // TODO: matrix verifications?
+    bool isValid = m_CommonSettings.viewZScale > 0.0f;
+    assert("'viewZScale' can't be <= 0" && isValid);
+
+    isValid &= m_CommonSettings.resourceSize[0] != 0 && m_CommonSettings.resourceSize[1] != 0;
+    assert("'resourceSize' can't be 0" && isValid);
+
+    isValid &= m_CommonSettings.resourceSizePrev[0] != 0 && m_CommonSettings.resourceSizePrev[1] != 0;
+    assert("'resourceSizePrev' can't be 0" && isValid);
+
+    isValid &= m_CommonSettings.rectSize[0] != 0 && m_CommonSettings.rectSize[1] != 0;
+    assert("'rectSize' can't be 0" && isValid);
+
+    isValid &= m_CommonSettings.rectSizePrev[0] != 0 && m_CommonSettings.rectSizePrev[1] != 0;
+    assert("'rectSizePrev' can't be 0" && isValid);
+
+    isValid &= ((m_CommonSettings.motionVectorScale[0] != 0.0f && m_CommonSettings.motionVectorScale[1] != 0.0f) || m_CommonSettings.isMotionVectorInWorldSpace);
+    assert("'mvScale.xy' can't be 0" && isValid);
+
+    isValid &= m_CommonSettings.cameraJitter[0] >= -0.5f && m_CommonSettings.cameraJitter[0] <= 0.5f && m_CommonSettings.cameraJitter[1] >= -0.5f && m_CommonSettings.cameraJitter[1] <= 0.5f;
+    assert("'cameraJitter' must be in range [-0.5; 0.5]" && isValid);
+
+    isValid &= m_CommonSettings.cameraJitterPrev[0] >= -0.5f && m_CommonSettings.cameraJitterPrev[0] <= 0.5f && m_CommonSettings.cameraJitterPrev[1] >= -0.5f && m_CommonSettings.cameraJitterPrev[1] <= 0.5f;
+    assert("'cameraJitterPrev' must be in range [-0.5; 0.5]" && isValid);
+
+    isValid &= m_CommonSettings.denoisingRange > 0.0f;
+    assert("'denoisingRange' must be >= 0" && isValid);
+
+    isValid &= m_CommonSettings.disocclusionThreshold > 0.0f;
+    assert("'disocclusionThreshold' must be > 0" && isValid);
+
+    isValid &= m_CommonSettings.disocclusionThresholdAlternate > 0.0f;
+    assert("'disocclusionThresholdAlternate' must be > 0" && isValid);
+
+    isValid &= m_CommonSettings.strandMaterialID != 0.0f || GetLibraryDesc().normalEncoding == NormalEncoding::R10_G10_B10_A2_UNORM;
+    assert("'strandMaterialID' can't be 0 if material ID is not supported by encoding" && isValid);
+
+    isValid &= m_CommonSettings.cameraAttachedReflectionMaterialID != 0.0f || GetLibraryDesc().normalEncoding == NormalEncoding::R10_G10_B10_A2_UNORM;
+    assert("'cameraAttachedReflectionMaterialID' can't be 0 if material ID is not supported by encoding" && isValid);
+
     // Rotators (respecting sample patterns symmetry)
-    float angle1 = Sequence::Weyl1D(0.5f, commonSettings.frameIndex) * radians(90.0f);
+    float angle1 = Sequence::Weyl1D(0.5f, m_CommonSettings.frameIndex) * radians(90.0f);
     m_RotatorPre = Geometry::GetRotator(angle1);
 
-    float a0 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex * 2) * radians(90.0f);
-    float a1 = Sequence::Bayer4x4(uint2(0, 0), commonSettings.frameIndex * 2) * radians(360.0f);
+    float a0 = Sequence::Weyl1D(0.0f, m_CommonSettings.frameIndex * 2) * radians(90.0f);
+    float a1 = Sequence::Bayer4x4(uint2(0, 0), m_CommonSettings.frameIndex * 2) * radians(360.0f);
     m_Rotator = Geometry::CombineRotators(Geometry::GetRotator(a0), Geometry::GetRotator(a1));
 
-    float a2 = Sequence::Weyl1D(0.0f, commonSettings.frameIndex * 2 + 1) * radians(90.0f);
-    float a3 = Sequence::Bayer4x4(uint2(0, 0), commonSettings.frameIndex * 2 + 1) * radians(360.0f);
+    float a2 = Sequence::Weyl1D(0.0f, m_CommonSettings.frameIndex * 2 + 1) * radians(90.0f);
+    float a3 = Sequence::Bayer4x4(uint2(0, 0), m_CommonSettings.frameIndex * 2 + 1) * radians(360.0f);
     m_RotatorPost = Geometry::CombineRotators(Geometry::GetRotator(a2), Geometry::GetRotator(a3));
 
     // Main matrices
@@ -362,15 +388,6 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
         float4(m_CommonSettings.worldPrevToWorldMatrix + 8),
         float4(m_CommonSettings.worldPrevToWorldMatrix + 12)
     );
-
-    // There are many cases, where history buffers contain garbage - handle at least one of them internally
-    if (m_IsFirstUse)
-    {
-        m_CommonSettings.accumulationMode = AccumulationMode::CLEAR_AND_RESTART;
-        m_WorldToViewPrev = m_WorldToView;
-        m_ViewToClipPrev = m_ViewToClip;
-        m_IsFirstUse = false;
-    }
 
     // Convert to LH
     uint32_t flags = 0;
@@ -426,8 +443,8 @@ nrd::Result nrd::InstanceImpl::SetCommonSettings(const CommonSettings& commonSet
     m_ClipToWorld.Invert();
 
     float project[3];
-    float settings[PROJ_NUM];
-    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, settings, nullptr, m_Frustum.a, project, nullptr);
+    DecomposeProjection(STYLE_D3D, STYLE_D3D, m_ViewToClip, &flags, nullptr, nullptr, m_Frustum.a, project, nullptr);
+
     m_ProjectY = project[1];
     m_OrthoMode = (flags & PROJ_ORTHO) ? -1.0f : 0.0f;
 

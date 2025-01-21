@@ -387,7 +387,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gDiffPrepassBlurRadius                              = diffusePrepassBlurRadius;
     consts->gSpecPrepassBlurRadius                              = specularPrepassBlurRadius;
     consts->gMaxAccumulatedFrameNum                             = isHistoryReset ? 0 : float(maxAccumulatedFrameNum);
-    consts->gMaxFastAccumulatedFrameNum                         = float(settings.maxFastAccumulatedFrameNum);
+    consts->gMaxFastAccumulatedFrameNum                         = isHistoryReset ? 0 : float(settings.maxFastAccumulatedFrameNum);
     consts->gAntiFirefly                                        = settings.enableAntiFirefly ? 1.0f : 0.0f;
     consts->gLobeAngleFraction                                  = settings.lobeAngleFraction * settings.lobeAngleFraction; // TODO: GetSpecularLobeTanHalfAngle has been fixed, but we want to use existing settings
     consts->gRoughnessFraction                                  = settings.roughnessFraction;
@@ -396,6 +396,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gMinRectDimMulUnproject                             = (float)min(rectW, rectH) * unproject;
     consts->gUsePrepassNotOnlyForSpecularMotionEstimation       = settings.usePrepassOnlyForSpecularMotionEstimation ? 0.0f : 1.0f;
     consts->gSplitScreen                                        = m_CommonSettings.splitScreen;
+    consts->gSplitScreenPrev                                    = m_SplitScreenPrev;
     consts->gCheckerboardResolveAccumSpeed                      = m_CheckerboardResolveAccumSpeed;
     consts->gViewZScale                                         = m_CommonSettings.viewZScale;
     consts->gFireflySuppressorMinRelativeScale                  = settings.fireflySuppressorMinRelativeScale;

@@ -134,6 +134,7 @@ namespace nrd
         float timeDeltaBetweenFrames = 0.0f;
 
         // (units > 0) - use TLAS or tracing range
+        // It's highly recommended to use "viewZ > denoisingRange" for INF (sky) pixels
         float denoisingRange = 500000.0f;
 
         // [0.01; 0.02] - two samples considered occluded if relative distance difference is greater than this slope-scaled threshold

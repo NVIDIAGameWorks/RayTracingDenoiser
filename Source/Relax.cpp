@@ -81,6 +81,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     float maxDiffuseLuminanceRelativeDifference = -log( saturate(settings.diffuseMinLuminanceWeight) );
     float maxSpecularLuminanceRelativeDifference = -log( saturate(settings.specularMinLuminanceWeight) );
     float disocclusionThresholdBonus = (1.0f + m_JitterDelta) / float(rectH);
+    bool isHistoryReset = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE;
 
     // Checkerboard logic
     uint32_t specCheckerboard = 2;
@@ -122,10 +123,10 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gPrintfAt                                           = uint2(m_CommonSettings.printfAt[0], m_CommonSettings.printfAt[1]);
     consts->gRectOrigin                                         = uint2(m_CommonSettings.rectOrigin[0], m_CommonSettings.rectOrigin[1]);
     consts->gRectSize                                           = int2(rectW, rectH);
-    consts->gSpecMaxAccumulatedFrameNum                         = (float)min(settings.specularMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
-    consts->gSpecMaxFastAccumulatedFrameNum                     = (float)min(settings.specularMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
-    consts->gDiffMaxAccumulatedFrameNum                         = (float)min(settings.diffuseMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
-    consts->gDiffMaxFastAccumulatedFrameNum                     = (float)min(settings.diffuseMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
+    consts->gSpecMaxAccumulatedFrameNum                         = isHistoryReset ? 0.0f : (float)min(settings.specularMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
+    consts->gSpecMaxFastAccumulatedFrameNum                     = isHistoryReset ? 0.0f : (float)min(settings.specularMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
+    consts->gDiffMaxAccumulatedFrameNum                         = isHistoryReset ? 0.0f : (float)min(settings.diffuseMaxAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
+    consts->gDiffMaxFastAccumulatedFrameNum                     = isHistoryReset ? 0.0f : (float)min(settings.diffuseMaxFastAccumulatedFrameNum, RELAX_MAX_HISTORY_FRAME_NUM);
     consts->gDisocclusionThreshold                              = m_CommonSettings.disocclusionThreshold + disocclusionThresholdBonus;
     consts->gDisocclusionThresholdAlternate                     = m_CommonSettings.disocclusionThresholdAlternate + disocclusionThresholdBonus;
     consts->gCameraAttachedReflectionMaterialID                 = m_CommonSettings.cameraAttachedReflectionMaterialID;
@@ -173,7 +174,7 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gHasDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0;
     consts->gDiffMaterialMask                                   = settings.enableMaterialTestForDiffuse ? 1 : 0;
     consts->gSpecMaterialMask                                   = settings.enableMaterialTestForSpecular ? 1 : 0;
-    consts->gResetHistory                                       = m_CommonSettings.accumulationMode != AccumulationMode::CONTINUE ? 1 : 0;
+    consts->gResetHistory                                       = isHistoryReset ? 1 : 0;
 }
 
 void nrd::InstanceImpl::Update_Relax(const DenoiserData& denoiserData)

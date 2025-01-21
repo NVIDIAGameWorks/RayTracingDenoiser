@@ -331,6 +331,7 @@ namespace nrd
         float3 m_CameraDelta = float3::Zero();
         float3 m_ViewDirection = float3::Zero();
         float3 m_ViewDirectionPrev = float3::Zero();
+        float m_SplitScreenPrev = 0.0f;
         const char* m_PassName = nullptr;
         uint8_t* m_ConstantDataUnaligned = nullptr;
         uint8_t* m_ConstantData = nullptr;

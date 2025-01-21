@@ -170,6 +170,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gMinRectDimMulUnproject ) \
     NRD_CONSTANT( float, gUsePrepassNotOnlyForSpecularMotionEstimation ) \
     NRD_CONSTANT( float, gSplitScreen ) \
+    NRD_CONSTANT( float, gSplitScreenPrev ) \
     NRD_CONSTANT( float, gCheckerboardResolveAccumSpeed ) \
     NRD_CONSTANT( float, gViewZScale ) \
     NRD_CONSTANT( float, gFireflySuppressorMinRelativeScale ) \

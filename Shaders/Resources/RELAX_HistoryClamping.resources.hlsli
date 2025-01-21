@@ -21,18 +21,19 @@ NRD_SAMPLERS_END
 
     NRD_INPUTS_START
         NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
-        NRD_INPUT( Texture2D<float4>, gIn_SpecNoisy, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gIn_DiffNoisy, t, 2 )
-        NRD_INPUT( Texture2D<float4>, gIn_Spec, t, 3 )
-        NRD_INPUT( Texture2D<float4>, gIn_Diff, t, 4 )
-        NRD_INPUT( Texture2D<float4>, gIn_SpecFast, t, 5 )
-        NRD_INPUT( Texture2D<float4>, gIn_DiffFast, t, 6 )
-        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 7 )
+        NRD_INPUT( Texture2D<float>, gIn_ViewZ, t, 1 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecNoisy, t, 2 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffNoisy, t, 3 )
+        NRD_INPUT( Texture2D<float4>, gIn_Spec, t, 4 )
+        NRD_INPUT( Texture2D<float4>, gIn_Diff, t, 5 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecFast, t, 6 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffFast, t, 7 )
+        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 8 )
         #ifdef RELAX_SH
-            NRD_INPUT( Texture2D<float4>, gIn_SpecSh, t, 8 )
-            NRD_INPUT( Texture2D<float4>, gIn_DiffSh, t, 9 )
-            NRD_INPUT( Texture2D<float4>, gIn_SpecShFast, t, 10 )
-            NRD_INPUT( Texture2D<float4>, gIn_DiffShFast, t, 11 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecSh, t, 9 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffSh, t, 10 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecShFast, t, 11 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffShFast, t, 12 )
         #endif
     NRD_INPUTS_END
 
@@ -54,13 +55,14 @@ NRD_SAMPLERS_END
 
     NRD_INPUTS_START
         NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
-        NRD_INPUT( Texture2D<float4>, gIn_DiffNoisy, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gIn_Diff, t, 2 )
-        NRD_INPUT( Texture2D<float4>, gIn_DiffFast, t, 3 )
-        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 4 )
+        NRD_INPUT( Texture2D<float>, gIn_ViewZ, t, 1 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffNoisy, t, 2 )
+        NRD_INPUT( Texture2D<float4>, gIn_Diff, t, 3 )
+        NRD_INPUT( Texture2D<float4>, gIn_DiffFast, t, 4 )
+        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 5 )
         #ifdef RELAX_SH
-            NRD_INPUT( Texture2D<float4>, gIn_DiffSh, t, 5 )
-            NRD_INPUT( Texture2D<float4>, gIn_DiffShFast, t, 6 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffSh, t, 6 )
+            NRD_INPUT( Texture2D<float4>, gIn_DiffShFast, t, 7 )
         #endif
     NRD_INPUTS_END
 
@@ -78,13 +80,14 @@ NRD_SAMPLERS_END
 
     NRD_INPUTS_START
         NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
-        NRD_INPUT( Texture2D<float4>, gIn_SpecNoisy, t, 1 )
-        NRD_INPUT( Texture2D<float4>, gIn_Spec, t, 2 )
-        NRD_INPUT( Texture2D<float4>, gIn_SpecFast, t, 3 )
-        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 4 )
+        NRD_INPUT( Texture2D<float>, gIn_ViewZ, t, 1 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecNoisy, t, 2 )
+        NRD_INPUT( Texture2D<float4>, gIn_Spec, t, 3 )
+        NRD_INPUT( Texture2D<float4>, gIn_SpecFast, t, 4 )
+        NRD_INPUT( Texture2D<float>, gIn_HistoryLength, t, 5 )
         #ifdef RELAX_SH
-            NRD_INPUT( Texture2D<float4>, gIn_SpecSh, t, 5 )
-            NRD_INPUT( Texture2D<float4>, gIn_SpecShFast, t, 6 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecSh, t, 6 )
+            NRD_INPUT( Texture2D<float4>, gIn_SpecShFast, t, 7 )
         #endif
     NRD_INPUTS_END
 

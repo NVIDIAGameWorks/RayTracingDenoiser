@@ -278,7 +278,7 @@ float4 GetBlurKernelRotation( compiletime const uint mode, uint2 pixelPos, float
 
 float IsInScreenNearest( float2 uv )
 {
-    return float( all( uv >= 0.0 ) && all( uv < 1.0 ) );
+    return float( all( uv > 0.0 ) && all( uv < 1.0 ) );
 }
 
 // x y
@@ -296,6 +296,7 @@ float4 IsInScreenBilinear( float2 footprintOrigin, float2 rectSize )
 float2 ApplyCheckerboardShift( float2 pos, uint mode, uint counter, uint frameIndex )
 {
     // IMPORTANT: "pos" must be snapped to the pixel center
+    pos += 16384.0; // apply pattern-neutral bias, to make "pos" non-negative
     uint checkerboard = Sequence::CheckerBoard( uint2( pos ), frameIndex );
     float shift = ( ( counter & 0x1 ) == 0 ) ? -1.0 : 1.0;
 

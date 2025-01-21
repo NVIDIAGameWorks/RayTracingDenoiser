@@ -169,6 +169,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSh(DenoiserData& denoiserData)
     {
         // Inputs
         PushInput( AsUint(Transient::TILES) );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::OUT_DIFF_SH0) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PING) );
         PushInput( AsUint(Transient::DIFF_ILLUM_PONG) );

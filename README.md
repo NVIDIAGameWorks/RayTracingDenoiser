@@ -1,4 +1,4 @@
-# NVIDIA REAL-TIME DENOISERS v4.11.3 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.11.4 (NRD)
 
 [![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
 
@@ -98,8 +98,6 @@ NRD sample has *TESTS* section in the bottom of the UI, a new test can be added 
 - If nothing helps
   - describe the issue, attach a video and steps to reproduce
 
-Additionally, for any information, suggestions or general requests please feel free to contact us at NRD-SDK-Support@nvidia.com
-
 # API
 
 Terminology:
@@ -154,8 +152,6 @@ Commons inputs for primary hits (if *PSR* is not used, common use case) or for s
   - project on screen using matrices passed to NRD
   - `.w` component is positive view Z (or just transform world-space position to main view space and take `.z` component)
 
-All textures should be *NaN* free at each pixel, even at pixels outside of denoising range.
-
 The illustration below shows expected inputs for primary hits:
 
 ![Input without PSR](Images/InputsWithoutPsr.png)
@@ -207,6 +203,17 @@ Distance to occluder (*SIGMA*):
 - `NoL > 0, miss` - >= NRD_FP16_MAX
 
 See `NRDDescs.h` and `NRD.hlsli` for more details and descriptions of other inputs and outputs.
+
+# NOISY & NON-NOISY DATA REQUIREMENTS
+
+Noisy inputs:
+ - garbage values are allowed outside of active viewport, i.e. `>= CommonSettings::rectSize`
+ - garbage values are allowed outside of denoising range, i.e. `>= CommonSettings::denoisingRange`
+
+Non-noisy inputs (guides):
+ - must not contain garbage
+
+Where "garbage" is `NAN/INF` or undesired value.
 
 # IMPROVING OUTPUT QUALITY
 
@@ -665,13 +672,6 @@ IN_NORMAL_ROUGHNESS = GetVirtualSpaceNormalAndRoughnessAt( B );
 IN_MV = GetMotionAt( B );
 ```
 
-## INTERACTION WITH `INFs` AND `NANs`
-
-- *NRD* doesn't touch pixels outside of viewport: `INFs / NANs` are allowed
-- *NRD* doesn't touch pixels outside of denoising range: `INFs / NANs` are allowed
-- `INFs / NANs` are not allowed for pixels inside the viewport and denoising range
-  - `INFs` can be used in `IN_VIEWZ`, but not recommended
-
 ## INTERACTION WITH FRAME GENERATION TECHNIQUES
 
 Frame generation (FG) techniques boost FPS by interpolating between 2 last available frames. *NRD* works better when frame rate increases, because it gets more data per second. It's not the case for FG, because all rendering pipeline underlying passes (like, denoising) continue to work on the original non-boosted framerate. `GetMaxAccumulatedFrameNum` helper should get a real FPS, not a fake one.
@@ -708,7 +708,7 @@ Hair strands tangent vectors *can't* be used as "normals guide" for *NRD* due to
 
 **[NRD]** When upgrading to the latest version keep an eye on `ResourceType` enumeration. The order of the input slots can be changed or something can be added, you need to adjust the inputs accordingly to match the mapping. Or use *NRD integration* to simplify the process.
 
-**[NRD]** All pixels in floating point textures should be INF / NAN free to avoid propagation, because such values are used in weight calculations and accumulation of a weighted sum. Functions `XXX_FrontEnd_PackRadianceAndHitDist` perform optional NAN / INF clearing of the input signal. There is a boolean to skip these checks.
+**[NRD]** Functions `XXX_FrontEnd_PackRadianceAndHitDist` perform optional `NAN/INF` clearing of the input signal. There is a boolean to skip these checks.
 
 **[NRD]** All denoisers work with positive RGB inputs (some denoisers can change color space in *front end* functions). For better image quality, HDR color inputs need to be in a sane range [0; 250], because the internal pipeline uses FP16 and *RELAX* tracks second moments of the input signal, i.e. `x^2` must fit into FP16 range. If the color input is in a wider range, any form of non-aggressive color compression can be applied (linear scaling, pow-based or log-based methods). *REBLUR* supports wider HDR ranges, because it doesn't track second moments. Passing pre-exposured colors (i.e. `color * exposure`) is not recommended, because a significant momentary change in exposure is hard to react to in this case.
 

@@ -215,6 +215,7 @@ void nrd::InstanceImpl::Add_RelaxDiffuseSpecularSh(DenoiserData& denoiserData)
     {
         // Inputs
         PushInput( AsUint(Transient::TILES) );
+        PushInput( AsUint(ResourceType::IN_VIEWZ) );
         PushInput( AsUint(ResourceType::OUT_SPEC_SH0) ); // Noisy input with preblur applied
         PushInput( AsUint(ResourceType::OUT_DIFF_SH0) );
         PushInput( AsUint(Transient::SPEC_ILLUM_PING) ); // Normal history

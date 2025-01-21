@@ -236,16 +236,36 @@ NOISY INPUTS:
 //=================================================================================================================================
 
 #ifdef NRD_GLSL
-    #define float4                                                                      vec4
-    #define float3                                                                      vec3
-    #define float2                                                                      vec2
-    #define float2x2                                                                    mat2x2
-    #define float2x3                                                                    mat2x3
-    #define float3x3                                                                    mat3x3
-    #define rsqrt                                                                       inversesqrt
-    #define saturate( x )                                                               clamp( x, 0.0, 1.0 )
-    #define lerp                                                                        mix
-    #define mul( x, y )                                                                 ( x * y )
+    #ifndef float4
+        #define float4                                                                  vec4
+    #endif
+    #ifndef float3
+        #define float3                                                                  vec3
+    #endif
+    #ifndef float2
+        #define float2                                                                  vec2
+    #endif
+    #ifndef float2x2
+        #define float2x2                                                                mat2x2
+    #endif
+    #ifndef float2x3
+        #define float2x3                                                                mat2x3
+    #endif
+    #ifndef float3x3
+        #define float3x3                                                                mat3x3
+    #endif
+    #ifndef rsqrt
+        #define rsqrt                                                                   inversesqrt
+    #endif
+    #ifndef saturate
+        #define saturate( x )                                                           clamp( x, 0.0, 1.0 )
+    #endif
+    #ifndef lerp
+        #define lerp                                                                    mix
+    #endif
+    #ifndef mul
+        #define mul( x, y )                                                             ( x * y )
+    #endif
 #endif
 
 //=================================================================================================================================
