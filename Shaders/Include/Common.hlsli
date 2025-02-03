@@ -296,8 +296,8 @@ float4 IsInScreenBilinear( float2 footprintOrigin, float2 rectSize )
 float2 ApplyCheckerboardShift( float2 pos, uint mode, uint counter, uint frameIndex )
 {
     // IMPORTANT: "pos" must be snapped to the pixel center
-    pos += 16384.0; // apply pattern-neutral bias, to make "pos" non-negative
-    uint checkerboard = Sequence::CheckerBoard( uint2( pos ), frameIndex );
+    float2 posPositive = pos + 16384.0; // apply pattern-neutral bias, to make "pos" non-negative
+    uint checkerboard = Sequence::CheckerBoard( uint2( posPositive ), frameIndex );
     float shift = ( ( counter & 0x1 ) == 0 ) ? -1.0 : 1.0;
 
     pos.x += shift * float( checkerboard != mode && mode != 2 );
