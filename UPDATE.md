@@ -286,3 +286,6 @@ A single NRD instance can now include any combination of denoisers, including re
   - `stabilizationStrength` replaced with `maxStabilizedFrameNum`
   - the new default value for `planeDistanceSensitivity = 0.02` matches the behavior for the old value `0.005`
 
+## To v4.12
+- *REBLUR/RELAX*:
+  - (re)introduced `historyFixBasePixelStride` to maximize flexibility (the default matches old behavior)

@@ -177,16 +177,15 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float diffuseLobeAngleFraction = gLobeAngleFraction;
 
 #ifdef RELAX_SPECULAR
-        float specularReprojectionConfidence = gIn_SpecReprojectionConfidence[pixelPos];
-        float specularLuminanceWeightRelaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
-
         float centerSpecularLuminance = Color::Luminance(s_Spec[sharedMemoryIndex.y][sharedMemoryIndex.x].rgb);
         float specularPhiLIlluminationInv = 1.0 / max(1.0e-4, gSpecPhiLuminance * sqrt(centerSpecularVar));
-        float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
 
+        float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
         float diffuseLobeAngleFractionForSimplifiedSpecularNormalWeight = diffuseLobeAngleFraction;
         float specularLobeAngleFraction = gLobeAngleFraction;
 
+        float specularReprojectionConfidence = gIn_SpecReprojectionConfidence[pixelPos];
+        float specularLuminanceWeightRelaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
         if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
         {
             float specConfidenceDrivenRelaxation = saturate(gConfidenceDrivenRelaxationMultiplier * (1.0 - gIn_SpecConfidence[WithRectOrigin(pixelPos)]));
@@ -298,8 +297,8 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                 float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) * specularPhiLIlluminationInv;
                 specularLuminanceW = min(gSpecMaxLuminanceRelativeDifference, specularLuminanceW);
                 specularLuminanceW *= specularLuminanceWeightRelaxation;
-                float wSpecular = geometryW * exp(-specularLuminanceW);
 
+                float wSpecular = geometryW * exp(-specularLuminanceW);
                 wSpecular *= gRoughnessEdgeStoppingEnabled ? (normalWSpecular * roughnessWSpecular) : normalWSpecularSimplified;
                 wSpecular = isCenter ? kernel : wSpecular;
                 wSpecular *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
@@ -321,8 +320,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
                 float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) * diffusePhiLIlluminationInv;
                 diffuseLuminanceW = min(gDiffMaxLuminanceRelativeDifference, diffuseLuminanceW);
-                if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
-                    diffuseLuminanceW *= diffuseLuminanceWeightRelaxation;
+                diffuseLuminanceW *= diffuseLuminanceWeightRelaxation;
 
                 float wDiffuse = geometryW * normalWDiffuse * exp(-diffuseLuminanceW);
                 wDiffuse = isCenter ? kernel : wDiffuse;

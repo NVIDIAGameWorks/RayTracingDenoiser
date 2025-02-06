@@ -48,7 +48,7 @@ copy "..\%NRD_DIR%\README.md" "."
 echo.
 if defined copy_shaders goto :SHADERS
 if defined no_copy_shaders goto :PRE_INTEGRATION
-set /P M=Do you need the shader source code for a white-box integration? [y/n]
+set /P M=Do you need the shader source code for a white-box integration ('ml.hlsli' not included)? [y/n]
 if /I "%M%" neq "y" goto :PRE_INTEGRATION
 
 :SHADERS
@@ -56,7 +56,6 @@ if /I "%M%" neq "y" goto :PRE_INTEGRATION
 mkdir "Shaders"
 
 xcopy "..\%NRD_DIR%\Shaders\" "Shaders" /s /y
-copy "..\%NRD_DIR%\External\MathLib\*.hlsli" "Shaders\Source"
 
 :PRE_INTEGRATION
 

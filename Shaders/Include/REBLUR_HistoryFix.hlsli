@@ -97,8 +97,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
     frameNumNorm /= sum;
 
-    // IMPORTANT: progression is "{8, 4, 2, 1} + 1". "+1" is important to better break blobs
-    float2 stride = exp2( gHistoryFixFrameNum - frameNumNorm * gHistoryFixFrameNum ) + 1.0;
+    float2 stride = gHistoryFixBasePixelStride / ( 1.0 + frameNumNorm * gHistoryFixFrameNum );
 
     // Diffuse
     #ifdef REBLUR_DIFFUSE

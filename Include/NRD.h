@@ -28,9 +28,9 @@ CREDITS:
 #include <cstddef>
 
 #define NRD_VERSION_MAJOR 4
-#define NRD_VERSION_MINOR 11
-#define NRD_VERSION_BUILD 4
-#define NRD_VERSION_DATE "20 January 2025"
+#define NRD_VERSION_MINOR 12
+#define NRD_VERSION_BUILD 0
+#define NRD_VERSION_DATE "3 February 2025"
 
 #if defined(_WIN32)
     #define NRD_CALL __stdcall
@@ -39,11 +39,7 @@ CREDITS:
 #endif
 
 #ifndef NRD_API
-    #ifdef NRD_STATIC_LIBRARY
-        #define NRD_API
-    #else
-        #define NRD_API extern "C"
-    #endif
+    #define NRD_API extern "C"
 #endif
 
 #include "NRDDescs.h"

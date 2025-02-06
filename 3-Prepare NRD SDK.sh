@@ -20,14 +20,13 @@ cp ../$NRD_DIR/Shaders/Include/NRDEncoding.hlsli "Shaders/Include"
 cp ../$NRD_DIR/LICENSE.txt "."
 cp ../$NRD_DIR/README.md "."
 
-read -p "Do you need the shader source code for a white-box integration? [y/n]" -n 1 -r
+read -p "Do you need the shader source code for a white-box integration ('ml.hlsli' not included)? [y/n]" -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]
 then
     mkdir -p "Shaders"
 
     cp -r ../$NRD_DIR/Shaders/ "Shaders"
-    cp ../$NRD_DIR/External/MathLib/*.hlsli "Shaders\Source"
 fi
 
 read -p "Do you need NRD integration layer? [y/n]" -n 1 -r

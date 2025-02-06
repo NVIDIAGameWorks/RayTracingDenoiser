@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 11
+#define NRD_SETTINGS_VERSION_MINOR 12
 
 static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -254,6 +254,9 @@ namespace nrd
         // [0; 3] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
         uint32_t historyFixFrameNum = 3;
 
+        // (> 0) - base stride between pixels in 5x5 history reconstruction kernel (gets reduced over time)
+        uint32_t historyFixBasePixelStride = 14;
+
         // (pixels) - pre-accumulation spatial reuse pass blur radius (0 = disabled, must be used in case of badly defined signals and probabilistic sampling)
         float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
@@ -348,6 +351,12 @@ namespace nrd
         // [0; 3] - number of reconstructed frames after history reset (less than "maxFastAccumulatedFrameNum")
         uint32_t historyFixFrameNum = 3;
 
+        // (> 0) - base stride between pixels in 5x5 history reconstruction kernel (gets reduced over time)
+        uint32_t historyFixBasePixelStride = 14;
+
+        // (> 0) - normal edge stopper for history reconstruction pass
+        float historyFixEdgeStoppingNormalPower = 8.0f;
+
         // (>= 0) - history length threshold below which spatial variance estimation will be executed
         uint32_t spatialVarianceEstimationHistoryThreshold = 3;
 
@@ -370,9 +379,6 @@ namespace nrd
 
         // (degrees) - slack for the specular lobe angle used in normal based rejection of specular during A-Trous passes
         float specularLobeAngleSlack = 0.15f;
-
-        // (> 0) - normal edge stopper for history reconstruction pass
-        float historyFixEdgeStoppingNormalPower = 8.0f;
 
         // [1; 3] - standard deviation scale of color box for clamping main "slow" history to responsive "fast" history
         float historyClampingColorBoxSigmaScale = 2.0f;

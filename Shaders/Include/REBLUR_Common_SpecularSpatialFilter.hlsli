@@ -56,7 +56,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float blurRadius = gSpecPrepassBlurRadius;
         float areaFactor = roughness * hitDistFactor;
     #else
-        float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.y );
+        float boost = 1.0 - GetFadeBasedOnAccumulatedFrames( data1.y ); // TODO: still needed?
         boost *= 1.0 - BRDF::Pow5( NoV );
         boost *= smc;
 

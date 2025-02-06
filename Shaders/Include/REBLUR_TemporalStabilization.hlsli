@@ -67,8 +67,10 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float3 diffShM2 = diffSh.xyz * diffSh.xyz;
         #endif
 
-        float diffMin = NRD_INF;
-        float diffMax = -NRD_INF;
+        #ifndef REBLUR_PERFORMANCE_MODE
+            float diffMin = NRD_INF;
+            float diffMax = -NRD_INF;
+        #endif
     #endif
 
     #ifdef REBLUR_SPECULAR
@@ -82,8 +84,10 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float3 specShM2 = specSh.xyz * specSh.xyz;
         #endif
 
-        float specMin = NRD_INF;
-        float specMax = -NRD_INF;
+        #ifndef REBLUR_PERFORMANCE_MODE
+            float specMin = NRD_INF;
+            float specMax = -NRD_INF;
+        #endif
     #endif
 
     [unroll]
@@ -109,10 +113,12 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                     diffShM2 += dh * dh;
                 #endif
 
-                // RCRS
-                float diffLuma = GetLuma( d );
-                diffMin = min( diffMin, diffLuma );
-                diffMax = max( diffMax, diffLuma );
+                #ifndef REBLUR_PERFORMANCE_MODE
+                    // RCRS
+                    float diffLuma = GetLuma( d );
+                    diffMin = min( diffMin, diffLuma );
+                    diffMax = max( diffMax, diffLuma );
+                #endif
             #endif
 
             #ifdef REBLUR_SPECULAR
@@ -127,10 +133,12 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                     specShM2 += sh * sh;
                 #endif
 
-                // RCRS
-                float specLuma = GetLuma( s );
-                specMin = min( specMin, specLuma );
-                specMax = max( specMax, specLuma );
+                #ifndef REBLUR_PERFORMANCE_MODE
+                    // RCRS
+                    float specLuma = GetLuma( s );
+                    specMin = min( specMin, specLuma );
+                    specMax = max( specMax, specLuma );
+                #endif
             #endif
         }
     }
@@ -149,18 +157,20 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float3 diffShSigma = GetStdDev( diffShM1, diffShM2 );
         #endif
 
-        // RCRS
-        [flatten]
-        if( gMaxBlurRadius != 0 )
-        {
-            float diffLuma = GetLuma( diff );
-            float diffLumaClamped = clamp( diffLuma, diffMin, diffMax );
+        #ifndef REBLUR_PERFORMANCE_MODE
+            // RCRS
+            [flatten]
+            if( gMaxBlurRadius != 0 )
+            {
+                float diffLuma = GetLuma( diff );
+                float diffLumaClamped = clamp( diffLuma, diffMin, diffMax );
 
-            diff = ChangeLuma( diff, diffLumaClamped );
-            #ifdef REBLUR_SH
-                diffSh.xyz *= GetLumaScale( length( diffSh.xyz ), diffLumaClamped );
-            #endif
-        }
+                diff = ChangeLuma( diff, diffLumaClamped );
+                #ifdef REBLUR_SH
+                    diffSh.xyz *= GetLumaScale( length( diffSh.xyz ), diffLumaClamped );
+                #endif
+            }
+        #endif
     #endif
 
     #ifdef REBLUR_SPECULAR
@@ -175,18 +185,20 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float3 specShSigma = GetStdDev( specShM1, specShM2 );
         #endif
 
-        // RCRS
-        [flatten]
-        if( gMaxBlurRadius != 0 )
-        {
-            float specLuma = GetLuma( spec );
-            float specLumaClamped = clamp( specLuma, specMin, specMax );
+        #ifndef REBLUR_PERFORMANCE_MODE
+            // RCRS
+            [flatten]
+            if( gMaxBlurRadius != 0 )
+            {
+                float specLuma = GetLuma( spec );
+                float specLumaClamped = clamp( specLuma, specMin, specMax );
 
-            spec = ChangeLuma( spec, specLumaClamped );
-            #ifdef REBLUR_SH
-                specSh.xyz *= GetLumaScale( length( specSh.xyz ), specLumaClamped );
-            #endif
-        }
+                spec = ChangeLuma( spec, specLumaClamped );
+                #ifdef REBLUR_SH
+                    specSh.xyz *= GetLumaScale( length( specSh.xyz ), specLumaClamped );
+                #endif
+            }
+        #endif
     #endif
 
     // Position

@@ -18,8 +18,8 @@ typedef nrd::AllocationCallbacks AllocationCallbacks;
 #include "StdAllocator.h"
 
 #include "Timer.h"
-#include "MathLib/ml.h"
-#include "MathLib/ml.hlsli"
+#include "ml.h"
+#include "ml.hlsli"
 
 #define _NRD_STRINGIFY(s) #s
 #define NRD_STRINGIFY(s) _NRD_STRINGIFY(s)

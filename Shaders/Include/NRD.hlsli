@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.11
+// NRD v4.12
 
 // IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
 
@@ -264,7 +264,10 @@ NOISY INPUTS:
         #define lerp                                                                    mix
     #endif
     #ifndef mul
-        #define mul( x, y )                                                             ( x * y )
+        #define mul( x, y )                                                             ( ( x ) * ( y ) )
+    #endif
+    #ifndef rcp
+        #define rcp( x )                                                                ( 1.0 / ( x ) )
     #endif
 #endif
 

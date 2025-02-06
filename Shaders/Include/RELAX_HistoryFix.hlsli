@@ -14,12 +14,6 @@ float getDiffuseNormalWeight(float3 centerNormal, float3 pointNormal)
     return pow(max(0.01, dot(centerNormal, pointNormal)), max(gHistoryFixEdgeStoppingNormalPower, 0.01));
 }
 
-float getRadius(float historyLength)
-{
-    // IMPORTANT: progression is "{8, 4, 2, 1} + 1". "+1" is important to better break blobs
-    return exp2(gHistoryFixFrameNum - historyLength) + 1.0;
-}
-
 // Main
 [numthreads(GROUP_X, GROUP_Y, 1)]
 NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
@@ -71,7 +65,9 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 #endif
 
     // Running sparse cross-bilateral filter
-    float r = getRadius(historyLength);
+    float r = gHistoryFixBasePixelStride / ( 1.0 + historyLength );
+    r = floor( r + 0.5 );
+
     [unroll]
     for (int j = -2; j <= 2; j++)
     {

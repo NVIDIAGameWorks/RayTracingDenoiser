@@ -1,10 +1,10 @@
-# NVIDIA REAL-TIME DENOISERS v4.11.4 (NRD)
+# NVIDIA REAL-TIME DENOISERS v4.12.0 (NRD)
 
-[![Build NRD SDK](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/RayTracingDenoiser/actions/workflows/build.yml)
+[![Build NRD SDK](https://github.com/NVIDIA-RTX/NRD/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIA-RTX/NRD/actions/workflows/build.yml)
 
 ![Title](Images/Title.jpg)
 
-For quick starting see *[NRD sample](https://github.com/NVIDIAGameWorks/NRDSample)* project.
+For quick starting see *[NRD sample](https://github.com/NVIDIA-RTX/NRD-Sample)* project.
 
 # OVERVIEW
 
@@ -396,7 +396,7 @@ Logically it's close to the Method 1, but the integration takes place in the ful
 
 ## VARIANT 3: Black-box library (using native API pointers)
 
-If Graphics API's native pointers are retrievable from the RHI, the standard *NRD integration* layer can be used to greatly simplify the integration. In this case, the application should only wrap up native pointers for the *Device*, *CommandList* and some input / output *Resources* into entities, compatible with an API abstraction layer (*[NRI](https://github.com/NVIDIAGameWorks/NRI)*), and all work with *NRD* library will be hidden inside the integration layer:
+If Graphics API's native pointers are retrievable from the RHI, the standard *NRD integration* layer can be used to greatly simplify the integration. In this case, the application should only wrap up native pointers for the *Device*, *CommandList* and some input / output *Resources* into entities, compatible with an API abstraction layer (*[NRI](https://github.com/NVIDIA-RTX/NRI)*), and all work with *NRD* library will be hidden inside the integration layer:
 
 *Engine or App → native objects → NRD integration layer → NRI → NRD*
 
@@ -605,7 +605,7 @@ Denoising is not a panacea or miracle. Denoising works best with ray tracing res
 
 ## MATERIAL DE-MODULATION (IRRADIANCE → RADIANCE)
 
-*NRD* has been designed to work with pure radiance coming from a particular direction. This means that data in the form "something / probability" should be avoided if possible because overall entropy of the input signal will be increased (but it doesn't mean that denoising won't work). Additionally, it means that materials needs to be decoupled from the input signal, i.e. *irradiance*, typically produced by a path tracer, needs to be transformed into *radiance*, i.e. BRDF should be applied **after** denoising. This is achieved by using "demodulation" trick:
+*NRD* has been designed to work with pure radiance coming from a particular direction. This means that data in the form "something / probability" should be avoided if possible because overall entropy of the input signal will be increased (but it doesn't mean that denoising won't work). Additionally, it means that materials needs to be decoupled from the input signal, i.e. *irradiance*, typically produced by a path tracer, needs to be transformed into *radiance*, i.e. BRDF should be applied **after** denoising. This is achieved by using "demodulation":
 
     // Diffuse
     Denoising( diffuseRadiance * albedo ) → NRD( diffuseRadiance / albedo ) * albedo
@@ -614,7 +614,7 @@ Denoising is not a panacea or miracle. Denoising works best with ray tracing res
     float3 preintegratedBRDF = PreintegratedBRDF( Rf0, N, V, roughness )
     Denoising( specularRadiance * BRDF ) → NRD( specularRadiance * BRDF / preintegratedBRDF ) * preintegratedBRDF
 
-A good approximation for pre-integrated specular BRDF can be found *[here](https://github.com/NVIDIAGameWorks/MathLib/blob/407ecd0d1892d12ee1ec98c3d46cbeed73b79a0d/STL.hlsli#L2147*. Pre-integrated specular BRDF can also be referenced as "specular albedo" or "environment BRDF".
+Material demodulation factors can be computed using `NRD_MaterialFactors` helper from `NRD.hlsli`. Pre-integrated specular BRDF can also be referenced as "specular albedo" or "environment BRDF".
 
 ## COMBINED DENOISING OF DIRECT AND INDIRECT LIGHTING
 
@@ -727,7 +727,7 @@ Hair strands tangent vectors *can't* be used as "normals guide" for *NRD* due to
    - VNDF sampling for specular
    - Custom importance sampling for local light sources (*RTXDI*).
 
-**[NRD]** Any form of a radiance cache (*[SHARC](https://github.com/NVIDIAGameWorks/SHARC)* or *[NRC](https://github.com/NVIDIAGameWorks/NRC)*) is highly recommended to achieve better signal quality and improve behavior in disocclusions.
+**[NRD]** Any form of a radiance cache (*[SHARC](https://github.com/NVIDIA-RTX/SHARC)* or *[NRC](https://github.com/NVIDIA-RTX/NRC)*) is highly recommended to achieve better signal quality and improve behavior in disocclusions.
 
 **[NRD]** Additionally the quality of the input signal can be increased by re-using already denoised information from the current or the previous frame.
 

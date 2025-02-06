@@ -167,6 +167,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gRoughnessFraction ) \
     NRD_CONSTANT( float, gResponsiveAccumulationRoughnessThreshold ) \
     NRD_CONSTANT( float, gHistoryFixFrameNum ) \
+    NRD_CONSTANT( float, gHistoryFixBasePixelStride ) \
     NRD_CONSTANT( float, gMinRectDimMulUnproject ) \
     NRD_CONSTANT( float, gUsePrepassNotOnlyForSpecularMotionEstimation ) \
     NRD_CONSTANT( float, gSplitScreen ) \

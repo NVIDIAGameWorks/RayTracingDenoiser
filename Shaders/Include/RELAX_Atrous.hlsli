@@ -41,18 +41,16 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     float4 centerSpecularIlluminationAndVariance = gIn_Spec_Variance[pixelPos];
     float centerSpecularLuminance = Color::Luminance(centerSpecularIlluminationAndVariance.rgb);
     float centerSpecularVar = centerSpecularIlluminationAndVariance.a;
+    float specularPhiLIlluminationInv = 1.0 / max(1.0e-4, gSpecPhiLuminance * sqrt(centerSpecularVar));
+
+    float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
+    float diffuseLobeAngleFractionForSimplifiedSpecularNormalWeight = diffuseLobeAngleFraction;
+    float specularLobeAngleFraction = gLobeAngleFraction;
 
     float specularReprojectionConfidence = gIn_SpecReprojectionConfidence[pixelPos];
     float specularLuminanceWeightRelaxation = 1.0;
     if (gStepSize <= 4)
         specularLuminanceWeightRelaxation = lerp(1.0, specularReprojectionConfidence, gLuminanceEdgeStoppingRelaxation);
-
-    float specularPhiLIlluminationInv = 1.0 / max(1.0e-4, gSpecPhiLuminance * sqrt(centerSpecularVar));
-
-    float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
-
-    float diffuseLobeAngleFractionForSimplifiedSpecularNormalWeight = diffuseLobeAngleFraction;
-    float specularLobeAngleFraction = gLobeAngleFraction;
 
     if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
     {
@@ -181,6 +179,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                 float specularLuminanceW = abs(centerSpecularLuminance - sampleSpecularLuminance) * specularPhiLIlluminationInv;
                 specularLuminanceW = min(gSpecMaxLuminanceRelativeDifference, specularLuminanceW);
                 specularLuminanceW *= specularLuminanceWeightRelaxation;
+
                 wSpecular *= exp(-specularLuminanceW);
 
                 sumWSpecular += wSpecular;
@@ -206,8 +205,8 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
                 float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) * diffusePhiLIlluminationInv;
                 diffuseLuminanceW = min(gDiffMaxLuminanceRelativeDifference, diffuseLuminanceW);
-                if (gHasHistoryConfidence && NRD_USE_HISTORY_CONFIDENCE)
-                    diffuseLuminanceW *= diffuseLuminanceWeightRelaxation;
+                diffuseLuminanceW *= diffuseLuminanceWeightRelaxation;
+
                 wDiffuse *= exp(-diffuseLuminanceW);
 
                 sumWDiffuse += wDiffuse;
