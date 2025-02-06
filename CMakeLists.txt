@@ -212,13 +212,12 @@ if(NOT NRD_DISABLE_SHADER_COMPILATION)
     message("NRD MathLib path: '${ML_SOURCE_DIR}'")
 
     set(SHADERMAKE_GENERAL_ARGS
-        --useAPI --header ${NRD_SHADER_BINARIES}
-        --flatten
-        --stripReflection
-        --sourceDir "Shaders/Source"
+        --useAPI --flatten --stripReflection --WX
+        --sRegShift 100 --tRegShift 200 --bRegShift 300 --uRegShift 400
+        --header ${NRD_SHADER_BINARIES}
         --allResourcesBound
-        --WX
         --vulkanVersion 1.2
+        --sourceDir "Shaders/Source"
         -c Shaders.cfg
         -o "${NRD_SHADERS_PATH}"
         -I "${ML_SOURCE_DIR}"
@@ -237,9 +236,7 @@ if(NOT NRD_DISABLE_SHADER_COMPILATION)
     endif()
 
     if(NRD_EMBEDS_SPIRV_SHADERS)
-        set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p SPIRV --compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS}
-            --sRegShift 100 --tRegShift 200 --bRegShift 300 --uRegShift 400
-        )
+        set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p SPIRV --compiler "${DXC_SPIRV_PATH}" ${SHADERMAKE_GENERAL_ARGS})
     endif()
 
     if(NRD_EMBEDS_DXBC_SHADERS)
