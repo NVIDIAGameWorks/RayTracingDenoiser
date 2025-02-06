@@ -213,7 +213,7 @@ if(NOT NRD_DISABLE_SHADER_COMPILATION)
     set_source_files_properties(${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
 
     # ShaderMake general arguments
-    get_target_property(ML_SOURCE_DIR MathLib SOURCE_DIR)
+    get_target_property(ML_SOURCE_DIR MathLib INTERFACE_INCLUDE_DIRECTORIES)
     message("NRD MathLib path: '${ML_SOURCE_DIR}'")
 
     set(SHADERMAKE_GENERAL_ARGS
