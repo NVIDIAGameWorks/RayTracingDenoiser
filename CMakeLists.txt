@@ -137,10 +137,13 @@ endif()
 # NRD
 file(GLOB GLOB_INCUDE "Include/*")
 source_group("Include" FILES ${GLOB_INCUDE})
+
 file(GLOB GLOB_SOURCE "Source/*.cpp" "Source/*.h" "Source/*.hpp")
 source_group("Source" FILES ${GLOB_SOURCE})
+
 file(GLOB GLOB_DENOISERS "Source/Denoisers/*.cpp" "Source/Denoisers/*.h" "Source/Denoisers/*.hpp")
 source_group("Denoisers" FILES ${GLOB_DENOISERS})
+
 file(GLOB GLOB_RESOURCES "Resources/*")
 source_group("Resources" FILES ${GLOB_RESOURCES})
 
@@ -184,6 +187,14 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY FOLDER ${PROJECT_NAME})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 message("NRD output path: '${CMAKE_RUNTIME_OUTPUT_DIRECTORY}'")
+
+# NRD integration
+file(GLOB GLOB_INTEGRATION "Integration/*")
+source_group("" FILES ${GLOB_INTEGRATION})
+
+add_library(NRDIntegration INTERFACE ${GLOB_INTEGRATION})
+target_include_directories(NRDIntegration INTERFACE "Integration")
+set_property(TARGET NRDIntegration PROPERTY FOLDER ${PROJECT_NAME})
 
 # Shaders
 if(NOT NRD_DISABLE_SHADER_COMPILATION)
@@ -236,13 +247,13 @@ if(NOT NRD_DISABLE_SHADER_COMPILATION)
     endif()
 
     # Add the target with the commands
-    add_custom_target(${PROJECT_NAME}_Shaders ALL ${SHADERMAKE_COMMANDS}
+    add_custom_target(${PROJECT_NAME}Shaders ALL ${SHADERMAKE_COMMANDS}
         DEPENDS ShaderMake
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         VERBATIM
         SOURCES ${SHADERS}
     )
 
-    set_property(TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER ${PROJECT_NAME})
-    add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_Shaders)
+    set_property(TARGET ${PROJECT_NAME}Shaders PROPERTY FOLDER ${PROJECT_NAME})
+    add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}Shaders)
 endif()
