@@ -192,7 +192,12 @@ message("NRD output path: '${CMAKE_RUNTIME_OUTPUT_DIRECTORY}'")
 file(GLOB GLOB_INTEGRATION "Integration/*")
 source_group("" FILES ${GLOB_INTEGRATION})
 
-add_library(NRDIntegration INTERFACE ${GLOB_INTEGRATION})
+if(WIN32)
+    add_library(NRDIntegration INTERFACE ${GLOB_INTEGRATION})
+else()
+    add_library(NRDIntegration INTERFACE) # TODO: fixme...
+endif()
+
 target_include_directories(NRDIntegration INTERFACE "Integration")
 set_property(TARGET NRDIntegration PROPERTY FOLDER ${PROJECT_NAME})
 
