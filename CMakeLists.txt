@@ -194,12 +194,12 @@ source_group("" FILES ${GLOB_INTEGRATION})
 
 if(WIN32)
     add_library(NRDIntegration INTERFACE ${GLOB_INTEGRATION})
+    set_property(TARGET NRDIntegration PROPERTY FOLDER ${PROJECT_NAME})
 else()
     add_library(NRDIntegration INTERFACE) # TODO: fixme...
 endif()
 
 target_include_directories(NRDIntegration INTERFACE "Integration")
-set_property(TARGET NRDIntegration PROPERTY FOLDER ${PROJECT_NAME})
 
 # Shaders
 if(NOT NRD_DISABLE_SHADER_COMPILATION)
