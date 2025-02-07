@@ -15,7 +15,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define RELAX_NORMAL_ULP                                    ( 1.5 / 255.0 )
 
 #define RELAX_MAX_ACCUM_FRAME_NUM                           255
-#define RELAX_HIT_DIST_MIN_WEIGHT                           0.2 // Sacrifices spatial fidelity to improve temporal stability. Should be set to 0 for relatively clean input signals like RTXDI and 0.1 .. 0.2 for lower quality input signals
 #define RELAX_ANTILAG_ACCELERATION_AMOUNT_SCALE             10.0 // Multiplier used to put RelaxAntilagSettings::accelerationAmount to convenient [0; 1] range
 
 // Shared constants
@@ -88,6 +87,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gHistoryFixBasePixelStride ) \
     NRD_CONSTANT( float, gHistoryThreshold ) \
     NRD_CONSTANT( float, gViewZScale ) \
+    NRD_CONSTANT( float, gMinHitDistanceWeight ) \
     NRD_CONSTANT( uint, gRoughnessEdgeStoppingEnabled ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gDiffCheckerboard ) \

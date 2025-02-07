@@ -289,3 +289,7 @@ A single NRD instance can now include any combination of denoisers, including re
 ## To v4.12
 - *REBLUR/RELAX*:
   - (re)introduced `historyFixBasePixelStride` to maximize flexibility (the default matches old behavior)
+
+## To v4.13
+- *REBLUR/RELAX*:
+  - added `minHitDistanceWeight`

@@ -91,8 +91,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float normalWeightParam = GetNormalWeightParam( specNonLinearAccumSpeed, gLobeAngleFraction, roughness ) / fractionScale;
         float2 roughnessWeightParams = GetRoughnessWeightParams( roughness, roughnessFractionScaled );
 
-        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness );
-        float minHitDistWeight = REBLUR_HIT_DIST_MIN_WEIGHT( smc ) * fractionScale;
+        float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness ); // TODO: what if hitT == 0?
+        float minHitDistWeight = gMinHitDistanceWeight * fractionScale * smc;
 
         // Screen-space settings
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR == 1 )

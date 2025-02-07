@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 12
+#define NRD_SETTINGS_VERSION_MINOR 13
 
 static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -261,6 +261,9 @@ namespace nrd
         float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
 
+        // (0; 0.2] - bigger values reduce sensitivity to shadows in spatial passes, smaller values are recommended for signals with relatively clean hit distance (like RTXDI/RESTIR)
+        float minHitDistanceWeight = 0.1f;
+
         // (pixels) - min denoising radius (for converged state)
         float minBlurRadius = 1.0f;
 
@@ -364,7 +367,10 @@ namespace nrd
         float diffusePrepassBlurRadius = 30.0f;
         float specularPrepassBlurRadius = 50.0f;
 
-        // A-trous edge stopping Luminance sensitivity
+        // (0; 0.2] - bigger values reduce sensitivity to shadows in spatial passes, smaller values are recommended for signals with relatively clean hit distance (like RTXDI/RESTIR)
+        float minHitDistanceWeight = 0.1f;
+
+        // A-trous edge stopping luminance sensitivity
         float diffusePhiLuminance = 2.0f;
         float specularPhiLuminance = 1.0f;
 

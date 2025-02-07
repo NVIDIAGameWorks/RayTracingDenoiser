@@ -401,6 +401,7 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gCheckerboardResolveAccumSpeed                      = m_CheckerboardResolveAccumSpeed;
     consts->gViewZScale                                         = m_CommonSettings.viewZScale;
     consts->gFireflySuppressorMinRelativeScale                  = settings.fireflySuppressorMinRelativeScale;
+    consts->gMinHitDistanceWeight                               = settings.minHitDistanceWeight;
     consts->gHasHistoryConfidence                               = m_CommonSettings.isHistoryConfidenceAvailable;
     consts->gHasDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable;
     consts->gDiffCheckerboard                                   = diffCheckerboard;

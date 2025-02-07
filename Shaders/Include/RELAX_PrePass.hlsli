@@ -126,7 +126,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
         float weightSum = 1.0;
 
-        float diffMinHitDistanceWeight = RELAX_HIT_DIST_MIN_WEIGHT;
+        float diffMinHitDistanceWeight = gMinHitDistanceWeight;
 
         // Spatial blur
         [unroll]
@@ -246,7 +246,8 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
         float hitDistFactor = GetHitDistFactor(hitDist * NoD, frustumSize);
 
-        float blurRadius = gSpecBlurRadius * hitDistFactor * GetSpecMagicCurve(centerRoughness);
+        float smc = GetSpecMagicCurve(centerRoughness);
+        float blurRadius = gSpecBlurRadius * hitDistFactor * smc;
         float lobeTanHalfAngle = ImportanceSampling::GetSpecularLobeTanHalfAngle(centerRoughness);
         float lobeRadius = hitDist * NoD * lobeTanHalfAngle;
         float minBlurRadius = lobeRadius / PixelRadiusToWorld(gUnproject, gOrthoMode, 1.0, centerViewZ + hitDist * D.w);
@@ -260,7 +261,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams(specularIllumination.w, 1.0 / 9.0, centerRoughness);
         float2 roughnessWeightParams = GetRoughnessWeightParams(centerRoughness, gRoughnessFraction);
 
-        float specMinHitDistanceWeight = (specularIllumination.a == 0) ? 1.0 : RELAX_HIT_DIST_MIN_WEIGHT;
+        float specMinHitDistanceWeight = (specularIllumination.a == 0) ? 1.0 : gMinHitDistanceWeight * smc;
         float specularHitT = (specularIllumination.a == 0) ? gDenoisingRange : specularIllumination.a;
 
         float NoV = abs(dot(centerNormal, viewVector));
