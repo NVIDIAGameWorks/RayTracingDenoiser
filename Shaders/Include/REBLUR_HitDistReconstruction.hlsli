@@ -46,7 +46,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     NRD_CTA_ORDER_DEFAULT;
 
     // Preload
-    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].x;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out

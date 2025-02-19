@@ -20,7 +20,7 @@ NRD_SAMPLERS_END
 #if( defined REBLUR_DIFFUSE && defined REBLUR_SPECULAR )
 
     NRD_INPUTS_START
-        NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT( Texture2D<REBLUR_TILE_TYPE>, gIn_Tiles, t, 0 )
         NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
         NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 2 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 3 )
@@ -45,7 +45,7 @@ NRD_SAMPLERS_END
 #elif( defined REBLUR_DIFFUSE )
 
     NRD_INPUTS_START
-        NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT( Texture2D<REBLUR_TILE_TYPE>, gIn_Tiles, t, 0 )
         NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
         NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 2 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Diff, t, 3 )
@@ -66,7 +66,7 @@ NRD_SAMPLERS_END
 #else
 
     NRD_INPUTS_START
-        NRD_INPUT( Texture2D<float>, gIn_Tiles, t, 0 )
+        NRD_INPUT( Texture2D<REBLUR_TILE_TYPE>, gIn_Tiles, t, 0 )
         NRD_INPUT( Texture2D<float4>, gIn_Normal_Roughness, t, 1 )
         NRD_INPUT( Texture2D<REBLUR_DATA1_TYPE>, gIn_Data1, t, 2 )
         NRD_INPUT( Texture2D<REBLUR_TYPE>, gIn_Spec, t, 3 )

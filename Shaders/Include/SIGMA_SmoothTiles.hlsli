@@ -44,5 +44,5 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
     blurry /= sum;
 
-    gOut_Tiles[ pixelPos ] = float2( blurry, center.z );
+    gOut_Tiles[ pixelPos ] = float2( center.z, blurry );
 }

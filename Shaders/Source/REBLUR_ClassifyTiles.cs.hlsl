@@ -16,18 +16,18 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #include "Common.hlsli"
 
-groupshared uint s_isSky;
+groupshared int s_Sum;
 
 [numthreads( 8, 4, 1 )]
 NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos : SV_GroupId, uint threadIndex : SV_GroupIndex )
 {
     if( threadIndex == 0 )
-        s_isSky = 0;
+        s_Sum = 0;
 
-    GroupMemoryBarrier();
+    GroupMemoryBarrierWithGroupSync();
 
     uint2 pixelPos = tilePos * 16 + threadPos * uint2( 2, 4 );
-    uint isSky = 0;
+    int sum = 0;
 
     [unroll]
     for( uint i = 0; i < 2; i++ )
@@ -38,14 +38,18 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
             uint2 pos = pixelPos + uint2( i, j );
             float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pos ) ] );
 
-            isSky += viewZ > gDenoisingRange ? 1 : 0;
+            sum += viewZ > gDenoisingRange ? 1 : 0;
         }
     }
 
-    InterlockedAdd( s_isSky, isSky );
+    InterlockedAdd( s_Sum, sum );
 
-    GroupMemoryBarrier();
+    GroupMemoryBarrierWithGroupSync();
 
     if( threadIndex == 0 )
-        gOut_Tiles[ tilePos ] = s_isSky == 256 ? 1.0 : 0.0;
+    {
+        float isSky = s_Sum == 256 ? 1.0 : 0.0;
+
+        gOut_Tiles[ tilePos ] = isSky;
+    }
 }

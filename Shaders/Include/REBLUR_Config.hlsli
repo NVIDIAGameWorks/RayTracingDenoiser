@@ -107,6 +107,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define REBLUR_SH_TYPE                                          float4
 #define REBLUR_FAST_TYPE                                        float
 #define REBLUR_DATA1_TYPE                                       float2
+#define REBLUR_TILE_TYPE                                        float
 
 // Shared constants
 #define REBLUR_SHARED_CONSTANTS \
@@ -122,11 +123,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float4, gFrustum ) \
     NRD_CONSTANT( float4, gFrustumPrev ) \
     NRD_CONSTANT( float4, gCameraDelta ) \
-    NRD_CONSTANT( float4, gAntilagParams ) \
     NRD_CONSTANT( float4, gHitDistParams ) \
     NRD_CONSTANT( float4, gViewVectorWorld ) \
     NRD_CONSTANT( float4, gViewVectorWorldPrev ) \
     NRD_CONSTANT( float4, gMvScale ) \
+    NRD_CONSTANT( float2, gAntilagParams ) \
     NRD_CONSTANT( float2, gResourceSize ) \
     NRD_CONSTANT( float2, gResourceSizeInv ) \
     NRD_CONSTANT( float2, gResourceSizeInvPrev ) \
@@ -174,13 +175,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gViewZScale ) \
     NRD_CONSTANT( float, gFireflySuppressorMinRelativeScale ) \
     NRD_CONSTANT( float, gMinHitDistanceWeight ) \
+    NRD_CONSTANT( float, gDiffMinMaterial ) \
+    NRD_CONSTANT( float, gSpecMinMaterial ) \
     NRD_CONSTANT( uint, gHasHistoryConfidence ) \
     NRD_CONSTANT( uint, gHasDisocclusionThresholdMix ) \
     NRD_CONSTANT( uint, gDiffCheckerboard ) \
     NRD_CONSTANT( uint, gSpecCheckerboard ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
-    NRD_CONSTANT( uint, gDiffMaterialMask ) \
-    NRD_CONSTANT( uint, gSpecMaterialMask ) \
     NRD_CONSTANT( uint, gIsRectChanged ) \
     NRD_CONSTANT( uint, gResetHistory )
 

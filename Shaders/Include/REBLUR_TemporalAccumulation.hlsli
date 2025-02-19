@@ -42,7 +42,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     NRD_CTA_ORDER_DEFAULT;
 
     // Preload
-    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].x;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -222,11 +222,14 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
     float disocclusionThreshold = lerp( gDisocclusionThreshold, gDisocclusionThresholdAlternate, disocclusionThresholdMix );
 
+    float smallParallax = Math::LinearStep( 0.25, 0.0, smbParallaxInPixelsMax );
+    disocclusionThreshold += 0.05 * smallParallax;
+
     float3 V = GetViewVector( X );
     float NoV = abs( dot( N, V ) );
     float NoVstrict = lerp( NoV, 1.0, saturate( smbParallaxInPixelsMax / 30.0 ) );
     float4 smbDisocclusionThreshold = GetDisocclusionThreshold( disocclusionThreshold, frustumSize, NoVstrict );
-    smbDisocclusionThreshold *= float( dot( smbNavg, Navg ) > REBLUR_ALMOST_ZERO_ANGLE ); // good for smb
+    smbDisocclusionThreshold *= float( dot( smbNavg, Navg ) > REBLUR_ALMOST_ZERO_ANGLE - 0.25 * smallParallax ); // good for smb
     smbDisocclusionThreshold *= IsInScreenBilinear( smbBilinearFilter.origin, gRectSizePrev );
     smbDisocclusionThreshold -= NRD_EPS;
 
@@ -253,11 +256,11 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float3 smbMaterialID2 = float3( UnpackInternalData( smbInternalData2.x ).z, UnpackInternalData( smbInternalData2.y ).z, UnpackInternalData( smbInternalData2.w ).z );
         float3 smbMaterialID3 = float3( UnpackInternalData( smbInternalData3.x ).z, UnpackInternalData( smbInternalData3.y ).z, UnpackInternalData( smbInternalData3.z ).z );
 
-        uint mask = gSpecMaterialMask | gDiffMaterialMask; // TODO: separation is expensive
-        smbOcclusion0 *= CompareMaterials( materialID, smbMaterialID0, mask );
-        smbOcclusion1 *= CompareMaterials( materialID, smbMaterialID1, mask );
-        smbOcclusion2 *= CompareMaterials( materialID, smbMaterialID2, mask );
-        smbOcclusion3 *= CompareMaterials( materialID, smbMaterialID3, mask );
+        float minMaterialID = min( gSpecMinMaterial, gDiffMinMaterial ); // TODO: separation is expensive
+        smbOcclusion0 *= CompareMaterials( materialID, smbMaterialID0, minMaterialID );
+        smbOcclusion1 *= CompareMaterials( materialID, smbMaterialID1, minMaterialID );
+        smbOcclusion2 *= CompareMaterials( materialID, smbMaterialID2, minMaterialID );
+        smbOcclusion3 *= CompareMaterials( materialID, smbMaterialID3, minMaterialID );
 
         uint4 smbInternalData = uint4( smbInternalData0.w, smbInternalData1.z, smbInternalData2.y, smbInternalData3.x );
     #else
@@ -505,7 +508,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
         #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
             float4 vmbMaterialID = float4( vmbInternalData00.z, vmbInternalData10.z, vmbInternalData01.z, vmbInternalData11.z  );
-            vmbOcclusion *= CompareMaterials( materialID, vmbMaterialID, gSpecMaterialMask );
+            vmbOcclusion *= CompareMaterials( materialID, vmbMaterialID, gSpecMinMaterial );
         #endif
 
         // Bits

@@ -241,36 +241,36 @@ float GetLumaScale( float currLuma, float newLuma )
 
 #endif
 
-float ComputeAntilag( REBLUR_TYPE history, REBLUR_TYPE avg, REBLUR_TYPE sigma, float accumSpeed )
+float ComputeAntilag( float history, float avg, float sigma, float accumSpeed )
 {
     // Tests 4, 36, 44, 47, 95 ( no SHARC, stop animation )
-    float2 h = float2( GetLuma( history ), ExtractHitDist( history ) );
-    float2 a = float2( GetLuma( avg ), ExtractHitDist( avg ) );
-    float2 s = float2( GetLuma( sigma ), ExtractHitDist( sigma ) ) * gAntilagParams.xy;
-    float2 magic = gAntilagParams.zw * gFramerateScale * gFramerateScale;
+    float h = history;
+    float a = avg;
+    float s = sigma * gAntilagParams.x;
+    float magic = gAntilagParams.y * gFramerateScale * gFramerateScale;
 
     #if( REBLUR_ANTILAG_MODE == 0 )
         // Old mode, but uses better threshold ( not bad )
-        float2 x = abs( h - a ) - s - NRD_EPS;
-        float2 y = max( h, a ) + s + NRD_EPS;
-        float2 d = x / y;
+        float x = abs( h - a ) - s - NRD_EPS;
+        float y = max( h, a ) + s + NRD_EPS;
+        float d = x / y;
 
         d = Math::LinearStep( magic / ( 1.0 + accumSpeed ), 0.0, d );
     #elif( REBLUR_ANTILAG_MODE == 1 )
         // New mode, but overly reactive at low FPS ( undesired )
-        float2 hc = Color::Clamp( a, s, h );
-        float2 d = abs( h - hc ) / ( max( h, hc ) + NRD_EPS );
+        float hc = Color::Clamp( a, s, h );
+        float d = abs( h - hc ) / ( max( h, hc ) + NRD_EPS );
 
         d = Math::LinearStep( magic / ( 1.0 + accumSpeed ), 0.0, d );
     #else
         // New mode, pretends to respect "no harm" idiom ( best? )
-        float2 hc = Color::Clamp( a, s, h );
-        float2 d = abs( h - hc ) / ( max( h, hc ) + NRD_EPS );
+        float hc = Color::Clamp( a, s, h );
+        float d = abs( h - hc ) / ( max( h, hc ) + NRD_EPS );
 
         d = 1.0 / ( 1.0 + d * accumSpeed / magic );
     #endif
 
-    return REBLUR_SHOW == 0 ? min( d.x, d.y ) : 1.0;
+    return REBLUR_SHOW == 0 ? d : 1.0;
 }
 
 // Kernel
@@ -307,10 +307,10 @@ float2 GetTemporalAccumulationParams( float isInScreenMulFootprintQuality, float
 
 // Filtering
 
-void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights1(
     float2 samplePos, float2 invResourceSize,
     float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0 ) // main - CatRom
+    Texture2D<float> tex0, out float c0 ) // CatRom
 {
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
@@ -319,8 +319,17 @@ void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invResourceSize,
     float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // main - CatRom
-    Texture2D<REBLUR_FAST_TYPE> tex1, out REBLUR_FAST_TYPE c1 ) // fast - bilinear
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0 ) // CatRom
+{
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
+    _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
+}
+
+void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+    float2 samplePos, float2 invResourceSize,
+    float4 bilinearCustomWeights, bool useBicubic,
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // CatRom
+    Texture2D<REBLUR_FAST_TYPE> tex1, out REBLUR_FAST_TYPE c1 ) // bilinear
 {
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
@@ -330,8 +339,8 @@ void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invResourceSize,
     float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // main - CatRom
-    Texture2D<REBLUR_SH_TYPE> tex1, out REBLUR_SH_TYPE c1 ) // SH - bilinear
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // CatRom
+    Texture2D<REBLUR_SH_TYPE> tex1, out REBLUR_SH_TYPE c1 ) // bilinear
 {
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );
@@ -341,9 +350,9 @@ void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
 void BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
     float2 samplePos, float2 invResourceSize,
     float4 bilinearCustomWeights, bool useBicubic,
-    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // main - CatRom
-    Texture2D<REBLUR_FAST_TYPE> tex1, out REBLUR_FAST_TYPE c1, // fast - bilinear
-    Texture2D<REBLUR_SH_TYPE> tex2, out REBLUR_SH_TYPE c2 ) // SH - bilinear
+    Texture2D<REBLUR_TYPE> tex0, out REBLUR_TYPE c0, // CatRom
+    Texture2D<REBLUR_FAST_TYPE> tex1, out REBLUR_FAST_TYPE c1, // bilinear
+    Texture2D<REBLUR_SH_TYPE> tex2, out REBLUR_SH_TYPE c2 ) // bilinear
 {
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Init;
     _BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights_Color( c0, tex0 );

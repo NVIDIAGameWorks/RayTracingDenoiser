@@ -293,3 +293,11 @@ A single NRD instance can now include any combination of denoisers, including re
 ## To v4.13
 - *REBLUR/RELAX*:
   - added `minHitDistanceWeight`
+
+## To v4.14
+- *REBLUR/RELAX*:
+  - `enableMaterialTestForDiffuse` replaced with `minMaterialForDiffuse` (the default matches old behavior)
+  - `enableMaterialTestForSpecular` replaced with `minMaterialForSpecular` (the default matches old behavior)
+- *REBLUR*:
+  - removed `ReblurAntilagSettings::hitDistanceSigmaScale` and `ReblurAntilagSettings::hitDistanceSensitivity`
+  - output textures are not used as history buffers on the next frame anymore

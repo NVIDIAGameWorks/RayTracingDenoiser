@@ -301,7 +301,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                 float wSpecular = geometryW * exp(-specularLuminanceW);
                 wSpecular *= gRoughnessEdgeStoppingEnabled ? (normalWSpecular * roughnessWSpecular) : normalWSpecularSimplified;
                 wSpecular = isCenter ? kernel : wSpecular;
-                wSpecular *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
+                wSpecular *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMinMaterial);
 
                 sumWSpecular += wSpecular;
                 sumSpecularIlluminationAnd2ndMoment += wSpecular * sampleSpecularIlluminationAnd2ndMoment;
@@ -324,7 +324,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
                 float wDiffuse = geometryW * normalWDiffuse * exp(-diffuseLuminanceW);
                 wDiffuse = isCenter ? kernel : wDiffuse;
-                wDiffuse *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask);
+                wDiffuse *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMinMaterial);
 
                 sumWDiffuse += wDiffuse;
                 sumDiffuseIlluminationAnd2ndMoment += wDiffuse * sampleDiffuseIlluminationAnd2ndMoment;
@@ -409,7 +409,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                 float sampleSpecular1stMoment = Color::Luminance(sampleSpecularIllumination);
                 float sampleSpecular2ndMoment = sampleSpecular.a;
                 float specularW = normalW * depthW;
-                specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
+                specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMinMaterial);
 
                 sumWSpecularIllumination += specularW;
                 sumSpecularIllumination += sampleSpecularIllumination.rgb * specularW;
@@ -426,7 +426,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                 float sampleDiffuse1stMoment = Color::Luminance(sampleDiffuseIllumination);
                 float sampleDiffuse2ndMoment = sampleDiffuse.a;
                 float diffuseW = normalW * depthW;
-                diffuseW *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask);
+                diffuseW *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMinMaterial);
 
                 sumWDiffuseIllumination += diffuseW;
                 sumDiffuseIllumination += sampleDiffuseIllumination.rgb * diffuseW;

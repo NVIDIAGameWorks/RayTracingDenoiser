@@ -8,30 +8,19 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-groupshared float4 s_Diff[ BUFFER_Y ][ BUFFER_X ];
-groupshared float4 s_Spec[ BUFFER_Y ][ BUFFER_X ];
-
-#ifdef REBLUR_SH
-    groupshared REBLUR_SH_TYPE s_DiffSh[ BUFFER_Y ][ BUFFER_X ];
-    groupshared REBLUR_SH_TYPE s_SpecSh[ BUFFER_Y ][ BUFFER_X ];
-#endif
+groupshared float s_DiffLuma[ BUFFER_Y ][ BUFFER_X ];
+groupshared float s_SpecLuma[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
 
     #ifdef REBLUR_DIFFUSE
-        s_Diff[ sharedPos.y ][ sharedPos.x ] = gIn_Diff[ globalPos ];
-        #ifdef REBLUR_SH
-            s_DiffSh[ sharedPos.y ][ sharedPos.x ] = gIn_DiffSh[ globalPos ];
-        #endif
+        s_DiffLuma[ sharedPos.y ][ sharedPos.x ] = GetLuma( gIn_Diff[ globalPos ] );
     #endif
 
     #ifdef REBLUR_SPECULAR
-        s_Spec[ sharedPos.y ][ sharedPos.x ] = gIn_Spec[ globalPos ];
-        #ifdef REBLUR_SH
-            s_SpecSh[ sharedPos.y ][ sharedPos.x ] = gIn_SpecSh[ globalPos ];
-        #endif
+        s_SpecLuma[ sharedPos.y ][ sharedPos.x ] = GetLuma( gIn_Spec[ globalPos ] );
     #endif
 }
 
@@ -41,7 +30,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     NRD_CTA_ORDER_REVERSED;
 
     // Preload
-    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].x;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -52,154 +41,6 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     float viewZ = UnpackViewZ( gIn_ViewZ[ WithRectOrigin( pixelPos ) ] );
     if( viewZ > gDenoisingRange )
         return; // IMPORTANT: no data output, must be rejected by the "viewZ" check!
-
-    // Local variance
-    int2 smemPos = threadPos + BORDER;
-
-    #ifdef REBLUR_DIFFUSE
-        float4 diff = s_Diff[ smemPos.y ][ smemPos.x ];
-        float4 diffM1 = diff;
-        float4 diffM2 = diff * diff;
-
-        #ifdef REBLUR_SH
-            REBLUR_SH_TYPE diffSh = s_DiffSh[ smemPos.y ][ smemPos.x ];
-            float3 diffShM1 = diffSh.xyz;
-            float3 diffShM2 = diffSh.xyz * diffSh.xyz;
-        #endif
-
-        #ifndef REBLUR_PERFORMANCE_MODE
-            float diffMin = NRD_INF;
-            float diffMax = -NRD_INF;
-        #endif
-    #endif
-
-    #ifdef REBLUR_SPECULAR
-        float4 spec = s_Spec[ smemPos.y ][ smemPos.x ];
-        float4 specM1 = spec;
-        float4 specM2 = spec * spec;
-
-        #ifdef REBLUR_SH
-            REBLUR_SH_TYPE specSh = s_SpecSh[ smemPos.y ][ smemPos.x ];
-            float3 specShM1 = specSh.xyz;
-            float3 specShM2 = specSh.xyz * specSh.xyz;
-        #endif
-
-        #ifndef REBLUR_PERFORMANCE_MODE
-            float specMin = NRD_INF;
-            float specMax = -NRD_INF;
-        #endif
-    #endif
-
-    [unroll]
-    for( j = 0; j <= BORDER * 2; j++ )
-    {
-        [unroll]
-        for( i = 0; i <= BORDER * 2; i++ )
-        {
-            if( i == BORDER && j == BORDER )
-                continue;
-
-            int2 pos = threadPos + int2( i, j );
-
-            #ifdef REBLUR_DIFFUSE
-                // Accumulate moments
-                float4 d = s_Diff[ pos.y ][ pos.x ];
-                diffM1 += d;
-                diffM2 += d * d;
-
-                #ifdef REBLUR_SH
-                    float3 dh = s_DiffSh[ pos.y ][ pos.x ].xyz;
-                    diffShM1 += dh;
-                    diffShM2 += dh * dh;
-                #endif
-
-                #ifndef REBLUR_PERFORMANCE_MODE
-                    // RCRS
-                    float diffLuma = GetLuma( d );
-                    diffMin = min( diffMin, diffLuma );
-                    diffMax = max( diffMax, diffLuma );
-                #endif
-            #endif
-
-            #ifdef REBLUR_SPECULAR
-                // Accumulate moments
-                float4 s = s_Spec[ pos.y ][ pos.x ];
-                specM1 += s;
-                specM2 += s * s;
-
-                #ifdef REBLUR_SH
-                    float3 sh = s_SpecSh[ pos.y ][ pos.x ].xyz;
-                    specShM1 += sh;
-                    specShM2 += sh * sh;
-                #endif
-
-                #ifndef REBLUR_PERFORMANCE_MODE
-                    // RCRS
-                    float specLuma = GetLuma( s );
-                    specMin = min( specMin, specLuma );
-                    specMax = max( specMax, specLuma );
-                #endif
-            #endif
-        }
-    }
-
-    float invSum = 1.0 / ( ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 ) );
-
-    #ifdef REBLUR_DIFFUSE
-        // Compute sigma
-        diffM1 *= invSum;
-        diffM2 *= invSum;
-        float4 diffSigma = GetStdDev( diffM1, diffM2 );
-
-        #ifdef REBLUR_SH
-            diffShM1 *= invSum;
-            diffShM2 *= invSum;
-            float3 diffShSigma = GetStdDev( diffShM1, diffShM2 );
-        #endif
-
-        #ifndef REBLUR_PERFORMANCE_MODE
-            // RCRS
-            [flatten]
-            if( gMaxBlurRadius != 0 )
-            {
-                float diffLuma = GetLuma( diff );
-                float diffLumaClamped = clamp( diffLuma, diffMin, diffMax );
-
-                diff = ChangeLuma( diff, diffLumaClamped );
-                #ifdef REBLUR_SH
-                    diffSh.xyz *= GetLumaScale( length( diffSh.xyz ), diffLumaClamped );
-                #endif
-            }
-        #endif
-    #endif
-
-    #ifdef REBLUR_SPECULAR
-        // Compute sigma
-        specM1 *= invSum;
-        specM2 *= invSum;
-        float4 specSigma = GetStdDev( specM1, specM2 );
-
-        #ifdef REBLUR_SH
-            specShM1 *= invSum;
-            specShM2 *= invSum;
-            float3 specShSigma = GetStdDev( specShM1, specShM2 );
-        #endif
-
-        #ifndef REBLUR_PERFORMANCE_MODE
-            // RCRS
-            [flatten]
-            if( gMaxBlurRadius != 0 )
-            {
-                float specLuma = GetLuma( spec );
-                float specLumaClamped = clamp( specLuma, specMin, specMax );
-
-                spec = ChangeLuma( spec, specLumaClamped );
-                #ifdef REBLUR_SH
-                    specSh.xyz *= GetLumaScale( length( specSh.xyz ), specLumaClamped );
-                #endif
-            }
-        #endif
-    #endif
 
     // Position
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
@@ -247,26 +88,66 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     float smbFootprintQuality = Filtering::ApplyBilinearFilter( smbOcclusion.x, smbOcclusion.y, smbOcclusion.z, smbOcclusion.w, smbBilinearFilter );
     smbFootprintQuality = Math::Sqrt01( smbFootprintQuality );
 
+    int2 smemPos = threadPos + BORDER;
+
     // Diffuse
     #ifdef REBLUR_DIFFUSE
-        // Sample history - surface motion
-        REBLUR_TYPE smbDiffHistory;
-        REBLUR_SH_TYPE smbDiffShHistory;
+        float diffLuma = s_DiffLuma[ smemPos.y ][ smemPos.x ];
+        float diffLumaM1 = diffLuma;
+        float diffLumaM2 = diffLuma * diffLuma;
+        float diffMin = NRD_INF;
+        float diffMax = -NRD_INF;
 
-        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+        [unroll]
+        for( j = 0; j <= BORDER * 2; j++ )
+        {
+            [unroll]
+            for( i = 0; i <= BORDER * 2; i++ )
+            {
+                if( i == BORDER && j == BORDER )
+                    continue;
+
+                int2 pos = threadPos + int2( i, j );
+
+                // Accumulate moments
+                float d = s_DiffLuma[ pos.y ][ pos.x ];
+                diffLumaM1 += d;
+                diffLumaM2 += d * d;
+
+                // RCRS
+                #ifndef REBLUR_PERFORMANCE_MODE
+                    diffMin = min( diffMin, d );
+                    diffMax = max( diffMax, d );
+                #endif
+            }
+        }
+
+        // Compute sigma
+        diffLumaM1 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
+        diffLumaM2 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
+        float diffLumaSigma = GetStdDev( diffLumaM1, diffLumaM2 );
+
+        // RCRS
+        #ifndef REBLUR_PERFORMANCE_MODE
+            [flatten]
+            if( gMaxBlurRadius != 0 )
+                diffLuma = clamp( diffLuma, diffMin, diffMax );
+        #endif
+
+        // Sample history - surface motion
+        float smbDiffLumaHistory;
+
+        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights1(
             saturate( smbPixelUv ) * gRectSizePrev, gResourceSizeInvPrev,
             smbOcclusionWeights, smbAllowCatRom,
-            gHistory_DiffStabilized, smbDiffHistory
-            #ifdef REBLUR_SH
-                , gHistory_DiffShStabilized, smbDiffShHistory
-            #endif
+            gHistory_DiffLumaStabilized, smbDiffLumaHistory
         );
 
         // Avoid negative values
-        smbDiffHistory = ClampNegativeToZero( smbDiffHistory );
+        smbDiffLumaHistory = max( smbDiffLumaHistory, 0.0 );
 
         // Compute antilag
-        float diffAntilag = ComputeAntilag( smbDiffHistory, diffM1, diffSigma, smbFootprintQuality * data1.x );
+        float diffAntilag = ComputeAntilag( smbDiffLumaHistory, diffLumaM1, diffLumaSigma, smbFootprintQuality * data1.x );
 
         // Clamp history and combine with the current frame
         float2 diffTemporalAccumulationParams = GetTemporalAccumulationParams( smbFootprintQuality, data1.x );
@@ -276,23 +157,22 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         diffHistoryWeight *= float( pixelUv.x >= gSplitScreen );
         diffHistoryWeight *= float( smbPixelUv.x >= gSplitScreenPrev );
 
-        smbDiffHistory = Color::Clamp( diffM1, diffSigma * diffTemporalAccumulationParams.y, smbDiffHistory );
+        smbDiffLumaHistory = Color::Clamp( diffLumaM1, diffLumaSigma * diffTemporalAccumulationParams.y, smbDiffLumaHistory );
 
-        REBLUR_TYPE diffResult;
-        diffResult.xyz = lerp( diff.xyz, smbDiffHistory.xyz, min( diffHistoryWeight, gStabilizationStrength ) );
-        diffResult.w = lerp( diff.w, smbDiffHistory.w, min( diffHistoryWeight, gHitDistStabilizationStrength ) );
+        float diffLumaStabilized = lerp( diffLuma, smbDiffLumaHistory, min( diffHistoryWeight, gStabilizationStrength ) );
 
+        REBLUR_TYPE diff = gIn_Diff[ pixelPos ];
+        diff = ChangeLuma( diff, diffLumaStabilized );
         #ifdef REBLUR_SH
-            smbDiffShHistory.xyz = Color::Clamp( diffShM1, diffShSigma * diffTemporalAccumulationParams.y, smbDiffShHistory.xyz );
-
-            REBLUR_SH_TYPE diffShResult = lerp( diffSh, smbDiffShHistory, diffHistoryWeight );
-            diffShResult.w = 0; // TODO: unused
+            REBLUR_SH_TYPE diffSh = gIn_DiffSh[ pixelPos ];
+            diffSh.xyz *= GetLumaScale( length( diffSh.xyz ), diffLumaStabilized );
         #endif
 
         // Output
-        gOut_Diff[ pixelPos ] = diffResult;
+        gOut_Diff[ pixelPos ] = diff;
+        gOut_DiffLumaStabilized[ pixelPos ] = diffLumaStabilized;
         #ifdef REBLUR_SH
-            gOut_DiffSh[ pixelPos ] = diffShResult;
+            gOut_DiffSh[ pixelPos ] = diffSh;
         #endif
 
         // Increment history length
@@ -305,11 +185,54 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
     // Specular
     #ifdef REBLUR_SPECULAR
+        float specLuma = s_SpecLuma[ smemPos.y ][ smemPos.x ];
+        float specLumaM1 = specLuma;
+        float specLumaM2 = specLuma * specLuma;
+        float specMin = NRD_INF;
+        float specMax = -NRD_INF;
+
+        [unroll]
+        for( j = 0; j <= BORDER * 2; j++ )
+        {
+            [unroll]
+            for( i = 0; i <= BORDER * 2; i++ )
+            {
+                if( i == BORDER && j == BORDER )
+                    continue;
+
+                int2 pos = threadPos + int2( i, j );
+
+                // Accumulate moments
+                float s = s_SpecLuma[ pos.y ][ pos.x ];
+                specLumaM1 += s;
+                specLumaM2 += s * s;
+
+                // RCRS
+                #ifndef REBLUR_PERFORMANCE_MODE
+                    specMin = min( specMin, s );
+                    specMax = max( specMax, s );
+                #endif
+            }
+        }
+
+        // Compute sigma
+        specLumaM1 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
+        specLumaM2 /= ( BORDER * 2 + 1 ) * ( BORDER * 2 + 1 );
+        float specLumaSigma = GetStdDev( specLumaM1, specLumaM2 );
+
+        // RCRS
+        #ifndef REBLUR_PERFORMANCE_MODE
+            [flatten]
+            if( gMaxBlurRadius != 0 )
+                specLuma = clamp( specLuma, specMin, specMax );
+        #endif
+
         float virtualHistoryAmount = data2.x;
         float curvature = data2.y;
 
         // Hit distance for tracking ( tests 6, 67, 155 )
-        float hitDistForTracking = spec.w * _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness ); // TODO: min in 3x3 seems to be not needed here
+        REBLUR_TYPE spec = gIn_Spec[ pixelPos ];
+        float hitDistForTracking = ExtractHitDist( spec ) * _REBLUR_GetHitDistanceNormalization( viewZ, gHitDistParams, roughness ); // TODO: min in 3x3 seems to be not needed here
 
         // Needed to preserve contact ( test 3, 8 ), but adds pixelation in some cases ( test 160 ). More fun if lobe trimming is off.
         [flatten]
@@ -363,16 +286,12 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         }
 
         // Sample history - surface motion
-        REBLUR_TYPE smbSpecHistory;
-        REBLUR_SH_TYPE smbSpecShHistory;
+        float smbSpecLumaHistory;
 
-        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights1(
             saturate( smbPixelUv ) * gRectSizePrev, gResourceSizeInvPrev,
             smbOcclusionWeights, smbAllowCatRom,
-            gHistory_SpecStabilized, smbSpecHistory
-            #ifdef REBLUR_SH
-                , gHistory_SpecShStabilized, smbSpecShHistory
-            #endif
+            gHistory_SpecLumaStabilized, smbSpecLumaHistory
         );
 
         // Virtual motion footprint
@@ -384,31 +303,24 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         vmbFootprintQuality = Math::Sqrt01( vmbFootprintQuality );
 
         // Sample history - virtual motion
-        REBLUR_TYPE vmbSpecHistory;
-        REBLUR_SH_TYPE vmbSpecShHistory;
+        float vmbSpecLumaHistory;
 
-        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights(
+        BicubicFilterNoCornersWithFallbackToBilinearFilterWithCustomWeights1(
             saturate( vmbPixelUv ) * gRectSizePrev, gResourceSizeInvPrev,
             vmbOcclusionWeights, vmbAllowCatRom,
-            gHistory_SpecStabilized, vmbSpecHistory
-            #ifdef REBLUR_SH
-                , gHistory_SpecShStabilized, vmbSpecShHistory
-            #endif
+            gHistory_SpecLumaStabilized, vmbSpecLumaHistory
         );
 
         // Avoid negative values
-        smbSpecHistory = ClampNegativeToZero( smbSpecHistory );
-        vmbSpecHistory = ClampNegativeToZero( vmbSpecHistory );
+        smbSpecLumaHistory = max( smbSpecLumaHistory, 0.0 );
+        vmbSpecLumaHistory = max( vmbSpecLumaHistory, 0.0 );
 
         // Combine surface and virtual motion
-        REBLUR_TYPE specHistory = lerp( smbSpecHistory, vmbSpecHistory, virtualHistoryAmount );
-        #ifdef REBLUR_SH
-            REBLUR_SH_TYPE specShHistory = lerp( smbSpecShHistory, vmbSpecShHistory, virtualHistoryAmount );
-        #endif
+        float specLumaHistory = lerp( smbSpecLumaHistory, vmbSpecLumaHistory, virtualHistoryAmount );
 
         // Compute antilag
         float footprintQuality = lerp( smbFootprintQuality, vmbFootprintQuality, virtualHistoryAmount );
-        float specAntilag = ComputeAntilag( specHistory, specM1, specSigma, footprintQuality * data1.y );
+        float specAntilag = ComputeAntilag( specLumaHistory, specLumaM1, specLumaSigma, footprintQuality * data1.y );
 
         // Clamp history and combine with the current frame
         float2 specTemporalAccumulationParams = GetTemporalAccumulationParams( footprintQuality, data1.y );
@@ -427,23 +339,21 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float acceleration = lerp( smc, 1.0, 0.5 + responsiveFactor * 0.5 );
         specHistoryWeight *= materialID == gStrandMaterialID ? 0.5 : acceleration;
 
-        specHistory = Color::Clamp( specM1, specSigma * specTemporalAccumulationParams.y, specHistory );
+        specLumaHistory = Color::Clamp( specLumaM1, specLumaSigma * specTemporalAccumulationParams.y, specLumaHistory );
 
-        REBLUR_TYPE specResult;
-        specResult.xyz = lerp( spec.xyz, specHistory.xyz, min( specHistoryWeight, gStabilizationStrength ) );
-        specResult.w = lerp( spec.w, specHistory.w, min( specHistoryWeight, gHitDistStabilizationStrength ) );
+        float specLumaStabilized = lerp( specLuma, specLumaHistory, min( specHistoryWeight, gStabilizationStrength ) );
 
+        spec = ChangeLuma( spec, specLumaStabilized );
         #ifdef REBLUR_SH
-            specShHistory.xyz = Color::Clamp( specShM1, specShSigma * specTemporalAccumulationParams.y, specShHistory.xyz );
-
-            REBLUR_SH_TYPE specShResult = lerp( specSh, specShHistory, specHistoryWeight );
-            specShResult.w = specSh.w; // ( Optional ) Output modified roughness to assist AA during SG resolve
+            REBLUR_SH_TYPE specSh = gIn_SpecSh[ pixelPos ];
+            specSh.xyz *= GetLumaScale( length( specSh.xyz ), specLumaStabilized );
         #endif
 
         // Output
-        gOut_Spec[ pixelPos ] = specResult;
+        gOut_Spec[ pixelPos ] = spec;
+        gOut_SpecLumaStabilized[ pixelPos ] = specLumaStabilized;
         #ifdef REBLUR_SH
-            gOut_SpecSh[ pixelPos ] = specShResult;
+            gOut_SpecSh[ pixelPos ] = specSh;
         #endif
 
         // Increment history length

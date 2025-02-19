@@ -17,7 +17,7 @@ NRD_INPUTS_START
 NRD_INPUTS_END
 
 NRD_OUTPUTS_START
-    NRD_OUTPUT( RWTexture2D<float>, gOut_Tiles, u, 0 )
+    NRD_OUTPUT( RWTexture2D<REBLUR_TILE_TYPE>, gOut_Tiles, u, 0 )
 NRD_OUTPUTS_END
 
 // Macro magic

@@ -99,7 +99,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float diffuseW = geometryWeight;
             diffuseW *= getDiffuseNormalWeight(centerNormal, sampleNormal);
             diffuseW = isInside ? diffuseW : 0;
-            diffuseW *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask);
+            diffuseW *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMinMaterial);
 
             if (diffuseW > 1e-4)
             {
@@ -122,7 +122,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float specularW = geometryWeight;
             specularW *= GetSpecularNormalWeight_ATrous(specularNormalWeightParams, centerNormal, sampleNormal, centerV, sampleV);
             specularW = isInside ? specularW : 0;
-            specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
+            specularW *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMinMaterial);
 
             if (specularW > 1e-4)
             {

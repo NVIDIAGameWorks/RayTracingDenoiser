@@ -176,7 +176,7 @@ else()
     set(NRD_SHADER_BINARIES "--binary")
 endif()
 
-message("NRD shaders output path: '${NRD_SHADERS_PATH}'")
+message("NRD shaders path: '${NRD_SHADERS_PATH}'")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE MathLib)
 target_include_directories(${PROJECT_NAME} PUBLIC "Include")
@@ -223,7 +223,8 @@ if(NOT NRD_DISABLE_SHADER_COMPILATION)
         --allResourcesBound
         --vulkanVersion 1.2
         --sourceDir "Shaders/Source"
-        -c Shaders.cfg
+        --ignoreConfigDir
+        -c "Shaders/Shaders.cfg"
         -o "${NRD_SHADERS_PATH}"
         -I "${ML_SOURCE_DIR}"
         -I "Shaders/Include"

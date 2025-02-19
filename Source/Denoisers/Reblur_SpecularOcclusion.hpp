@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 void nrd::InstanceImpl::Add_ReblurSpecularOcclusion(DenoiserData& denoiserData)
 {
     #define DENOISER_NAME REBLUR_SpecularOcclusion
-    #define SPEC_TEMP1 AsUint(Transient::SPEC_TMP1)
+    #define SPEC_TEMP1 AsUint(ResourceType::OUT_SPEC_HITDIST)
     #define SPEC_TEMP2 AsUint(Transient::SPEC_TMP2)
 
     denoiserData.settings.reblur = ReblurSettings();
@@ -37,7 +37,6 @@ void nrd::InstanceImpl::Add_ReblurSpecularOcclusion(DenoiserData& denoiserData)
     enum class Transient
     {
         DATA1 = TRANSIENT_POOL_START,
-        SPEC_TMP1,
         SPEC_TMP2,
         SPEC_FAST_HISTORY,
         TILES,
@@ -45,9 +44,8 @@ void nrd::InstanceImpl::Add_ReblurSpecularOcclusion(DenoiserData& denoiserData)
 
     AddTextureToTransientPool( {Format::R8_UNORM, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_OCCLUSION, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT_OCCLUSION, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_OCCLUSION_FAST_HISTORY, 1} );
-    AddTextureToTransientPool( {Format::R8_UNORM, 16} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_TILES, 16} );
 
     PushPass("Classify tiles");
     {

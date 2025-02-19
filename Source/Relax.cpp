@@ -168,14 +168,14 @@ void nrd::InstanceImpl::AddSharedConstants_Relax(const RelaxSettings& settings, 
     consts->gHistoryThreshold                                   = (float)settings.spatialVarianceEstimationHistoryThreshold;
     consts->gViewZScale                                         = m_CommonSettings.viewZScale;
     consts->gMinHitDistanceWeight                               = settings.minHitDistanceWeight * 2.0f; // TODO: 2 to match REBLUR units and make Pre passes identical (matches old default)
+    consts->gDiffMinMaterial                                    = settings.minMaterialForDiffuse;
+    consts->gSpecMinMaterial                                    = settings.minMaterialForSpecular;
     consts->gRoughnessEdgeStoppingEnabled                       = settings.enableRoughnessEdgeStopping ? 1 : 0;
     consts->gFrameIndex                                         = m_CommonSettings.frameIndex;
     consts->gDiffCheckerboard                                   = diffCheckerboard;
     consts->gSpecCheckerboard                                   = specCheckerboard;
     consts->gHasHistoryConfidence                               = m_CommonSettings.isHistoryConfidenceAvailable ? 1 : 0;
     consts->gHasDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable ? 1 : 0;
-    consts->gDiffMaterialMask                                   = settings.enableMaterialTestForDiffuse ? 1 : 0;
-    consts->gSpecMaterialMask                                   = settings.enableMaterialTestForSpecular ? 1 : 0;
     consts->gResetHistory                                       = isHistoryReset ? 1 : 0;
 }
 

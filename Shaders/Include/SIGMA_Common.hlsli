@@ -74,7 +74,7 @@ float2 FilterBicubic(float2 size, float2 uv, out float4 uv_10_00, out float4 uv_
     return float2( yw.z, xw.z );
 }
 
-float TextureCubic(Texture2D<float2> tex, float2 uv)
+float2 TextureCubic(Texture2D<float2> tex, float2 uv)
 {
     uint w, h;
     tex.GetDimensions( w, h );
@@ -83,10 +83,10 @@ float TextureCubic(Texture2D<float2> tex, float2 uv)
     float4 uv_10_00, uv_11_01;
     float2 t = FilterBicubic( size, uv.xy, uv_10_00, uv_11_01 );
 
-    float c00 = tex.SampleLevel( gLinearClamp, uv_10_00.zw, 0 ).x;
-    float c10 = tex.SampleLevel( gLinearClamp, uv_10_00.xy, 0 ).x;
-    float c01 = tex.SampleLevel( gLinearClamp, uv_11_01.zw, 0 ).x;
-    float c11 = tex.SampleLevel( gLinearClamp, uv_11_01.xy, 0 ).x;
+    float2 c00 = tex.SampleLevel( gLinearClamp, uv_10_00.zw, 0 );
+    float2 c10 = tex.SampleLevel( gLinearClamp, uv_10_00.xy, 0 );
+    float2 c01 = tex.SampleLevel( gLinearClamp, uv_11_01.zw, 0 );
+    float2 c11 = tex.SampleLevel( gLinearClamp, uv_11_01.xy, 0 );
 
     c00 = lerp( c00, c01, t.x );
     c10 = lerp( c10, c11, t.x );

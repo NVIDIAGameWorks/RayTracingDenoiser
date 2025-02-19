@@ -32,7 +32,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 // FP16
 
-#ifdef NRD_COMPILER_DXC
+#ifdef __hlsl_dx_compiler
     #define half_float float16_t
     #define half_float2 float16_t2
     #define half_float3 float16_t3
@@ -226,9 +226,9 @@ static const float3 g_Special8[ 8 ] =
 #define GetStdDev( m1, m2 )                     sqrt( abs( ( m2 ) - ( m1 ) * ( m1 ) ) ) // sqrt( max( m2 - m1 * m1, 0.0 ) )
 
 #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-    #define CompareMaterials( m0, m, mask )     ( ( mask ) == 0 ? 1.0 : ( ( m0 ) == ( m ) ) )
+    #define CompareMaterials( m0, m, minm )     ( max( m0, minm ) == max( m, minm ) )
 #else
-    #define CompareMaterials( m0, m, mask )     1.0
+    #define CompareMaterials( m0, m, minm )     true
 #endif
 
 #define UnpackViewZ( z )                        abs( z * gViewZScale )

@@ -94,6 +94,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( spec ), specNonLinearAccumSpeed, roughness ); // TODO: what if hitT == 0?
         float minHitDistWeight = gMinHitDistanceWeight * fractionScale * smc;
 
+        // ( Optional ) Gradually reduce "minHitDistWeight" to preserve contact details
+    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR && !defined( REBLUR_OCCLUSION ) )
+        minHitDistWeight *= sqrt( specNonLinearAccumSpeed );
+    #endif
+
         // Screen-space settings
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_SPECULAR == 1 )
         float2 skew = 1.0; // TODO: even for rough specular diffuse-like behavior is undesired ( especially visible in performance mode )
@@ -164,7 +169,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             float w = IsInScreenNearest( uv );
             w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
-            w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
+            w *= CompareMaterials( materialID, materialIDs, gSpecMinMaterial );
             w *= ComputeWeight( angle, normalWeightParam, 0.0 );
             w *= ComputeWeight( Ns.w, roughnessWeightParams.x, roughnessWeightParams.y );
 
@@ -244,6 +249,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     gOut_Spec[ pixelPos ] = spec;
     #ifdef REBLUR_SH
         gOut_SpecSh[ pixelPos ] = specSh;
+    #endif
+
+    #if( defined( REBLUR_NO_TEMPORAL_STABILIZATION ) && !defined( REBLUR_OCCLUSION ) )
+        gOut_SpecCopy[ pixelPos ] = spec;
+        #ifdef REBLUR_SH
+            gOut_SpecShCopy[ pixelPos ] = specSh;
+        #endif
     #endif
 }
 

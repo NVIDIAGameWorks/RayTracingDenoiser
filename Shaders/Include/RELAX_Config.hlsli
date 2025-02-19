@@ -88,14 +88,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     NRD_CONSTANT( float, gHistoryThreshold ) \
     NRD_CONSTANT( float, gViewZScale ) \
     NRD_CONSTANT( float, gMinHitDistanceWeight ) \
+    NRD_CONSTANT( float, gDiffMinMaterial ) \
+    NRD_CONSTANT( float, gSpecMinMaterial ) \
     NRD_CONSTANT( uint, gRoughnessEdgeStoppingEnabled ) \
     NRD_CONSTANT( uint, gFrameIndex ) \
     NRD_CONSTANT( uint, gDiffCheckerboard ) \
     NRD_CONSTANT( uint, gSpecCheckerboard ) \
     NRD_CONSTANT( uint, gHasHistoryConfidence ) \
     NRD_CONSTANT( uint, gHasDisocclusionThresholdMix ) \
-    NRD_CONSTANT( uint, gDiffMaterialMask ) \
-    NRD_CONSTANT( uint, gSpecMaterialMask ) \
     NRD_CONSTANT( uint, gResetHistory )
 
 #define gResolutionScalePrev ( gRectSizePrev * gResourceSizeInvPrev )

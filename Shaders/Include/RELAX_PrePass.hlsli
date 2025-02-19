@@ -88,8 +88,8 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     {
         float2 wc = checkerboardResolveWeights;
         #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-            wc.x *= CompareMaterials(centerMaterialID, materialID0, gDiffMaterialMask);
-            wc.y *= CompareMaterials(centerMaterialID, materialID1, gDiffMaterialMask);
+            wc.x *= CompareMaterials(centerMaterialID, materialID0, gDiffMinMaterial);
+            wc.y *= CompareMaterials(centerMaterialID, materialID1, gDiffMinMaterial);
         #endif
         wc *= Math::PositiveRcp( wc.x + wc.y );
 
@@ -151,7 +151,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             // Sample weight
             float sampleWeight = IsInScreenNearest(uv);
             sampleWeight *= float(sampleViewZ < gDenoisingRange);
-            sampleWeight *= CompareMaterials(centerMaterialID, sampleMaterialID, gDiffMaterialMask);
+            sampleWeight *= CompareMaterials(centerMaterialID, sampleMaterialID, gDiffMinMaterial);
 
             sampleWeight *= GetPlaneDistanceWeight(
                 centerWorldPos,
@@ -211,8 +211,8 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     {
         float2 wc = checkerboardResolveWeights;
 #if( NRD_NORMAL_ENCODING == NRD_NORMAL_ENCODING_R10G10B10A2_UNORM )
-        wc.x *= CompareMaterials(centerMaterialID, materialID0, gSpecMaterialMask);
-        wc.y *= CompareMaterials(centerMaterialID, materialID1, gSpecMaterialMask);
+        wc.x *= CompareMaterials(centerMaterialID, materialID0, gSpecMinMaterial);
+        wc.y *= CompareMaterials(centerMaterialID, materialID1, gSpecMinMaterial);
 #endif
         wc *= Math::PositiveRcp( wc.x + wc.y );
 
@@ -294,7 +294,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             // Sample weight
             float sampleWeight = IsInScreenNearest(uv);
             sampleWeight *= float(sampleViewZ < gDenoisingRange);
-            sampleWeight *= CompareMaterials(centerMaterialID, sampleMaterialID, gSpecMaterialMask);
+            sampleWeight *= CompareMaterials(centerMaterialID, sampleMaterialID, gSpecMinMaterial);
             sampleWeight *= ComputeWeight(sampleRoughness, roughnessWeightParams.x, roughnessWeightParams.y);
 
             float angle = Math::AcosApprox(dot(centerNormal, sampleNormal));

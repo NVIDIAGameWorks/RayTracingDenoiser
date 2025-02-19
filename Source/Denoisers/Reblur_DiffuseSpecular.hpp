@@ -11,9 +11,9 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
 {
     #define DENOISER_NAME REBLUR_DiffuseSpecular
-    #define DIFF_TEMP1 AsUint(Transient::DIFF_TMP1)
+    #define DIFF_TEMP1 AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST)
     #define DIFF_TEMP2 AsUint(Transient::DIFF_TMP2)
-    #define SPEC_TEMP1 AsUint(Transient::SPEC_TMP1)
+    #define SPEC_TEMP1 AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST)
     #define SPEC_TEMP2 AsUint(Transient::SPEC_TMP2)
 
     denoiserData.settings.reblur = ReblurSettings();
@@ -26,8 +26,12 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
         PREV_INTERNAL_DATA,
         DIFF_HISTORY,
         DIFF_FAST_HISTORY,
+        DIFF_HISTORY_STABILIZED_PING,
+        DIFF_HISTORY_STABILIZED_PONG,
         SPEC_HISTORY,
         SPEC_FAST_HISTORY,
+        SPEC_HISTORY_STABILIZED_PING,
+        SPEC_HISTORY_STABILIZED_PONG,
         SPEC_HITDIST_FOR_TRACKING_PING,
         SPEC_HITDIST_FOR_TRACKING_PONG,
     };
@@ -37,8 +41,12 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
     AddTextureToPermanentPool( {REBLUR_FORMAT_PREV_INTERNAL_DATA, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
+    AddTextureToPermanentPool( {Format::R16_SFLOAT, 1} );
+    AddTextureToPermanentPool( {Format::R16_SFLOAT, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
+    AddTextureToPermanentPool( {Format::R16_SFLOAT, 1} );
+    AddTextureToPermanentPool( {Format::R16_SFLOAT, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, 1} );
     AddTextureToPermanentPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, 1} );
 
@@ -47,10 +55,8 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
         DATA1 = TRANSIENT_POOL_START,
         DATA2,
         SPEC_HITDIST_FOR_TRACKING,
-        DIFF_TMP1,
         DIFF_TMP2,
         DIFF_FAST_HISTORY,
-        SPEC_TMP1,
         SPEC_TMP2,
         SPEC_FAST_HISTORY,
         TILES,
@@ -60,12 +66,10 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
     AddTextureToTransientPool( {Format::R32_UINT, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_HITDIST_FOR_TRACKING, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
-    AddTextureToTransientPool( {REBLUR_FORMAT, 1} );
     AddTextureToTransientPool( {REBLUR_FORMAT_FAST_HISTORY, 1} );
-    AddTextureToTransientPool( {Format::R8_UNORM, 16} );
+    AddTextureToTransientPool( {REBLUR_FORMAT_TILES, 16} );
 
     PushPass("Classify tiles");
     {
@@ -137,8 +141,7 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
 
     for (int i = 0; i < REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM; i++)
     {
-        bool hasDisocclusionThresholdMix = ( ( ( i >> 3 ) & 0x1 ) != 0 );
-        bool isTemporalStabilization = ( ( ( i >> 2 ) & 0x1 ) != 0 );
+        bool hasDisocclusionThresholdMix = ( ( ( i >> 2 ) & 0x1 ) != 0 );
         bool hasConfidenceInputs = ( ( ( i >> 1 ) & 0x1 ) != 0 );
         bool isAfterPrepass = ( ( ( i >> 0 ) & 0x1 ) != 0 );
 
@@ -157,8 +160,8 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
             PushInput( hasConfidenceInputs ? AsUint(ResourceType::IN_SPEC_CONFIDENCE) : REBLUR_DUMMY );
             PushInput( isAfterPrepass ? DIFF_TEMP1 : AsUint(ResourceType::IN_DIFF_RADIANCE_HITDIST) );
             PushInput( isAfterPrepass ? SPEC_TEMP1 : AsUint(ResourceType::IN_SPEC_RADIANCE_HITDIST) );
-            PushInput( isTemporalStabilization ? AsUint(Permanent::DIFF_HISTORY) : AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
-            PushInput( isTemporalStabilization ? AsUint(Permanent::SPEC_HISTORY) : AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
+            PushInput( AsUint(Permanent::DIFF_HISTORY) );
+            PushInput( AsUint(Permanent::SPEC_HISTORY) );
             PushInput( AsUint(Permanent::DIFF_FAST_HISTORY) );
             PushInput( AsUint(Permanent::SPEC_FAST_HISTORY) );
             PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING), AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG) );
@@ -238,17 +241,14 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
 
             // Outputs
             PushOutput( AsUint(Permanent::PREV_NORMAL_ROUGHNESS) );
+            PushOutput( AsUint(Permanent::DIFF_HISTORY) );
+            PushOutput( AsUint(Permanent::SPEC_HISTORY) );
 
-            if (isTemporalStabilization)
+            if (!isTemporalStabilization)
             {
-                PushOutput( AsUint(Permanent::DIFF_HISTORY) );
-                PushOutput( AsUint(Permanent::SPEC_HISTORY) );
-            }
-            else
-            {
+                PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
                 PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
                 PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
-                PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             }
 
             // Shaders
@@ -263,21 +263,6 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
                 AddDispatch( REBLUR_Perf_DiffuseSpecular_PostBlur_NoTemporalStabilization, REBLUR_PostBlur, 1 );
             }
         }
-    }
-
-    PushPass("Copy");
-    {
-        // Inputs
-        PushInput( AsUint(Transient::TILES) );
-        PushInput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
-        PushInput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
-
-        // Outputs
-        PushOutput( DIFF_TEMP2 );
-        PushOutput( SPEC_TEMP2 );
-
-        // Shaders
-        AddDispatch( REBLUR_DiffuseSpecular_Copy, REBLUR_Copy, USE_MAX_DIMS );
     }
 
     for (int i = 0; i < REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM; i++)
@@ -295,8 +280,8 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
             PushInput( AsUint(Transient::DATA2) );
             PushInput( AsUint(Permanent::DIFF_HISTORY) );
             PushInput( AsUint(Permanent::SPEC_HISTORY) );
-            PushInput( DIFF_TEMP2 );
-            PushInput( SPEC_TEMP2 );
+            PushInput( AsUint(Permanent::DIFF_HISTORY_STABILIZED_PING), AsUint(Permanent::DIFF_HISTORY_STABILIZED_PONG) );
+            PushInput( AsUint(Permanent::SPEC_HISTORY_STABILIZED_PING), AsUint(Permanent::SPEC_HISTORY_STABILIZED_PONG) );
             PushInput( AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PONG), AsUint(Permanent::SPEC_HITDIST_FOR_TRACKING_PING) );
 
             // Outputs
@@ -304,6 +289,8 @@ void nrd::InstanceImpl::Add_ReblurDiffuseSpecular(DenoiserData& denoiserData)
             PushOutput( AsUint(Permanent::PREV_INTERNAL_DATA) );
             PushOutput( AsUint(ResourceType::OUT_DIFF_RADIANCE_HITDIST) );
             PushOutput( AsUint(ResourceType::OUT_SPEC_RADIANCE_HITDIST) );
+            PushOutput( AsUint(Permanent::DIFF_HISTORY_STABILIZED_PONG), AsUint(Permanent::DIFF_HISTORY_STABILIZED_PING) );
+            PushOutput( AsUint(Permanent::SPEC_HISTORY_STABILIZED_PONG), AsUint(Permanent::SPEC_HISTORY_STABILIZED_PING) );
 
             // Shaders
             AddDispatch( REBLUR_DiffuseSpecular_TemporalStabilization, REBLUR_TemporalStabilization, 1 );

@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_DESCS_VERSION_MAJOR 4
-#define NRD_DESCS_VERSION_MINOR 13
+#define NRD_DESCS_VERSION_MINOR 14
 
 static_assert(NRD_VERSION_MAJOR == NRD_DESCS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_DESCS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -101,10 +101,6 @@ namespace nrd
         // Some signal (R8+)
         IN_SIGNAL,
 
-        // Primary and secondary world-space positions (RGBA16f+)
-        IN_DELTA_PRIMARY_POS,
-        IN_DELTA_SECONDARY_POS,
-
         //=============================================================================================================================
         // OUTPUTS
         //=============================================================================================================================
@@ -114,16 +110,16 @@ namespace nrd
         // Radiance and hit distance
         //      REBLUR: use "REBLUR_BackEnd_UnpackRadianceAndNormHitDist" for decoding (RGBA16f+)
         //      RELAX: use "RELAX_BackEnd_UnpackRadiance" for decoding (R11G11B10f+)
-        OUT_DIFF_RADIANCE_HITDIST, // IMPORTANT: used as history if "stabilizationStrength != 0"
-        OUT_SPEC_RADIANCE_HITDIST, // IMPORTANT: used as history if "stabilizationStrength != 0"
+        OUT_DIFF_RADIANCE_HITDIST,
+        OUT_SPEC_RADIANCE_HITDIST,
 
         // SH data
         //      REBLUR: use "REBLUR_BackEnd_UnpackSh" for decoding (2x RGBA16f+)
         //      RELAX: use "RELAX_BackEnd_UnpackSh" for decoding (2x RGBA16f+)
-        OUT_DIFF_SH0, // IMPORTANT: used as history if "stabilizationStrength != 0"
-        OUT_DIFF_SH1, // IMPORTANT: used as history if "stabilizationStrength != 0"
-        OUT_SPEC_SH0, // IMPORTANT: used as history if "stabilizationStrength != 0"
-        OUT_SPEC_SH1, // IMPORTANT: used as history if "stabilizationStrength != 0"
+        OUT_DIFF_SH0,
+        OUT_DIFF_SH1,
+        OUT_SPEC_SH0,
+        OUT_SPEC_SH1,
 
         // Normalized hit distance (R8+)
         OUT_DIFF_HITDIST,
@@ -131,7 +127,7 @@ namespace nrd
 
         // Bent normal and normalized hit distance (RGBA8+)
         //      REBLUR: use "REBLUR_BackEnd_UnpackDirectionalOcclusion" for decoding
-        OUT_DIFF_DIRECTION_HITDIST, // IMPORTANT: used as history if "stabilizationStrength != 0"
+        OUT_DIFF_DIRECTION_HITDIST,
 
         // Shadow and optional transcluceny (R8+ or RGBA8+)
         //      SIGMA: use "SIGMA_BackEnd_UnpackShadow" for decoding

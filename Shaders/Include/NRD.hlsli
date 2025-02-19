@@ -8,7 +8,7 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-// NRD v4.13
+// NRD v4.14
 
 // IMPORTANT: DO NOT MODIFY THIS FILE WITHOUT FULL RECOMPILATION OF NRD LIBRARY!
 
@@ -134,6 +134,10 @@ NOISY INPUTS:
 
     #define NRD_EXPORT
 
+    #ifndef NRD_COMPILER_DXC
+        #define NRD_COMPILER_DXC
+    #endif
+
 // PlayStation // TODO: register spaces?
 #elif( defined( NRD_COMPILER_PSSLC ) || defined( __PSSL__ ) )
 
@@ -185,6 +189,10 @@ NOISY INPUTS:
         #define NRD_EXPORT                                                              [ CxxSymbol( EXPORT_NAME ) ]
     #else
         #define NRD_EXPORT
+    #endif
+
+    #ifndef NRD_COMPILER_PSSLC
+        #define NRD_COMPILER_PSSLC
     #endif
 
 // Unreal Engine

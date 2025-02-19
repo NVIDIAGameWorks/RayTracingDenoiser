@@ -15,7 +15,6 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #include "../Shaders/Include/REBLUR_Config.hlsli"
 #include "../Shaders/Resources/REBLUR_Blur.resources.hlsli"
 #include "../Shaders/Resources/REBLUR_ClassifyTiles.resources.hlsli"
-#include "../Shaders/Resources/REBLUR_Copy.resources.hlsli"
 #include "../Shaders/Resources/REBLUR_HistoryFix.resources.hlsli"
 #include "../Shaders/Resources/REBLUR_HitDistReconstruction.resources.hlsli"
 #include "../Shaders/Resources/REBLUR_PostBlur.resources.hlsli"
@@ -28,7 +27,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 // Permutations
 #define REBLUR_HITDIST_RECONSTRUCTION_PERMUTATION_NUM               4
 #define REBLUR_PREPASS_PERMUTATION_NUM                              2
-#define REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM                16
+#define REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM                8
 #define REBLUR_POST_BLUR_PERMUTATION_NUM                            2
 #define REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM               2
 
@@ -47,6 +46,8 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 #define REBLUR_FORMAT_PREV_VIEWZ                                    Format::R32_SFLOAT
 #define REBLUR_FORMAT_PREV_INTERNAL_DATA                            Format::R16_UINT
+
+#define REBLUR_FORMAT_TILES                                         Format::R8_UNORM
 
 #if (NRD_NORMAL_ENCODING == 0)
     #define REBLUR_FORMAT_PREV_NORMAL_ROUGHNESS                     Format::RGBA8_UNORM
@@ -111,8 +112,7 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
         HISTORY_FIX             = TEMPORAL_ACCUMULATION + REBLUR_TEMPORAL_ACCUMULATION_PERMUTATION_NUM * 2,
         BLUR                    = HISTORY_FIX + REBLUR_NO_PERMUTATIONS * 2,
         POST_BLUR               = BLUR + REBLUR_NO_PERMUTATIONS * 2,
-        COPY                    = POST_BLUR + REBLUR_POST_BLUR_PERMUTATION_NUM * 2,
-        TEMPORAL_STABILIZATION  = COPY + REBLUR_NO_PERMUTATIONS * 1, // COPY doesn't have perf mode
+        TEMPORAL_STABILIZATION  = POST_BLUR + REBLUR_POST_BLUR_PERMUTATION_NUM * 2,
         SPLIT_SCREEN            = TEMPORAL_STABILIZATION + REBLUR_TEMPORAL_STABILIZATION_PERMUTATION_NUM * 2,
         VALIDATION              = SPLIT_SCREEN + REBLUR_NO_PERMUTATIONS * 1, // SPLIT_SCREEN doesn't have perf mode
     };
@@ -159,8 +159,8 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
     }
 
     { // TEMPORAL_ACCUMULATION
-        uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 16 : 0) +
-            (!skipTemporalStabilization ? 8 : 0) + (m_CommonSettings.isHistoryConfidenceAvailable ? 4 : 0) +
+        uint32_t passIndex = AsUint(Dispatch::TEMPORAL_ACCUMULATION) + (m_CommonSettings.isDisocclusionThresholdMixAvailable ? 8 : 0) +
+            (m_CommonSettings.isHistoryConfidenceAvailable ? 4 : 0) +
             ((!skipPrePass || enableHitDistanceReconstruction) ? 2 : 0) + (settings.enablePerformanceMode ? 1 : 0);
         void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
@@ -180,14 +180,6 @@ void nrd::InstanceImpl::Update_Reblur(const DenoiserData& denoiserData)
 
     { // POST_BLUR
         uint32_t passIndex = AsUint(Dispatch::POST_BLUR) + (skipTemporalStabilization ? 0 : 2) + (settings.enablePerformanceMode ? 1 : 0);
-        void* consts = PushDispatch(denoiserData, passIndex);
-        AddSharedConstants_Reblur(settings, consts);
-    }
-
-    // COPY
-    if (!skipTemporalStabilization)
-    {
-        uint32_t passIndex = AsUint(Dispatch::COPY);
         void* consts = PushDispatch(denoiserData, passIndex);
         AddSharedConstants_Reblur(settings, consts);
     }
@@ -350,11 +342,11 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gFrustum                                            = m_Frustum;
     consts->gFrustumPrev                                        = m_FrustumPrev;
     consts->gCameraDelta                                        = m_CameraDelta.xmm;
-    consts->gAntilagParams                                      = float4(settings.antilagSettings.luminanceSigmaScale, settings.antilagSettings.hitDistanceSigmaScale, settings.antilagSettings.luminanceSensitivity, settings.antilagSettings.hitDistanceSensitivity);
     consts->gHitDistParams                                      = float4(settings.hitDistanceParameters.A, settings.hitDistanceParameters.B, settings.hitDistanceParameters.C, settings.hitDistanceParameters.D);
     consts->gViewVectorWorld                                    = m_ViewDirection.xmm;
     consts->gViewVectorWorldPrev                                = m_ViewDirectionPrev.xmm;
     consts->gMvScale                                            = float4(m_CommonSettings.motionVectorScale[0], m_CommonSettings.motionVectorScale[1], m_CommonSettings.motionVectorScale[2], m_CommonSettings.isMotionVectorInWorldSpace ? 1.0f : 0.0f);
+    consts->gAntilagParams                                      = float2(settings.antilagSettings.luminanceSigmaScale, settings.antilagSettings.luminanceSensitivity);
     consts->gResourceSize                                       = float2(float(resourceW), float(resourceH));
     consts->gResourceSizeInv                                    = float2(1.0f / float(resourceW), 1.0f / float(resourceH));
     consts->gResourceSizeInvPrev                                = float2(1.0f / float(resourceWprev), 1.0f / float(resourceHprev));
@@ -402,13 +394,13 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     consts->gViewZScale                                         = m_CommonSettings.viewZScale;
     consts->gFireflySuppressorMinRelativeScale                  = settings.fireflySuppressorMinRelativeScale;
     consts->gMinHitDistanceWeight                               = settings.minHitDistanceWeight;
+    consts->gDiffMinMaterial                                    = settings.minMaterialForDiffuse;
+    consts->gSpecMinMaterial                                    = settings.minMaterialForSpecular;
     consts->gHasHistoryConfidence                               = m_CommonSettings.isHistoryConfidenceAvailable;
     consts->gHasDisocclusionThresholdMix                        = m_CommonSettings.isDisocclusionThresholdMixAvailable;
     consts->gDiffCheckerboard                                   = diffCheckerboard;
     consts->gSpecCheckerboard                                   = specCheckerboard;
     consts->gFrameIndex                                         = m_CommonSettings.frameIndex;
-    consts->gDiffMaterialMask                                   = settings.enableMaterialTestForDiffuse ? 1 : 0;
-    consts->gSpecMaterialMask                                   = settings.enableMaterialTestForSpecular ? 1 : 0;
     consts->gIsRectChanged                                      = isRectChanged ? 1 : 0;
     consts->gResetHistory                                       = isHistoryReset ? 1 : 0;
 }
@@ -439,7 +431,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_Diffuse_Blur.cs.dxbc.h"
     #include "REBLUR_Diffuse_PostBlur.cs.dxbc.h"
     #include "REBLUR_Diffuse_PostBlur_NoTemporalStabilization.cs.dxbc.h"
-    #include "REBLUR_Diffuse_Copy.cs.dxbc.h"
     #include "REBLUR_Diffuse_TemporalStabilization.cs.dxbc.h"
     #include "REBLUR_Diffuse_SplitScreen.cs.dxbc.h"
 
@@ -463,7 +454,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_Diffuse_Blur.cs.dxil.h"
     #include "REBLUR_Diffuse_PostBlur.cs.dxil.h"
     #include "REBLUR_Diffuse_PostBlur_NoTemporalStabilization.cs.dxil.h"
-    #include "REBLUR_Diffuse_Copy.cs.dxil.h"
     #include "REBLUR_Diffuse_TemporalStabilization.cs.dxil.h"
     #include "REBLUR_Diffuse_SplitScreen.cs.dxil.h"
 
@@ -485,7 +475,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_Diffuse_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_Diffuse_HistoryFix.cs.spirv.h"
     #include "REBLUR_Diffuse_Blur.cs.spirv.h"
-    #include "REBLUR_Diffuse_Copy.cs.spirv.h"
     #include "REBLUR_Diffuse_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_Diffuse_PostBlur.cs.spirv.h"
     #include "REBLUR_Diffuse_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -563,7 +552,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSh_Blur.cs.dxbc.h"
     #include "REBLUR_DiffuseSh_PostBlur.cs.dxbc.h"
     #include "REBLUR_DiffuseSh_PostBlur_NoTemporalStabilization.cs.dxbc.h"
-    #include "REBLUR_DiffuseSh_Copy.cs.dxbc.h"
     #include "REBLUR_DiffuseSh_TemporalStabilization.cs.dxbc.h"
     #include "REBLUR_DiffuseSh_SplitScreen.cs.dxbc.h"
 
@@ -583,7 +571,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSh_Blur.cs.dxil.h"
     #include "REBLUR_DiffuseSh_PostBlur.cs.dxil.h"
     #include "REBLUR_DiffuseSh_PostBlur_NoTemporalStabilization.cs.dxil.h"
-    #include "REBLUR_DiffuseSh_Copy.cs.dxil.h"
     #include "REBLUR_DiffuseSh_TemporalStabilization.cs.dxil.h"
     #include "REBLUR_DiffuseSh_SplitScreen.cs.dxil.h"
 
@@ -601,7 +588,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSh_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_DiffuseSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSh_Blur.cs.spirv.h"
-    #include "REBLUR_DiffuseSh_Copy.cs.spirv.h"
     #include "REBLUR_DiffuseSh_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_DiffuseSh_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSh_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -628,7 +614,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_Specular_Blur.cs.dxbc.h"
     #include "REBLUR_Specular_PostBlur.cs.dxbc.h"
     #include "REBLUR_Specular_PostBlur_NoTemporalStabilization.cs.dxbc.h"
-    #include "REBLUR_Specular_Copy.cs.dxbc.h"
     #include "REBLUR_Specular_TemporalStabilization.cs.dxbc.h"
     #include "REBLUR_Specular_SplitScreen.cs.dxbc.h"
 
@@ -652,7 +637,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_Specular_Blur.cs.dxil.h"
     #include "REBLUR_Specular_PostBlur.cs.dxil.h"
     #include "REBLUR_Specular_PostBlur_NoTemporalStabilization.cs.dxil.h"
-    #include "REBLUR_Specular_Copy.cs.dxil.h"
     #include "REBLUR_Specular_TemporalStabilization.cs.dxil.h"
     #include "REBLUR_Specular_SplitScreen.cs.dxil.h"
 
@@ -677,7 +661,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_Specular_Blur.cs.spirv.h"
     #include "REBLUR_Specular_PostBlur.cs.spirv.h"
     #include "REBLUR_Specular_PostBlur_NoTemporalStabilization.cs.spirv.h"
-    #include "REBLUR_Specular_Copy.cs.spirv.h"
     #include "REBLUR_Specular_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_Specular_SplitScreen.cs.spirv.h"
 
@@ -753,7 +736,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_SpecularSh_Blur.cs.dxbc.h"
     #include "REBLUR_SpecularSh_PostBlur.cs.dxbc.h"
     #include "REBLUR_SpecularSh_PostBlur_NoTemporalStabilization.cs.dxbc.h"
-    #include "REBLUR_SpecularSh_Copy.cs.dxbc.h"
     #include "REBLUR_SpecularSh_TemporalStabilization.cs.dxbc.h"
     #include "REBLUR_SpecularSh_SplitScreen.cs.dxbc.h"
 
@@ -773,7 +755,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_SpecularSh_Blur.cs.dxil.h"
     #include "REBLUR_SpecularSh_PostBlur.cs.dxil.h"
     #include "REBLUR_SpecularSh_PostBlur_NoTemporalStabilization.cs.dxil.h"
-    #include "REBLUR_SpecularSh_Copy.cs.dxil.h"
     #include "REBLUR_SpecularSh_TemporalStabilization.cs.dxil.h"
     #include "REBLUR_SpecularSh_SplitScreen.cs.dxil.h"
 
@@ -793,7 +774,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_SpecularSh_Blur.cs.spirv.h"
     #include "REBLUR_SpecularSh_PostBlur.cs.spirv.h"
     #include "REBLUR_SpecularSh_PostBlur_NoTemporalStabilization.cs.spirv.h"
-    #include "REBLUR_SpecularSh_Copy.cs.spirv.h"
     #include "REBLUR_SpecularSh_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_SpecularSh_SplitScreen.cs.spirv.h"
 
@@ -816,7 +796,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecular_HistoryFix.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecular_Blur.cs.dxbc.h"
-    #include "REBLUR_DiffuseSpecular_Copy.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecular_PostBlur.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.dxbc.h"
@@ -840,7 +819,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.dxil.h"
     #include "REBLUR_DiffuseSpecular_HistoryFix.cs.dxil.h"
     #include "REBLUR_DiffuseSpecular_Blur.cs.dxil.h"
-    #include "REBLUR_DiffuseSpecular_Copy.cs.dxil.h"
     #include "REBLUR_DiffuseSpecular_TemporalStabilization.cs.dxil.h"
     #include "REBLUR_DiffuseSpecular_PostBlur.cs.dxil.h"
     #include "REBLUR_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.dxil.h"
@@ -864,7 +842,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSpecular_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_Blur.cs.spirv.h"
-    #include "REBLUR_DiffuseSpecular_Copy.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecular_PostBlur_NoTemporalStabilization.cs.spirv.h"
@@ -940,7 +917,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecularSh_HistoryFix.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecularSh_Blur.cs.dxbc.h"
-    #include "REBLUR_DiffuseSpecularSh_Copy.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecularSh_TemporalStabilization.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecularSh_PostBlur.cs.dxbc.h"
     #include "REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.dxbc.h"
@@ -960,7 +936,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.dxil.h"
     #include "REBLUR_DiffuseSpecularSh_HistoryFix.cs.dxil.h"
     #include "REBLUR_DiffuseSpecularSh_Blur.cs.dxil.h"
-    #include "REBLUR_DiffuseSpecularSh_Copy.cs.dxil.h"
     #include "REBLUR_DiffuseSpecularSh_TemporalStabilization.cs.dxil.h"
     #include "REBLUR_DiffuseSpecularSh_PostBlur.cs.dxil.h"
     #include "REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.dxil.h"
@@ -980,7 +955,6 @@ void nrd::InstanceImpl::AddSharedConstants_Reblur(const ReblurSettings& settings
     #include "REBLUR_DiffuseSpecularSh_TemporalAccumulation.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_HistoryFix.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_Blur.cs.spirv.h"
-    #include "REBLUR_DiffuseSpecularSh_Copy.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_TemporalStabilization.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_PostBlur.cs.spirv.h"
     #include "REBLUR_DiffuseSpecularSh_PostBlur_NoTemporalStabilization.cs.spirv.h"

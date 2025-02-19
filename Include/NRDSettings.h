@@ -11,7 +11,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #pragma once
 
 #define NRD_SETTINGS_VERSION_MAJOR 4
-#define NRD_SETTINGS_VERSION_MINOR 13
+#define NRD_SETTINGS_VERSION_MINOR 14
 
 static_assert(NRD_VERSION_MAJOR == NRD_SETTINGS_VERSION_MAJOR && NRD_VERSION_MINOR == NRD_SETTINGS_VERSION_MINOR, "Please, update all NRD SDK files");
 
@@ -178,7 +178,7 @@ namespace nrd
         AccumulationMode accumulationMode = AccumulationMode::CONTINUE;
 
         // If "true" IN_MV is 3D motion in world-space (0 should be everywhere if the scene is static, camera motion must not be included),
-        // otherwise it's 2D (+ optional Z delta) screen-space motion (0 should be everywhere if the camera doesn't move) (recommended value = true)
+        // otherwise it's 2D (+ optional Z delta) screen-space motion (0 should be everywhere if the camera doesn't move)
         bool isMotionVectorInWorldSpace = false;
 
         // If "true" IN_DIFF_CONFIDENCE and IN_SPEC_CONFIDENCE are available
@@ -222,11 +222,9 @@ namespace nrd
     {
         // [1; 5] - delta is reduced by local variance multiplied by this value
         float luminanceSigmaScale = 4.0f; // can be 3.0 or even less if signal is good
-        float hitDistanceSigmaScale = 3.0f;
 
         // [1; 5] - antilag sensitivity (smaller values increase sensitivity)
         float luminanceSensitivity = 3.0f; // can be 2.0 or even less if signal is good
-        float hitDistanceSensitivity = 2.0f;
     };
 
     struct ReblurSettings
@@ -300,9 +298,9 @@ namespace nrd
         // Boosts performance by sacrificing IQ
         bool enablePerformanceMode = false;
 
-        // (Optional) material ID comparison: enableMaterialTest ? materialID[x] == materialID[y] : 1 (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
-        bool enableMaterialTestForDiffuse = false;
-        bool enableMaterialTestForSpecular = false;
+        // (Optional) material ID comparison: max(m0, minMaterial) == max(m1, minMaterial) (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
+        float minMaterialForDiffuse = 4.0f;
+        float minMaterialForSpecular = 4.0f;
 
         // In rare cases, when bright samples are so sparse that any other bright neighbor can't
         // be reached, pre-pass transforms a standalone bright pixel into a standalone bright blob,
@@ -423,9 +421,9 @@ namespace nrd
         // Roughness based rejection
         bool enableRoughnessEdgeStopping = true;
 
-        // (Optional) material ID comparison: enableMaterialTest ? materialID[x] == materialID[y] : 1 (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
-        bool enableMaterialTestForDiffuse = false;
-        bool enableMaterialTestForSpecular = false;
+        // (Optional) material ID comparison: max(m0, minMaterial) == max(m1, minMaterial) (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
+        float minMaterialForDiffuse = 4.0f;
+        float minMaterialForSpecular = 4.0f;
     };
 
     //====================================================================================================================================================

@@ -76,8 +76,6 @@ const char* g_NrdResourceTypeNames[] =
     "IN_PENUMBRA",
     "IN_TRANSLUCENCY",
     "IN_SIGNAL",
-    "IN_DELTA_PRIMARY_POS",
-    "IN_DELTA_SECONDARY_POS",
 
     "OUT_DIFF_RADIANCE_HITDIST",
     "OUT_SPEC_RADIANCE_HITDIST",

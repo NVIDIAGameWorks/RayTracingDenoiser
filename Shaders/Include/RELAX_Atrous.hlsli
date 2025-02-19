@@ -170,7 +170,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
             // Summing up specular
             float wSpecular = geometryW * (gRoughnessEdgeStoppingEnabled ? (normalWSpecular * roughnessWSpecular) : normalWSpecularSimplified);
-            wSpecular *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask);
+            wSpecular *= CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMinMaterial);
             if (wSpecular > 1e-4)
             {
                 float4 sampleSpecularIlluminationAndVariance = gIn_Spec_Variance[p];
@@ -197,7 +197,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
             // Summing up diffuse
             float wDiffuse = geometryW * normalWDiffuse;
-            wDiffuse *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask);
+            wDiffuse *= CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMinMaterial);
             if (wDiffuse > 1e-4)
             {
                 float4 sampleDiffuseIlluminationAndVariance = gIn_Diff_Variance[p];

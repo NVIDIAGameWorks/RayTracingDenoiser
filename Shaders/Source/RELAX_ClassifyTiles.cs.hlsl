@@ -22,7 +22,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
     if( threadIndex == 0 )
         s_isSky = 0;
 
-    GroupMemoryBarrier();
+    GroupMemoryBarrierWithGroupSync();
 
     uint2 pixelPos = tilePos * 16 + threadPos * uint2( 2, 4 );
     uint isSky = 0;
@@ -42,7 +42,7 @@ NRD_EXPORT void NRD_CS_MAIN( uint2 threadPos : SV_GroupThreadId, uint2 tilePos :
 
     InterlockedAdd( s_isSky, isSky );
 
-    GroupMemoryBarrier();
+    GroupMemoryBarrierWithGroupSync();
 
     if( threadIndex == 0 )
         gOut_Tiles[ tilePos ] = s_isSky == 256 ? 1.0 : 0.0;

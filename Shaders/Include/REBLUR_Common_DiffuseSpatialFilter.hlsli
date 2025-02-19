@@ -72,6 +72,11 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
         float2 hitDistanceWeightParams = GetHitDistanceWeightParams( ExtractHitDist( diff ), diffNonLinearAccumSpeed ); // TODO: what if hitT == 0?
         float minHitDistWeight = gMinHitDistanceWeight * fractionScale;
 
+        // ( Optional ) Gradually reduce "minHitDistWeight" to preserve contact details
+    #if( REBLUR_SPATIAL_MODE != REBLUR_PRE_BLUR && !defined( REBLUR_OCCLUSION ) )
+        minHitDistWeight *= sqrt( diffNonLinearAccumSpeed );
+    #endif
+
         // Screen-space settings
     #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR || REBLUR_USE_SCREEN_SPACE_SAMPLING_FOR_DIFFUSE == 1 )
         #if( REBLUR_SPATIAL_MODE == REBLUR_PRE_BLUR )
@@ -140,7 +145,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 
             float w = IsInScreenNearest( uv );
             w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
-            w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+            w *= CompareMaterials( materialID, materialIDs, gDiffMinMaterial );
             w *= ComputeWeight( angle, normalWeightParam, 0.0 );
 
             REBLUR_TYPE s = gIn_Diff.SampleLevel( gNearestClamp, checkerboardUvScaled, 0 );
@@ -197,6 +202,13 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
     gOut_Diff[ pixelPos ] = diff;
     #ifdef REBLUR_SH
         gOut_DiffSh[ pixelPos ] = diffSh;
+    #endif
+
+    #if( defined( REBLUR_NO_TEMPORAL_STABILIZATION ) && !defined( REBLUR_OCCLUSION ) )
+        gOut_DiffCopy[ pixelPos ] = diff;
+        #ifdef REBLUR_SH
+            gOut_DiffShCopy[ pixelPos ] = diffSh;
+        #endif
     #endif
 }
 

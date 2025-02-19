@@ -8,15 +8,12 @@ distribution of this software and related documentation without an express
 license agreement from NVIDIA CORPORATION is strictly prohibited.
 */
 
-groupshared float2 s_FrameNum[ BUFFER_Y ][ BUFFER_X ];
 groupshared float s_DiffLuma[ BUFFER_Y ][ BUFFER_X ];
 groupshared float s_SpecLuma[ BUFFER_Y ][ BUFFER_X ];
 
 void Preload( uint2 sharedPos, int2 globalPos )
 {
     globalPos = clamp( globalPos, 0, gRectSizeMinusOne );
-
-    s_FrameNum[ sharedPos.y ][ sharedPos.x ] = UnpackData1( gIn_Data1[ globalPos ] );
 
     #ifdef REBLUR_DIFFUSE
         s_DiffLuma[ sharedPos.y ][ sharedPos.x ] = gIn_DiffFast[ globalPos ];
@@ -36,7 +33,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     NRD_CTA_ORDER_REVERSED;
 
     // Preload
-    float isSky = gIn_Tiles[ pixelPos >> 4 ];
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].x;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -60,44 +57,9 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     float3 Nv = Geometry::RotateVectorInverse( gViewToWorld, N );
     float3 Vv = GetViewVector( Xv, true );
     float NoV = abs( dot( Nv, Vv ) );
+    float2 frameNum = UnpackData1( gIn_Data1[ pixelPos ] );
 
-    // Smooth number of accumulated frames
-    int2 smemPos = threadPos + BORDER;
-    float invHistoryFixFrameNum = Math::PositiveRcp( gHistoryFixFrameNum );
-    float2 frameNum = s_FrameNum[ smemPos.y ][ smemPos.x ]; // unsmoothed
-    float2 frameNumNorm = saturate( frameNum * invHistoryFixFrameNum ); // smoothed
-    float2 c = frameNumNorm;
-    float2 sum = 1.0;
-
-    [unroll]
-    for( j = 0; j <= BORDER * 2; j++ )
-    {
-        [unroll]
-        for( i = 0; i <= BORDER * 2; i++ )
-        {
-            // Skip center
-            if( i == BORDER && j == BORDER )
-                continue;
-
-            // Only 3x3 needed
-            float2 o = float2( i, j ) - BORDER;
-            if( any( abs( o ) > 1 ) )
-                continue;
-
-            int2 pos = threadPos + int2( i, j );
-
-            float2 f = s_FrameNum[ pos.y ][ pos.x ];
-            float2 fn = saturate( f * invHistoryFixFrameNum );
-            float2 w = step( c, fn ); // use only neighbors with longer history
-
-            frameNumNorm += fn * w;
-            sum += w;
-        }
-    }
-
-    frameNumNorm /= sum;
-
-    float2 stride = gHistoryFixBasePixelStride / ( 1.0 + frameNumNorm * gHistoryFixFrameNum );
+    float2 stride = gHistoryFixBasePixelStride / ( 2.0 + frameNum ); // +1 to match RELAX
 
     // Diffuse
     #ifdef REBLUR_DIFFUSE
@@ -171,7 +133,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
                     float w = IsInScreenNearest( uv );
                     w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
-                    w *= CompareMaterials( materialID, materialIDs, gDiffMaterialMask );
+                    w *= CompareMaterials( materialID, materialIDs, gDiffMinMaterial );
                     w *= ComputeExponentialWeight( angle, normalWeightParam, 0.0 );
 
                     #ifndef REBLUR_PERFORMANCE_MODE
@@ -205,7 +167,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         }
 
         // Local variance
-        float diffCenter = s_DiffLuma[ smemPos.y ][ smemPos.x ];
+        float diffCenter = s_DiffLuma[ threadPos.y + BORDER ][ threadPos.x + BORDER ];
         float diffM1 = diffCenter;
         float diffM2 = diffM1 * diffM1;
 
@@ -369,7 +331,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
                     // Weight
                     float w = IsInScreenNearest( uv );
                     w *= ComputeWeight( dot( Nv, Xvs ), geometryWeightParams.x, geometryWeightParams.y );
-                    w *= CompareMaterials( materialID, materialIDs, gSpecMaterialMask );
+                    w *= CompareMaterials( materialID, materialIDs, gSpecMinMaterial );
                     w *= ComputeExponentialWeight( angle, normalWeightParam, 0.0 );
                     w *= ComputeExponentialWeight( Ns.w * Ns.w, relaxedRoughnessWeightParams.x, relaxedRoughnessWeightParams.y );
 
@@ -409,7 +371,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         }
 
         // Local variance
-        float specCenter = s_SpecLuma[ smemPos.y ][ smemPos.x ];
+        float specCenter = s_SpecLuma[ threadPos.y + BORDER ][ threadPos.x + BORDER ];
         float specM1 = specCenter;
         float specM2 = specM1 * specM1;
 

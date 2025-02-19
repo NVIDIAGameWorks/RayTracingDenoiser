@@ -105,7 +105,7 @@ void runRCRS(
             float sampleMaterialID = s_MaterialID[sharedMemoryIndexSample.y][sharedMemoryIndexSample.x];
 
 #ifdef RELAX_SPECULAR
-            if (CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMaterialMask) > 0)
+            if (CompareMaterials(sampleMaterialID, centerMaterialID, gSpecMinMaterial))
             {
                 if (specularLuminanceSample > maxSpecularLuminance)
                 {
@@ -121,7 +121,7 @@ void runRCRS(
 #endif
 
 #ifdef RELAX_DIFFUSE
-            if (CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMaterialMask) > 0)
+            if (CompareMaterials(sampleMaterialID, centerMaterialID, gDiffMinMaterial))
             {
                 if (diffuseLuminanceSample > maxDiffuseLuminance)
                 {

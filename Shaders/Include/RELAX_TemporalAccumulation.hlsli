@@ -38,7 +38,6 @@ float loadSurfaceMotionBasedPrevData(
     float NoV,
     float smbParallaxInPixelsMax,
     float currentMaterialID,
-    uint materialIDMask,
     float disocclusionThreshold,
 
     out float footprintQuality,
@@ -112,10 +111,12 @@ float loadSurfaceMotionBasedPrevData(
     float3 tapsValid1 = step(planeDist1, smbDisocclusionThreshold.y);
     float3 tapsValid2 = step(planeDist2, smbDisocclusionThreshold.z);
     float3 tapsValid3 = step(planeDist3, smbDisocclusionThreshold.w);
-    tapsValid0 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs00.yzw, materialIDMask);
-    tapsValid1 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs10.xzw, materialIDMask);
-    tapsValid2 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs01.xyw, materialIDMask);
-    tapsValid3 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs11.xyz, materialIDMask);
+
+    float minMaterialID = min(gSpecMinMaterial, gDiffMinMaterial); // TODO: separation is expensive
+    tapsValid0 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs00.yzw, minMaterialID);
+    tapsValid1 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs10.xzw, minMaterialID);
+    tapsValid2 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs01.xyw, minMaterialID);
+    tapsValid3 *= CompareMaterials(currentMaterialID.xxx, prevMaterialIDs11.xyz, minMaterialID);
 
     float bicubicFootprintValid = dot(tapsValid0 + tapsValid1 + tapsValid2 + tapsValid3, 1.0) > 11.5 ? 1.0 : 0.0;
     float4 bilinearTapsValid = float4(tapsValid0.z, tapsValid1.y, tapsValid2.y, tapsValid3.x);
@@ -228,7 +229,6 @@ float loadVirtualMotionBasedPrevData(
     float3 prevWorldPos,
     bool surfaceBicubicValid,
     float currentMaterialID,
-    uint materialIDMask,
     float2 prevUVSMB,
     float smbParallaxInPixelsMax,
     float NoV,
@@ -287,7 +287,7 @@ float loadVirtualMotionBasedPrevData(
     prevWorldPosInTap = GetPreviousWorldPosFromPixelPos(bilinearOrigin + int2(1, 1), prevViewZs.w);
     bilinearTapsValid.w = isReprojectionTapValid(currentWorldPos, prevWorldPosInTap, currentNormal, vmbDisocclusionThreshold.w);
 
-    bilinearTapsValid *= CompareMaterials(currentMaterialID.xxxx, prevMaterialIDs.xyzw, materialIDMask);
+    bilinearTapsValid *= CompareMaterials(currentMaterialID.xxxx, prevMaterialIDs.xyzw, gSpecMinMaterial);
 
     // Applying reprojection
     prevSpecularIllumAnd2ndMoment = 0;
@@ -518,7 +518,6 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         NoV,
         smbParallaxInPixelsMax,
         currentMaterialID,
-        gDiffMaterialMask | gSpecMaterialMask, // TODO: improve?
         disocclusionThreshold,
         footprintQuality,
         historyLength
@@ -746,7 +745,6 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         prevWorldPos,
         SMBReprojectionFound == 2.0 ? true : false,
         currentMaterialID,
-        gSpecMaterialMask,
         prevUVSMB,
         smbParallaxInPixelsMax,
         NoV,

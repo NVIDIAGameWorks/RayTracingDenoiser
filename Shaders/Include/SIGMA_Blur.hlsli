@@ -45,7 +45,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 #endif
 
     // Preload
-    float isSky = gIn_Tiles[ pixelPos >> 4 ].y;
+    float isSky = gIn_Tiles[ pixelPos >> 4 ].x;
     PRELOAD_INTO_SMEM_WITH_TILE_CHECK;
 
     // Tile-based early out
@@ -64,7 +64,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
 
     // Tile-based early out ( potentially )
     float2 pixelUv = float2( pixelPos + 0.5 ) * gRectSizeInv;
-    float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale );
+    float tileValue = TextureCubic( gIn_Tiles, pixelUv * gResolutionScale ).y;
 
     if( ( tileValue == 0.0 && NRD_USE_TILE_CHECK ) || centerPenumbra == 0.0 )
     {
