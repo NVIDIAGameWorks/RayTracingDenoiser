@@ -55,6 +55,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_USE_HISTORY_CONFIDENCE                              1 // almost no one uses this, but constant folding and dead code elimination work well on modern drivers
 #define NRD_USE_DISOCCLUSION_THRESHOLD_MIX                      1 // almost no one uses this, but constant folding and dead code elimination work well on modern drivers
 #define NRD_USE_BASECOLOR_METALNESS                             1 // almost no one uses this, but constant folding and dead code elimination work well on modern drivers
+#define NRD_USE_SPECULAR_MOTION_V2                              1 // this method offers better IQ on bumpy and wavy surfaces, but it doesn't work on concave mirrors ( no motion acceleration )
 
 // Switches ( default 0 )
 #define NRD_USE_QUADRATIC_DISTRIBUTION                          0
@@ -372,49 +373,91 @@ float2 StochasticBilinear( float2 uv, float2 texSize )
 
 // Thin lens
 
-float ApplyThinLensEquation( float hitDist, float curvature )
+/*
+https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
+https://www.geeksforgeeks.org/sign-convention-for-spherical-mirrors/
+
+Thin lens equation:
+    1 / F = 1 / O + 1 / I
+    F = R / 2 - focal distance
+    C = 1 / R - curvature
+
+Sign convention:
+    convex  : O(-), I(+), C(+)
+    concave : O(-), I(+ or -), C(-)
+
+Combine:
+    2C = 1 / O + 1 / I
+    1 / I = 2C - 1 / O
+    1 / I = ( 2CO - 1 ) / O
+    I = O / ( 2CO - 1 )
+    mag = 1 / ( 2CO - 1 )
+
+O is always negative, while hit distance is always positive:
+    I = -O / ( -2CO - 1 )
+    I = O / ( 2CO + 1 )
+
+Interactive graph:
+    https://www.desmos.com/calculator/dn9spdgwiz
+*/
+
+float ApplyThinLensEquation( float O, float curvature )
 {
-    /*
-    https://computergraphics.stackexchange.com/questions/1718/what-is-the-simplest-way-to-compute-principal-curvature-for-a-mesh-triangle
-    https://www.geeksforgeeks.org/sign-convention-for-spherical-mirrors/
+    float I = O / ( 2.0 * curvature * O + 1.0 );
 
-    Thin lens equation:
-        1 / F = 1 / O + 1 / I
-        F = R / 2 - focal distance
-        C = 1 / R - curvature
-
-    Sign convention:
-        convex  : O(-), I(+), C(+)
-        concave : O(-), I(+ or -), C(-)
-
-    Combine:
-        2C = 1 / O + 1 / I
-        1 / I = 2C - 1 / O
-        1 / I = ( 2CO - 1 ) / O
-        I = O / ( 2CO - 1 )
-
-    O is always negative, while hit distance is always positive:
-        I = -O / ( -2CO - 1 )
-        I = O / ( 2CO + 1 )
-
-    Interactive graph:
-        https://www.desmos.com/calculator/dn9spdgwiz
-    */
-
-    float hitDistFocused = hitDist / ( 2.0 * curvature * hitDist + 1.0 );
-
-    return hitDistFocused;
+    return I;
 }
 
-float3 GetXvirtual( float hitDist, float curvature, float3 X, float3 Xprev, float3 V, float dominantFactor )
+float3 GetXvirtual( float hitDist, float curvature, float3 X, float3 Xprev, float3 N, float3 V, float roughness )
 {
-    float hitDistFocused = ApplyThinLensEquation( hitDist, curvature );
+    // GGX dominant direction
+    float4 D = ImportanceSampling::GetSpecularDominantDirection( N, V, roughness, ML_SPECULAR_DOMINANT_DIRECTION_G2 );
+
+    // It will be image position in world space relative to the primary hit
+    float3 Iw = V;
+
+    #if( NRD_USE_SPECULAR_MOTION_V2 == 0 )
+        float hitDistFocused = ApplyThinLensEquation( hitDist, curvature );
+
+        Iw *= hitDistFocused;
+    #else
+        // Specular ray direction can be used instead of GGX dominant direction
+        float3 reflectionRay = D.xyz * hitDist;
+
+        // Construct a basis for the reflector
+        float3 principalAxis = N;
+        float3x3 reflectorBasis = Geometry::GetBasis( principalAxis );
+
+        // Object position
+        float3 O = Geometry::RotateVector( reflectorBasis, reflectionRay );
+
+        // O.z is always negative due to sign convention ( assuming no self intersection rays )
+        O.z = -O.z;
+
+        // Image position
+        float mag = 1.0 / ( 2.0 * curvature * O.z - 1.0 );
+
+        // Workaround: avoid smearing on silhouettes
+        float f = length( X ); // if close to...
+        f *= 1.0 - abs( dot( N, V ) ); // a silhouette...
+        f *= max( curvature, 0.0 ); // of a convex hull...
+        mag *= 1.0 / ( 1.0 + f ); // reduce magnification
+
+        float3 I = O * mag;
+
+        Iw *= length( I );
+
+        // TODO: to fix bahavior on concave mirrors, signed world position is needed. But the code below can't be used "as is"
+        // because motion can become inconsistent in some cases ( tests 133, 164, 171 - 176 ) leading to reprojection artefacts
+        //Iw = Geometry::RotateVectorInverse( reflectorBasis, I );
+    #endif
 
     // Only hit distance is provided, not real motion in the virtual world. If the virtual position is close to the
-    // surface due to focusing, better to replace current position with previous position because surface motion is known.
-    float closenessToSurface = saturate( abs( hitDistFocused ) / ( hitDist + NRD_EPS ) );
+    // surface due to focusing, better to replace current position with previous position because surface motion is known
+    float closenessToSurface = saturate( length( Iw ) / ( hitDist + NRD_EPS ) );
+    float3 origin = lerp( Xprev, X, closenessToSurface * D.w );
 
-    return lerp( Xprev, X, closenessToSurface * dominantFactor ) - V * hitDistFocused * dominantFactor;
+    return origin - Iw * D.w;
 }
 
 // Kernel

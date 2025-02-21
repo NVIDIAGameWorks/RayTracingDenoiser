@@ -709,6 +709,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float edgeLenSq = Math::LengthSquared( edge );
         curvature = dot( n - currentNormal, edge ) * Math::PositiveRcp( edgeLenSq );
 
+    #if( NRD_USE_SPECULAR_MOTION_V2 == 0 ) // needed onlt for the old version
         // Correction #1 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
         if( length( currentWorldPos ) < -1.0 / curvature ) // TODO: test 78
             curvature *= NoV;
@@ -718,6 +719,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float2 uv2 = Geometry::GetScreenUv( gWorldToClipPrev, currentWorldPos );
         float a = length( ( uv1 - uv2 ) * gRectSize );
         curvature *= float( a < NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION * smbParallaxInPixelsMax + gRectSizeInv.x );
+    #endif
     }
 
     // Thin lens equation for adjusting reflection HitT
@@ -822,10 +824,10 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
     virtualHistoryHitDistConfidence = lerp(virtualHistoryHitDistConfidence, 1.0, SMC);
 
     // Virtual history confidence - virtual UV discrepancy
-    float3 virtualWorldPos = GetXvirtual(hitDist, curvature, currentWorldPos, prevWorldPos, V, D.w);
+    float3 virtualWorldPos = GetXvirtual(hitDist, curvature, currentWorldPos, prevWorldPos, currentNormal, V, currentRoughness);
     float virtualWorldPosLength = length(virtualWorldPos);
     float hitDistForTrackingPrev = prevSpecularIlluminationAnd2ndMomentVMBResponsive.a;
-    float3 prevVirtualWorldPos = GetXvirtual(hitDistForTrackingPrev, curvature, currentWorldPos, prevWorldPos, V, D.w);
+    float3 prevVirtualWorldPos = GetXvirtual(hitDistForTrackingPrev, curvature, currentWorldPos, prevWorldPos, currentNormal, V, currentRoughness);
     float virtualWorldPosLengthPrev = length(prevVirtualWorldPos);
     float2 prevUVVMBTest = Geometry::GetScreenUv(gWorldToClipPrev, prevVirtualWorldPos, false);
     prevUVVMBTest = currentMaterialID == gCameraAttachedReflectionMaterialID ? prevUVSMB : prevUVVMBTest;

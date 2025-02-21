@@ -353,8 +353,6 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             }
         #endif
 
-        float Dfactor = ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, ML_SPECULAR_DOMINANT_DIRECTION_G2 );
-
         // Curvature estimation along predicted motion ( tests 15, 40, 76, 133, 146, 147, 148 )
         /*
         TODO: curvature! (-_-)
@@ -435,6 +433,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float edgeLenSq = Math::LengthSquared( edge );
             curvature = dot( n - N, edge ) * Math::PositiveRcp( edgeLenSq );
 
+        #if( NRD_USE_SPECULAR_MOTION_V2 == 0 ) // needed onlt for the old version
             // Correction #1 - this is needed if camera is "inside" a concave mirror ( tests 133, 164, 171 - 176 )
             if( length( X ) < -1.0 / curvature ) // TODO: test 78
                 curvature *= NoV;
@@ -444,10 +443,11 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
             float2 uv2 = Geometry::GetScreenUv( gWorldToClipPrev, X );
             float a = length( ( uv1 - uv2 ) * gRectSize );
             curvature *= float( a < NRD_MAX_ALLOWED_VIRTUAL_MOTION_ACCELERATION * smbParallaxInPixelsMax + gRectSizeInv.x );
+        #endif
         }
 
         // Virtual motion - coordinates
-        float3 Xvirtual = GetXvirtual( hitDistForTracking, curvature, X, Xprev, V, Dfactor );
+        float3 Xvirtual = GetXvirtual( hitDistForTracking, curvature, X, Xprev, N, V, roughness );
         float XvirtualLength = length( Xvirtual );
 
         float2 vmbPixelUv = Geometry::GetScreenUv( gWorldToClipPrev, Xvirtual );
@@ -472,6 +472,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         // Virtual motion - normal: parallax ( test 132 )
         float4 vmbNormalAndRoughness = NRD_FrontEnd_UnpackNormalAndRoughness( gPrev_Normal_Roughness.SampleLevel( STOCHASTIC_BILINEAR_FILTER, StochasticBilinear( vmbPixelUv, gRectSizePrev ) * gResolutionScalePrev, 0 ) );
         float3 vmbN = Geometry::RotateVector( gWorldPrevToWorld, vmbNormalAndRoughness.xyz );
+        float Dfactor = ImportanceSampling::GetSpecularDominantFactor( NoV, roughness, ML_SPECULAR_DOMINANT_DIRECTION_G2 );
         float virtualHistoryNormalBasedConfidence = 1.0 / ( 1.0 + 0.5 * Dfactor * saturate( length( N - vmbN ) - REBLUR_NORMAL_ULP ) * vmbPixelsTraveled );
 
         // Patch "smbNavg" if "smb" motion is invalid ( make relative tests a NOP )
@@ -562,7 +563,7 @@ NRD_EXPORT void NRD_CS_MAIN( NRD_CS_MAIN_ARGS )
         float virtualHistoryParallaxBasedConfidence;
         {
             float hitDistForTrackingPrev = gPrev_SpecHitDistForTracking.SampleLevel( gLinearClamp, vmbPixelUv * gResolutionScalePrev, 0 );
-            float3 XvirtualPrev = GetXvirtual( hitDistForTrackingPrev, curvature, X, Xprev, V, Dfactor );
+            float3 XvirtualPrev = GetXvirtual( hitDistForTrackingPrev, curvature, X, Xprev, N, V, roughness );
 
             float2 vmbPixelUvPrev = Geometry::GetScreenUv( gWorldToClipPrev, XvirtualPrev );
             vmbPixelUvPrev = materialID == gCameraAttachedReflectionMaterialID ? smbPixelUv : vmbPixelUvPrev;
